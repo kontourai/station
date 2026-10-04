@@ -28,6 +28,10 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import {
+  buildTranscriptSeed,
+  transcriptSeedSource,
+} from './conversation-transcript-seed.js';
 import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -95,6 +99,17 @@ export function isConversationContinuationPending(
     ...detail,
     session: { ...detail.session, pendingReview: false },
   });
+}
+
+/**
+ * Whether the session ever started a turn (any `turn.*` event on record).
+ * Known gap: a second send that resolves in the instant between a first turn's
+ * dispatch and its `turn.started` write sees no turn and may stop the
+ * predecessor mid-start; the window is a single event write and the stop is
+ * best effort, so it is accepted rather than guarded.
+ */
+function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
+  return detail.events.some((event) => event.method.startsWith('turn.'));
 }
 
 export function canResolveConversationContinuation(
@@ -194,6 +209,7 @@ export class ConversationLineage {
     resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    retirePredecessorSessionId?: string;
   }> {
     const store = this.deps.eventStore;
     if (!store) {
@@ -321,6 +337,13 @@ export class ConversationLineage {
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
+      // A model change on a session that never ran a turn leaves its engine
+      // process resident for nothing; name it so the start seam can end it
+      // once the successor is up. Any session with turn facts keeps today's
+      // lineage and lifecycle behaviour untouched.
+      ...(needsModelRestart && !hasTurnFacts(detail)
+        ? { retirePredecessorSessionId: current.sessionId }
+        : {}),
       ...continuationLaunchContext(
         detail,
         requested,
@@ -1021,8 +1044,6 @@ export class ConversationLineage {
   }
 }
 
-const CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS = 6_000;
-
 function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
   requested: {
@@ -1113,33 +1134,19 @@ function handoffTranscriptContext(
 }
 
 /**
- * Deterministic cross-engine fallback. It is deliberately bounded and carries
- * only the already-authorized canonical conversation projection; provider
- * cursor state, tool state, approvals, and connection secrets never cross
- * this boundary. The next handoff slice can render an explicit marker from
- * the same child lineage without changing this start contract.
+ * Deterministic cross-engine fallback. It carries only the already-authorized
+ * canonical conversation projection, as whole messages under the shared seed
+ * budget (#3164); provider cursor state, tool state, approvals, and
+ * connection secrets never cross this boundary.
  */
 function continuationTranscriptSeed(
   messages: readonly ConversationMessage[],
 ): string {
-  const text = messages
-    .filter(
-      (message) => message.role === 'user' || message.role === 'assistant',
-    )
-    .map((message) => {
-      const content = message.parts
-        .filter((part) => typeof part.text === 'string' && !part.runtimeError)
-        .map((part) => part.text!.trim())
-        .filter(Boolean)
-        .join('\n');
-      return content
-        ? `${message.role === 'user' ? 'User' : 'Assistant'}: ${content}`
-        : '';
-    })
-    .filter(Boolean)
-    .join('\n');
-  const bounded = text.slice(-CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS);
-  return `Prior conversation transcript (context only; provider-native state is not carried):\n${bounded}`;
+  return buildTranscriptSeed({
+    heading:
+      'Prior conversation transcript (context only, not a new request; provider-native state is not carried).',
+    ...transcriptSeedSource(messages),
+  }).text;
 }
 
 function observeConversationContinuation(

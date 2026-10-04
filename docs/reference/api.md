@@ -60,6 +60,42 @@ and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-ru
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
 
+### Keep a declared output
+
+`POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts
+`{operationId}` and resolves the declaration from the authorized Session owner.
+The [route](../../src-server/routes/orchestration/task-outputs.ts) captures the
+Task's Project, creation time and workspace. Its publication witness refuses a
+changed Task incarnation, Project or workspace, including at the pull-request
+commit boundary. Reusing an ID and path does not make a replacement Task the
+original target.
+
+The [Session output owner](../../src-server/services/orchestration/session-outputs-module.ts)
+checks the durable declaration and source workspace. File curation reaches the
+[immutable output store](../../src-server/services/projects/task-output-module.ts),
+which checks declared digest/length against captured bytes and rechecks the
+publication witness under its lock. A successful keep is `201` with a
+`task-declared-output-keep/v1` result; conflicts are `409`, previously deleted kept outputs
+are `410`, unavailable storage is `503`, and lost current authority is opaque
+`404`. A keep preserves an artifact or reference; it does not establish agent
+attribution, accepted quality or feedback. Exact-version review is described below; it remains a human statement rather than Task acceptance.
+
+New snapshots store their Task creation identity and, for admitted Session
+declarations, the declaration's Session/event/turn/tool identities privately.
+Public output records remain schema version 1 and omit those private fields.
+Reads and operation receipts for new outputs do not cross a Task incarnation;
+legacy outputs retain unknown provenance rather than receiving invented values.
+Legacy deletion receipts conservatively continue to block the same declared
+candidate under a fresh operation ID.
+
+The private index becomes schema version 2 on the first new snapshot. The new
+reader accepts existing version 1 rows; older binaries reject the version 2
+index, so downgrade requires an explicit migration. Task deletion clears its
+retained identity reservations only while the Task remains absent under the
+output lock. This module contract has no current mounted cascade caller and
+does not establish a joint transaction with TaskGraph.
+
+
 ## Table of Contents
 
 | Area | Route families |
@@ -1438,6 +1474,33 @@ still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
 
+Every JSON response the runtime writes itself, success or refusal, carries the
+response header `x-station-envelope: 1`
+(`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
+exposes it. Because there is no universal envelope, a reverse proxy or gateway
+can answer with JSON in a Station shape; the header is how a client tells
+Station's own answer from one written in between. The header is set by
+[one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
+every handler. The refusals Station writes outside that app set it
+themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
+(its admission refusals, and the 502 that replaces an app answer which tried
+to set a cookie) and the self-hosted broker's
+[gated application](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts)
+(retired trust, forbidden origin). It
+describes one hop: a response relayed from another Station through
+`fetchRemoteStation` leaves without it. Non-JSON bodies (event streams, files,
+plain text) do not carry it. A Station older than the header never sends it,
+so its absence proves nothing about such a Station.
+
+The SDK treats a missing header as "not Station's answer" only for an origin
+that has already sent it, and forgets an origin when its credential changes
+or the client switches Station. One case it cannot tell apart: Stations of
+different versions behind one origin (a rolling deploy, or a downgrade). Until
+the origin is forgotten, the older Station's refusals read as an
+intermediary's, so a queued chat message is retried instead of dropped and may
+be refused again on each retry until a reload. That fails toward retrying,
+never toward dropping a message.
+
 Clients must check HTTP status and the family's body/stream result. Treat 202
 as acceptance with pending work when the response says so, 409 indeterminate
 receipts as requiring observation, and a failed health result as different
@@ -1725,6 +1788,167 @@ listed provider declaration are not proof that its runtime contribution is
 active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
 shows the complete current projection.
 
+A row whose `installationReadiness.state` is `ready` also carries `commands`
+(the validated command declarations, possibly empty) and an opaque
+`installationGeneration`. A plugin command request echoes that generation; it
+identifies the exact installed content and grants nothing. A pending or
+unavailable installation omits both fields. When the manifest's command
+declarations failed validation, `commands` is empty and
+`commandsRejected: { reason }` says why; the plugin itself still loads.
+
+### Plugin Command Effects
+
+```http
+POST /api/plugins/:name/command-effects
+POST /api/plugins/command-effects/settlements
+GET  /api/plugins/command-effects/withdrawals
+GET  /api/plugins/command-effects/withdrawals/:id
+POST /api/plugins/command-effects/withdrawals/:id/resolve
+GET  /api/plugins/command-effects/uncaptured
+POST /api/plugins/command-effects/effects/:effectId/abandon
+```
+
+A plugin command row in the palette grants nothing. Before a browser document
+applies an argument-free `navigate` or `seed-composer` command it asks Station
+to admit the effect. The
+[command effect routes](../../src-server/routes/plugins/plugin-command-effect-routes.ts)
+and [effect ledger](../../src-server/services/plugins/plugin-command-effects.ts)
+own these results:
+
+A `navigate` effect follows the built-in palette's destination behavior. A
+region-surface destination (`home` or `activity`) opens as its `main` page
+through the RegionModel; this is a synchronous action and does not enter
+`navigate()`'s asynchronous guard flow. Route destinations use the ordinary
+navigation guard predicate before navigation; a guard that would block the
+route settles the effect as `aborted` with a notice instead of opening the
+asynchronous discard dialog.
+
+```json
+{
+  "documentId": "document-4f2c9a",
+  "documentKey": "<random per-document secret, 32-256 base64url characters>",
+  "requestId": "request-0001",
+  "issuedAt": 1789600000000,
+  "installationGeneration": "<from GET /api/plugins>",
+  "commandId": "my-plugin.open-plugins",
+  "target": { "kind": "destination", "destinationId": "plugins" },
+  "context": { "projectSlug": "demo" }
+}
+```
+
+`200` returns `{ "success": true, "receipt": { effectId, requestId, pluginId,
+commandId, installationGeneration, effect } }`, where `effect` is what Station read from
+the installed declaration (`navigate` with a destination id, or
+`seed-composer` with a session id and text).
+
+- **Identity.** Admission is idempotent on `documentId` + `requestId` within
+  the caller's principal and `documentKey`; another principal or document key
+  never collides with it.
+- **Request window.** `issuedAt` is the document's clock in epoch
+  milliseconds. A request more than five minutes from Station's clock, in
+  either direction, is refused with `request-expired`.
+- **Visibility.** A plugin the caller cannot see answers exactly as an absent
+  one (`404`).
+- **Person only.** Admission uses the
+  [person-approval predicate](../../src-server/routes/plugins/plugin-person-approval.ts):
+  internal agent tools and unconfirmed person-device callers receive `403`
+  with `code: "person-approval-required"`. An unresolved principal returns `400`.
+- **Requirements.** `active-chat` and `session` are satisfied only by a session
+  the caller can read (the same predicate every session read uses); one it
+  cannot read is `requirement-not-satisfied`, exactly like one that does not
+  exist. `project` and `task` are checked against existence, the same authority
+  Station's project and task routes answer any caller with.
+- **Refusals.** `409` with a `reason`: `request-expired`,
+  `generation-changed`, `command-not-declared`, `command-not-executable`,
+  `target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,
+  `capacity`, `cancelled`, or `request-conflict`. `400` is `invalid-request`;
+  `503` (`unavailable`) means the ledger, grants, plugin visibility or a
+  requirement check could not be read, or the admission's audit event could
+  not be published.
+- **Capacity.** At most 16 outstanding effects per principal, 8 per plugin and
+  64 in total. A full bound refuses new admissions with `capacity`; it never
+  evicts an outstanding effect.
+- **Hosted deployments** refuse every route here with `403`.
+
+The document reports how it ended each effect with
+`POST /api/plugins/command-effects/settlements` and
+`{ documentId, documentKey, items }`, where `items` holds 1 to 16
+`{ requestId, effectId?, outcome }` entries with distinct `requestId`s and
+`outcome` is `applied`, `aborted`, `cancelled` or `abandoned`. A malformed
+body returns `400`. Per-item results:
+
+| Status | Meaning |
+| --- | --- |
+| `settled` | This item recorded the effect's first terminal state. |
+| `already-settled` | The same outcome was already recorded. |
+| `cancel-recorded` | No admission exists yet (a `cancelled` without `effectId`); a later admission of that request is refused. |
+| `cancel-refused` | No admission exists and this document's cancels are at capacity. Nothing was recorded; retry once the admission lands. |
+| `recorded-late` | The operator already closed the effect; the first such report is recorded and audited as late, never applied. |
+| `conflict` | A different terminal outcome was already recorded. Any conflict makes the response `409`. |
+| `not-found` | No effect for this principal, document key, document and request, or the `effectId` does not match. |
+
+A recorded cancel is kept for ten minutes (twice the request window): after
+that no admission it could match can still be accepted. At most 16 cancels per
+principal and document key, 64 per principal and 256 in total are kept; a new
+cancel past a bound is refused rather than displacing one.
+
+#### Withdrawal on lifecycle changes
+
+Removing, updating or installing over a plugin (through `/api/plugins`,
+`/api/registry/plugins`, or a plugin-backed `DELETE /api/registry/agents/:id`
+or `DELETE /api/registry/layouts/:id`), and withdrawing `plugin.server` from it
+(revocation, a grant or host approval against changed content), capture the
+plugin's outstanding effects. The change commits at once and is never refused
+or rolled back because of command effects.
+
+- When the change captured something, the response carries
+  `commandEffects: { withdrawalId, status, outstanding }`, and
+  `dependencyCommandEffects` lists the same summary for dependencies the change
+  removed. After releasing its locks the route waits up to two seconds for
+  settlements; a response that would otherwise be `200` is `202` if any
+  captured effect is still outstanding then.
+- **One open withdrawal per plugin.** A later change to a plugin whose
+  withdrawal is still open joins it: its newly captured effects and its cause
+  are added and the same `withdrawalId` is answered. A completed or closed
+  withdrawal is never reopened; a later capture starts a new one.
+- When the withdrawal could not be recorded (the ledger cannot be read or
+  written), the change still commits and the response is `202` with
+  `commandEffectsUnavailable: true` and no summary. That is never completion.
+- `status` is `completed` (every captured effect settled with document or
+  Station proof), `winding-down` (effects outstanding, newest capture younger
+  than 60 seconds), `indeterminate` (still outstanding after 60 seconds; not
+  terminal) or `closed-indeterminate` (an operator resolved this withdrawal and
+  accepted that its outstanding effects' outcomes are unknown; never a
+  completed state, and a later document report is still recorded as late).
+- A host approval carries the summary in its `reconciliation` projection.
+  `GET /api/plugins/host-approvals/:id` re-reads it from the ledger, and the
+  reconciliation never reads `completed` while the effects are outstanding
+  (`winding-down`); a closed-indeterminate withdrawal makes it `incomplete`
+  with a `command-effects` failure stage, as does one that could not be
+  recorded.
+
+The operator (every other caller receives `403`) lists withdrawals — every
+open one, then the 16 most recent closed ones — and reads one (at most 16
+outstanding effect ids).
+`POST /api/plugins/command-effects/withdrawals/:id/resolve` (person only) with
+`{ "disposition": "accept-indeterminate" }` is accepted only for an
+`indeterminate` withdrawal (`409` otherwise) and abandons exactly its
+outstanding effects.
+
+`GET /api/plugins/command-effects/uncaptured` lists outstanding effects no open
+withdrawal captured, with `abandonable: true` once one is older than 60
+seconds. `POST /api/plugins/command-effects/effects/:effectId/abandon` (person
+only) abandons such an effect: `404` when it is not outstanding, `409` with `reason: "captured"`
+(and its `withdrawalId`; resolve that instead) or `reason: "too-recent"`.
+
+Admissions and settlements are also recorded as
+`station.plugin-command.execution/v1` operational events carrying `effectId`,
+`principalId`, `pluginId`, `installationGeneration`, `commandId`, `target` and
+`outcome` (never effect content), plus `settledBy` for a settlement and
+`disposition: "conflict" | "late"` for a report that did not become the
+effect's state. The ledger is written first: a crash between the two can leave
+a recorded admission or settlement with no event.
+
 ### Revoke Plugin Permissions
 
 ```http
@@ -1739,11 +1963,13 @@ The body names permissions to withdraw. The grant store commits withdrawal befor
 runtime reconciliation. Lifecycle permissions can additionally retire the
 captured generation's server module, subscriptions, providers/adapters, and
 engine connections. The response contains `success`, `revoked`, `granted`, and
-`reconciliation`.
+`reconciliation`, plus [command effect withdrawal](#withdrawal-on-lifecycle-changes)
+fields when revoking `plugin.server` captured outstanding effects.
 
 `winding-down` returns 202. A terminal `completed`, `superseded`, or `incomplete`
-reconciliation returns 200, so HTTP success alone does not prove all cleanup
-completed. An unavailable grant store returns 503. The
+reconciliation returns 200 unless withdrawn command effects are still
+outstanding or could not be recorded, which returns 202. HTTP success alone
+does not prove all cleanup completed. An unavailable grant store returns 503. The
 [permission routes](../../src-server/routes/plugins/plugin-public-routes.ts)
 and [reconciliation service](../../src-server/services/plugins/plugin-grant-reconciliation.ts)
 own those results. Host-approval reads retain reconciliation separately from
@@ -1792,9 +2018,9 @@ it is not proof that every possible response path was executed.
 
 | Surface | Current disposition |
 | --- | --- |
-| `/api/plugins`, Project Pane catalog, layout pickers, Registry layouts, Home-role candidates/holder | Projected for the calling principal |
+| `/api/plugins`, plugin command admission, Project Pane catalog, layout pickers, Registry layouts, Home-role candidates/holder | Projected for the calling principal |
 | Project layout list/detail | Projected with retained user-record text |
-| Plugin update checks/reload, Registry plugin available/installed lists, Registry Agent/integration installed lists | Instance operator only |
+| Plugin update checks/reload, command-effect withdrawal and uncaptured-effect reads, Registry plugin available/installed lists, Registry Agent/integration installed lists | Instance operator only |
 
 [Project layout reads](../../src-server/routes/projects/projects.ts) withhold a
 hidden plugin's binding, live package merge, catalog attribution, global actions,
@@ -2907,3 +3133,41 @@ The [pairing panel](../../packages/connect/src/react/DevicePairingPanel.tsx) off
 explicit choice through the [CLI owner](../../packages/cli/src/commands/environment.ts).
 See [Project membership and enrollment](../design/project-membership.md) for the
 separate account-binding and membership paths.
+
+
+### Review an immutable Task output
+
+In personal Station, `POST /api/tasks/:taskId/room/output-feedback` accepts
+`{proposalId, occurredAt, target: {outputId, digest, taskCreatedAt}, review, text}`.
+`digest` is the retained output's `sha256:` value, `taskCreatedAt` identifies the
+Task incarnation, and `review` is `comment`, `changes-requested` or `accepted`.
+The server derives the human principal and requires current room message-write
+authority. Agents cannot append this body. A fresh statement must resolve an
+output in that Task and Project with the exact digest and Task incarnation.
+
+The statement enters the same ordered, attributed room history and stream as
+conversation messages. `accepted` means that reviewer accepted this version;
+it does not change Task status, approve a workflow, or establish quality. Room
+history labels feedback from a different Task creation time as an earlier Task
+version; retained review never establishes acceptance of a replacement Task.
+Use the same proposal ID and unchanged payload after an uncertain response.
+Current authority is rechecked before a duplicate receipt is returned; exact
+retries survive output deletion and room-record retention. Changed content
+under that ID conflicts. Fresh statements about a deleted output are refused.
+
+Rooms retain existing v2 record bytes. The first output review and later writes
+use v3; a durable per-room database trigger rejects v2 inserts after that room
+has adopted v3, including after its feedback records have expired. Legacy
+readers may be unable to read a room once it contains v3 records.
+
+The Task output UI offers review only after authorized downloaded bytes match
+the selected version's length, ETag and SHA-256 digest. Supported plain-HTTP
+browser connections use the pinned portable SHA-256 implementation when
+SubtleCrypto is absent. Text/JSON previews are
+bounded and safe PNG previews retain the existing download policy. Other media
+remain download-only; loading bytes does not prove a person inspected them.
+Drafts and uncertain retries are guarded when hiding or deleting the output.
+Invited/public result reads currently omit output feedback: their human-history
+projection includes conversation messages only. Invited/public participation,
+browser acceptance and installed delivery require separate evidence from these
+source contracts.

@@ -415,6 +415,22 @@ export type SteerTurnResult =
        */
       outcome: 'concurrent-steer';
       threadId: string;
+    }
+  | {
+      /**
+       * #2898: the running turn started unconfined (`host`) and `workspace`
+       * applies now (the full access that unconfined it was revoked). It
+       * finishes as it is, but takes no new instructions; send them as a new
+       * turn, which runs confined. Nothing was delivered. Only a narrowing
+       * refuses: a widening (a recorded `never`) does not.
+       *
+       * Version skew: a UI from before #2898 does not know this outcome; its
+       * `steerRefusalMessage` falls through to a default that returns the
+       * result object, which may be rendered as the message content. UIs
+       * from #2898 on return a plain sentence for any unknown outcome.
+       */
+      outcome: 'confinement-changed';
+      threadId: string;
     };
 
 export type SteerInputInspectionResult =
@@ -1280,7 +1296,9 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
     string
   >
 > = Object.freeze({
-  authorizedTranscript: 'Conversation transcript',
+  // #3164: the seed carries recent whole messages under a size budget and
+  // tells the new engine how many earlier ones it left out.
+  authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
   providerNativeCursor: 'Provider-native cursor',

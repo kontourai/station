@@ -9,16 +9,14 @@
 
   "limits": "Proposed descriptor-anchored traversal, zero-write readers, binding opacity, contribution permissions and lifecycle are not implemented/certified here; all requirements stay proposals.",
 
-  "document": {"digest":"926be400d7d8d8f139f190c4f66dbe420ea8e071d8c3e44677a316af1c6ae068","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "packages/contracts/src/plugin.ts",
 
-    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/knowledge-store/knowledge-store-provider.ts",
 
-    {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e11435458533907fba087e8b763dc4c7f789c05ae06a57b6c18236f9ed321dcb","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+    "src-server/routes/knowledge/knowledge-store-routes.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"}
+    "src-server/services/plugins/plugin-install-transaction.ts"
   ],
 
   "checks": [

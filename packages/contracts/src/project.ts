@@ -24,6 +24,8 @@ export interface ProjectConfig {
   defaultEnvironment?: EnvironmentRef;
   defaultProviderId?: string;
   defaultModel?: string;
+  /** Agent used for new chats when this project has no remembered choice. */
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;

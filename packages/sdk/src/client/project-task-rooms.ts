@@ -3,7 +3,10 @@
  * owns grants, atoms, and write authorization; this module only exchanges the
  * closed browser representations declared by the route boundary.
  */
-import type { ProjectTaskRoomAppendOutcome } from '@kontourai/station-contracts/project-task-room';
+import type {
+  ProjectTaskRoomAppendOutcome,
+  ProjectTaskRoomOutputFeedback,
+} from '@kontourai/station-contracts/project-task-room';
 import { isProjectTaskRoomAppendReceipt } from '@kontourai/station-contracts/project-task-room';
 import {
   type ProjectTaskRoomBrowserCapabilities,
@@ -406,6 +409,32 @@ export async function appendProjectTaskRoomHumanMessage(
           ...(input.expectedTaskCreatedAt
             ? { expectedTaskCreatedAt: input.expectedTaskCreatedAt }
             : {}),
+        },
+      ),
+    ),
+  );
+}
+export async function appendProjectTaskRoomOutputFeedback(
+  apiBase: string,
+  input: {
+    taskId: string;
+    proposalId: string;
+    occurredAt: string;
+    feedback: ProjectTaskRoomOutputFeedback;
+  },
+  opts?: ClientRequestOptions,
+) {
+  const { kind: _kind, ...feedback } = input.feedback;
+  return parseAppend(
+    await envelope(
+      await mutateJson(
+        `${apiBase}${roomPath(input.taskId, '/output-feedback')}`,
+        'POST',
+        opts,
+        {
+          proposalId: input.proposalId,
+          occurredAt: input.occurredAt,
+          ...feedback,
         },
       ),
     ),

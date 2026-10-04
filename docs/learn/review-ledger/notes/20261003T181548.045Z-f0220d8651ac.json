@@ -1,0 +1,25 @@
+{
+  "revision": "d8a061ebed3307edbead9df0084ea010a1dfc940",
+
+  "notes": [
+    {"path":"docs/README.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/README.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/adr/0017-browser-preview-host.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/design/browser-preview-host-spike.md"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/design/browser-preview-pane-mvp.md"]},
+
+    {"path":"docs/glossary.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"browser-automation.ts changed only by making BROWSER_STATUS_PAGE_MAX module-private (no caller imported it); merged origin/main changed no browser source. Claims unchanged; no prose change.","inputs":["docs/guides/mobile-device-workspace.md"]}
+  ]
+}

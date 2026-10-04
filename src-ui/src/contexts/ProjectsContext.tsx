@@ -462,6 +462,7 @@ export interface ProjectConfig extends ProjectMetadata {
   toolDefaults?: ProjectToolDefaults;
   workingDirectory?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;

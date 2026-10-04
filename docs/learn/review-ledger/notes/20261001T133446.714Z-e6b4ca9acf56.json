@@ -1,0 +1,9 @@
+{
+  "revision": "e1b4494eef4fcf801432f2e5e89e3ff780324e40",
+
+  "notes": [
+    {"path":"README.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["README.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

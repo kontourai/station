@@ -271,6 +271,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     form.workingDirectory ?? '',
   );
   const workingDirectoryLeaf = getWorkingDirectoryLeaf(workingDirectory);
+  // The header preview start-truncates the parent so the leaf folder stays in
+  // view (#2799); a root (`/`, `~`, `D:\`) has no leaf to split off.
+  const workingDirectoryParent = workingDirectoryLeaf
+    ? workingDirectory.slice(0, -workingDirectoryLeaf.length)
+    : workingDirectory;
 
   function setField<K extends keyof ProjectForm>(
     key: K,
@@ -370,13 +375,34 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 layout={{ name: form.name, icon: form.icon || project?.icon }}
                 size={46}
               />
-              <div>
+              <div className="project-settings__identity-copy">
                 <div className="project-settings__identity-name">
                   {form.name}
                 </div>
-                <div className="project-settings__identity-path">
-                  {workingDirectory || 'No working directory configured'}
-                </div>
+                {workingDirectory ? (
+                  <div
+                    className="project-settings__identity-path"
+                    title={workingDirectory}
+                  >
+                    {/* The line is rtl only for the start-side ellipsis; the
+                        ltr isolate restores character order (#304). Both parts
+                        stay inline, so the path reads and copies as one. */}
+                    <span dir="ltr">
+                      <span className="project-settings__identity-path-parent">
+                        {workingDirectoryParent}
+                      </span>
+                      {workingDirectoryLeaf && (
+                        <span className="project-settings__identity-path-leaf">
+                          {workingDirectoryLeaf}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="project-settings__identity-path project-settings__identity-path--unset">
+                    No working directory configured
+                  </div>
+                )}
               </div>
             </div>
           }
@@ -586,7 +612,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         </PageSection>
 
         {/* Layouts — list + save as template */}
-        <AgentsSection form={form} setForm={setForm} />
+        <AgentsSection form={form} setForm={setForm} projectSlug={slug} />
         <ToolsSection slug={slug} form={form} setForm={setForm} />
 
         <LayoutsSection slug={slug} />

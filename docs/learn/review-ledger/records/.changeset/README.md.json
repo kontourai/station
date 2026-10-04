@@ -9,16 +9,14 @@
 
   "limits": "This verifies contributor instructions and the local release planner; it does not publish a package.",
 
-  "document": {"digest":"381524670e36ead2172f0bda86d439055458085dcb6401544c863056efbe2ab7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
   "sources": [
-    {"path":".changeset/config.json","digest":"f9e8c5a4c74425adbff4891af4de563d68bee61b94032c209f7112d9ec1f8cee","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".changeset/config.json",
 
-    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    "pnpm-workspace.yaml",
 
-    {"path":"scripts/check-changesets.mjs","digest":"715f234b8c8e740728db04e91df3245c6c54780dbbf1b5efe9b48f9a94b96550","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/check-changesets.mjs",
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
+    "scripts/run-ci-fast.mjs"
   ],
 
   "checks": [

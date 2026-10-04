@@ -32,6 +32,7 @@ export function buildProjectSavePayload(
     defaultEnvironment: defaultEnvironment ?? { kind: 'current' as const },
     workingDirectory: workingDirectory || undefined,
     agents: form.agents ?? null,
+    defaultAgent: form.defaultAgent ?? null,
   };
 }
 
@@ -40,6 +41,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
     name: project.name,
     icon: project.icon ?? '',
     description: project.description ?? '',
+    defaultAgent: project.defaultAgent,
     defaultModel: project.defaultModel ?? '',
     // Both fields are required for a project default to apply: the resolvers
     // (`resolveProjectProviderManagedExecution`, `ProviderService`) read

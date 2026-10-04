@@ -9,28 +9,26 @@
 
   "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
 
-  "document": {"digest":"0223c2d48e16f28e334c44684e4b2cfaeef18d83d452b87fc2552b8cd5f00c79","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"packages/basis-pane/src/task-basis-mcp-app.browser.ts","digest":"098b28c98bea4d39320f11174c7f6a512c2749087e1d532a133f471acb79d4d6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/basis-pane/src/task-basis-mcp-app.browser.ts",
 
-    {"path":"packages/basis-pane/src/task-basis-mcp-app.ts","digest":"9b629eef823a456c9128c2d356049dbd2cafeb324fa098c3188bc00337282018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/basis-pane/src/task-basis-mcp-app.ts",
 
-    {"path":"packages/basis-pane/src/workspace-basis-mcp-pane.ts","digest":"81f33fd6a7cfcc362d5a1d4e61aff364b37e3da70723ad4c197cacee655e9dfa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/basis-pane/src/workspace-basis-mcp-pane.ts",
 
-    {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/routes/orchestration/tasks.ts",
 
-    {"path":"src-server/runtime/routes/task-basis-mcp-initial-read.ts","digest":"a318db92605bf5a9dd7030d97ee0dd384f8d69aa1db0ff0c94a9837fd34412ef","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/routes/task-basis-mcp-initial-read.ts",
 
-    {"path":"src-server/services/projects/task-basis-app-read-module.ts","digest":"977272bdca92175d6207ddd59a0d909383c2110819d5bf5d3202ab188f5e0b6b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/projects/task-basis-app-read-module.ts",
 
-    {"path":"src-server/services/projects/task-basis-module.ts","digest":"b706c3c53cf0c6e23e33de129bf982494906caabdec00b1c08ebbbfb5adf6953","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/projects/task-basis-module.ts",
 
-    {"path":"src-server/services/projects/task-basis-runtime-composition.ts","digest":"30d249908c502f0d1ff933f441dbc0cb9ce67939e26580a15181f9c323b2bbc0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/projects/task-basis-runtime-composition.ts",
 
-    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
-    {"path":"src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx","digest":"0e615373917ac6bcb0fd1c1038ab43e7e72e1bd12bea2890fcb4586008b1a80b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx"
   ],
 
   "checks": [

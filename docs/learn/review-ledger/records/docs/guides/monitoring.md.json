@@ -9,78 +9,76 @@
 
   "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
-
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    "pnpm-lock.yaml",
 
-    {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/generate-metric-reference.mjs",
 
-    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/index.ts",
 
-    {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/monitoring/emitter.ts",
 
-    {"path":"src-server/monitoring/schema.ts","digest":"81b50a785e36009c3929cb6b9718944f293225ac1d6d015eb916c34a7a01f406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/monitoring/schema.ts",
 
-    {"path":"src-server/routes/chat/chat-lifecycle.ts","digest":"9b8c9f752c22eb9d3986331263f5ce25f5c86f91466fb8fbd1f65cd4db36efb8","revision":"50d1e9a2b4e524d2b761122376f79f976bf90798"},
+    "src-server/routes/chat/chat-lifecycle.ts",
 
-    {"path":"src-server/routes/operations/insights.ts","digest":"7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/routes/operations/insights.ts",
 
-    {"path":"src-server/routes/operations/monitoring.ts","digest":"18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/routes/operations/monitoring.ts",
 
-    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/runtime/conversation/runtime-event-log.ts",
 
-    {"path":"src-server/runtime/streaming/handlers/MetadataHandler.ts","digest":"16281db938574925b4c08f9eebdb7bbdfbbba8d84f0ccc5efab23d4c31ff572c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/runtime/streaming/handlers/MetadataHandler.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-monitoring-bridge.ts","digest":"865a4b3de74196bf72b911b7c1a7a43e3054a7f3231c2e538f677e6f08f7d773","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/orchestration/orchestration-monitoring-bridge.ts",
 
-    {"path":"src-server/services/projects/project-resource-shadow-record.ts","digest":"380c19f88c6098c68c5ecaac41c3bd9d36cbec901a6d2e9fcca222fac690eff6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/projects/project-resource-shadow-record.ts",
 
-    {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/usage-telemetry-service.ts",
 
-    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/telemetry.ts",
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/telemetry/metrics.ts",
 
-    {"path":"src-server/utils/pricing.ts","digest":"436b28f35539587ffb1f7a798ad1da092ef145e7fe457d9d9488d9d4eb738406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/utils/pricing.ts",
 
-    {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-shared/monitoring-keys.ts",
 
-    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"1619fbb8aea95d9164f3ebf68177f459b42f117ae78193fefe85687813011440","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+    "src-ui/src/pages/ProfilePage.tsx",
 
-    {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"fabd9d689d4c0ac5ceea07eb3af030081345948281c3d22ae4213aba0f1f7035","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
+    "src-ui/src/components/profile/StationPeoplePanel.tsx",
 
-    {"path":"src-ui/src/components/usage-stats/UsageRollupPanel.tsx","digest":"62b11185d355abd84592d6e1a3e882897d7cba03097572184c93df6f2e70bbc8","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+    "src-ui/src/components/usage-stats/UsageRollupPanel.tsx",
 
-    {"path":"src-ui/src/components/usage-stats/UsageStatsPanel.tsx","digest":"5d90c8796da6af36a1f0c4ff481d75c11893c80e19f9b53d40abdfe1f1614568","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    "src-ui/src/components/usage-stats/UsageStatsPanel.tsx",
 
-    {"path":"src-ui/src/components/ActivityTimeline.tsx","digest":"1de9db27b3c6bf6d16832ee56534d2f97543df5b1a3a06d7ec81546f919eaf52","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    "src-ui/src/components/ActivityTimeline.tsx",
 
-    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"315c15570c1246b28ca9bd46646da489c667981dbedaa2018f8811fa9b61a895","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    "packages/sdk/src/query-domains/analytics.ts",
 
-    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
+    "packages/sdk/src/query-domains/devicePairingRequests.ts",
 
-    {"path":"src-server/analytics/usage-aggregator.ts","digest":"a8088a0a903e7d1996a569f147c5f468c197458886e2799f0a145775007556ff","revision":"231bd56ebc8379877a169db1822e3fbff10c9787"},
+    "src-server/analytics/usage-aggregator.ts",
 
-    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"eafbfa911453fec372d124ae9072826f16a57864055e2a262f45ec3312b0e659","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+    "src-server/analytics/usage-aggregator-state.ts",
 
-    {"path":"packages/shared/src/usage-fold.ts","digest":"1a5a80b7af3c26970acd6e33da1a530565a0db0716445b2345ca581b9fe4c57f","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    "packages/shared/src/usage-fold.ts",
 
-    {"path":"packages/shared/src/usage-rollup.ts","digest":"af9989261c757ce2476b75c73c50021e49275cf25666615146e4e3bf7c2ad5fc","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "packages/shared/src/usage-rollup.ts",
 
-    {"path":"src-server/providers/adapters/muse-serve-session.ts","digest":"d6d4fb0a88ed0a02851c8a60aa28bbbddb9c079ee834f12ebc7c16fc3b78c84f","revision":"c6c7d4dd40660b087eacdcda019f817a127405e8"},
+    "src-server/providers/adapters/muse-serve-session.ts",
 
-    {"path":"src-server/providers/__tests__/muse-serve-adapter.test.ts","digest":"41cd71aac44bb98e4a39f3e9a8f6629b48be3409f3578a22f6269978d5ee644c","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    "src-server/providers/__tests__/muse-serve-adapter.test.ts",
 
-    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"ed7aacb2c9d560efe6c8af7c9bed5a4e711f5053"},
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    "src-server/services/orchestration/event-store.ts",
 
-    {"path":"src-ui/src/pages/ProfilePage.css","digest":"9a36e5f00b440a12ae1c2cd2222a59e52c7f030d2a8c23119c600527714cd1e8","revision":"b0568b6eb4305aa50f762e2715f69661608c94e3"},
+    "src-ui/src/pages/ProfilePage.css",
 
-    {"path":"src-ui/src/components/badges/AchievementsBadge.tsx","digest":"4208b07caa8f5f10f83e2c09e61daf38fc6a1624b77d505ed16cb621a063ed8c","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"},
+    "src-ui/src/components/badges/AchievementsBadge.tsx",
 
-    {"path":"src-ui/src/components/badges/AchievementsBadge.test.tsx","digest":"7ad71c9428591ac7109fa3920220a0f9851516108e840d3b2e38967a051e95c4","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"}
+    "src-ui/src/components/badges/AchievementsBadge.test.tsx"
   ],
 
   "checks": [

@@ -1,3 +1,4 @@
+import { CLEAN_ID_PATTERN } from '@kontourai/station-contracts/agent-identity';
 import { LAYOUT_CATALOG_ITEM_ID_PATTERN } from '@kontourai/station-contracts/distribution';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import {
@@ -217,6 +218,7 @@ export const projectCreateSchema = z
       .nullable()
       .optional(),
     defaultModel: z.string().nullable().optional(),
+    defaultAgent: z.string().regex(CLEAN_ID_PATTERN).nullable().optional(),
     defaultProviderId: z.string().nullable().optional(),
   })
   .passthrough();

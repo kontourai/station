@@ -7,84 +7,82 @@
 
   "summary": "Full guide and diagram reviewed against registration, device audience, persistence, focus/escalation, payload/TTL, revocation, worker navigation, SDK and Settings callers. Independent delta accepted all thirteen correction groups.",
 
-  "limits": "Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"ours\":{\"digest\":\"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"5c113e440ff60d70cf1904f8e53c681d465c39211de98f948c3d9996c42a2a61\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"ours\":{\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058\",\"revision\":\"9dbe4f65b46fcab127f36e9d878a2c535f381fec\"},\"active\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"digest\":\"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"digest\":\"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15\",\"revision\":\"ae4a861e2c29da739f863b17078c7b5a0a7ca326\"},\"active\":{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"digest\":\"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/projects/attention-projection.ts\",\"ours\":{\"path\":\"src-server/services/projects/attention-projection.ts\",\"digest\":\"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},\"main\":{\"path\":\"src-server/services/projects/attention-projection.ts\",\"digest\":\"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763\",\"revision\":\"42811285ef04d069daf576d46253ac833573f848\"},\"active\":{\"path\":\"src-server/services/projects/attention-projection.ts\",\"digest\":\"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763\",\"revision\":\"42811285ef04d069daf576d46253ac833573f848\"},\"decision\":\"mainMatch\"}]",
-
-  "document": {"digest":"0cbcb969978124e0abd486c88b650cba7d5c7ee64c571f214c3bf2a21decfcd6","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
+  "limits": "Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"ours\":{\"digest\":\"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"5c113e440ff60d70cf1904f8e53c681d465c39211de98f948c3d9996c42a2a61\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"ours\":{\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058\",\"revision\":\"9dbe4f65b46fcab127f36e9d878a2c535f381fec\"},\"active\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"digest\":\"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"digest\":\"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15\",\"revision\":\"ae4a861e2c29da739f863b17078c7b5a0a7ca326\"},\"active\":{\"path\":\"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx\",\"digest\":\"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/projects/attention-projection.ts\",\"ours\":{\"path\":\"src-server/services/projects/attention-projection.ts\",\"digest\":\"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},\"main\":{\"path\":\"src-server/services/projects/attention-projection.ts\",\"digest\":\"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763\",\"revision\":\"42811285ef04d069daf576d46253ac833573f848\"},\"active\":{\"path\":\"src-server/services/projects/attention-projection.ts\",\"digest\":\"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763\",\"revision\":\"42811285ef04d069daf576d46253ac833573f848\"},\"decision\":\"mainMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}}]",
 
   "sources": [
-    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"f655052a713a9135d2f976f6272eb23f2db570921801863d4d43963b3a37fe5c","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
 
-    {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
 
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"d5941fa27ac7bfd91003dbf7d23627e16daa64abd4caf0338e5008be40bd1778","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    "packages/connect/src/react/ConnectionManagerModalContent.tsx",
 
-    {"path":"packages/contracts/src/notification-preferences.ts","digest":"913dd3f26b26c67550aaae1914c4c8cbe850b2866d70ae40c322b62523bb9be1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/contracts/src/notification-preferences.ts",
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeDevice.ts","digest":"e1ea740a8a6dc885f3903da467405c06653eb7b7b9c3f04410e168231fbd88b3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/query-domains/chatRuntimeDevice.ts",
 
-    {"path":"packages/shared/src/notification-priority.ts","digest":"41d3450a809d556134efb3b0dccd3fb95d2b4e97fcc0f9e3ea6e2c0d2d725d5d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/shared/src/notification-priority.ts",
 
-    {"path":"src-server/routes/operations/push-routes.ts","digest":"1b96c2a1b23e7e62f76128d76c34fcae082164607c3c467e8c3a9473dc3a6d97","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/routes/operations/push-routes.ts",
 
-    {"path":"src-server/runtime/__tests__/push-routes.test.ts","digest":"34161d95fccd98dfbb36f4f1768617742ef8c2a1e3b5136011933e5cbbf294c9","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
+    "src-server/runtime/__tests__/push-routes.test.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    "src-server/runtime/bootstrap/runtime-http.ts",
 
-    {"path":"src-server/runtime/routes/client-stream-presence.ts","digest":"31fc6913762780cb0b8659c3868e38a8099a3ad15c706e12ca4d0c024e8c256d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/runtime/routes/client-stream-presence.ts",
 
-    {"path":"src-server/runtime/routes/notification-delivery-wiring.ts","digest":"0a8ff32b11d5ee01d0045dfa0e9bbfae54e23989cd5844f95e0109c28cc92c53","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/runtime/routes/notification-delivery-wiring.ts",
 
-    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/runtime/routes/runtime-route-support.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/services/notifications/agent-activity-eligibility.ts","digest":"a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/agent-activity-eligibility.ts",
 
-    {"path":"src-server/services/notifications/delivery/__tests__/router.test.ts","digest":"d22c5584b553342aa355d86396bfa4f256bfecf59f141dfa4ffd9e5c6f3d4b05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/delivery/__tests__/router.test.ts",
 
-    {"path":"src-server/services/notifications/delivery/audience-resolver.ts","digest":"c0b19965d541c8711daf9d48d9236d620ebabe70ab81ffb788d90b7159424de5","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/delivery/audience-resolver.ts",
 
-    {"path":"src-server/services/notifications/delivery/policy.ts","digest":"1d7434b43590db1f6e9a1584488f1178f0eab8b9e58d3d1c6d6ddc7e0e6a9d3a","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/notifications/delivery/policy.ts",
 
-    {"path":"src-server/services/notifications/delivery/router.ts","digest":"01db4ba364cacbeee699f055b69d3f73744ab00e235be0c7d8e27f24c3154d84","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/delivery/router.ts",
 
-    {"path":"src-server/services/notifications/notification-deep-link.ts","digest":"312e64717d27730ac201e38cca173fa2fe8f0f319067f26b5dfa249831a2b74b","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/notification-deep-link.ts",
 
-    {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/notification-service.ts",
 
-    {"path":"src-server/services/notifications/push-payload-composer.ts","digest":"2fd22bb51fcaf58c223a0c0799d51742787e406d125e021ef06adb22405c80ad","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/push-payload-composer.ts",
 
-    {"path":"src-server/services/notifications/vapid-key-service.ts","digest":"f53821b148a8c93b0fe34559cc6429431648c2e049f9fae5d3edd941a4255091","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/vapid-key-service.ts",
 
-    {"path":"src-server/services/notifications/web-push-channel.ts","digest":"693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/web-push-channel.ts",
 
-    {"path":"src-server/services/notifications/web-push-service.ts","digest":"8029e96b806624cdbbb2a3d12bcbd285dee94b8e4cfbdd9ecc06a77138c10e05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/notifications/web-push-service.ts",
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763","revision":"42811285ef04d069daf576d46253ac833573f848"},
+    "src-server/services/projects/attention-projection.ts",
 
-    {"path":"src-server/services/ssh/client-connection-presence.ts","digest":"b325fd2ef3e349d46d9dadec9631eef93cb6d895bd3a483cd823ca588b1d793d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/ssh/client-connection-presence.ts",
 
-    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/services/ssh/device-pairing-service.ts",
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/telemetry/metrics.ts",
 
-    {"path":"src-ui/public/sw.js","digest":"411d96698a8c13cd73c04887dfbcababc5de8b82a3ed0909ab3d3cdcae0cc263","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-ui/public/sw.js",
 
-    {"path":"src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","digest":"0c92ab2579aec6c35b649b023d1ce743f467946e14656a042df36868f68f4c14","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
+    "src-ui/src/hooks/__tests__/usePushNotifications.test.tsx",
 
-    {"path":"src-ui/src/hooks/useFeatureSettings.ts","digest":"97b65c542aadec23d2ec6dc926e4912adfc96852fed1694a0dd5f59134d7b56d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-ui/src/hooks/useFeatureSettings.ts",
 
-    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"e24fae797ee62ddf6b723c57d47f5c86bd7ae218e17a5175126a90156680a61b","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
+    "src-ui/src/hooks/usePushNotifications.ts",
 
-    {"path":"src-ui/src/hooks/useServerEvents.ts","digest":"6da13cb17193d6d92d86652165fed3dd3c5f7925cea54124a7a242be930d340a","revision":"c0f323ddab456dba701685b71752a7312ebcb856"},
+    "src-ui/src/hooks/useServerEvents.ts",
 
-    {"path":"src-ui/src/views/settings/PairingSection.tsx","digest":"8e1e2856247d3dd539e45e28a108941c2e504d3dcb13b5c774b1c251079d2a63","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    "src-ui/src/views/settings/PairingSection.tsx",
 
-    {"path":"src-ui/src/views/settings/VoiceFeaturesSection.tsx","digest":"0f372be366bf8beddcfb361e71bd3298faa08a8981aad76127906ad65a9d9f09","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    "src-ui/src/views/settings/VoiceFeaturesSection.tsx",
 
-    {"path":"src-ui/src/contexts/PushNotificationsContext.tsx","digest":"433c21d236368caa253a3d560400b3d930eaba9203ad76c8e3bbaa9d93c2c2d1","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    "src-ui/src/contexts/PushNotificationsContext.tsx",
 
-    {"path":"src-ui/src/App.tsx","digest":"8adeb594b372c2fb6dfa134c8f7ed472e56afae50f78a3becf59e4c3d272edf5","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
+    "src-ui/src/App.tsx"
   ],
 
   "checks": [

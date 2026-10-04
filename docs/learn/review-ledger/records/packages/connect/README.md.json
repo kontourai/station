@@ -9,50 +9,48 @@
 
   "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability. Native diagnostic echo is identified only as a source export, not a validated physical-device diagnostic journey.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/connect/README.md\",\"ours\":{\"digest\":\"eef92e8fa24eb95332e0cc7c3fe85de13611b9a93820e2b732eb8a3345a77e6a\",\"revision\":\"a320658a37b9537b814c0acb8460e7bf1b6018ea\"},\"main\":{\"digest\":\"1888ee1f0beda6383006d4beb87ed09117b812a4b2697c1879e98775278d9434\",\"revision\":\"e072551e073d5f60bc986e7a56824d53ff8d58bf\"},\"active\":{\"digest\":\"eef92e8fa24eb95332e0cc7c3fe85de13611b9a93820e2b732eb8a3345a77e6a\",\"revision\":\"a320658a37b9537b814c0acb8460e7bf1b6018ea\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/connect/package.json\",\"ours\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/connect/package.json\",\"digest\":\"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca\",\"revision\":\"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0\"},\"active\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"ours\":{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"digest\":\"319457cad042e01307526040fad469b533aa6a72d18bacb241cf9dc789613167\",\"revision\":\"e07612aa080603f8c715a4a92a7dcc8dfc18838e\"},\"main\":{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"digest\":\"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"active\":{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"digest\":\"319457cad042e01307526040fad469b533aa6a72d18bacb241cf9dc789613167\",\"revision\":\"e07612aa080603f8c715a4a92a7dcc8dfc18838e\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"ours\":{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"digest\":\"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb\",\"revision\":\"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7\"},\"main\":{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"digest\":\"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"active\":{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"digest\":\"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb\",\"revision\":\"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7\"},\"decision\":\"oursMatch\"},{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"ours\":{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"digest\":\"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"digest\":\"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601\",\"revision\":\"6d98155720c76b78faef536ae90bfea543c8b28e\"},\"active\":{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"digest\":\"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"decision\":\"oursMatch\"}]",
 
-  "document": {"digest":"e514aad6d3aebe968fec575a8e858704f262c35cd2e057edc3f56f5c1d68065a","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
-
   "sources": [
-    {"path":"packages/connect/package.json","digest":"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    "packages/connect/package.json",
 
-    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"778604cf51ad9de23d673ecf370fc8c8fb53171ebabea6348e9feb04dc1e848d","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
+    "packages/connect/src/__tests__/nativeApplicationTransport.test.ts",
 
-    {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "packages/connect/src/core/ConnectionStore.ts",
 
-    {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/applicationChannel.ts",
 
-    {"path":"packages/connect/src/core/browserPionConnection.ts","digest":"85e30d796461ad69a6134b42e5a0066e5a04e34846765a8c6a4262ff35ead8e0","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/brokerRouteEnrollment.ts",
 
-    {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/browserPionConnection.ts",
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
+    "packages/connect/src/core/nativeApplicationTransport.ts",
 
-    {"path":"packages/connect/src/core/selfHostedBrowser.ts","digest":"4b7329608a945e6723f69b1607992b6c5b2b6bfba209e9ed1eb98ef62c0d0487","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/selfHostedBrowser.ts",
 
-    {"path":"packages/connect/src/core/storage.ts","digest":"ccc9b390c0ab8521df87d6c37d7e2b519bbe1c0c98c91562be67137d57b155aa","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/storage.ts",
 
-    {"path":"packages/connect/src/index.ts","digest":"cc849d431465dff7d0a98b8a06ef4a6a5efe65e645c31c96a2ce5e0deee14e80","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/index.ts",
 
-    {"path":"packages/connect/src/react/connection-manager-modal-utils.ts","digest":"4ffe29b184ca50123b2b7d1b8c0742b8bde3d7a4b6b0510cda1897cf4eddefb6","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"},
+    "packages/connect/tsconfig.json",
 
-    {"path":"packages/connect/src/react/ConnectionManagerModal.tsx","digest":"3a9070497210084a55a1ac87e1f7aa80fd5d6297c77b609e923839b6394e4711","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    "src-ui/src/platform/native/stationProfileStorage.ts",
 
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"d5941fa27ac7bfd91003dbf7d23627e16daa64abd4caf0338e5008be40bd1778","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    "packages/connect/src/react/ConnectionManagerModal.tsx",
 
-    {"path":"packages/connect/tsconfig.json","digest":"1dcde2ae94b6f60717ece7e76c02f9585a5193fc5fcace5bc62d6b5a02da2bdb","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/react/ConnectionManagerModalContent.tsx",
 
-    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
 
-    {"path":"src-ui/src/platform/native/nativeRelayApplicationRuntime.ts","digest":"04857ec439a3c5b793fb9a82ee8bfe9849679ccb89df34f8a8fbdfd8a097a65a","revision":"6471b7f229e228d593c2d0f0df755b7d1738d387"},
+    "src-ui/src/contexts/ApiBaseContext.tsx",
 
-    {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
+    "src-ui/src/platform/native/nativeRelayApplicationRuntime.ts",
 
-    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"ffcc0fbce76c3e85838e294e5ed86f7404a09fadbbda735f66884fdb15557b09","revision":"e7e89f1b1b77e4f4b556e94952d4633ff028a7fd"},
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
 
-    {"path":"src-ui/src/platform/native/NativeRelayEntryBoundary.tsx","digest":"881077a6e1702484e1dc19315757d53146c77447f280f7eac2dd913045ed3014","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
+    "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"}
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx"
   ],
 
   "checks": [
