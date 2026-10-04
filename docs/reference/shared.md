@@ -15,12 +15,35 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+## Skill experience validation
+
+`@kontourai/station-shared/skill-experience-author` owns
+`readValidatedSkillExperiences` and `validateAuthoredSkillExperiences`.
+The reader returns typed definitions after closed-schema and bounded,
+contained bundled Skill validation; the validation wrapper discards that result.
+The author build and installed inventory use the same reader. It does not
+activate a package, grant resources, or authorize execution. Installed identity
+and current admission remain with the server's package journal/loader. See the
+[experience contract](skill-experiences.md) for the exact bounds and refusal path.
+
+## Skill experience authoring
+
+`@kontourai/station-shared/skill-experience-workflow` exports local
+`inspectSkillLibrary`, `skillExperiencePackageDigest` and
+`readSkillExperienceReview`, `reviewSkillExperiencePackage`, plus the inspection/review types. These Node
+filesystem helpers emit bounded source review leads and validate author
+assertions against actual package/source/transcript bytes. They do not run a
+model, grant tools, install a plugin or establish runtime/release qualification.
+Use the [author learning path](../guides/authoring-skill-experiences.md) for
+proposal, preview, evaluation and revision review.
 
 ## Harness question helpers
 
@@ -121,7 +144,7 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
@@ -987,6 +1010,12 @@ dependencies and outputs. Its exact external allowlist includes root SDK and
 the SDK agent/client/voice entries, not every SDK subpath. A build does not install,
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
+
+Portable Agent Plugins can also declare inert visual Skill definitions. The
+author builder validates their referenced files and exact bundled Skill identity
+before bundling or returning a no-bundle result. See the
+[authoring contract](skill-experiences.md) for bounds, refusal diagnostics, and
+the separate runtime activation work.
 
 ```ts
 interface BuildResult {

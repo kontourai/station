@@ -32,6 +32,8 @@ import {
   writePrivateNewFile,
 } from './workspace-package-io.js';
 
+export { validatePaths as validateWorkspacePackagePaths } from './workspace-package-io.js';
+
 const MAGIC = Buffer.from('station-workspace-package/v1\0');
 const SCHEMA = 'station.workspace-package/v1';
 type IndexEntry = { path: string; mode: '100644' | '100755'; oid: string };

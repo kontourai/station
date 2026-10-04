@@ -32,7 +32,13 @@ not mean every deployment mounts or admits it.
 request projection. A client must verify `station.task-room-work/v1` before
 sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
 That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
-the normal prompt and execution target remain outside it. This initial path
+the normal prompt and execution target remain outside it. Supporting servers
+also advertise `contextVersion: 'station.task-room-context/v1'` and an authorized
+Task/shared-document snapshot in the read response. A create can supply only its
+`context: { version, digest }` reference. The server captures and saves that exact
+brief for a new operation; an existing operation reuses its saved snapshot.
+A stale/unavailable context is refused before invocation, and changed context
+under an existing operation conflicts. This initial path
 admits current-Station execution in the exact Task Project, with the existing
 read/operate, readiness and provider-effect authority gates. A request receipt
 does not establish Task completion or result quality.
@@ -970,7 +976,9 @@ kind/name does not invent a new engine adapter.
 Creation normally returns 201, update 200, with `{success: true, data}`. A saved
 configuration awaiting runtime activation returns 202 and
 `configurationActivation`, as with Agent writes. The returned definition is
-redacted. Invalid saves return a structured 400 response.
+redacted. Invalid saves return a structured 400 response. A POST whose `id`
+names an existing Model connection returns 409 and changes nothing; replacing
+it, including its stored API key, is a PUT.
 
 ### Delete or Reset a Connection
 
@@ -1115,6 +1123,18 @@ normal request authentication runs first. See the
 
 ## Orchestration model launch behavior
 
+Installed [Skill experiences](skill-experiences.md) use this same foreground
+route when their inventory advertises `executionContract: "1.0"`. The optional
+`skillExperience` selection contains pinned identity, scalar inputs, canonical
+attachment-index assignments and an expected previous invocation event. Project
+Environment defaults resolve normally; this contract refuses remote forwarding.
+`GET /api/orchestration/sessions/:threadId/skill-experience` returns immutable
+current/history presentation tied to actual canonical turns. Rich reads and
+question answers bind `{identity, eventId}` in `expectedSkillExperience` and hold
+the current package grant; ordinary user controls omit that frame admission.
+See the [Session API](session-api.md#visual-skill-presentation) for ownership and
+unavailable-history behavior.
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),
@@ -1215,7 +1235,18 @@ per-invocation receipts. An unavailable aggregator returns a 500 error.
 ### Get Usage Statistics
 
 `GET /api/analytics/usage` returns `{success: true, data: stats}` with lifetime,
-Agent, model, and date aggregates. The date map is `byDate`, not `byDay`.
+Agent, model, and date aggregates. Active reads rebuild the retained snapshot
+at most once a minute, sharing an in-flight rebuild with other readers.
+`snapshot.rescannedAt` identifies the completed source scan;
+`snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
+engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
+`snapshot.missingMessageCosts` counts saved assistant/usage rows without a valid
+cost, while `snapshot.costCoverageChecked` becomes false after incremental
+writes or enrichment until a rebuild. `snapshot.retainedUsage` flags retained
+message, token or cost totals larger than the currently rescanned corpus
+(ignoring cost rounding differences).
+A completed scan does not prove historical totals or every provider's accounting
+are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
@@ -1223,8 +1254,10 @@ as totals for the selected window.
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns
-`{success: true, data: achievements}` from the aggregator. The achievement
-schema and unlock rules belong to that owner, not a fixed list in this page.
+`{success: true, data: achievements}` from the same refreshed aggregate snapshot. The achievement
+schema and unlock rules belong to that owner, not a fixed list in this page. Cost
+milestones with unavailable measurement carry `measurementUnavailableReason`,
+omit numeric progress, and remain locked; a reported zero remains eligible.
 
 ### Rescan Analytics
 
@@ -1719,6 +1752,167 @@ listed provider declaration are not proof that its runtime contribution is
 active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
 shows the complete current projection.
 
+A row whose `installationReadiness.state` is `ready` also carries `commands`
+(the validated command declarations, possibly empty) and an opaque
+`installationGeneration`. A plugin command request echoes that generation; it
+identifies the exact installed content and grants nothing. A pending or
+unavailable installation omits both fields. When the manifest's command
+declarations failed validation, `commands` is empty and
+`commandsRejected: { reason }` says why; the plugin itself still loads.
+
+### Plugin Command Effects
+
+```http
+POST /api/plugins/:name/command-effects
+POST /api/plugins/command-effects/settlements
+GET  /api/plugins/command-effects/withdrawals
+GET  /api/plugins/command-effects/withdrawals/:id
+POST /api/plugins/command-effects/withdrawals/:id/resolve
+GET  /api/plugins/command-effects/uncaptured
+POST /api/plugins/command-effects/effects/:effectId/abandon
+```
+
+A plugin command row in the palette grants nothing. Before a browser document
+applies an argument-free `navigate` or `seed-composer` command it asks Station
+to admit the effect. The
+[command effect routes](../../src-server/routes/plugins/plugin-command-effect-routes.ts)
+and [effect ledger](../../src-server/services/plugins/plugin-command-effects.ts)
+own these results:
+
+A `navigate` effect follows the built-in palette's destination behavior. A
+region-surface destination (`home` or `activity`) opens as its `main` page
+through the RegionModel; this is a synchronous action and does not enter
+`navigate()`'s asynchronous guard flow. Route destinations use the ordinary
+navigation guard predicate before navigation; a guard that would block the
+route settles the effect as `aborted` with a notice instead of opening the
+asynchronous discard dialog.
+
+```json
+{
+  "documentId": "document-4f2c9a",
+  "documentKey": "<random per-document secret, 32-256 base64url characters>",
+  "requestId": "request-0001",
+  "issuedAt": 1789600000000,
+  "installationGeneration": "<from GET /api/plugins>",
+  "commandId": "my-plugin.open-plugins",
+  "target": { "kind": "destination", "destinationId": "plugins" },
+  "context": { "projectSlug": "demo" }
+}
+```
+
+`200` returns `{ "success": true, "receipt": { effectId, requestId, pluginId,
+commandId, installationGeneration, effect } }`, where `effect` is what Station read from
+the installed declaration (`navigate` with a destination id, or
+`seed-composer` with a session id and text).
+
+- **Identity.** Admission is idempotent on `documentId` + `requestId` within
+  the caller's principal and `documentKey`; another principal or document key
+  never collides with it.
+- **Request window.** `issuedAt` is the document's clock in epoch
+  milliseconds. A request more than five minutes from Station's clock, in
+  either direction, is refused with `request-expired`.
+- **Visibility.** A plugin the caller cannot see answers exactly as an absent
+  one (`404`).
+- **Person only.** Admission uses the
+  [person-approval predicate](../../src-server/routes/plugins/plugin-person-approval.ts):
+  internal agent tools and unconfirmed person-device callers receive `403`
+  with `code: "person-approval-required"`. An unresolved principal returns `400`.
+- **Requirements.** `active-chat` and `session` are satisfied only by a session
+  the caller can read (the same predicate every session read uses); one it
+  cannot read is `requirement-not-satisfied`, exactly like one that does not
+  exist. `project` and `task` are checked against existence, the same authority
+  Station's project and task routes answer any caller with.
+- **Refusals.** `409` with a `reason`: `request-expired`,
+  `generation-changed`, `command-not-declared`, `command-not-executable`,
+  `target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,
+  `capacity`, `cancelled`, or `request-conflict`. `400` is `invalid-request`;
+  `503` (`unavailable`) means the ledger, grants, plugin visibility or a
+  requirement check could not be read, or the admission's audit event could
+  not be published.
+- **Capacity.** At most 16 outstanding effects per principal, 8 per plugin and
+  64 in total. A full bound refuses new admissions with `capacity`; it never
+  evicts an outstanding effect.
+- **Hosted deployments** refuse every route here with `403`.
+
+The document reports how it ended each effect with
+`POST /api/plugins/command-effects/settlements` and
+`{ documentId, documentKey, items }`, where `items` holds 1 to 16
+`{ requestId, effectId?, outcome }` entries with distinct `requestId`s and
+`outcome` is `applied`, `aborted`, `cancelled` or `abandoned`. A malformed
+body returns `400`. Per-item results:
+
+| Status | Meaning |
+| --- | --- |
+| `settled` | This item recorded the effect's first terminal state. |
+| `already-settled` | The same outcome was already recorded. |
+| `cancel-recorded` | No admission exists yet (a `cancelled` without `effectId`); a later admission of that request is refused. |
+| `cancel-refused` | No admission exists and this document's cancels are at capacity. Nothing was recorded; retry once the admission lands. |
+| `recorded-late` | The operator already closed the effect; the first such report is recorded and audited as late, never applied. |
+| `conflict` | A different terminal outcome was already recorded. Any conflict makes the response `409`. |
+| `not-found` | No effect for this principal, document key, document and request, or the `effectId` does not match. |
+
+A recorded cancel is kept for ten minutes (twice the request window): after
+that no admission it could match can still be accepted. At most 16 cancels per
+principal and document key, 64 per principal and 256 in total are kept; a new
+cancel past a bound is refused rather than displacing one.
+
+#### Withdrawal on lifecycle changes
+
+Removing, updating or installing over a plugin (through `/api/plugins`,
+`/api/registry/plugins`, or a plugin-backed `DELETE /api/registry/agents/:id`
+or `DELETE /api/registry/layouts/:id`), and withdrawing `plugin.server` from it
+(revocation, a grant or host approval against changed content), capture the
+plugin's outstanding effects. The change commits at once and is never refused
+or rolled back because of command effects.
+
+- When the change captured something, the response carries
+  `commandEffects: { withdrawalId, status, outstanding }`, and
+  `dependencyCommandEffects` lists the same summary for dependencies the change
+  removed. After releasing its locks the route waits up to two seconds for
+  settlements; a response that would otherwise be `200` is `202` if any
+  captured effect is still outstanding then.
+- **One open withdrawal per plugin.** A later change to a plugin whose
+  withdrawal is still open joins it: its newly captured effects and its cause
+  are added and the same `withdrawalId` is answered. A completed or closed
+  withdrawal is never reopened; a later capture starts a new one.
+- When the withdrawal could not be recorded (the ledger cannot be read or
+  written), the change still commits and the response is `202` with
+  `commandEffectsUnavailable: true` and no summary. That is never completion.
+- `status` is `completed` (every captured effect settled with document or
+  Station proof), `winding-down` (effects outstanding, newest capture younger
+  than 60 seconds), `indeterminate` (still outstanding after 60 seconds; not
+  terminal) or `closed-indeterminate` (an operator resolved this withdrawal and
+  accepted that its outstanding effects' outcomes are unknown; never a
+  completed state, and a later document report is still recorded as late).
+- A host approval carries the summary in its `reconciliation` projection.
+  `GET /api/plugins/host-approvals/:id` re-reads it from the ledger, and the
+  reconciliation never reads `completed` while the effects are outstanding
+  (`winding-down`); a closed-indeterminate withdrawal makes it `incomplete`
+  with a `command-effects` failure stage, as does one that could not be
+  recorded.
+
+The operator (every other caller receives `403`) lists withdrawals — every
+open one, then the 16 most recent closed ones — and reads one (at most 16
+outstanding effect ids).
+`POST /api/plugins/command-effects/withdrawals/:id/resolve` (person only) with
+`{ "disposition": "accept-indeterminate" }` is accepted only for an
+`indeterminate` withdrawal (`409` otherwise) and abandons exactly its
+outstanding effects.
+
+`GET /api/plugins/command-effects/uncaptured` lists outstanding effects no open
+withdrawal captured, with `abandonable: true` once one is older than 60
+seconds. `POST /api/plugins/command-effects/effects/:effectId/abandon` (person
+only) abandons such an effect: `404` when it is not outstanding, `409` with `reason: "captured"`
+(and its `withdrawalId`; resolve that instead) or `reason: "too-recent"`.
+
+Admissions and settlements are also recorded as
+`station.plugin-command.execution/v1` operational events carrying `effectId`,
+`principalId`, `pluginId`, `installationGeneration`, `commandId`, `target` and
+`outcome` (never effect content), plus `settledBy` for a settlement and
+`disposition: "conflict" | "late"` for a report that did not become the
+effect's state. The ledger is written first: a crash between the two can leave
+a recorded admission or settlement with no event.
+
 ### Revoke Plugin Permissions
 
 ```http
@@ -1733,11 +1927,13 @@ The body names permissions to withdraw. The grant store commits withdrawal befor
 runtime reconciliation. Lifecycle permissions can additionally retire the
 captured generation's server module, subscriptions, providers/adapters, and
 engine connections. The response contains `success`, `revoked`, `granted`, and
-`reconciliation`.
+`reconciliation`, plus [command effect withdrawal](#withdrawal-on-lifecycle-changes)
+fields when revoking `plugin.server` captured outstanding effects.
 
 `winding-down` returns 202. A terminal `completed`, `superseded`, or `incomplete`
-reconciliation returns 200, so HTTP success alone does not prove all cleanup
-completed. An unavailable grant store returns 503. The
+reconciliation returns 200 unless withdrawn command effects are still
+outstanding or could not be recorded, which returns 202. HTTP success alone
+does not prove all cleanup completed. An unavailable grant store returns 503. The
 [permission routes](../../src-server/routes/plugins/plugin-public-routes.ts)
 and [reconciliation service](../../src-server/services/plugins/plugin-grant-reconciliation.ts)
 own those results. Host-approval reads retain reconciliation separately from
@@ -1786,9 +1982,9 @@ it is not proof that every possible response path was executed.
 
 | Surface | Current disposition |
 | --- | --- |
-| `/api/plugins`, Project Pane catalog, layout pickers, Registry layouts, Home-role candidates/holder | Projected for the calling principal |
+| `/api/plugins`, plugin command admission, Project Pane catalog, layout pickers, Registry layouts, Home-role candidates/holder | Projected for the calling principal |
 | Project layout list/detail | Projected with retained user-record text |
-| Plugin update checks/reload, Registry plugin available/installed lists, Registry Agent/integration installed lists | Instance operator only |
+| Plugin update checks/reload, command-effect withdrawal and uncaptured-effect reads, Registry plugin available/installed lists, Registry Agent/integration installed lists | Instance operator only |
 
 [Project layout reads](../../src-server/routes/projects/projects.ts) withhold a
 hidden plugin's binding, live package merge, catalog attribution, global actions,
@@ -2046,16 +2242,102 @@ error is currently caught, so success is not proof that local cleanup completed.
 `POST /api/registry/integrations/sync` awaits provider sync and returns
 `{success: true}`.
 
+### Manage marketplaces
+
+`GET /api/registry/sources` lists connected sources for the Station operator.
+All source-management methods require `access:manage` credential scope as well
+as the operator principal check. Ordinary catalog browsing retains its read
+scope; a standard paired credential cannot enumerate host source configuration
+or trigger source refresh.
+`POST /api/registry/sources` accepts `{displayName, adapter, location}` where
+`adapter` is `directory`, `github` or `manifest`. Directory and local manifest
+locations are absolute paths on this Station. Public GitHub repository URLs use
+its default branch and discover nested directories containing `SKILL.md`.
+Manifest URLs require HTTPS. Credentials in URLs are refused; private sources
+and other index formats need a future credential-aware adapter.
+
+`PATCH /api/registry/sources/:id` accepts `{enabled}`;
+`POST /api/registry/sources/:id/refresh` returns current status;
+`DELETE /api/registry/sources/:id` removes a user-added source. Installed
+packages and their historical attribution remain. Plugin-owned sources are
+managed through the plugin's existing enable/disable/revoke lifecycle.
+
+[The source manager](../../src-server/providers/registries/registry-source-manager.ts)
+keeps versioned configuration and last successful catalog snapshots in
+`config/registry-sources.json`: a regular file bounded to 8 MiB, 32 user-added
+sources and 32 retained snapshots, each with at most 512 rows. Corrupt,
+unsupported, oversized and nonregular configuration is refused without
+replacing the existing bytes. Offline plugin rows use current local installed
+inventory and source ownership aliases. Provider visibility and generation fences remain
+owned by the existing provider registry. Source status is `ready`, `stale`,
+`error`, `disabled` or `unknown`; it includes checked/last successful times and
+an explicit error when refresh fails. Cached data is discovery evidence;
+installation always revalidates the selected source.
+
 ### List Available Skills (Registry)
 
-`GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
-keeping the first occurrence. No registered providers gives an empty list.
+`GET /api/registry/skills` preserves same-name entries from independent sources.
+Each item has `catalog: {sourceId, itemId, revision, kind}` and an opaque `id`
+that clients pass unchanged to inspect/install. `catalogSourceName` is the
+host's source label; `source` retains the provider's original attribution.
+The response includes per-source status and `partial: true` when a source fails.
+Successful independent results remain visible. A cached snapshot is marked
+`stale`; when every available source has failed and there is no snapshot,
+the response is 503 with `success: false`, rather than an empty successful list.
+A successful empty catalog from an independent source remains a successful
+partial observation; source availability is determined from the read outcome,
+not its row count. Plugin catalogs use the same failure and partial-result rule.
+
+The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
+resolves a branch to one immutable commit/tree and verifies blob hashes.
+Discovery supports nested Skill directories and refuses ambiguous names,
+truncated trees and unreadable required files. Its budgets are 512 Skills,
+8192 tree entries, four concurrent Markdown reads, 1 MiB per blob and an
+8 MiB blob budget per discovery/acquisition. Each commit/tree JSON response
+has a separate 2 MiB bound. Operations have a 60-second ceiling and requests
+have a 15-second ceiling. An installed package has at most 256 files. Portable path checks and
+exclusive staging-directory/file creation still refuse filesystem aliases.
+These checks do not qualify Windows/native execution.
+
+Readable reserved-name and unsupported-format documents remain inspectable with
+`unsupported-skill-name` or `unsupported-skill-format`; installation is refused.
+Inspection uses `GET /api/registry/skills/:id/content` with the opaque selection
+ID and returns the original instructions. Bad required metadata, duplicate
+names, unsafe names and incomplete discovery fail the source rather than
+silently hiding entries. A bare name is supported only when one source matches.
 
 ### Install Skill from Registry
 
 `POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
 result. It attempts a Skill reload after success; a caught reload failure does
-not change the install result.
+not change the install result. `prototype` and `constructor` return a 400 envelope
+with `code: "unsupported-skill-name"` before SkillService or staged filesystem
+effects. `__proto__` is rejected by the route's directory-name schema with its
+ordinary validation 400 envelope before the custom reserved-name code runs. The
+provider and SkillService retain their independent storage-name guards.
+
+An unsupported-format package raises a typed refusal at the GitHub acquisition
+owner before package bytes are written. Existing SkillService cleanup removes its
+transient stage; the API returns 400 with `code: "unsupported-skill-format"`, without
+a published or leftover package. An empty parent directory can remain. A local source can still install while an
+independent GitHub source is offline. Refusing the selected source never tries
+an alternative with the same name.
+
+SkillService copies the selected complete directory, including binary assets and
+executable files, through its existing validated staging/publication path. It
+revalidates the selected catalog/package revision before publication. Changed
+sources return 409 and require fresh inspection; blob/path/acquisition failure
+prevents publication. The install record retains source ID, item ID, catalog
+revision, source location, installed tree digest and installation time under
+`provenance.catalog`. Ordinary same-name installation remains a conflict.
+Only files inside the selected directory are copied; sibling references do not
+automatically install another Skill. Packages with multiple Skills/dependencies
+use ordinary Agent Plugin packaging and its existing dependency lifecycle.
+
+`POST /api/registry/skills/:id/update` resolves the installed provenance to the
+same current source, stages/validates the replacement, and retains the existing
+package on refusal. A missing source or provenance cannot choose another source.
+The marketplace's Open skill action returns to the existing installed Library.
 
 ### Uninstall Skill from Registry
 
@@ -2070,12 +2352,16 @@ mutation rules.
 
 ### List Installed Plugins (Registry)
 
-`GET /api/registry/plugins/installed` filters the same availability projection to
-installed entries; it is also operator-only.
+`GET /api/registry/plugins/installed` retains the existing registered-provider
+availability projection. Managed marketplace installation is reflected on
+`GET /api/registry/plugins`; the canonical installed inventory remains
+`GET /api/plugins`. These plugin reads are operator-only where specified by
+the existing visibility owner.
 
 ### Install Plugin from Registry
 
-`POST /api/registry/plugins/install` resolves the registry ID to a unique source
+`POST /api/registry/plugins/install` resolves a source-qualified selection to its
+exact current provider/catalog revision (legacy IDs still require a unique match)
 and uses the full plugin transaction. Its body can carry the same preview
 consent, skip list, data policy, and expected installation as source installation.
 Ambiguous registry ownership is refused rather than resolved by choosing the
@@ -2481,9 +2767,9 @@ DELETE /api/analytics/usage
 ```
 
 Returns `{success: true, message: "Usage stats reset"}` after resetting the
-existing aggregate stats file to `{}`. It does not delete conversations,
+aggregate stats file to a valid empty accumulator. It does not delete conversations,
 monitoring logs, or invocation receipts; later updates/rescans can rebuild
-statistics from retained sources. See the
+statistics from retained sources; the next active usage read also rebuilds it. See the
 [aggregator reset](../../src-server/analytics/usage-aggregator.ts).
 
 ---
@@ -2637,8 +2923,9 @@ is required. Older/source-home usage without `accountKey` remains unattributed.
 
 `GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
 for engine activity. Filtering precedes folding and pagination, while coverage
-remains explicit. This is Station engine history across accounts, not billing or
-per-profile attribution.
+remains explicit. Without a credential-profile filter, this is Station engine
+history across accounts. A profile filter selects attributed receipts and
+excludes unattributed usage; neither view is a provider billing statement.
 
 ## Read engine sign-in profiles
 
@@ -2705,7 +2992,7 @@ station-native-device-proof-self-receipt-error/v1`. Only this versioned
 `not_found` response establishes a binding lookup absence; an unrelated route
 or proxy error is an unavailable observation.
 
-The Desktop [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+The desktop and mobile [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
 also registers the main-window `station_native_device_binding_self_receipt`
 command. Its inputs are only a saved profile name and expected revision; it
 reads the fixed endpoint using the current host-authorized Device bearer and
@@ -2725,12 +3012,33 @@ or connected assertion. Browser RTC remains renderer-owned.
 
 The separate [account owner](../../src-desktop/src/native_account_operations.rs)
 registers challenge/key preparation, complete local username/password exchange
-body preparation, and canonical GET/HEAD Project account headers. It constructs
+body preparation, canonical GET/HEAD member-read account headers, and fixed
+invitation-acceptance and native-continuation revocation requests. It constructs
 account claims using independent key custody and current host owners, with
 bounded one-exchange handles, replay/expiry and post-sign key fencing. These
 structured commands do not mint a principal or replace the server's current
 provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the typed provider and account-body-before-Device-signing ordering.
+
+The selected native relay member route permits only bounded Station observations
+and Project/shared-work reads, plus its fixed account operations. Ordinary SDK
+mutations are refused; operator and compute surfaces are unsupported. Native
+continuation revocation retires that continuation and its provider session,
+without retiring Device custody. These are source-composed contracts, not a
+fresh native enrollment, physical-device, or published application receipt.
+
+A separate `STATION_NATIVE_ENROLLMENT_PILOT=1` composition mounts the seven
+`POST /.well-known/station/v1/relay/native-enrollment/` leaves: `begin`, `login`,
+`register`, `finalize`, `activate`, `status`, and `cancel`. The runtime requires
+the Device-proof pilot, configured native relay and supported pending account
+provider. Private current Pion provenance and an approved native installation
+surface admit bootstrap requests; after `begin`, candidate proof fences each
+ceremony operation. Public route classification does not waive those checks.
+Operator-only surface
+approval and pending-enrollment approval live under
+`/api/pairing/native-relay-surfaces` and `/api/pairing/native-relay-enrollments`.
+See [native enrollment](../design/native-relay-enrollment.md) for credential
+sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 

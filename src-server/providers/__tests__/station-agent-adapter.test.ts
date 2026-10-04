@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readSkillExperienceRelayContext,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
@@ -542,7 +543,7 @@ describe('StationAgentAdapter', () => {
     },
   );
 
-  test('relays only an exact authorized turn correlation and uses its canonical turn id', async () => {
+  test('relays exact turn identity and private Skill context while keeping the typed prompt in the HTTP body', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
@@ -566,11 +567,17 @@ describe('StationAgentAdapter', () => {
       turnId: 'fleet-turn',
       correlationId: 'fleet-correlation',
     };
-    const result = await runWithAuthorizedTurnCorrelation(correlation, () =>
-      adapter.sendTurn({
-        threadId: 'fleet-session',
-        input: 'private prompt that must not enter correlation',
-      }),
+    const result = await runWithAuthorizedTurnCorrelation(
+      correlation,
+      () =>
+        adapter.sendTurn({
+          threadId: 'fleet-session',
+          input:
+            'PINNED_DEPENDENCY_SENTINEL\nprivate prompt that must not enter correlation',
+          displayInput: 'private prompt that must not enter correlation',
+        }),
+      undefined,
+      'PINNED_DEPENDENCY_SENTINEL',
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -578,6 +585,14 @@ describe('StationAgentAdapter', () => {
       string
     >;
     expect(result.turnId).toBe('fleet-turn');
+    expect(
+      readSkillExperienceRelayContext(
+        headers[INTERNAL_TURN_CORRELATION_HEADER],
+      ),
+    ).toBe('PINNED_DEPENDENCY_SENTINEL');
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
     expect(
       readAuthorizedTurnCorrelationHandoff(
         headers[INTERNAL_TURN_CORRELATION_HEADER],

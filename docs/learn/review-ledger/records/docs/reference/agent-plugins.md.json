@@ -9,34 +9,42 @@
 
   "limits": "190 existing tests across seven files use controlled package, route, builder, install and MCP fixtures; no live external MCP service, package publication, user-home installation, OAuth exchange, device or hosted deployment was exercised. Settings secret references remain plaintext settings inputs rather than a secret resolver. Source review is of current documented claims, not a formal proof of every package/adversarial input or every contribution runtime.",
 
-  "document": {"digest":"fecea2b399c105d79c033daeb7ddda582cbc42ae28a1d10655597e8ffed2940d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"55288d984ea3adfb4c7d1651dd004f4b7fd17f3bcbef17c95b40d13a87103bba","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
 
   "sources": [
     {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"},
+
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
-    {"path":"packages/contracts/src/agent-plugin.ts","digest":"65c2a7246e4083f7297878671dced18226b95f16486e794860d3d1430176af23","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"e67021c515f0b8834bb3fe70fb14c6d15b8db921d0a58b57abb95139c804ee34","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"344d01f927c8bb3b0c9268c84308e15598078d6bf9a80f31d6c5685003b65112","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
-    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
+
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"schemas/agent-plugins/1.0.0/mcp.schema.json","digest":"6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"schemas/agent-plugins/1.0.0/plugin.schema.json","digest":"0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"schemas/agent-plugins/io.kontourai.station-1.0.schema.json","digest":"90aeadaa27864d9f050d9ef1e84d612ade7c05d6552b09db5c0e0a64e1bff200","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"schemas/agent-plugins/io.kontourai.station-1.0.schema.json","digest":"e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+
+    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"5e2d5929feb55233f7ad84af131eb5a833e51388fe7e51aed1393d8a4de95fcb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"scripts/agent-plugin-validators-gate.mjs","digest":"6734c92098d215775e126b8294516e5c0a206f28f0a3433cff6df17cf6a42001","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/check-prepush-static-gates.mjs","digest":"9c185f6b574c30d163fc25d35913c88695fcb6283e564936edc945b5379087c1","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
 
-    {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"2bd3f7bc3213181f05f97d5e9f727d2d19499c0f6ba2514d318bc816f16c3330","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"2b21104af3b036b928fbe0f253f12142250c452ef23a909b484e44b4b2e60472","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
 
     {"path":"src-server/domain/config-loader-storage.ts","digest":"aa4d54454644b06580d0b819dab783c84990d946b07513580c7063bb35c68e01","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -46,11 +54,11 @@
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"297cdbe10e5c1efb7f611dd7f55ecca99047d05ba631f863b92c45c6a5e5df0e","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/services/plugins/plugin-activation-composition.ts","digest":"273fb2e4a6343624321647ef4e9e10962e57ba6c6776bf0aacc87e3ecc277770","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -58,17 +66,15 @@
 
     {"path":"src-server/services/plugins/plugin-incarnation.ts","digest":"01f16d8ae5b0bba70ed14fa906f312ec5281a4ae6f8b4380f929493ad414b626","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/services/plugins/plugin-installation-local.ts","digest":"5becd37c9b513ca607765046ee7314e7adbeddd4c1955905c85e8254963455d6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"b7c57142730844cad311c6fd5894500615695a3182d145a7fe793ba38a0f899e","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
-    {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"d852c2c072b6d34d2d73572b011c06ebb9e5ea3626679eda66e9e59c0a431ad1","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"5f3220681f70c9725d0fd799bc70030aaf9b241b0ea95c471db51f3324e903c2","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
-    {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"}
+    {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

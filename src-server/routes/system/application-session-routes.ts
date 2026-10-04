@@ -215,6 +215,14 @@ export function createApplicationSessionRoutes(
       return owner.establishNative(c.req.raw, body);
     }),
   );
+  app.post('/native/revoke', (c) =>
+    run(c, async (owner) => {
+      z.object({})
+        .strict()
+        .parse(await nativeInput(c));
+      return owner.revokeNative(c.req.raw);
+    }),
+  );
   app.post('/renew', (c) => run(c, (owner) => owner.renew(c.req.raw)));
   app.post('/revoke', (c) =>
     run(c, async (owner) => {

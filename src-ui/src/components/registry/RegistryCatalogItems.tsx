@@ -1,6 +1,8 @@
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
+import { useRegistrySkillContentQuery } from '@kontourai/station-sdk';
 import { Button } from '../Button';
 import { IntegrationGlyph } from '../icons/IntegrationGlyph';
+import { SkeletonBlock } from '../state';
 import {
   type RegistryLayoutAction,
   RegistryLayoutActions,
@@ -8,6 +10,7 @@ import {
 import {
   getRegistryActionLabel,
   getRegistryItemId,
+  getRegistrySkillInstallRefusal,
   getRegistrySourceLabel,
   type RegistryItem,
 } from './registryCatalogModel';
@@ -23,6 +26,7 @@ interface ItemActions {
   ) => void;
   onUseLayout: (id: string) => void;
   managePlugins?: () => void;
+  openSkill?: (name: string) => void;
   openProjects?: () => void;
 }
 
@@ -43,12 +47,16 @@ export function RegistryCatalogDetail({
   checkingInstalled: boolean;
   actions: ItemActions;
 }) {
+  const installRefusal = installed
+    ? null
+    : getRegistrySkillInstallRefusal(tab, item);
   const skillHint =
-    tab === 'skills'
+    installRefusal ??
+    (tab === 'skills'
       ? installed
         ? 'Removing deletes the workspace copy so the skill is no longer selectable in agent definitions.'
         : 'Installing copies this skill into the workspace so it becomes selectable in agent definitions.'
-      : null;
+      : null);
   const source = getRegistrySourceLabel(item);
   const isInstalledPlugin = tab === 'plugins' && installed;
   return (
@@ -69,7 +77,24 @@ export function RegistryCatalogDetail({
           <span className="page__meta-pill">{source}</span>
         </div>
       )}
+      {item.source && item.catalog && (
+        <div className="page__subtitle">
+          Source location:{' '}
+          <code className="registry-catalog__source">{item.source}</code>
+        </div>
+      )}
+      {item.catalogFreshness === 'stale' && (
+        <p role="status">Offline marketplace · last successful catalog</p>
+      )}
       {item.version && <div className="page__subtitle">v{item.version}</div>}
+      {item.catalog && (
+        <div className="page__subtitle">
+          Catalog revision: <code>{item.catalog.revision.slice(0, 12)}</code>
+        </div>
+      )}
+      {tab === 'skills' && item.catalog && (
+        <RegistrySkillInstructions id={id} />
+      )}
       {skillHint && <div className="page__subtitle">{skillHint}</div>}
       {isInstalledPlugin && (
         <div className="page__subtitle">
@@ -86,6 +111,22 @@ export function RegistryCatalogDetail({
             onAction={(action) => actions.runLayoutAction(item, id, action)}
             onUse={() => actions.onUseLayout(id)}
           />
+        ) : tab === 'skills' && installed ? (
+          <>
+            <Button
+              variant="primary"
+              onClick={() => actions.openSkill?.(item.catalog?.itemId ?? id)}
+            >
+              Open skill
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={pending || checkingInstalled}
+              onClick={() => actions.runAction(item, id, true)}
+            >
+              Remove from workspace
+            </Button>
+          </>
         ) : isInstalledPlugin ? (
           <>
             <Button variant="primary" size="sm" onClick={actions.openProjects}>
@@ -118,17 +159,19 @@ export function RegistryCatalogDetail({
           <Button
             variant="primary"
             size="sm"
-            disabled={pending || checkingInstalled}
+            disabled={pending || checkingInstalled || !!installRefusal}
             onClick={() => {
               actions.clearMessage();
               actions.runAction(item, id, installed);
             }}
           >
-            {checkingInstalled
-              ? 'Checking installed status...'
-              : pending
-                ? 'Working...'
-                : getRegistryActionLabel(tab, installed)}
+            {installRefusal
+              ? 'Unavailable'
+              : checkingInstalled
+                ? 'Checking installed status...'
+                : pending
+                  ? 'Working...'
+                  : getRegistryActionLabel(tab, installed)}
           </Button>
         )}
       </div>
@@ -220,8 +263,26 @@ function RegistryItemHeading({
           ? (item.lifecycle?.state ?? 'Available')
           : installed
             ? 'Installed'
-            : 'Available'}
+            : getRegistrySkillInstallRefusal(tab, item)
+              ? 'Unavailable'
+              : 'Available'}
       </span>
     </div>
+  );
+}
+
+function RegistrySkillInstructions({ id }: { id: string }) {
+  const content = useRegistrySkillContentQuery(id);
+  return (
+    <details>
+      <summary>Read skill instructions</summary>
+      {content.isLoading ? (
+        <SkeletonBlock count={3} label="Loading instructions" />
+      ) : content.error ? (
+        <p role="alert">{content.error.message}</p>
+      ) : (
+        <pre className="marketplaces__instructions">{content.data}</pre>
+      )}
+    </details>
   );
 }

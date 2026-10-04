@@ -18,7 +18,7 @@
 
     {"path":"examples/minimal-layout/src/index.tsx","digest":"2a21555a160202bb2f072204a839d9890c8d01cc5f1ae02533c354335e5d1ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
     {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
   ],

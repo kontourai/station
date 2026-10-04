@@ -1,5 +1,6 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -13,6 +14,11 @@ import { createProjectSharedTaskRoutes } from '../../routes/projects/project-sha
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
+import {
+  createNativeRelayEnrollmentOperatorRoutes,
+  createNativeRelayEnrollmentRoutes,
+} from '../../routes/system/native-relay-enrollment-routes.js';
+import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
@@ -39,6 +45,7 @@ import {
   createBrowserService,
 } from '../../services/browser/browser-service.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
+import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -78,6 +85,7 @@ import {
   isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import {
   RelayEnrollmentRefusal,
   type RelayEnrollmentService,
@@ -93,6 +101,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import {
   currentRequestReadAuthority,
   runAsStationKnowledgeIndexer,
@@ -473,6 +482,7 @@ import {
 import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
+import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
@@ -503,6 +513,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { createPluginCommandRequirementResolver } from '../../services/plugins/plugin-command-effect-admission.js';
 import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
@@ -738,6 +749,8 @@ export interface ConfigureRuntimeRoutesContext {
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
   applicationSessions?: ApplicationSessionService;
+  nativeRelayEnrollment?: NativeRelayEnrollmentService;
+  nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
@@ -799,6 +812,8 @@ export interface ConfigureRuntimeRoutesContext {
    */
   delegationAttemptClaims: import('../../services/orchestration/delegation-attempt-claim-store.js').DelegationAttemptClaimStore;
   orchestrationEventStore?: EventStore;
+  /** Runtime's notification-bearing durable operational-event publisher. */
+  operationalEventPublisher?: OperationalEventPublisher;
   pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
@@ -991,7 +1006,7 @@ export function createPersonalTaskAnswerSupportModule(
     | 'projectService'
     | 'orchestrationService'
     | 'configLoader'
-    | 'appConfig'
+    | 'getLiveAppConfig'
   >,
 ): TaskAnswerSupportModule {
   return new TaskAnswerSupportModule({
@@ -1049,7 +1064,7 @@ export function createPersonalTaskAnswerSupportModule(
         ),
         veritasEvidenceDir:
           workspacePath &&
-          context.appConfig.surfaceTrustFromVeritasEvidence !== false
+          context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
             ? [
                 join(workspacePath, STATION_ARTIFACT_ROOTS.veritas, 'evidence'),
                 join(workspacePath, STATION_LEGACY_ROOTS.veritas, 'evidence'),
@@ -1220,6 +1235,54 @@ export function configureRuntimeRoutes(
         }
       : undefined;
   };
+  const resolveTaskRoomContext = async (
+    taskId: string,
+    request: Request,
+    principal: PrincipalRef,
+  ) => {
+    const scope = await authorizeTaskRoomWork(taskId, request, principal);
+    const task = context.taskGraphService.readTaskView(taskId);
+    if (
+      !scope ||
+      !task ||
+      task.createdAt !== scope.taskCreatedAt ||
+      !projectTaskRoomRuntime
+    )
+      return undefined;
+    const title = task.title,
+      description = task.description;
+    const document = await projectTaskRoomRuntime.document({ taskId, request });
+    const current = await authorizeTaskRoomWork(taskId, request, principal);
+    const currentTask = context.taskGraphService.readTaskView(taskId);
+    if (
+      !currentTask ||
+      currentTask.title !== title ||
+      currentTask.description !== description ||
+      !current ||
+      current.projectId !== scope.projectId ||
+      current.projectSlug !== scope.projectSlug ||
+      current.roomProjectId !== scope.roomProjectId ||
+      current.taskCreatedAt !== scope.taskCreatedAt ||
+      current.requesterId !== scope.requesterId ||
+      (document.kind !== 'snapshot' && document.kind !== 'delta') ||
+      typeof document.revision !== 'string' ||
+      typeof document.text !== 'string'
+    )
+      return undefined;
+    return createTaskRoomContext(
+      {
+        taskId,
+        projectId: scope.projectId,
+        taskCreatedAt: scope.taskCreatedAt,
+      },
+      {
+        title,
+        description,
+        documentRevision: document.revision,
+        text: document.text,
+      },
+    );
+  };
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
@@ -1252,6 +1315,7 @@ export function configureRuntimeRoutes(
     ...(nativeDeviceProofAuthority
       ? { nativeDeviceProof: nativeDeviceProofAuthority }
       : {}),
+    nativeEnrollment: context.nativeRelayEnrollment,
     deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
@@ -1899,6 +1963,51 @@ export function configureRuntimeRoutes(
     '/api/account-auth/continuations',
     createApplicationSessionRoutes(context.applicationSessions),
   );
+  if (context.nativeRelayEnrollment) {
+    const nativeRoutes = createNativeRelayEnrollmentRoutes(
+      context.nativeRelayEnrollment,
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/begin',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/login',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/register',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/finalize',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/activate',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/status',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/cancel',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.route(
+      '/api/pairing/native-relay-enrollments',
+      createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
+    );
+  }
+  if (context.nativeSurfaceRegistry)
+    context.app.route(
+      '/api/pairing/native-relay-surfaces',
+      createNativeRelaySurfaceRoutes({
+        registry: context.nativeSurfaceRegistry,
+        security: context.environmentSecurityService,
+      }),
+    );
   if (context.relayEnrollment) {
     const relayEnrollmentRoutes = createRelayEnrollmentRoutes(
       context.relayEnrollment,
@@ -2496,6 +2605,38 @@ export function configureRuntimeRoutes(
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
         reconcileEventSubscriptions: () =>
           context.pluginOperationalEventSubscriptions.reconcile(),
+        commandEffects: {
+          // F6 (kontourai/station#1419): hosted deployments keep refusing.
+          isHostedDeployment: () => hostedTenantRegistry !== undefined,
+          publishAudit: (event) => {
+            const outcome = context.operationalEventPublisher?.append(event);
+            return (
+              outcome?.kind === 'appended' || outcome?.kind === 'duplicate'
+            );
+          },
+          // M5 (kontourai/station#1419): answered for the CALLER. Sessions go
+          // through the same read predicate every other session read uses.
+          resolveRequirement: createPluginCommandRequirementResolver({
+            canReadSession: (sessionId, authority) =>
+              context.orchestrationService.canUserReadSession(
+                sessionId,
+                readAuthorityForRequest(authority),
+              ),
+            projectExists: (slug) => {
+              try {
+                return Boolean(context.projectService.getProject(slug));
+              } catch {
+                return false;
+              }
+            },
+            taskInProject: (taskId, projectSlug) => {
+              const task = context.taskGraphService.readTask(taskId);
+              return Boolean(
+                task && (!projectSlug || task.projectId === projectSlug),
+              );
+            },
+          }),
+        },
         // #2067. The SAME memoized, fail-closed resolver every other
         // identity-bearing route in this file reads, so `GET /api/plugins`
         // projects onto the request's own caller and no header or body can
@@ -2969,8 +3110,8 @@ export function configureRuntimeRoutes(
     // environment variable — instead of a direct env read, so the Settings
     // row ("Device helper URL", with its provenance badge) and the Device
     // pane's setup copy name the same source the runtime actually consults.
-    // Live config first (a user can change the setting between boots); the
-    // boot snapshot is the fallback when no live reader answers.
+    // The helper service binds this address at construction. A saved change
+    // applies after a Station restart, as the Settings row states.
     const configuredDeviceHub = resolveEffectiveAppSetting(
       'mobileDeviceHubUrl',
       { config: context.getLiveAppConfig?.() ?? context.appConfig },
@@ -3750,7 +3891,16 @@ export function configureRuntimeRoutes(
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
           await roomRuntime.reconcileAgentLifecycles([taskId]);
-          return (await authorize()) ? result : { kind: 'refused' as const };
+          const contextSnapshot = principal
+            ? await resolveTaskRoomContext(taskId, request, principal)
+            : undefined;
+          return (await authorize())
+            ? {
+                ...result,
+                contextVersion: TASK_ROOM_CONTEXT_VERSION,
+                context: contextSnapshot ?? null,
+              }
+            : { kind: 'refused' as const };
         },
       }),
     );
@@ -3961,7 +4111,11 @@ export function configureRuntimeRoutes(
           remoteStations,
         ),
       ),
-      taskRoomWork: { module: taskRoomWork, authorize: authorizeTaskRoomWork },
+      taskRoomWork: {
+        module: taskRoomWork,
+        authorize: authorizeTaskRoomWork,
+        resolveContext: resolveTaskRoomContext,
+      },
       // #485: the receiver's durable attempt-claim owner, threaded through
       // the route seam into the tool's receiver-local path.
       delegationAttemptClaimStore: context.delegationAttemptClaims,
@@ -5538,7 +5692,7 @@ export function configureRuntimeRoutes(
           // so Trust lights up wherever Veritas has run.
           const veritasEvidenceDir =
             workspacePath &&
-            context.appConfig.surfaceTrustFromVeritasEvidence !== false
+            context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
               ? [
                   join(
                     workspacePath,

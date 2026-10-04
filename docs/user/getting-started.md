@@ -147,6 +147,53 @@ connection errors, or setup actions when a choice is not ready. Opening it does
 not send a message. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
+On a phone, tap the current chat title to open **Chats and tasks**, then use
+**+** at the lower right to start a chat. **Projects** has the same add control
+for creating a project, including a short first-project prompt when empty.
+
+Selecting a project in the sidebar opens its workspace and makes it the default
+for new chats. An existing chat stays with its original project. The chat bar's
+**New chats** value lets you choose another default without leaving the workspace.
+The next sidebar project selection updates that default again.
+
+### Prepare a visual skill
+
+Ordinary New Chat also lists installed visual skills, including when only one
+Agent is ready. A card describes its purpose, example and owning plugin. Choose
+a card and fill its text or choice inputs, then choose an Agent, Model and
+workspace. This prepares an unsent chat. Attach any required files using the
+ordinary composer, assign files to the named roles when shown, and send
+explicitly to start. Stations that expose inventory without execution support
+show previews and refuse starts.
+
+Guided mode keeps the preparation or recorded stage above the conversation.
+Alongside chat places it beside the conversation on wide screens and above it
+on phones. Chat mode keeps the same conversation with a compact skill header.
+Questions, approvals, transcript, artifacts and Stop keep their ordinary
+conversation controls when switching modes. Declared outputs are expectations;
+actual results appear when the Agent produces them.
+
+The prepared selection, scalar inputs and inert composer file-role choices
+persist with the selected Station's scoped chat draft. Reload restores a bounded
+display preview; Send checks the current installed source again. A failed, busy
+or offline send retains that selection and
+never queues it for automatic replay. A changed source requires a new review.
+Use **Remove unsent visual skill** to deliberately return to ordinary chat.
+**Prepare another stage in this conversation** binds a new unsent preparation
+to the current recorded stage; sending still requires the same source to be
+available. **Browse marketplaces** opens Registry while retaining the picker
+inputs and choices. Return or browser Back refetches the inventory and setup;
+it never installs a plugin or starts the skill automatically.
+
+A source can declare other named stages or a rich view. Preparing a named stage
+keeps this conversation and checks the same installed package. **Open declared
+rich view** uses its existing workspace pane occurrence and isolated host;
+when the pane, source or permission is unavailable, the guided controls remain
+available. Rich views can answer current nonsecret question rounds and prepare
+an unsent next stage. Secret questions and tool approvals use the ordinary
+conversation controls.
+
+
 ### Finish setup and return
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
@@ -180,6 +227,22 @@ can use the screen. Explicit maximized conversation links still
 open chat at their requested size, and the prior chat size remains available
 when you return to the conversation.
 
+### Send a follow-up while an engine works
+
+Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
+the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
+native steering. Other engines hold steering until a safe boundary can be proven;
+currently they wait until the turn finishes. Each pending row shows its mode.
+**Send now** deliberately stops the active turn immediately and sends the
+selected message after Station confirms the stop. **Stop** remains separate.
+
+Quiet turns show elapsed silence without guessing that an engine retried. Retry
+status appears only when the engine reports it. The Drafts icon saves and restores
+unsent composer content; the trash icon clears the current message. Hold or focus
+either icon to read its label. Choose **Chat settings → Return in chat** to change
+Return behavior on this device. Touch devices default to a new line; desktop
+Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
+
 ### Reference project files and earlier conversations
 
 In a project chat, type `@` followed by part of a file or folder path, then
@@ -204,6 +267,30 @@ changes before send, Station refuses it instead of silently resolving it under
 the new account. Hosted/shared destinations do not offer conversation
 references until the server can prove that exposing the source title and link
 to that destination is permitted.
+
+## Use a skill
+
+Open **Skills** and search the loaded library by name or description. Select a
+skill to read what it does, where it came from, and which template inputs it
+needs. **View instructions** shows the original instructions. A source label
+identifies where Station loaded the skill; it does not establish publisher trust.
+
+Choose **Use in a new chat**, fill any required inputs, and select an Agent.
+Blank optional inputs use their declared defaults. **Preview instructions**
+shows the message with those values applied. **Start chat** opens a new chat
+and sends that message. This does not attach the skill to the Agent or install
+its dependencies; the Agent's configured tools and permissions still apply.
+
+To add skills, choose **Browse Registry Skills** and inspect the available
+catalog before installing. **Import .md** accepts standalone Markdown skill
+files and reports the outcome of each file. Open an imported skill from its
+result to review and use it. Import does not copy a repository's
+scripts or supporting files. Load plugin packages through Registry.
+
+For a writable skill, **Edit skill** opens its definition and command settings.
+**Back to overview** asks before discarding unsaved edits. Package-owned or
+plugin-served skills show the server's read-only reason and keep editing
+unavailable.
 
 ## Start Your First Task
 

@@ -1,8 +1,5 @@
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
-import {
-  type ConnectionConfig,
-  EXECUTION_MODE,
-} from '@kontourai/station-contracts/tool';
+import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   conversationQueries,
@@ -10,7 +7,6 @@ import {
   telemetry,
   useAcknowledgeConversationMutation,
   useConversationInventoryQuery,
-  useEngineConnectionsQuery,
   useGenerateSessionSummaryMutation,
   useInvalidateQuery,
   useOrchestrationSessionsQuery,
@@ -90,10 +86,6 @@ import {
   useInboxWorkItems,
 } from '../../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
-import {
-  selectChatReadyAgents,
-  selectDirectNewChatAgent,
-} from '../agent-selection-policy';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
@@ -122,8 +114,6 @@ import {
   chatModelLabel,
   effectiveChatModelId,
   inboxPanelMounts,
-  projectDisplayName,
-  resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
   resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
@@ -1077,6 +1067,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const importedSession = orchestrationSessions.find(
     (session) => session.threadId === importedSessionId,
   );
+  const visibleSessionProjectMismatchLabel = importedSessionId
+    ? resolveSessionProjectMismatchLabel({
+        scopedProjectSlug,
+        dockProjectSlug,
+        sessionProjectSlug: importedSession?.projectSlug,
+        sessionProjectName: projects.find(
+          (project) => project.slug === importedSession?.projectSlug,
+        )?.name,
+      })
+    : sessionProjectMismatchLabel;
   const importedTitle = importedSession
     ? sessionTitle(importedSession)
     : 'Conversation';
@@ -1117,7 +1117,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // collapse a maximized dock first so the destination project/layout is
   // actually visible.
   const routeToScopedChatProject = useCallback(
-    (targetProjectSlug: string | undefined) => {
+    (
+      targetProjectSlug: string | undefined,
+      preserveChatProjectDefault = false,
+    ) => {
       if (
         !shouldRouteScopedChatProject({
           hasImmutableProjectScope,
@@ -1129,7 +1132,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         return false;
       // The predicate guarantees layoutSlug here; the assertion keeps the
       // claim-equals-act contract visible at the only mutation site.
-      setLayout(targetProjectSlug as string, layoutSlug as string);
+      setLayout(targetProjectSlug as string, layoutSlug as string, {
+        preserveChatProjectDefault,
+      });
       return true;
     },
     [hasImmutableProjectScope, layoutSlug, projectSlug, setLayout],
@@ -1387,22 +1392,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       isDockMaximized,
     ],
   );
-  // A conversation-row click is an explicit choice of the project context in
-  // which the person wants to continue.  Keep that intent at this UI seam:
-  // URL hydration, external focus requests, handoff refocus, and other
-  // programmatic session selection must not silently rewrite the DockShell's
-  // ambient binding.  A projectless conversation likewise has no project
-  // choice to make, so it preserves the current binding.
-  const focusUserSelectedSessionInPane = useCallback(
-    (sessionId: string) => {
-      const selectedProjectSlug = allSessions.find(
-        (session) => session.id === sessionId,
-      )?.projectSlug;
-      if (selectedProjectSlug) setActiveProjectSlug(selectedProjectSlug);
-      focusSessionInPane(sessionId);
-    },
-    [allSessions, focusSessionInPane, setActiveProjectSlug],
-  );
   const openChatForAgentInScopedPane = useCallback(
     (
       agent: AgentData,
@@ -1477,11 +1466,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [activeSession, agents, openChatForAgentInScopedPane, setShowNewChatModal],
   );
-  // #3309: the retired tab strip's "New" behavior, now behind the header's
-  // New button — exactly one chat-ready agent opens directly, else the modal.
-  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
-    data?: ConnectionConfig[];
-  };
   // #3310: fires from the chat-settings menu; the transcript's summary card
   // observes progress/failure through the shared mutation key.
   const generateSessionSummary = useGenerateSessionSummaryMutation();
@@ -1495,38 +1479,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the badge agree from the start.
   const openNewChatDirect = useCallback(() => {
     setImportedSessionId(null);
-    const direct = selectDirectNewChatAgent(
-      selectChatReadyAgents({ agents, agentConnections }),
-    );
-    if (direct) {
-      // station#4525 review HIGH-3 (blocking): an immutably project-scoped
-      // placement (a project's own Coding layout) must target its OWN
-      // project, never the dock's ambient, device-global binding — passing
-      // the binding there tripped `routeToScopedChatProject` into
-      // navigating away instead of creating a chat. See
-      // `resolveDirectNewChatProjectSlug`.
-      const targetProjectSlug = resolveDirectNewChatProjectSlug({
-        hasImmutableProjectScope,
-        immutableProjectSlug: projectSlug,
-        dockChromeProjectSlug,
-      });
-      openChatForAgentInScopedPane(
-        direct,
-        targetProjectSlug,
-        projectDisplayName(targetProjectSlug, projects) ?? undefined,
-      );
-    } else setShowNewChatModal(true);
-  }, [
-    agentConnections,
-    agents,
-    dockChromeProjectSlug,
-    hasImmutableProjectScope,
-    openChatForAgentInScopedPane,
-    projectSlug,
-    projects,
-    setShowNewChatModal,
-    setImportedSessionId,
-  ]);
+    setShowNewChatModal(true);
+  }, [setShowNewChatModal, setImportedSessionId]);
   const openConversationInScopedPane = useCallback(
     (
       conversationId: string,
@@ -1566,7 +1520,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // deleted-agent fallback in the open policy. Teleporting is the
       // intended half (the destination project is where the conversation
       // lives); the click's promise is the conversation, so open it there.
-      routeToScopedChatProject(targetProjectSlug);
+      routeToScopedChatProject(targetProjectSlug, true);
       return openConversation(conversationId, agentSlug, {
         projectSlug: targetProjectSlug,
         projectName,
@@ -1584,18 +1538,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       routeToScopedChatProject,
     ],
   );
-  // The cold-row half of `focusUserSelectedSessionInPane`: a History, Inbox,
-  // or mobile task-switcher item may not be an in-memory tab yet.  Bind only
-  // after its open succeeds, and only when that row names a project.
   const openUserSelectedConversationInScopedPane = useCallback(
     async (...args: Parameters<typeof openConversationInScopedPane>) => {
       const opened = await openConversationInScopedPane(...args);
-      const targetProjectSlug = args[2];
       if (opened) setImportedSessionId(null);
-      if (opened && targetProjectSlug) setActiveProjectSlug(targetProjectSlug);
       return opened;
     },
-    [openConversationInScopedPane, setActiveProjectSlug, setImportedSessionId],
+    [openConversationInScopedPane, setImportedSessionId],
   );
   const openConversationForDock = useCallback(
     async (
@@ -1739,7 +1688,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // fall through to the open below (focusRoutableChatSession focuses by
       // id and only clears a stale filter, so it is safe after setLayout).
       if (focusedSession) {
-        routeToScopedChatProject(focusedSession.projectSlug);
+        routeToScopedChatProject(focusedSession.projectSlug, true);
       }
       // A bare project route (no session, no conversation) is a pure
       // navigation event and may still return; when a conversation is named,
@@ -2238,18 +2187,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // no-project chat gets "No project" as the switcher's current
               // value and stays reachable via the same trigger, rather than
               // losing the affordance entirely.
+              sessionProjectMismatchLabel={visibleSessionProjectMismatchLabel}
               projectSwitcher={{
-                projectSlug: importedSessionId
-                  ? (importedSession?.projectSlug ?? '')
-                  : (dockProjectSlug ?? ''),
-                projectName: importedSessionId
-                  ? (projects.find(
-                      (project) =>
-                        project.slug === importedSession?.projectSlug,
-                    )?.name ??
-                    importedSession?.projectSlug ??
-                    'No project')
-                  : (dockBadgeProjectName ?? 'No project'),
+                projectSlug: dockProjectSlug ?? '',
+                projectName: dockBadgeProjectName ?? 'No project',
                 projects,
                 onOpenProject: handleSelectProject,
                 onSwitchProject: handleSwitchProject,
@@ -2394,21 +2335,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // `dockProjectSlug` is null.
                 !isMobile ? (
                   <ChatDockProjectContext
-                    projectSlug={
-                      importedSessionId
-                        ? (importedSession?.projectSlug ?? null)
-                        : dockProjectSlug
-                    }
-                    projectName={
-                      importedSessionId
-                        ? (projects.find(
-                            (project) =>
-                              project.slug === importedSession?.projectSlug,
-                          )?.name ??
-                          importedSession?.projectSlug ??
-                          null)
-                        : dockBadgeProjectName
-                    }
+                    projectSlug={dockProjectSlug}
+                    projectName={dockBadgeProjectName}
                     // station#4525 review HIGH-2 (blocking): these three
                     // facts are truth about the SESSION actually on screen
                     // and never gate on the badge — station#1146 fixed this
@@ -2438,9 +2366,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         : gitStatus
                     }
                     sessionProjectMismatchLabel={
-                      importedSessionId
-                        ? undefined
-                        : sessionProjectMismatchLabel
+                      visibleSessionProjectMismatchLabel
                     }
                     projects={projects}
                     onSelectProject={handleSelectProject}
@@ -2564,7 +2490,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
-                        onFocusChat: focusUserSelectedSessionInPane,
+                        onFocusChat: focusSessionInPane,
                         onOpenConversation:
                           openUserSelectedConversationInScopedPane,
                         onOpenSession: openImportedSessionInPane,
@@ -2710,7 +2636,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onToggleStatsPanel={setShowStatsPanel}
                       onTitleUpdate={handleTitleUpdate}
                       onDeleteSession={removeSession}
-                      onFocusSession={focusUserSelectedSessionInPane}
+                      onFocusSession={focusSessionInPane}
                       onOpenConversation={
                         openUserSelectedConversationInScopedPane
                       }
@@ -2826,12 +2752,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               },
               agents,
               workFacts,
+              gitLocationByThreadId,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
               triggerRef: taskSwitcherTriggerRef,
               onClose: () => setIsTaskSwitcherOpen(false),
-              onFocusChat: focusUserSelectedSessionInPane,
+              onNewChat: openNewChatDirect,
+              onFocusChat: focusSessionInPane,
               onOpenConversation: openUserSelectedConversationInScopedPane,
               onCloseChat: removeSession,
               onAcknowledgeConversation: acknowledgeTaskConversation,
@@ -2844,7 +2772,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }}
             pending={
               <MobileSheetPending
-                label="Switch task"
+                label="Chats and tasks"
                 style={visualViewport.style}
                 onClose={() => setIsTaskSwitcherOpen(false)}
                 returnFocusTarget={taskSwitcherTriggerRef.current}
@@ -3018,6 +2946,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             providerOptions,
             providerId,
             providerType,
+            experienceDraft,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3042,6 +2971,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               providerId,
               providerType,
             );
+            if (sessionId && experienceDraft)
+              updateChat(sessionId, {
+                skillExperienceDraft: experienceDraft,
+                skillExperienceDraftInvalid: undefined,
+                skillExperienceMode:
+                  experienceDraft.definition.presentation.defaultMode,
+              });
             if (
               sessionId &&
               newChatStartWithDefault &&

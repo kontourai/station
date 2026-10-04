@@ -1,8 +1,10 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
   sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
+import { skillExperienceAttachmentInputs } from '@kontourai/station-shared/skill-experience-values';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import { resolveTurnModel } from './turnModel';
 
@@ -35,6 +37,10 @@ export async function dispatchForeground(input: {
   ambientContext?: string;
   clientTurnId: string;
   automaticBackground?: boolean;
+  skillExperience?: SkillExperienceStartInputV1;
+  skillExperienceAttachmentRoles?: string[];
+  skillExperienceAttachmentAssignments?: Record<string, string[]>;
+  requestScope?: import('@kontourai/station-sdk/client').ClientRequestOptions['requestScope'];
   signal?: AbortSignal;
 }) {
   // #2436: the pick travels as the message's own `setApprovalMode` with its
@@ -121,6 +127,19 @@ export async function dispatchForeground(input: {
           setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
         }
       : {};
+  const outgoingAttachmentIds =
+    'attachmentRefs' in attachmentDispatch
+      ? attachmentDispatch.attachmentRefs.map(
+          (reference) => reference.clientAttachmentId,
+        )
+      : attachments.map((attachment) => attachment.id);
+  if (
+    input.skillExperience &&
+    new Set(outgoingAttachmentIds).size !== outgoingAttachmentIds.length
+  )
+    throw new Error(
+      'Composer files must have distinct identities before assigning visual skill roles.',
+    );
   return sendExecutionMessage(
     input.apiBase,
     {
@@ -152,8 +171,27 @@ export async function dispatchForeground(input: {
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
       automaticBackground: input.automaticBackground,
+      ...(input.skillExperience
+        ? {
+            skillExperience: {
+              ...input.skillExperience,
+              ...(input.skillExperienceAttachmentRoles?.length
+                ? {
+                    attachmentInputs: skillExperienceAttachmentInputs(
+                      input.skillExperienceAttachmentRoles,
+                      outgoingAttachmentIds,
+                      input.skillExperienceAttachmentAssignments,
+                    ),
+                  }
+                : {}),
+            },
+          }
+        : {}),
       ...approvalPick,
     },
-    { signal: input.signal },
+    {
+      signal: input.signal,
+      ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+    },
   );
 }

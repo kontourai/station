@@ -19,6 +19,7 @@ let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEven
 // text-delta describe below) to prove the dedup actually removed the
 // duplicated per-token work.
 let upsertTextPartCalls = 0;
+let toolToast: ReturnType<typeof vi.fn>;
 
 const threadId = 'thread-tool-outcome-1';
 
@@ -44,6 +45,13 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       setItem: () => {},
     });
     vi.resetModules();
+    toolToast = vi.fn();
+    vi.doMock('../../../contexts/ToastContext', async (importOriginal) => ({
+      ...(await importOriginal<
+        typeof import('../../../contexts/ToastContext')
+      >()),
+      toastStore: { showToolActivity: toolToast },
+    }));
 
     const actual = await vi.importActual<
       typeof import('../../../contexts/active-chats-store')
@@ -78,6 +86,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.doUnmock('../../../contexts/ToastContext');
     vi.doUnmock('../../../contexts/active-chats-store');
     vi.doUnmock('../messageParts');
     vi.resetModules();
@@ -264,7 +273,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
   // and, since it carries no `policyDenied` marker, must NOT be labeled
   // policy-denied. Absence of the marker means "we don't know why this
   // failed", never "policy denied it" (the same discipline #3091 applied).
-  test('an ordinary failed tool call sets isError/error but no approvalStatus', () => {
+  test('a failed tool call stays in the transcript without a toast or approval badge', async () => {
     handleToolCompletedEvent(
       toolCompleted({ status: 'error', error: 'Tool call failed.' }),
     );
@@ -276,6 +285,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       error: 'Tool call failed.',
     });
     expect(part?.approvalStatus).toBeUndefined();
+    expect(toolToast).not.toHaveBeenCalled();
   });
 
   // archive#3167: cancelling is a correct user-initiated outcome, not a

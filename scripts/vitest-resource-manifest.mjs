@@ -122,8 +122,14 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
+  'packages/shared/src/__tests__/skill-experience-author.test.ts',
   // Exercises the health CLI refusal before any GitHub request.
   'scripts/__tests__/ci-health.test.ts',
+  // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
+  'scripts/__tests__/qualification-evidence.test.ts',
+  // Executes repair publication against real temporary checkouts and a loopback API.
+  'scripts/__tests__/qualification-repair.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
@@ -141,6 +147,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
   'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
+  // One bounded mkfifo child checks source-file refusal in independent temporary Station homes.
+  'src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
   // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
@@ -151,6 +159,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
   'scripts/__tests__/self-hosted-broker-cli.test.ts',
+  // A real short Node lifecycle supplies the dead-child prerequisite for broker successor preparation.
+  'scripts/__tests__/native-fresh-relay-fixture.test.ts',
   // Races two real worker-owned SQLite connections at one lease CAS barrier.
   'src-server/services/connections/__tests__/self-hosted-broker-service.test.ts',
   // Exercises owned Pion child lifecycle and injected teardown faults.
@@ -570,6 +580,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
+  // #2959: runs the release publication and signer CLIs, the release and
+  // publish workflows' own bash steps, and install.sh as bounded children.
+  'scripts/__tests__/portable-release-publish-workflow.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
@@ -808,6 +821,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // user's index/HEAD and stays invisible to branch/tag/log --all — the
   // same child-process shape as content-integrity-gate.test.ts.
   'src-server/services/checkpoints/__tests__/checkpoint-ref-store.test.ts',
+  // kontourai/station#1419: drives the real legacy Git update route against
+  // throwaway fixture repositories through execFileSync, alongside removal,
+  // grant revocation and consent-listener approval over one Station home.
+  'src-server/routes/plugins/__tests__/plugin-command-effect-lifecycle.test.ts',
   // station#2923: builds and restores real Git fixture repositories through
   // the transitive execGit process helper, not a direct test-file import.
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
@@ -1552,15 +1569,9 @@ export function discoverVitestResourceGroups(options = {}) {
 }
 
 /**
- * Test quarantine (the merge-queue regression gate's escape valve).
- *
- * A quarantine entry names a test file that is flaky, not broken: the same
- * commit both passed and failed it. Quarantined files are EXCLUDED from the
- * merge-queue regression shards only (`run-vitest-corpus.mjs
- * --exclude-quarantined`, passed by `run-full-regression-phases.mjs`). They
- * STILL run in Nightly's canonical `full:regression`, which never reads this
- * list — so Nightly stays exposed to the flake while the queue stops holding
- * unrelated PRs hostage to it.
+ * Historical quarantine list for explicit diagnostic corpus exclusions.
+ * Hosted source qualification always includes these files. The merge queue
+ * now runs affected integration checks, not the full corpus.
  *
  * This is an overlay, not a partition member: a quarantined file keeps its
  * resource group above (`partitionVitestResourceSubset` and

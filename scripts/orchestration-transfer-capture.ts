@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { HttpTransferRecorder } from '../src-server/__test-utils__/http-transfer-recorder.js';
+import { TransferMeasurementFailure } from '../src-server/__test-utils__/orchestration-transfer-scenario.js';
 
 const targetRoot = resolve(process.argv[2] ?? '');
 const outputPath = process.argv[3];
@@ -68,9 +69,9 @@ const [
   mod('packages/sdk/src/client/index.ts'),
 ]);
 const wait = async (predicate: () => boolean, name: string) => {
-  const deadline = Date.now() + 5000;
+  const deadline = performance.now() + 5000;
   while (!predicate()) {
-    if (Date.now() > deadline)
+    if (performance.now() > deadline)
       throw new Error(`capture barrier timed out: ${name}`);
     await new Promise((resolveWait) => setTimeout(resolveWait, 5));
   }
@@ -83,6 +84,23 @@ const logger = {
   trace() {},
   fatal() {},
 };
+// Byte comparisons measure the same burst, including clock-coalesced activity bindings.
+const toolDigest = createHash('sha256')
+  .update(
+    [
+      'scripts/orchestration-transfer-capture.ts',
+      'src-server/__test-utils__/orchestration-transfer-scenario.ts',
+      'src-server/__test-utils__/http-transfer-recorder.ts',
+      'src-server/__test-utils__/orchestration-transfer-fixture.ts',
+      'scripts/orchestration-transfer-budget.mjs',
+    ]
+      .map((file) => readFileSync(join(toolRoot, file)))
+      .join('\n'),
+  )
+  .digest('hex');
+const realNow = Date.now;
+Date.now = () => Date.UTC(2026, 7, 25);
+
 const root = mkdtempSync(join(tmpdir(), 'station-transfer-capture-'));
 const store = new EventStore(join(root, 'events.sqlite'));
 const bus = new EventBus();
@@ -170,6 +188,7 @@ const budget = JSON.parse(
     'utf8',
   ),
 ).policy;
+
 try {
   const externalRecorder = new HttpTransferRecorder(baseUrl);
   sdk.setClientCredentialResolver(() => ({
@@ -324,19 +343,6 @@ try {
     sdk,
     budget,
   });
-  const toolDigest = createHash('sha256')
-    .update(
-      [
-        'scripts/orchestration-transfer-capture.ts',
-        'src-server/__test-utils__/orchestration-transfer-scenario.ts',
-        'src-server/__test-utils__/http-transfer-recorder.ts',
-        'src-server/__test-utils__/orchestration-transfer-fixture.ts',
-        'scripts/orchestration-transfer-budget.mjs',
-      ]
-        .map((file) => readFileSync(join(toolRoot, file)))
-        .join('\n'),
-    )
-    .digest('hex');
   const report = {
     schemaVersion: 1,
     subjectSha,
@@ -351,7 +357,22 @@ try {
   };
   writeFileSync(outputPath, `${JSON.stringify(report)}\n`);
   console.log(JSON.stringify(report));
+} catch (error) {
+  if (error instanceof TransferMeasurementFailure) {
+    writeFileSync(
+      `${outputPath}.failure.json`,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        subjectSha,
+        baseSha: baseSha ?? subjectSha,
+        toolDigest,
+        ...error.diagnostic,
+      })}\n`,
+    );
+  }
+  throw error;
 } finally {
+  Date.now = realNow;
   sdk.setClientCredentialResolver();
   listener.closeAllConnections?.();
   await new Promise<void>((resolveClose) =>

@@ -1,7 +1,7 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
-import { formatToolName } from '../../utils/chat-progress';
+import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
@@ -56,13 +56,6 @@ function epochMs(value: string | undefined): number | undefined {
   return Number.isNaN(ms) ? undefined : ms;
 }
 
-const OUTCOME_WORDS = {
-  success: 'done',
-  error: 'failed',
-  cancelled: 'cancelled',
-  unresolved: 'no result',
-} as const;
-
 /**
  * The one status a chat pane shows, by priority: a decision the user owes
  * (approval) outranks the transport (blocked, reconnecting, catching up),
@@ -82,10 +75,7 @@ export function deriveChatStatus(
       kind: 'approval',
       tone: 'attention',
       glyph: 'approval',
-      label:
-        input.approvalCount === 1
-          ? 'Approval needed'
-          : `${input.approvalCount} approvals needed`,
+      label: 'Approval needed',
       count: input.approvalCount > 1 ? input.approvalCount : undefined,
       details: [],
       action: 'reveal-approval',
@@ -96,7 +86,7 @@ export function deriveChatStatus(
       kind: 'blocked',
       tone: 'broken',
       glyph: 'attention',
-      label: stream.label,
+      label: 'Check connection',
       details: [{ text: STREAM_DETAIL }],
       action: 'repair',
     };
@@ -106,7 +96,7 @@ export function deriveChatStatus(
       kind: stream.kind,
       tone: 'neutral',
       glyph: 'reconnecting',
-      label: stream.label,
+      label: stream.kind === 'reconnecting' ? 'Reconnecting' : 'Catching up',
       details: [{ text: STREAM_DETAIL }],
       action: 'details',
     };
@@ -116,7 +106,7 @@ export function deriveChatStatus(
       kind: 'restored',
       tone: 'active',
       glyph: 'done',
-      label: stream.label,
+      label: 'Connected',
       details: [],
       action: undefined,
     };
@@ -138,39 +128,29 @@ export function deriveChatStatus(
     };
   }
   const details: ChatStatus['details'] = [];
-  const running = activity?.openTurn ? (activity.runningTools ?? []) : [];
-  const current = running.at(-1);
-  let label: string;
-  if (current) {
-    const more = running.length > 1 ? ` (+${running.length - 1} more)` : '';
-    label = `Running ${formatToolName(current.name)}${more}`;
-    details.push({
-      text: `Running ${formatToolName(current.name)}${more}`,
-      since: epochMs(current.startedAt),
-    });
-  } else {
-    label =
-      input.activityHint?.kind === 'thinking'
-        ? 'Thinking'
-        : input.activityHint?.kind === 'compacting'
-          ? 'Compacting context'
+  const running =
+    activity?.openTurn && (activity.runningTools?.length ?? 0) > 0;
+  let label = running
+    ? 'Working'
+    : input.activityHint?.kind === 'thinking'
+      ? 'Thinking'
+      : input.activityHint?.kind === 'compacting'
+        ? 'Compacting'
+        : input.activityHint?.kind === 'requesting'
+          ? 'Preparing'
           : 'Working';
-    const last = activity?.lastTool;
-    const lastAt = epochMs(last?.completedAt);
-    const turnAt = epochMs(activity?.openTurn?.startedAt);
-    if (
-      last &&
-      lastAt !== undefined &&
-      turnAt !== undefined &&
-      lastAt >= turnAt
-    )
-      details.push({
-        text: `Last: ${formatToolName(last.name)} · ${OUTCOME_WORDS[last.outcome]}`,
-      });
+  if (input.activityHint?.kind === 'retrying') {
+    label = 'Retrying';
+    details.push({ text: retryActivityLabel(input.activityHint) });
   }
   const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
-  if (silentSince !== undefined)
-    details.push({ text: 'No output for', since: silentSince });
+  if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
+    if (!running) label = 'Still waiting';
+    details.push({
+      text: 'No response from the engine for',
+      since: silentSince,
+    });
+  }
   return {
     kind: 'working',
     tone: 'active',

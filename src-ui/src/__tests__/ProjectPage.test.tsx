@@ -5,9 +5,13 @@
 import {
   ConnectionStore,
   ConnectionsProvider,
+  type RequestCredentialEvidence,
 } from '@kontourai/station-connect';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type {
+  MemberProjectView,
+  ProjectConfig,
+} from '@kontourai/station-contracts/project';
 import {
   WORKSPACE_DEVICE_PANE_DESCRIPTOR,
   WORKSPACE_DEVICE_PANE_INSTANCE,
@@ -21,6 +25,38 @@ import { OPEN_PROJECT_CHATS_EVENT } from '../lib/projectChatEvents';
 
 const sdkMocks = vi.hoisted(() => ({
   project: undefined as ProjectConfig | undefined,
+  memberProject: undefined as MemberProjectView | undefined,
+  isMemberProject: false,
+  credentialEvidence: null as RequestCredentialEvidence | null,
+  credentialEvidenceCurrent: true,
+  sharedTaskQuery: vi.fn(() => ({
+    data: [],
+    isPending: false,
+    isError: false,
+    error: null,
+    isFetching: false,
+    refetch: vi.fn(),
+  })),
+  operatorLayouts: vi.fn(() => ({
+    data: sdkMocks.layouts,
+    isLoading: sdkMocks.layoutsLoading,
+    isError: sdkMocks.layoutsError,
+    refetch: sdkMocks.refetchLayouts,
+  })),
+  operatorGitStatus: vi.fn(() => ({ data: undefined })),
+  operatorGitLog: vi.fn(() => ({ data: [] })),
+  operatorAgentsQuery: vi.fn(() => ({
+    data: sdkMocks.agents,
+    isSuccess: true,
+    catalogState: 'live',
+  })),
+  operatorEngineConnectionsQuery: vi.fn(() => ({
+    data: sdkMocks.engineConnections,
+  })),
+  operatorKnowledgeDocsQuery: vi.fn(() => ({ data: [] })),
+  operatorKnowledgeStatusQuery: vi.fn(() => ({ data: undefined })),
+  operatorKnowledgeNamespacesQuery: vi.fn(() => ({ data: [] })),
+  operatorConversationsQuery: vi.fn(() => ({ data: [] })),
   projectByAuthority: {} as Record<string, ProjectConfig | undefined>,
   capturedProjectQueryConfigs: [] as Array<
     | {
@@ -89,11 +125,13 @@ const authorityRef = vi.hoisted(() => ({
   current: {
     apiBase: 'http://localhost:3141',
     authorityKey: 'project-page-test-authority',
+    requiresEnrolledCredential: false,
     isCurrent: () => true,
   } as
     | {
         apiBase: string;
         authorityKey: string;
+        requiresEnrolledCredential?: boolean;
         isCurrent: () => boolean;
       }
     | undefined,
@@ -103,6 +141,18 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
   useHostRequestAuthorityScope: () => authorityRef.current,
 }));
+
+vi.mock('@kontourai/station-connect', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-connect')>();
+  return {
+    ...actual,
+    useConnections: () => ({
+      captureCredentialEvidence: () => sdkMocks.credentialEvidence,
+      isCredentialEvidenceCurrent: () => sdkMocks.credentialEvidenceCurrent,
+    }),
+  };
+});
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -114,8 +164,8 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 
 vi.mock('../hooks/useGitStatus', () => ({
-  useGitStatus: () => ({ data: undefined }),
-  useGitLog: () => ({ data: [] }),
+  useGitStatus: sdkMocks.operatorGitStatus,
+  useGitLog: sdkMocks.operatorGitLog,
 }));
 
 vi.mock('../hooks/useRecentLayouts', () => ({
@@ -140,16 +190,19 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
         sdkMocks.isError || sdkMocks.isLoading
           ? undefined
           : requestScope
-            ? (byAuthority[requestScope.authorityKey] ?? sdkMocks.project)
+            ? sdkMocks.isMemberProject
+              ? sdkMocks.memberProject
+              : (byAuthority[requestScope.authorityKey] ?? sdkMocks.project)
             : undefined,
       isPending: sdkMocks.isLoading,
       isError: sdkMocks.isError,
       error: sdkMocks.error,
       refetch: sdkMocks.refetch,
       requestScope,
-      isMemberProject: false,
+      isMemberProject: sdkMocks.isMemberProject,
     };
   }),
+  useScopedMemberProjectSharedTasksQuery: sdkMocks.sharedTaskQuery,
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -181,16 +234,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
       };
     },
   ),
-  useProjectLayoutsQuery: vi.fn(() => ({
-    data: sdkMocks.layouts,
-    isLoading: sdkMocks.layoutsLoading,
-    isError: sdkMocks.layoutsError,
-    refetch: sdkMocks.refetchLayouts,
-  })),
-  useKnowledgeDocsQuery: vi.fn(() => ({ data: [] })),
-  useKnowledgeStatusQuery: vi.fn(() => ({ data: undefined })),
-  useKnowledgeNamespacesQuery: vi.fn(() => ({ data: [] })),
-  useProjectConversationsQuery: vi.fn(() => ({ data: [] })),
+  useProjectLayoutsQuery: sdkMocks.operatorLayouts,
+  useKnowledgeDocsQuery: sdkMocks.operatorKnowledgeDocsQuery,
+  useKnowledgeStatusQuery: sdkMocks.operatorKnowledgeStatusQuery,
+  useKnowledgeNamespacesQuery: sdkMocks.operatorKnowledgeNamespacesQuery,
+  useProjectConversationsQuery: sdkMocks.operatorConversationsQuery,
   useAvailableProjectLayoutsQuery: vi.fn(() => ({
     data: [],
     isLoading: false,
@@ -207,14 +255,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // Keep the new pane deployment query out of this Project Page unit fixture.
   useServerCapabilitiesQuery: vi.fn(() => ({ data: undefined })),
   useOrchestrationSessionsQuery: vi.fn(() => ({ data: sdkMocks.sessions })),
-  useAgentsQuery: vi.fn(() => ({
-    data: sdkMocks.agents,
-    isSuccess: true,
-    catalogState: 'live',
-  })),
-  useEngineConnectionsQuery: vi.fn(() => ({
-    data: sdkMocks.engineConnections,
-  })),
+  useAgentsQuery: sdkMocks.operatorAgentsQuery,
+  useEngineConnectionsQuery: sdkMocks.operatorEngineConnectionsQuery,
 }));
 
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
@@ -250,6 +292,43 @@ const projectFixture: ProjectConfig = {
   createdAt: '2026-07-07T12:00:00.000Z',
   updatedAt: '2026-07-07T12:00:00.000Z',
 };
+
+const memberProjectFixture: MemberProjectView = {
+  version: 'station.member-project/v1',
+  kind: 'member-project',
+  id: 'project-shared-demo',
+  slug: 'demo',
+  name: 'Shared Demo Project',
+  description: 'Shared with this Station account',
+  actions: ['view'],
+};
+
+function selectCurrentNativeRelayAccount() {
+  sdkMocks.credentialEvidence = {
+    connectionId: 'station-profile:relay',
+    activationEpoch: 'test-selection:1',
+    generation: 1,
+    authorityGeneration: 1,
+    credentialState: 'device-session',
+    credential: undefined,
+    origin: 'https://relay-station.example.test',
+    nativeBrokerRoute: {
+      routeVersion: 1,
+      profileName: 'relay',
+      profileRevision: 4,
+      brokerOrigin: 'https://broker.example.test',
+      stationId: '11111111-1111-4111-8111-111111111111',
+      enrollmentId: '33333333-3333-4333-8333-333333333333',
+    },
+  };
+  sdkMocks.credentialEvidenceCurrent = true;
+  authorityRef.current = {
+    apiBase: 'https://relay-station.example.test',
+    authorityKey: 'native-relay-account-scope',
+    requiresEnrolledCredential: true,
+    isCurrent: () => true,
+  };
+}
 
 /**
  * One Coding-hosted pane occurrence, exactly as the layout adapter derives it
@@ -335,6 +414,26 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   beforeEach(() => {
     pluginRegistryState.loadStatus = {};
     sdkMocks.project = projectFixture;
+    sdkMocks.memberProject = undefined;
+    sdkMocks.isMemberProject = false;
+    sdkMocks.credentialEvidence = null;
+    sdkMocks.credentialEvidenceCurrent = true;
+    authorityRef.current = {
+      apiBase: 'http://localhost:3141',
+      authorityKey: 'project-page-test-authority',
+      requiresEnrolledCredential: false,
+      isCurrent: () => true,
+    };
+    sdkMocks.operatorLayouts.mockClear();
+    sdkMocks.operatorGitStatus.mockClear();
+    sdkMocks.operatorGitLog.mockClear();
+    sdkMocks.operatorAgentsQuery.mockClear();
+    sdkMocks.operatorEngineConnectionsQuery.mockClear();
+    sdkMocks.operatorKnowledgeDocsQuery.mockClear();
+    sdkMocks.operatorKnowledgeStatusQuery.mockClear();
+    sdkMocks.operatorKnowledgeNamespacesQuery.mockClear();
+    sdkMocks.operatorConversationsQuery.mockClear();
+    sdkMocks.sharedTaskQuery.mockClear();
     sdkMocks.capturedProjectViewOptions = [];
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
@@ -355,6 +454,60 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     navigationMocks.navigate.mockClear();
     navigationMocks.setDockState.mockClear();
     navigationMocks.setLayout.mockClear();
+  });
+
+  test('native relay scope opens only MemberProjectView and never mounts operator reads', async () => {
+    selectCurrentNativeRelayAccount();
+    sdkMocks.isMemberProject = true;
+    sdkMocks.memberProject = memberProjectFixture;
+
+    await renderProjectPage();
+
+    expect(screen.getByText('Shared Demo Project')).toBeTruthy();
+    expect(
+      screen.getByText('There is no shared work in this Project yet.'),
+    ).toBeTruthy();
+    expect(sdkMocks.sharedTaskQuery).toHaveBeenCalledTimes(1);
+    expect(sdkMocks.operatorLayouts).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorGitStatus).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorGitLog).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorAgentsQuery).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorKnowledgeDocsQuery).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorConversationsQuery).not.toHaveBeenCalled();
+  });
+
+  test('native relay operator project response stops before operator queries', async () => {
+    selectCurrentNativeRelayAccount();
+
+    await renderProjectPage();
+
+    expect(
+      screen.getByText('This Project is not shared with this account'),
+    ).toBeTruthy();
+    expect(sdkMocks.operatorLayouts).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorGitStatus).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorGitLog).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorAgentsQuery).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorEngineConnectionsQuery).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorKnowledgeDocsQuery).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorConversationsQuery).not.toHaveBeenCalled();
+  });
+
+  test('native relay without account scope directs the member to Station connections', async () => {
+    selectCurrentNativeRelayAccount();
+    authorityRef.current = undefined;
+
+    await renderProjectPage();
+
+    expect(screen.getByText('Sign in to this Station account')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open Station connections' }),
+    );
+    expect(navigationMocks.navigate).toHaveBeenCalledWith(
+      '/connections/computers',
+    );
+    expect(sdkMocks.operatorLayouts).not.toHaveBeenCalled();
+    expect(sdkMocks.operatorGitStatus).not.toHaveBeenCalled();
   });
 
   /**
@@ -827,6 +980,16 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 describe('ProjectPage scope migration (#481 slice A)', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
+    sdkMocks.credentialEvidence = null;
+    sdkMocks.credentialEvidenceCurrent = true;
+    sdkMocks.isMemberProject = false;
+    sdkMocks.memberProject = undefined;
+    authorityRef.current = {
+      apiBase: 'http://localhost:3141',
+      authorityKey: 'project-page-test-authority',
+      requiresEnrolledCredential: false,
+      isCurrent: () => true,
+    };
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
     sdkMocks.error = undefined;

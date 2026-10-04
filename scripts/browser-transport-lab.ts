@@ -102,6 +102,7 @@ if (
         '--self-hosted-broker',
         '--station-ui',
         '--two-station-isolation',
+        '--shared-broker-isolation',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -113,7 +114,11 @@ if (
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
 const selfHostedBroker = args.includes('--self-hosted-broker');
 const stationUi = args.includes('--station-ui');
-const twoStationIsolation = args.includes('--two-station-isolation');
+const sharedBrokerIsolation = args.includes('--shared-broker-isolation');
+const twoStationIsolation =
+  args.includes('--two-station-isolation') || sharedBrokerIsolation;
+if (sharedBrokerIsolation && args.includes('--two-station-isolation'))
+  throw new Error('Choose one two-Station broker topology per run');
 const fixtureDocumentUrl = (origin: string) =>
   stationUi ? new URL('/__fixture', origin).href : origin;
 if (
@@ -144,7 +149,7 @@ let accountStationGroup:
   | Awaited<ReturnType<typeof startRelayAccountStationGroup>>
   | undefined;
 let secondAccountStation:
-  | Awaited<ReturnType<typeof startRelayAccountStation>>
+  | Awaited<ReturnType<NonNullable<typeof accountStationGroup>['startStation']>>
   | undefined;
 let brokerLab:
   | Awaited<ReturnType<typeof startSelfHostedBrokerProcess>>
@@ -176,6 +181,23 @@ const pionExecutable = join(
 );
 process.umask(0o077);
 const root = mkdtempSync(join(tmpdir(), 'station-browser-transport-'));
+
+/**
+ * The exact version the root manifest pins for the native peer adapter, read
+ * rather than restated so a dependency bump cannot leave lab reports recording
+ * the previous provenance.
+ */
+function pinnedNodeDatachannelVersion(): string {
+  const manifest = JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL('../package.json', import.meta.url)),
+      'utf8',
+    ),
+  ) as { dependencies?: Record<string, string> };
+  const version = manifest.dependencies?.['node-datachannel'];
+  assert.ok(version, 'the root manifest must pin node-datachannel');
+  return version;
+}
 const errors: unknown[] = [];
 const abort = new AbortController();
 const interrupt = () =>
@@ -1314,6 +1336,7 @@ async function runTwoStationIsolation(input: {
   secondStation: NonNullable<typeof secondAccountStation>;
   firstBroker: NonNullable<typeof brokerLab>;
   secondBroker: NonNullable<typeof secondBrokerLab>;
+  sharedBroker: boolean;
   firstTrust: ApprovedStationConnectionTrust;
   secondTrust: ApprovedStationConnectionTrust;
   secondPageOrigin: string;
@@ -1343,7 +1366,29 @@ async function runTwoStationIsolation(input: {
     phase = 'first connector lease before cross-Station admission';
     assert.equal((await input.firstBroker.readLease()).state, 'online');
     phase = 'second connector lease before cross-Station admission';
-    assert.equal((await input.secondBroker.readLease()).state, 'online');
+    const secondLeaseBefore = await input.secondBroker.readLease();
+    assert.equal(secondLeaseBefore.state, 'online');
+    if (input.sharedBroker) {
+      assert.equal(input.firstBroker.processId, input.secondBroker.processId);
+      assert.equal(
+        input.firstBroker.databasePath,
+        input.secondBroker.databasePath,
+      );
+      assert.equal(
+        input.firstBroker.brokerOrigin,
+        input.secondBroker.brokerOrigin,
+      );
+      for (const kind of ['connector', 'routing'] as const) {
+        assert.notEqual(
+          input.firstBroker.bundle[kind].id,
+          input.secondBroker.bundle[kind].id,
+        );
+        assert.notEqual(
+          input.firstBroker.bundle[kind].secret,
+          input.secondBroker.bundle[kind].secret,
+        );
+      }
+    }
     phase = 'foreign route invitation issuance';
     const foreignInvitation = input.firstBroker.issueInvitation({
       clientOrigin: input.secondPageOrigin,
@@ -1548,6 +1593,70 @@ async function runTwoStationIsolation(input: {
       'Another Station Project invitation must refuse as an invalid invitation',
     );
 
+    if (input.sharedBroker) {
+      phase = 'second connector renewal with first Station readable';
+      for (const [own, foreign] of [
+        [input.firstBroker, input.secondBroker],
+        [input.secondBroker, input.firstBroker],
+      ]) {
+        const refused = await fetch(
+          `${own.brokerOrigin}/broker/v1/stations/status`,
+          {
+            method: 'POST',
+            headers: {
+              Origin: own.scope.browserOrigin,
+              Authorization: `Bearer ${foreign.bundle.routing.secret}`,
+              'X-Broker-Credential-Id': foreign.bundle.routing.id,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ scope: own.scope }),
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+        assert.equal(
+          refused.status,
+          401,
+          'Live foreign Station routing credential must refuse',
+        );
+        await refused.arrayBuffer();
+      }
+      const renewalDeadline = Date.now() + 30_000;
+      let renewed = await input.secondBroker.readLease();
+      while (
+        renewed.expiresAt <= secondLeaseBefore.expiresAt &&
+        Date.now() < renewalDeadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        renewed = await input.secondBroker.readLease();
+      }
+      assert(
+        renewed.expiresAt > secondLeaseBefore.expiresAt,
+        'Second Station lease must actually renew',
+      );
+      assert.equal(renewed.state, 'online');
+      phase = 'second fresh peer reconnect on shared broker';
+      const reconnected = await page.evaluate(browserBrokerReconnect);
+      assert.equal(reconnected.peerReplaced, true);
+      assert.notEqual(reconnected.previous, reconnected.connectionId);
+      await page.evaluate(browserBrokerAdmitApplicationTransport);
+      await page.evaluate(browserBrokerAdoptApplicationTransport);
+      const renewedRead = await page.evaluate(
+        browserApplicationAccountRequest,
+        {
+          path: '/api/projects/relay-shared',
+        },
+      );
+      assert.equal(renewedRead.status, 200, renewedRead.body);
+      assert.equal(
+        (
+          await input.firstPage.evaluate(browserApplicationAccountRequest, {
+            path: '/api/projects/relay-shared',
+          })
+        ).status,
+        200,
+      );
+    }
+
     phase = 'second Device and broker-grant revocation';
     await input.secondStation.revokeDevice();
     const secondRevoked = await page.evaluate(
@@ -1596,6 +1705,22 @@ async function runTwoStationIsolation(input: {
       (await input.firstPage.evaluate(browserBrokerReadStatus)).state,
       'online',
     );
+    if (input.sharedBroker) {
+      phase = 'second Station withdrawal leaves first application route live';
+      await input.secondStation.stopStation();
+      await assert.rejects(
+        input.secondBroker.readLease(),
+        /broker_request_refused_401/,
+      );
+      assert.equal((await input.firstBroker.readLease()).state, 'online');
+      const stillReadable = await input.firstPage.evaluate(
+        browserApplicationAccountRequest,
+        {
+          path: '/api/projects/relay-shared',
+        },
+      );
+      assert.equal(stillReadable.status, 200, stillReadable.body);
+    }
     assert.equal(directApplicationAttempts, 0);
     report = {
       status: 'passed',
@@ -1605,6 +1730,18 @@ async function runTwoStationIsolation(input: {
       distinctIssuerQualifiedPrincipals: true,
       distinctBrokerOrigins:
         input.firstBroker.brokerOrigin !== input.secondBroker.brokerOrigin,
+      ...(input.sharedBroker
+        ? {
+            sharedBrokerProcessId: input.firstBroker.processId,
+            sharedBrokerDatabasePath: input.firstBroker.databasePath,
+            sharedBrokerOrigin: input.firstBroker.brokerOrigin,
+            distinctConnectorAndRoutingBundles: true,
+            liveForeignRoutingCredentialsRefused: true,
+            secondLeaseRenewed: true,
+            secondFreshPeerReconnected: true,
+            secondWithdrawalFirstStillReadable: true,
+          }
+        : {}),
       browserSelectedRelayCandidates:
         pair.localType === 'relay' && pair.remoteType === 'relay',
       foreignRouteInvitationRefused: true,
@@ -1615,8 +1752,9 @@ async function runTwoStationIsolation(input: {
       secondDeviceRevokedFirstStillReadable: true,
       secondGrantRevokedFirstRouteOnline: true,
       directApplicationAttempts,
-      scope:
-        'synthetic local accounts and Devices on two source Stations over separate local encrypted broker routes; no fresh-client or two-human proof',
+      scope: input.sharedBroker
+        ? 'synthetic local accounts and Devices on two source Stations sharing one broker process and database; no hostile-tenant or two-human proof'
+        : 'synthetic local accounts and Devices on two source Stations over separate local encrypted broker routes; no fresh-client or two-human proof',
     };
   } catch (error) {
     console.error(`Two-Station isolation failed at phase: ${phase}`);
@@ -2158,7 +2296,7 @@ try {
           throw new Error('Second broker fixture already started');
         assert(secondConnectionTrust && secondaryPageOrigin && approvedSecond);
         const secondRoot = join(root, 'secondary-application-station');
-        secondBrokerLab = await startSelfHostedBrokerProcess({
+        const secondInput = {
           directory: secondRoot,
           scope: {
             stationId: secondConnectionTrust.stationId,
@@ -2167,13 +2305,17 @@ try {
             browserOrigin: secondaryPageOrigin,
           },
           signal: abort.signal,
-        });
+        };
+        secondBrokerLab = sharedBrokerIsolation
+          ? await lab.addScope(secondInput)
+          : await startSelfHostedBrokerProcess(secondInput);
         const secondLab = secondBrokerLab;
         secondBrokerPort = Number(new URL(secondLab.brokerOrigin).port);
         assert(
           Number.isSafeInteger(secondBrokerPort) && secondBrokerPort > 1024,
         );
-        assert.notEqual(secondBrokerPort, brokerPort);
+        if (sharedBrokerIsolation) assert.equal(secondBrokerPort, brokerPort);
+        else assert.notEqual(secondBrokerPort, brokerPort);
         prepareSecondStationConnectorConfig = (stationOrigin) => {
           const connectorDirectory = join(
             secondRoot,
@@ -2607,6 +2749,7 @@ try {
                 secondStation: secondAccountStation,
                 firstBroker: brokerLab,
                 secondBroker: secondBrokerLab,
+                sharedBroker: sharedBrokerIsolation,
                 firstTrust: connectionTrust,
                 secondTrust: secondConnectionTrust,
                 secondPageOrigin: secondaryPageOrigin,
@@ -2938,6 +3081,9 @@ try {
     cookieAdoption: cookieAdoptionReport ?? { status: 'not-run' },
     freshRelayEnrollment: freshRelayReport ?? { status: 'not-run' },
     twoStationIsolation: twoStationReport ?? { status: 'not-run' },
+    sharedBrokerIsolation: sharedBrokerIsolation
+      ? twoStationReport
+      : { status: 'not-run' },
     stationUiRelayJourney: stationUiRelayJourney ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
@@ -2951,7 +3097,7 @@ try {
     ...(peerAdapter === 'pion'
       ? pionProvenance
       : {
-          nodeDatachannel: '0.33.3',
+          nodeDatachannel: pinnedNodeDatachannelVersion(),
           libdatachannel: datachannel.getLibraryVersion(),
         }),
     browserTurnTransport: browserTransport,
@@ -2984,7 +3130,9 @@ try {
             'withdrawn routing credential refused by browser and exact HTTP control',
             ...(twoStationIsolation
               ? [
-                  'two independent Stations and browser principals keep Projects and Devices isolated over separate encrypted local broker routes',
+                  sharedBrokerIsolation
+                    ? 'two independent Stations and browser principals share one broker process/database while retaining separate scopes, credentials and application data'
+                    : 'two independent Stations and browser principals keep Projects and Devices isolated over separate encrypted local broker routes',
                   'revoking the second Device and routing grant leaves the first Station readable and online',
                   'both Stations have zero direct browser application HTTP and no tested application markers in TURN capture',
                 ]

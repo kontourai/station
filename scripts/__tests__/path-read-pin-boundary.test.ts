@@ -558,6 +558,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts':
+    'lists only the temporary Station home returned by setup() to verify refused acquisitions leave no installed or staged files',
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts':
     'git ls-files inside the temporary project it creates',
   'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts':
@@ -1118,6 +1120,24 @@ describe('the scanner resolves only what it can justify', () => {
           'readFileSync(target);\n',
       ),
     ).toEqual(['src-ui/src/main.tsx']);
+  });
+
+  it('resolves aliased Node URL value imports without guessing other constructors', () => {
+    const read =
+      "readFileSync(new NodeURL('../App.tsx', import.meta.url), 'utf8');\n";
+    for (const imported of [
+      "import { URL as NodeURL } from 'node:url';\n",
+      "import { fileURLToPath, URL as NodeURL } from 'node:url';\n",
+    ])
+      expect(scan(imported + read)).toEqual(['src-ui/src/App.tsx']);
+    for (const imported of [
+      "import { URL as NodeURL } from 'another-package';\n",
+      "import type { URL as NodeURL } from 'node:url';\n",
+      "import { type URL as NodeURL } from 'node:url';\n",
+      "// import { URL as NodeURL } from 'node:url';\n",
+      'const NodeURL = arbitraryConstructor;\n',
+    ])
+      expect(scan(imported + read)).toEqual([]);
   });
 
   it('resolves a read-helper parameter (arrow and function forms)', () => {

@@ -7,12 +7,12 @@
 
   "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
 
-  "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only.",
+  "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+  "document": {"digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -44,7 +44,43 @@
 
     {"path":"src-server/utils/pricing.ts","digest":"436b28f35539587ffb1f7a798ad1da092ef145e7fe457d9d9488d9d4eb738406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"1619fbb8aea95d9164f3ebf68177f459b42f117ae78193fefe85687813011440","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+
+    {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"fabd9d689d4c0ac5ceea07eb3af030081345948281c3d22ae4213aba0f1f7035","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
+
+    {"path":"src-ui/src/components/usage-stats/UsageRollupPanel.tsx","digest":"62b11185d355abd84592d6e1a3e882897d7cba03097572184c93df6f2e70bbc8","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+
+    {"path":"src-ui/src/components/usage-stats/UsageStatsPanel.tsx","digest":"5d90c8796da6af36a1f0c4ff481d75c11893c80e19f9b53d40abdfe1f1614568","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+
+    {"path":"src-ui/src/components/ActivityTimeline.tsx","digest":"1de9db27b3c6bf6d16832ee56534d2f97543df5b1a3a06d7ec81546f919eaf52","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+
+    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"315c15570c1246b28ca9bd46646da489c667981dbedaa2018f8811fa9b61a895","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+
+    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
+
+    {"path":"src-server/analytics/usage-aggregator.ts","digest":"a8088a0a903e7d1996a569f147c5f468c197458886e2799f0a145775007556ff","revision":"231bd56ebc8379877a169db1822e3fbff10c9787"},
+
+    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"eafbfa911453fec372d124ae9072826f16a57864055e2a262f45ec3312b0e659","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+
+    {"path":"packages/shared/src/usage-fold.ts","digest":"1a5a80b7af3c26970acd6e33da1a530565a0db0716445b2345ca581b9fe4c57f","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+
+    {"path":"packages/shared/src/usage-rollup.ts","digest":"af9989261c757ce2476b75c73c50021e49275cf25666615146e4e3bf7c2ad5fc","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"src-server/providers/adapters/muse-serve-session.ts","digest":"d6d4fb0a88ed0a02851c8a60aa28bbbddb9c079ee834f12ebc7c16fc3b78c84f","revision":"c6c7d4dd40660b087eacdcda019f817a127405e8"},
+
+    {"path":"src-server/providers/__tests__/muse-serve-adapter.test.ts","digest":"41cd71aac44bb98e4a39f3e9a8f6629b48be3409f3578a22f6269978d5ee644c","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+
+    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"ed7aacb2c9d560efe6c8af7c9bed5a4e711f5053"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+
+    {"path":"src-ui/src/pages/ProfilePage.css","digest":"9a36e5f00b440a12ae1c2cd2222a59e52c7f030d2a8c23119c600527714cd1e8","revision":"b0568b6eb4305aa50f762e2715f69661608c94e3"},
+
+    {"path":"src-ui/src/components/badges/AchievementsBadge.tsx","digest":"4208b07caa8f5f10f83e2c09e61daf38fc6a1624b77d505ed16cb621a063ed8c","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"},
+
+    {"path":"src-ui/src/components/badges/AchievementsBadge.test.tsx","digest":"7ad71c9428591ac7109fa3920220a0f9851516108e840d3b2e38967a051e95c4","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"}
   ],
 
   "checks": [

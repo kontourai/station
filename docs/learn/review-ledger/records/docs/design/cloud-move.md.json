@@ -28,7 +28,7 @@
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"src-server/services/identity/deployment-authentication-service.ts","digest":"d71b6a106a14a8973a991fe44d08cf869c8ba299d516c6628a2e8d80b7c6fe9b","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    {"path":"src-server/services/identity/deployment-authentication-service.ts","digest":"eb023af1d1face7507dd72175cd61e35c62328b8b5d1520db2609aeb1a649b3e","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
     {"path":"src-server/services/ssh/openssh-worker-probe.ts","digest":"9a90daa97daec7b37c3e45fbd5fd4572d9da16c12e0110d2cd839af297ea57f5","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 

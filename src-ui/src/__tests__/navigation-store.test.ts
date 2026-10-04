@@ -19,6 +19,65 @@ import { handleUiNavigate } from '../hooks/useServerEvents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { normalizeDockMode } from '../types';
 
+describe('workspace project selection and new chats', () => {
+  afterEach(() => deviceSettingsStore.reset('chatDockProjectSlug'));
+
+  test('follows a selected workspace without changing the open chat', () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'chat-from-alpha' });
+    navigationStore.setProject('beta');
+    expect(navigationStore.getSnapshot().selectedProject).toBe('beta');
+    expect(navigationStore.getSnapshot().activeChat).toBe('chat-from-alpha');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
+    deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+    navigationStore.navigate('/projects/beta', { chat: 'new-alpha-chat' });
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('alpha');
+    expect(navigationStore.getSnapshot().activeChat).toBe('new-alpha-chat');
+    navigationStore.setProject('beta');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
+  });
+
+  test('a cancelled workspace navigation keeps the previous chat default', () => {
+    navigationStore.navigate('/projects/alpha');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-project'),
+      (_proceed, cancel) => cancel?.(),
+    );
+    try {
+      navigationStore.setProject('beta');
+      expect(window.location.pathname).toBe('/projects/alpha');
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('alpha');
+    } finally {
+      unregister();
+    }
+  });
+
+  test('conversation layout navigation preserves the chat default after guard admission', () => {
+    navigationStore.setProject('alpha');
+    deviceSettingsStore.set('chatDockProjectSlug', 'gamma');
+    let proceed!: () => void;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-conversation-layout'),
+      (next) => {
+        proceed = next;
+      },
+    );
+    try {
+      navigationStore.setLayout('beta', 'chat', {
+        preserveChatProjectDefault: true,
+      });
+      expect(window.location.pathname).toBe('/projects/alpha');
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('gamma');
+      proceed();
+      expect(window.location.pathname).toBe('/projects/beta/layouts/chat');
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('gamma');
+    } finally {
+      unregister();
+    }
+    navigationStore.setProject('beta');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
+  });
+});
+
 describe('parseProjectSelectionFromPath', () => {
   test.each(['navigate', 'popstate', 'aba'] as const)(
     'intervening %s supersedes delayed precommit',
@@ -198,6 +257,46 @@ describe('parseProjectSelectionFromPath', () => {
       });
     },
   );
+});
+
+describe('navigationStore.wouldNavigationGuardBlock (#1418/#1419 review, MEDIUM)', () => {
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
+  });
+
+  test('answers false with no registered guard, whatever the target', () => {
+    window.history.replaceState({}, '', '/here');
+    expect(navigationStore.wouldNavigationGuardBlock('/there')).toBe(false);
+    expect(navigationStore.wouldNavigationGuardBlock('/here')).toBe(false);
+  });
+
+  test('answers false for the SAME pathname even with a guard registered — navigate() never consults a guard for a same-pathname target', () => {
+    window.history.replaceState({}, '', '/here');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('same-pathname-guard'),
+      () => {
+        throw new Error('a same-pathname target must never run a guard');
+      },
+    );
+    try {
+      expect(navigationStore.wouldNavigationGuardBlock('/here')).toBe(false);
+    } finally {
+      unregister();
+    }
+  });
+
+  test('answers true for a different pathname with a guard registered — the exact case navigate() itself would run guards for', () => {
+    window.history.replaceState({}, '', '/here');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('different-pathname-guard'),
+      () => {},
+    );
+    try {
+      expect(navigationStore.wouldNavigationGuardBlock('/there')).toBe(true);
+    } finally {
+      unregister();
+    }
+  });
 });
 
 describe('navigationStore dialog history isolation', () => {

@@ -555,8 +555,8 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await stationAgent.click();
     const currentChat = new URL(page.url()).searchParams.get('chat');
     expect(currentChat).toBeTruthy();
-    const taskSwitcher = page.getByRole('button', { name: 'Switch task' });
-    const taskDialog = page.getByRole('dialog', { name: 'Switch task' });
+    const taskSwitcher = page.getByRole('button', { name: 'Chats and tasks' });
+    const taskDialog = page.getByRole('dialog', { name: 'Chats and tasks' });
     // #1642: the same lazy-chunk shape as the sheet above (`MobileTaskSwitcher`,
     // also `pending={null}`, also not prewarmed), so it gets the same wait. This
     // trigger publishes NO open state — no `aria-expanded`, no `aria-haspopup` —
@@ -570,7 +570,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await waitForLazySurface(
         page,
         {
-          surfaceName: `The Switch task sheet (${occasion})`,
+          surfaceName: `The Chats and tasks sheet (${occasion})`,
           surface: taskDialog,
           baselineUnavailableCount: boundaryErrorsBefore,
         },

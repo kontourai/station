@@ -512,7 +512,7 @@ it. The strip lives in the region's chrome bar (`RegionChromeBar`, in the
 placement grab, the strip, maximize and visibility, and the click surface
 that collapses the bar — and carries two slots the selected pane's own
 toolbar renders into: `ChatDockHeader` is Chat's toolbar now (identity,
-context meter, project context, session counter, More menu) and portals into
+context meter, project context, chat-list toggle, session counter, More menu) and portals into
 the bar, so a dock still has ONE chrome bar (#1064, #3309); `ActivityDockPane`
 has no bar of its own. The pane host's `dock` presentation mounts the
 selected pane as the strip's `tabpanel` and nothing else — a pane behind a

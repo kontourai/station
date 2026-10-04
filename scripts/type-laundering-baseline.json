@@ -1377,12 +1377,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/runtime/frameworks/strands-tool-loader.ts",
-      "rule": "as-any",
-      "fingerprint": "e642260df4b8645d73561e9d27a51a53b256038bb4e5faa6b08c4bde4fa7d6fb",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
       "rule": "as-any",
       "fingerprint": "09a7b325650bc198d3f1a621420cedcdb113b33cf594e1f2e7c39cebf6ecaa14",
@@ -1764,12 +1758,6 @@
       "file": "src-server/services/operations/action-operation-service.ts",
       "rule": "as-unknown",
       "fingerprint": "1222fd39f45f8b95b14713c0181a76d6170de1f88d92a3f95e4765ca74e2e68b",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/conversation-fork.ts",
-      "rule": "as-unknown",
-      "fingerprint": "0688f7bc96e4526512872a9c16b40c03e97cd0d9dce2fb97a2a7094ebb49f41a",
       "reason": "legacy-cast"
     },
     {
@@ -2934,12 +2922,6 @@
       "file": "src-ui/src/views/ProjectPage.tsx",
       "rule": "as-any",
       "fingerprint": "41b78178d8c4896c1c370a5d7afaf6bbb44ceaa4c5b6623ae8224647a6b94354",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/views/SkillsView.tsx",
-      "rule": "as-any",
-      "fingerprint": "520cb054279bfcb89ba8a064295fddcb68481287a0c5cadd6e69d7b286a35cb1",
       "reason": "legacy-cast"
     },
     {

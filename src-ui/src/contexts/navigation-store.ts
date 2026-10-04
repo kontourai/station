@@ -641,6 +641,26 @@ class NavigationStore {
   }
 
   /**
+   * A synchronous read for a caller that must not open the async
+   * confirm-and-continue flow `navigate()` runs when a guard is registered
+   * for the SAME target (kontourai/station#1418, #1419: a plugin-command
+   * navigation settles `aborted` with a notice instead of prompting, so the
+   * local effect stays one synchronous step).
+   *
+   * Shares the exact predicate `navigate()` itself uses to decide whether to
+   * consult guards at all, extracted here so the two cannot drift (#1418/
+   * #1419 review, MEDIUM: a caller that asked "is any guard registered,
+   * anywhere" over-aborted for a same-pathname target navigate() would have
+   * let straight through, and for a `showSurface` destination navigate()
+   * never even runs for).
+   */
+  wouldNavigationGuardBlock(pathname: string): boolean {
+    if (this.navigationGuards.size === 0) return false;
+    const target = parseNavigationTarget(pathname, window.location.href);
+    return target.pathname !== window.location.pathname;
+  }
+
+  /**
    * `owner` names the surface whose content the guard protects (a dock
    * pane's surface id, `UnsavedGuardOwnerContext`), so a surface-scoped exit
    * can ask only that surface's guards (`runNavigationGuards`'s `owner`).
@@ -790,17 +810,20 @@ class NavigationStore {
       .catch(() => false);
   }
 
-  navigate(pathname: string, params?: Record<string, string | null>) {
+  navigate(
+    pathname: string,
+    params?: Record<string, string | null>,
+    options?: { preserveChatProjectDefault?: boolean },
+  ) {
     const target = parseNavigationTarget(pathname, window.location.href);
     if (
       !this.navigationGuardBypass &&
-      target.pathname !== window.location.pathname &&
-      this.navigationGuards.size > 0
+      this.wouldNavigationGuardBlock(pathname)
     ) {
       this.runNavigationGuards(() => {
         this.navigationGuardBypass = true;
         try {
-          this.navigate(pathname, params);
+          this.navigate(pathname, params, options);
         } finally {
           this.navigationGuardBypass = false;
         }
@@ -905,7 +928,19 @@ class NavigationStore {
     // A push discards every forward entry the browser held.
     for (const index of [...this.entryLocations.keys()])
       if (index > nextIndex) this.entryLocations.delete(index);
-    this.commitState(this.parseUrl(), true);
+    const next = this.parseUrl();
+    const previousProject = this.state.selectedProject;
+    this.commitState(next, true);
+    if (
+      !options?.preserveChatProjectDefault &&
+      next.selectedProject &&
+      (next.selectedProject !== previousProject ||
+        (target.pathname === `/projects/${next.selectedProject}` &&
+          !target.search &&
+          !params))
+    ) {
+      deviceSettingsStore.set('chatDockProjectSlug', next.selectedProject);
+    }
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;
@@ -1000,7 +1035,10 @@ class NavigationStore {
   setLayout(
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: {
+      openFilePreviewIntent?: OpenFilePreviewIntent;
+      preserveChatProjectDefault?: boolean;
+    },
   ) {
     this.lastProject = projectSlug;
     this.lastProjectLayout = layoutSlug;
@@ -1015,20 +1053,24 @@ class NavigationStore {
       : null;
     // A plain layout switch clears every File Preview query field. The routed
     // Project identity is authoritative, so a mismatched intent is not emitted.
-    this.navigate(rememberedTab ? `${base}/${rememberedTab}` : base, {
-      previewPath:
-        options?.openFilePreviewIntent?.projectSlug === projectSlug
-          ? (previewParams?.previewPath ?? null)
-          : null,
-      previewLineStart:
-        options?.openFilePreviewIntent?.projectSlug === projectSlug
-          ? (previewParams?.previewLineStart ?? null)
-          : null,
-      previewLineEnd:
-        options?.openFilePreviewIntent?.projectSlug === projectSlug
-          ? (previewParams?.previewLineEnd ?? null)
-          : null,
-    });
+    this.navigate(
+      rememberedTab ? `${base}/${rememberedTab}` : base,
+      {
+        previewPath:
+          options?.openFilePreviewIntent?.projectSlug === projectSlug
+            ? (previewParams?.previewPath ?? null)
+            : null,
+        previewLineStart:
+          options?.openFilePreviewIntent?.projectSlug === projectSlug
+            ? (previewParams?.previewLineStart ?? null)
+            : null,
+        previewLineEnd:
+          options?.openFilePreviewIntent?.projectSlug === projectSlug
+            ? (previewParams?.previewLineEnd ?? null)
+            : null,
+      },
+      options,
+    );
   }
 
   setConversation(id: string | null) {
