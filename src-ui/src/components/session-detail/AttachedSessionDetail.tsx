@@ -14,7 +14,7 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -30,6 +30,7 @@ import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 import { Dialog } from '../Dialog';
+import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -143,36 +144,18 @@ export function AttachedSessionDetail({
   const confirmedDraft = useRef('');
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
-  const followLatest = useRef(true);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const scroll = transcriptScrollRef.current;
-    const body = transcriptBodyRef.current;
-    if (
-      presentation !== 'chat' ||
-      !scroll ||
-      !body ||
-      typeof ResizeObserver === 'undefined'
-    )
-      return;
-    const observer = new ResizeObserver(() => {
-      if (followLatest.current) scroll.scrollTop = scroll.scrollHeight;
-    });
-    observer.observe(body);
-    observer.observe(scroll);
-    return () => observer.disconnect();
-  }, [presentation]);
-  useEffect(() => {
-    if (
-      events.length > 0 &&
-      presentation === 'chat' &&
-      followLatest.current &&
-      transcriptScrollRef.current
-    ) {
-      transcriptScrollRef.current.scrollTop =
-        transcriptScrollRef.current.scrollHeight;
-    }
-  }, [presentation, events.length]);
+  const { atLatest, jumpToLatest, pauseFollowing } = useSessionTranscriptScroll(
+    {
+      identity: `${apiBase}\0${session.threadId}`,
+      scrollRef: transcriptScrollRef,
+      contentRef: transcriptBodyRef,
+      ready: events.length > 0 && !upgradeRequired && !streamError,
+      contentVersion: events,
+      preserveReading:
+        events.length > 0 && Boolean(upgradeRequired || streamError),
+    },
+  );
   const adoption = useMutation({
     mutationFn: async (_intent: number) => {
       try {
@@ -433,22 +416,19 @@ export function AttachedSessionDetail({
         tabIndex={-1}
         aria-label="Conversation messages"
         ref={transcriptScrollRef}
-        onWheel={(event) => {
-          if (event.deltaY < 0) followLatest.current = false;
-        }}
-        onPointerDown={() => {
-          followLatest.current = false;
-        }}
+        onPointerDown={pauseFollowing}
         onKeyDown={(event) => {
           if (['ArrowUp', 'PageUp', 'Home'].includes(event.key))
-            followLatest.current = false;
-        }}
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          if (node.scrollHeight - node.scrollTop - node.clientHeight < 64)
-            followLatest.current = true;
+            pauseFollowing();
         }}
       >
+        {!atLatest && (
+          <div className="session-transcript__toolbar responsive-surface-actions">
+            <Button variant="secondary" onClick={jumpToLatest}>
+              Jump to latest
+            </Button>
+          </div>
+        )}
         {presentation !== 'chat' && (
           <p className="sessions-detail__readonly-label">
             Started in {displayProvider(session)} · Read only
@@ -514,17 +494,19 @@ export function AttachedSessionDetail({
         )}
 
         {presentation === 'chat' && onLoadOlder && (
-          <Button
-            onClick={() => {
-              followLatest.current = false;
-              void onLoadOlder().then(() => {
-                if (transcriptScrollRef.current)
-                  transcriptScrollRef.current.scrollTop = 0;
-              });
-            }}
-          >
-            Show older messages
-          </Button>
+          <div className="session-history-controls responsive-surface-actions">
+            <Button
+              onClick={() => {
+                pauseFollowing();
+                void onLoadOlder().then(() => {
+                  if (transcriptScrollRef.current)
+                    transcriptScrollRef.current.scrollTop = 0;
+                });
+              }}
+            >
+              Show older messages
+            </Button>
+          </div>
         )}
         <div
           className="sessions-detail__transcript"

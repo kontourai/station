@@ -16,6 +16,7 @@ import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 vi.mock('../contexts/open-chats-store', () => ({
@@ -76,6 +77,7 @@ const {
   showToast,
   chatControllerAction,
   registerRegionSurfaceHost,
+  unsubscribePushNotifications,
 } = vi.hoisted(() => ({
   hooks: {
     projects: { data: [], isLoading: false, isError: false } as QueryState<
@@ -126,6 +128,7 @@ const {
   showToast: vi.fn(),
   chatControllerAction: vi.fn(),
   registerRegionSurfaceHost: vi.fn(() => () => undefined),
+  unsubscribePushNotifications: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -142,6 +145,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutQuery: () => hooks.layout,
   useCoreUpdateStatusQuery: () => coreUpdateStatus,
   useQueryClient: () => ({ invalidateQueries }),
+  DevicePairingRequiredError: class DevicePairingRequiredError extends Error {},
+  unsubscribePushNotifications,
+  fetchVapidPublicKey: vi.fn().mockResolvedValue('AQAB'),
+  subscribePushNotifications: vi.fn(),
   // App raises OS alerts for blocking requests (#1912); this route's subject
   // is navigation, so an empty notification list keeps it silent.
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
@@ -453,9 +460,24 @@ vi.mock('../contexts/useShowSurface', () => ({
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
-vi.mock('../hooks/useFeatureSettings', () => ({
-  useFeatureSettings: () => ({ settings: { voiceS2SEnabled: false } }),
-}));
+let exercisePushLifecycle = false;
+vi.mock('../hooks/useFeatureSettings', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useFeatureSettings')>();
+  return {
+    useFeatureSettings: () => {
+      const feature = actual.useFeatureSettings();
+      return exercisePushLifecycle
+        ? feature
+        : {
+            settings: {
+              voiceS2SEnabled: false,
+              pushNotificationsEnabled: false,
+            },
+          };
+    },
+  };
+});
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: vi.fn(),
 }));
@@ -498,6 +520,87 @@ describe('App home route resolution', () => {
     connectionState.status = 'connected';
     connectionState.reason = null;
     authenticatedFetch.mockReset();
+    exercisePushLifecycle = false;
+    unsubscribePushNotifications.mockClear();
+  });
+
+  test('resetting device defaults stops browser push while Home owns the route without prompting for permission', async () => {
+    exercisePushLifecycle = true;
+    const previous = deviceSettingsStore.get('featureSettings');
+    const workerDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      'serviceWorker',
+    );
+    const pushDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      'PushManager',
+    );
+    const notificationDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      'Notification',
+    );
+    const subscription = {
+      endpoint: 'https://push.test/home-subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
+      unsubscribe: vi.fn(async () => {
+        current = null;
+        return true;
+      }),
+    };
+    let current: typeof subscription | null = subscription;
+    const registration = {
+      pushManager: { getSubscription: async () => current },
+    };
+    const requestPermission = vi.fn();
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        register: async () => registration,
+        getRegistration: async () => registration,
+      },
+    });
+    Object.defineProperty(window, 'PushManager', {
+      configurable: true,
+      value: class PushManager {},
+    });
+    Object.defineProperty(window, 'Notification', {
+      configurable: true,
+      value: { permission: 'granted', requestPermission },
+    });
+    deviceSettingsStore.set('featureSettings', {
+      ...previous,
+      pushNotificationsEnabled: true,
+    });
+    const mounted = render(<App />);
+    try {
+      expect(screen.getByTestId('app-view-content').textContent).toBe(
+        '{"type":"home"}',
+      );
+      await act(async () => deviceSettingsStore.resetMany(['featureSettings']));
+      await waitFor(() =>
+        expect(subscription.unsubscribe).toHaveBeenCalledOnce(),
+      );
+      expect(unsubscribePushNotifications).toHaveBeenCalledWith(
+        subscription.endpoint,
+        homeConnection.apiBase,
+      );
+      expect(requestPermission).not.toHaveBeenCalled();
+    } finally {
+      mounted.unmount();
+      deviceSettingsStore.set('featureSettings', previous);
+      exercisePushLifecycle = false;
+      for (const [target, key, descriptor] of [
+        [navigator, 'serviceWorker', workerDescriptor],
+        [window, 'PushManager', pushDescriptor],
+        [window, 'Notification', notificationDescriptor],
+      ] as const) {
+        if (descriptor) Object.defineProperty(target, key, descriptor);
+        else Reflect.deleteProperty(target, key);
+      }
+    }
   });
 
   test('loads the deferred launch update checker and presents its banner', async () => {

@@ -8,6 +8,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { RegistryItem } from '@kontourai/station-contracts/catalog';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -231,26 +232,38 @@ describe('Registry skill acquisition and host compatibility', () => {
     const { app, home, skillService } = setup(provider);
     const listed = await app.request('/skills');
     expect(listed.status).toBe(200);
-    expect(await listed.json()).toEqual({
+    expect(await listed.json()).toMatchObject({
       success: true,
       data: [
-        expect.objectContaining({ id: 'grill-me' }),
         expect.objectContaining({
-          id: 'pr',
+          catalog: expect.objectContaining({ itemId: 'grill-me' }),
+        }),
+        expect.objectContaining({
+          catalog: expect.objectContaining({ itemId: 'pr' }),
           status: 'unsupported-skill-format',
+        }),
+        expect.objectContaining({
+          catalog: expect.objectContaining({ itemId: 'pr' }),
+          source: fallback,
         }),
       ],
     });
-    const content = await app.request('/skills/pr/content');
+    const catalog = (await (await app.request('/skills')).json()) as {
+      data: RegistryItem[];
+    };
+    const selected = catalog.data.find(
+      (item) => item.status === 'unsupported-skill-format',
+    )!;
+    const content = await app.request(`/skills/${selected.id}/content`);
     expect(content.status).toBe(200);
-    expect(await content.json()).toEqual({
+    expect(await content.json()).toMatchObject({
       success: true,
       data: formatMarkdown.toString('utf-8'),
     });
     const refused = await app.request('/skills/install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 'pr' }),
+      body: JSON.stringify({ id: selected.id }),
     });
     expect(refused.status).toBe(400);
     expect(await refused.json()).toEqual({
@@ -278,7 +291,14 @@ describe('Registry skill acquisition and host compatibility', () => {
       new GitHubSkillRegistryProvider({ owner: 'example', repo: 'skills' }),
     ]);
     const { app, home } = setup(provider);
-    expect((await app.request('/skills')).status).toBe(500);
+    const partial = await app.request('/skills');
+    expect(partial.status).toBe(200);
+    expect(await partial.json()).toMatchObject({
+      partial: true,
+      sources: expect.arrayContaining([
+        expect.objectContaining({ status: 'error' }),
+      ]),
+    });
     expect((await install(app)).status).toBe(200);
     expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
       markdown,
@@ -322,16 +342,16 @@ describe('Registry skill acquisition and host compatibility', () => {
     );
     const listed = await app.request('/skills');
     expect(listed.status).toBe(200);
-    expect(await listed.json()).toEqual({
+    expect(await listed.json()).toMatchObject({
       success: true,
       data: expect.arrayContaining([
         expect.objectContaining({
-          id: 'grill-me',
+          catalog: expect.objectContaining({ itemId: 'grill-me' }),
           status: 'available',
           source,
         }),
         expect.objectContaining({
-          id: 'prototype',
+          catalog: expect.objectContaining({ itemId: 'prototype' }),
           status: 'unsupported-skill-name',
           source,
         }),
@@ -343,7 +363,7 @@ describe('Registry skill acquisition and host compatibility', () => {
       body: JSON.stringify({ id: 'prototype' }),
     });
     expect(refused.status).toBe(400);
-    expect(await readdir(home)).toEqual([]);
+    expect(await readdir(home)).toEqual(['config']);
     expect((await install(app)).status).toBe(200);
     expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
       markdown,
@@ -359,12 +379,14 @@ describe('Registry skill acquisition and host compatibility', () => {
     const { app, home, skillService } = setup();
     const listed = await app.request('/skills');
     expect(listed.status).toBe(200);
-    expect(await listed.json()).toEqual({
+    expect(await listed.json()).toMatchObject({
       success: true,
       data: [
-        expect.objectContaining({ id: 'grill-me' }),
         expect.objectContaining({
-          id: 'prototype',
+          catalog: expect.objectContaining({ itemId: 'grill-me' }),
+        }),
+        expect.objectContaining({
+          catalog: expect.objectContaining({ itemId: 'prototype' }),
           status: 'unsupported-skill-name',
           source: `https://github.com/example/skills/tree/${firstCommit}/skills/engineering/prototype`,
         }),
@@ -388,7 +410,7 @@ describe('Registry skill acquisition and host compatibility', () => {
       message:
         'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.',
     });
-    expect(await readdir(home)).toEqual([]);
+    expect(await readdir(home)).toEqual(['config']);
     expect(skillService.listSkills()).toEqual([]);
     expect((await install(app)).status).toBe(200);
     expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
@@ -403,20 +425,19 @@ describe('Registry skill acquisition and host compatibility', () => {
   });
 
   test('installs a nested skill by its declared name with binary assets from the listed immutable snapshot', async () => {
-    const network = networkFixture();
+    networkFixture();
     const { app, home, configLoader, skillService } = setup();
     const listed = await app.request('/skills');
     expect(listed.status).toBe(200);
-    expect(await listed.json()).toEqual({
+    expect(await listed.json()).toMatchObject({
       success: true,
       data: [
         expect.objectContaining({
-          id: 'grill-me',
+          catalog: expect.objectContaining({ itemId: 'grill-me' }),
           source: `https://github.com/example/skills/tree/${firstCommit}/skills/productivity/grilling`,
         }),
       ],
     });
-    network.moveBranch();
     const preview = await app.request('/skills/grill-me/content');
     expect(await preview.json()).toEqual({
       success: true,
@@ -447,9 +468,40 @@ describe('Registry skill acquisition and host compatibility', () => {
         }),
       ]),
     );
-    expect(
-      network.requests.filter((url) => url.endsWith('/commits/main')),
-    ).toHaveLength(1);
+  });
+
+  test('refuses an oversized asset body before publishing the package', async () => {
+    networkFixture({
+      additionalFiles: [
+        { path: 'assets/oversized.bin', bytes: Buffer.alloc(1024 * 1024 + 1) },
+      ],
+    });
+    const { app, home } = setup();
+    expect((await app.request('/skills')).status).toBe(200);
+    const refused = await install(app);
+    expect(refused.status).toBe(500);
+    expect(await refused.json()).toMatchObject({
+      success: false,
+      message: expect.stringContaining('byte budget'),
+    });
+    await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
+  });
+
+  test('refuses the inspected GitHub selection when its branch moves before acquisition', async () => {
+    const network = networkFixture();
+    const { app, home } = setup();
+    const listing = (await (await app.request('/skills')).json()) as {
+      data: RegistryItem[];
+    };
+    const selected = listing.data[0]!;
+    network.moveBranch();
+    const refused = await app.request('/skills/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: selected.id }),
+    });
+    expect(refused.status).toBe(409);
+    await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
   });
 
   test.each([
@@ -516,12 +568,12 @@ describe('Registry skill acquisition and host compatibility', () => {
     async (_name, options) => {
       networkFixture(options);
       const { app, home } = setup();
-      expect((await app.request('/skills')).status).toBe(500);
+      expect((await app.request('/skills')).status).toBe(503);
       const response = await install(app);
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
         success: false,
-        message: 'No skill registry provider could install grill-me',
+        message: 'No available marketplace contains this skill.',
       });
       await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
     },
@@ -618,7 +670,7 @@ describe('Registry skill acquisition and host compatibility', () => {
       );
   });
 
-  test('reports refresh failure instead of returning an expired catalog as successful', async () => {
+  test('discloses an offline cached catalog and refuses acquisition', async () => {
     const network = networkFixture();
     const { app, home } = setup();
     const now = Date.now();
@@ -626,9 +678,14 @@ describe('Registry skill acquisition and host compatibility', () => {
     expect((await app.request('/skills')).status).toBe(200);
     network.fail();
     vi.spyOn(Date, 'now').mockReturnValue(now + 6 * 60 * 1000);
-    expect((await app.request('/skills')).status).toBe(500);
-    expect((await app.request('/skills/grill-me/content')).status).toBe(500);
-    expect((await install(app)).status).toBe(500);
+    const stale = await app.request('/skills');
+    expect(stale.status).toBe(200);
+    expect(await stale.json()).toMatchObject({
+      partial: true,
+      sources: [expect.objectContaining({ status: 'stale' })],
+    });
+    expect((await app.request('/skills/grill-me/content')).status).toBe(409);
+    expect((await install(app)).status).toBe(409);
     await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
   });
 });

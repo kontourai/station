@@ -13,7 +13,8 @@ import {
 
 export interface NativeApplicationConnectorConfiguration {
   readonly stationId: string;
-  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly surface?: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly registry?: true;
 }
 
 export interface NativeDeviceProofRuntime {

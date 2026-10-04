@@ -9,14 +9,14 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"8de08e0eb74f14ce0ea9670f9765242ab8549a0d595c95d9dcedc8b25d229d86","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+  "document": {"digest":"8de08e0eb74f14ce0ea9670f9765242ab8549a0d595c95d9dcedc8b25d229d86","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
 
   "sources": [
     {"path":"examples/smart-routing/plugin.json","digest":"5d74489c9ceb41a3cf5852795d3e0bb2127ce6385c2c0010c9a4274fd4b45ef7","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
 
     {"path":"examples/smart-routing/plugin.mjs","digest":"02fbf49cc2480dc0395ea82969fba6c033f0e208ffe4fe2836f7c2e362f17012","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
 
-    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"7de524772cc3b8e671daf850826cc85bdc33e9cc5634ffa697263905cbe4a8d3","revision":"efa773acac88792cda31595f9afca4a37d3efebc"}
   ],
 
   "checks": [

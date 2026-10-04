@@ -35,6 +35,9 @@
  */
 export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'check-updates',
+  // kontourai/station#1419 mounts `/api/plugins/command-effects/**`
+  // (plugin-command-effect-routes.ts) for settlements and withdrawals.
+  'command-effects',
   'fetch',
   'home-role',
   'host-approvals',

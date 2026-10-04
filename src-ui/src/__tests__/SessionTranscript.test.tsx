@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -20,6 +27,8 @@ const windowState = vi.hoisted(() => ({
   loadOlder: vi.fn(),
   reload: vi.fn(),
   revisions: [] as number[],
+  error: undefined as Error | undefined,
+  upgradeRequired: false,
 }));
 
 vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
@@ -37,7 +46,8 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
       hasMore: windowState.hasMore,
       loadOlder: windowState.loadOlder,
       reload: windowState.reload,
-      upgradeRequired: false,
+      upgradeRequired: windowState.upgradeRequired,
+      error: windowState.error,
       loading: false,
       settled: windowState.settled,
       catchingUp: false,
@@ -80,7 +90,11 @@ function live(events: CanonicalRuntimeEvent[]) {
   });
 }
 
-function renderTranscript(isStreaming = true, failureShownAbove = false) {
+function renderTranscript(
+  isStreaming = true,
+  failureShownAbove = false,
+  scrollContainerRef?: { current: HTMLDivElement | null },
+) {
   const session = { threadId: THREAD, conversationId: THREAD };
   // The app mounts PreviewProvider above every surface (main.tsx); a file
   // part's chip opens through it.
@@ -94,11 +108,14 @@ function renderTranscript(isStreaming = true, failureShownAbove = false) {
           agentLabel="Code Reviewer"
           isStreaming={streaming}
           failureShownAbove={failureShownAbove}
+          scrollContainerRef={scrollContainerRef}
         />
       </PreviewProvider>
     </QueryClientProvider>
   );
-  const view = render(tree(isStreaming));
+  const view = render(tree(isStreaming), {
+    container: scrollContainerRef?.current ?? undefined,
+  });
   return {
     ...view,
     setStreaming: (next: boolean) => view.rerender(tree(next)),
@@ -110,12 +127,124 @@ beforeEach(() => {
   windowState.events = [];
   windowState.watermark = 0;
   windowState.settled = true;
+  windowState.error = undefined;
+  windowState.upgradeRequired = false;
   windowState.hasMore = false;
   windowState.revisions = [];
   sequence = 0;
 });
 
 describe('SessionTranscript source', () => {
+  test.each([
+    { upgrade: false, title: 'Conversation could not be loaded' },
+    { upgrade: true, title: 'Update Station to read this conversation' },
+  ])(
+    'shows $title and retries instead of calling a failed read empty',
+    ({ upgrade, title }) => {
+      windowState.error = new Error('Conversation history request failed');
+      windowState.upgradeRequired = upgrade;
+      windowState.reload.mockClear();
+      renderTranscript(false);
+      expect(screen.getByText(title)).toBeTruthy();
+      expect(screen.queryByText('No messages in this session yet.')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(windowState.reload).toHaveBeenCalledOnce();
+    },
+  );
+
+  test('follows the latest transcript until the reader scrolls back, then resumes on request', () => {
+    const scroll = document.createElement('div');
+    document.body.append(scroll);
+    let height = 1200;
+    let position = 0;
+    Object.defineProperties(scroll, {
+      clientHeight: { get: () => 300 },
+      scrollHeight: { get: () => height },
+      scrollTop: {
+        get: () => position,
+        set: (next: number) => {
+          position = Math.max(0, Math.min(next, height - 300));
+        },
+      },
+    });
+    const view = renderTranscript(true, false, { current: scroll });
+    live([
+      ev({ method: 'turn.started', turnId: 'follow', prompt: 'Show progress' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'follow',
+        itemId: 'follow-answer',
+        delta: 'First update',
+      }),
+    ]);
+    expect(position).toBe(900);
+
+    scroll.scrollTop = 150;
+    fireEvent.scroll(scroll);
+    height = 1800;
+    live([
+      ev({
+        method: 'content.text-delta',
+        turnId: 'follow',
+        itemId: 'follow-answer',
+        delta: ' Next update',
+      }),
+    ]);
+    expect(position).toBe(150);
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }));
+    expect(position).toBe(1500);
+    height = 2100;
+    live([
+      ev({
+        method: 'content.text-delta',
+        turnId: 'follow',
+        itemId: 'follow-answer',
+        delta: ' Final update',
+      }),
+    ]);
+    expect(position).toBe(1800);
+    view.unmount();
+    scroll.remove();
+  });
+
+  test('a successful retry of an initially failed history read opens at the latest content', () => {
+    const scroll = document.createElement('div');
+    document.body.append(scroll);
+    let position = 0;
+    Object.defineProperties(scroll, {
+      clientHeight: { get: () => 300 },
+      scrollHeight: { get: () => 1200 },
+      scrollTop: {
+        get: () => position,
+        set: (next: number) => {
+          position = Math.max(0, Math.min(next, 900));
+        },
+      },
+    });
+    windowState.error = new Error('History temporarily unavailable');
+    const view = renderTranscript(true, false, { current: scroll });
+    expect(screen.getByText('Conversation could not be loaded')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    windowState.error = undefined;
+    live([
+      ev({
+        method: 'turn.started',
+        turnId: 'retry-tail',
+        prompt: 'Latest request',
+      }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'retry-tail',
+        itemId: 'retry-answer',
+        delta: 'Latest answer',
+      }),
+    ]);
+    expect(screen.getByText('Latest answer')).toBeTruthy();
+    expect(position).toBe(900);
+    view.unmount();
+    scroll.remove();
+  });
+
   test('starts the app-wide live stream itself, so the detail streams with no chat dock mounted', () => {
     ensureStream.mockClear();
     const view = renderTranscript();

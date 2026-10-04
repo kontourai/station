@@ -103,36 +103,6 @@ export function liveTurnTarget(
   };
 }
 
-/**
- * #2309: offer "Send now" on a queue the automatic drain will not send.
- *
- * Only a turn END drains a queue, and only when its terminal event reaches
- * this client. The record shows when that is not coming: no turn is open (a
- * Stop, possibly on another device; a crash; a terminal this client missed)
- * while messages are still queued. Nothing is offered while this composer's
- * own send is in flight or a drain is already settling. The offer is a
- * button, never an automatic send.
- *
- * Never while the record shows a turn OPEN, even one the watchdog has
- * observed as silent: sending into an open ACP/Muse turn is refused as
- * indeterminate and leaves a boundary row that blocks later continuations.
- * A silent turn's path is the dock's stall notice: Stop ends the turn, the
- * record shows none open, and "Send now" is offered then.
- */
-export function queueSendNowOffered(chat: {
-  conversationActivity?: ConversationTurnActivity;
-  queuedMessages?: readonly string[];
-  status?: string | null;
-  sendAwaitingTurnStart?: boolean;
-  queueDrainSettling?: boolean;
-}): boolean {
-  const activity = chat.conversationActivity;
-  if (!activity || !chat.queuedMessages?.length) return false;
-  if (chat.queueDrainSettling) return false;
-  if (chat.status === 'sending' && chat.sendAwaitingTurnStart) return false;
-  return !activity.openTurn;
-}
-
 /** Epoch ms of the open turn's server start, or undefined when unknown. */
 export function openTurnStartedAtMs(
   activity: ConversationTurnActivity | undefined,

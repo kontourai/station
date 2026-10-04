@@ -52,6 +52,11 @@ export function producerArtifactSources({ channel, iosBundleVersion } = {}) {
     { artifact: 'station-desktop-windows-x86_64', directory: '.' },
     { artifact: 'station-desktop-linux-x86_64', directory: '.' },
     { artifact: 'station-portable', directory: '.' },
+    // release.yml `host-manifest` (#2959): the five station-server archives
+    // and the unsigned manifest payload, for both rings. The per-target
+    // `station-server-<target>` build artifacts share the download root and
+    // stay out: they also carry descriptors that are not release assets.
+    { artifact: 'station-host-stream', directory: '.' },
     { artifact: 'station-android', directory: '.' },
     { artifact: 'station-container-release', directory: '.' },
   ];
