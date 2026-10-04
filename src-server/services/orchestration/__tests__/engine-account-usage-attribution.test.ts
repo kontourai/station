@@ -1,9 +1,13 @@
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
+import {
+  RemoteStationUsageReceiptSource,
+  UsageRollupService,
+} from '../../../analytics/usage-rollup-service.js';
 import { usageCredentialAccountKey } from '../../../providers/app-home/app-home-profiles.js';
 import { createAnalyticsRoutes } from '../../../routes/operations/analytics.js';
 import { EventStore } from '../event-store.js';
@@ -353,3 +357,143 @@ test.each([500, 501])(
     }
   },
 );
+
+test('durable sequence orders tied cumulative snapshots and preserves sparse resumed fields', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-04T12:00:00.000Z'));
+  const home = makeTempDir('usage-route-sequence-');
+  const store = new EventStore(join(home, 'events.sqlite'));
+  try {
+    startSession(store, 'codex', 'tied', 'reader');
+    store.appendEvent({
+      eventId: 'z-old',
+      provider: 'codex',
+      threadId: 'tied',
+      turnId: 'turn-1',
+      createdAt: new Date().toISOString(),
+      method: 'token-usage.updated',
+      promptTokens: 200,
+      completionTokens: 20,
+    });
+    startSession(store, 'codex', 'tied', 'reader', 2);
+    store.appendEvent({
+      eventId: 'a-new',
+      provider: 'codex',
+      threadId: 'tied',
+      turnId: 'turn-2',
+      createdAt: new Date().toISOString(),
+      method: 'token-usage.updated',
+      promptTokens: 250,
+      completionTokens: 50,
+    });
+    store.appendEvent({
+      eventId: '0-sparse',
+      provider: 'codex',
+      threadId: 'tied',
+      turnId: 'turn-2',
+      createdAt: new Date().toISOString(),
+      method: 'token-usage.updated',
+      completionTokens: 60,
+    });
+    const response = await usageRoute(store, home, 'reader').request(
+      `/usage-rollup?${windowQuery()}`,
+    );
+    expect(response.status).toBe(200);
+    const result: { data: UsageRollup } = await response.json();
+    expect(result.data.rows[0]).toMatchObject({
+      inputTokens: 250,
+      outputTokens: 60,
+    });
+  } finally {
+    store.close();
+    vi.useRealTimers();
+  }
+});
+
+test('paired transfer sends logical bounded receipts instead of expanded raw observations', async () => {
+  const home = makeTempDir('usage-route-transfer-');
+  const store = new EventStore(join(home, 'events.sqlite'));
+  try {
+    startSession(store, 'claude', 'many-calls', 'reader');
+    for (let index = 0; index < 251; index += 1) {
+      store.appendEvent({
+        eventId: `transfer-call-${index}`,
+        provider: 'claude',
+        threadId: 'many-calls',
+        turnId: 'turn-1',
+        createdAt: new Date().toISOString(),
+        method: 'token-usage.updated',
+        promptTokens: 1,
+        completionTokens: 0,
+        reportedCostUsd: index + 1,
+      });
+    }
+    store.appendEvent({
+      eventId: 'transfer-completed',
+      provider: 'claude',
+      threadId: 'many-calls',
+      turnId: 'turn-1',
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    const query = windowQuery();
+    query.set('includeAggregate', '1');
+    const response = await usageRoute(store, home, 'reader').request(
+      `/usage-rollup?${query}`,
+    );
+    expect(response.status).toBe(200);
+    const result: { data: UsageRollup } = await response.json();
+    expect(result.data.aggregateReceipts).toHaveLength(252);
+    expect(
+      result.data.aggregateReceipts?.reduce(
+        (total, receipt) => total + (receipt.inputTokens ?? 0),
+        0,
+      ),
+    ).toBe(251);
+    expect(
+      result.data.aggregateReceipts
+        ?.filter((receipt) => receipt.reportedCost)
+        .map((receipt) => receipt.reportedCost?.amount),
+    ).toEqual([251]);
+    const app = usageRoute(store, home, 'reader');
+    const remote = new RemoteStationUsageReceiptSource(
+      'local',
+      'https://peer.example.test',
+      'fixture-bearer',
+      'orchestration:read',
+      async (input, init) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        if (url.pathname === '/.well-known/station/v1')
+          return Response.json({
+            schemaVersion: 1,
+            environmentId: 'local',
+            authentication: { scheme: 'bearer', protocolVersion: 1 },
+            transports: { http: 1, sse: 1, websocket: 1 },
+            compatibility: {
+              serverVersion: 'test',
+              protocolVersion: 1,
+              minClientProtocol: 1,
+            },
+          });
+        return app.request(
+          `${url.pathname.replace('/api/analytics', '')}${url.search}`,
+          init,
+        );
+      },
+    );
+    const peer = await new UsageRollupService([remote]).read(
+      { from: query.get('from')!, to: query.get('to')!, pageSize: 10 },
+      sessionReadAuthorityFromRequest('reader', undefined, undefined),
+    );
+    expect(peer.coverage[0].state).toBe('complete');
+    expect(peer.rows[0]).toMatchObject({
+      inputTokens: 251,
+      reportedCost: { amount: 251, currency: 'USD' },
+    });
+  } finally {
+    store.close();
+  }
+});

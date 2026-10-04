@@ -263,6 +263,7 @@ export class SessionTranscriptReads {
         const common = {
           ...(accountKey !== undefined ? { accountKey } : {}),
           sourceEventId: event.id,
+          sourceSequence: event.sequence,
           stationId,
           provider: event.provider,
           threadId: event.threadId,
