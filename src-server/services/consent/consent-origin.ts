@@ -70,6 +70,17 @@ export function parseTrustedConsentOrigin(
       'an IP address is not allowed; use a DNS name',
     );
   }
+  // Port 0 is "any port" to a listener, never a mapped HTTPS port, and a
+  // trailing-dot FQDN is a different origin string from the dotless name the
+  // browser and WebAuthn derive from the app host.
+  if (url.port === '0') {
+    throw new TrustedConsentOriginError('port 0 is not allowed');
+  }
+  if (bareHost.endsWith('.')) {
+    throw new TrustedConsentOriginError(
+      'a trailing dot in the host is not allowed',
+    );
+  }
   // Exact comparison with the canonical serialisation catches trailing junk,
   // a trailing slash, uppercase, whitespace and a spelled-out default port.
   if (raw !== url.origin) {

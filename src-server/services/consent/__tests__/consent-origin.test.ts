@@ -21,6 +21,8 @@ describe('parseTrustedConsentOrigin', () => {
   });
 
   test.each([
+    'https://station.example.ts.net:1',
+    'https://station.example.ts.net:65535',
     'https://station.example.ts.net',
     'https://station.example.ts.net:8443',
     'https://localhost:4443',
@@ -45,6 +47,9 @@ describe('parseTrustedConsentOrigin', () => {
     ['an IPv6 literal', 'https://[fd7a:115c:a1e0::1]:8443'],
     ['a spelled-out default port', 'https://station.example.ts.net:443'],
     ['uppercase', 'https://Station.Example.ts.net'],
+    ['port 0', 'https://station.example.ts.net:0'],
+    ['a trailing-dot FQDN', 'https://station.example.ts.net.'],
+    ['a trailing-dot FQDN with a port', 'https://station.example.ts.net.:8443'],
     ['a bare host', 'station.example.ts.net'],
     ['a non-URL', 'not a url'],
   ])('refuses %s', (_label, value) => {

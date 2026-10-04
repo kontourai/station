@@ -47,11 +47,16 @@ Consent decisions are served by a separate listener on its own origin. By
 default review URLs are `http://<request host>:<consent port>`. If
 `STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
 second Tailscale Serve mapping to the consent port), Station issues review URLs
-at that origin and accepts a decision only when the request `Host` is that name
-and the `Origin` header equals it exactly, in addition to the existing nonce,
-Fetch Metadata and session checks. The setting adds no authority: a different
+at that origin and accepts a decision from it when the request `Host` is that
+name and the `Origin` header equals it exactly, in addition to the existing
+nonce, Fetch Metadata and session checks. The port-pinned
+`http://<host>:<consent port>` path still works alongside it. The HTTPS name
+must be the same hostname as the app's, because the host-only consent cookie is
+not sent across hostnames and a mismatch fails closed as `unauthenticated`. The setting adds no authority: a different
 HTTPS origin is refused, the origin is not an `ALLOWED_ORIGINS` entry, and a
-malformed value (http, path, userinfo, wildcard, IP literal) stops startup. See
+malformed value (http, path, userinfo, wildcard, IP literal, port 0, trailing-dot host) stops
+startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
+marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
 Origin and authentication are independent controls:
