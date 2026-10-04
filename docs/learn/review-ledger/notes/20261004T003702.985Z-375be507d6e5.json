@@ -1,0 +1,11 @@
+{
+  "revision": "a8794335738558f80c231b33a7bb924c74bf9e08",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#2842 final merge. Main's record taken in the merge (main moved 10 commits and edited this reference). Re-read the Error Handling marker paragraphs in the merged text against runtime-http.ts (outermost JSON stamp, CORS exposure), runtime-routes.ts (early install), the virtual ingress and broker gated-application refusals, and station-envelope.ts origin memory forgotten via http.ts notifyCredentialChanged and api-core.ts _setApiBase: accurate; main's new sections make no claim about response headers or refusal identification. No prose change."},
+
+    {"path":"docs/reference/session-api.md","note":"#2842 final merge. Main's record taken in the merge. Re-read the foreground send, receipt and indeterminate-outcome claims against chatHttpError.ts: ChatHttpError keeps its constructors, fields and the meaning of indeterminate; only stationEnvelope's derivation (marker plus shape fallback) changed, which this reference does not describe. No prose change."},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2842 final merge. Main's record taken in the merge. Re-checked its routing table against the current api.md, sdk.md and deployment.md: the links and audience descriptions still hold; no integration claim depends on the marker or typed refusals. No prose change."}
+  ]
+}
