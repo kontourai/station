@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TurnStartedEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   connectionRecoveryOutcomes,
   credentialProfileApplication,
@@ -175,6 +176,7 @@ class SessionRecoveryCoordinator extends RuntimeSessionRecoveryCoordinator {
 }
 
 describe('SessionRecoveryCoordinator', () => {
+  const makeTempDir = trackTempDirs();
   const dirs: string[] = [];
   afterEach(() =>
     dirs
@@ -595,6 +597,73 @@ describe('SessionRecoveryCoordinator', () => {
       vi.useRealTimers();
     },
   );
+
+  test('#3157: credential failover still recovers a usage-limit stop while automatic resume is off', async () => {
+    vi.useFakeTimers();
+    const dir = makeTempDir('recovery-coordinator-');
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    const now = new Date('2026-07-29T12:00:00.000Z');
+    const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+    const sendTurn = vi.fn();
+    const autoResume = vi.fn(() => false);
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({
+          metadata: {
+            recovery: { sameSession: true, application: 'restart_resume' },
+          },
+        }) as any,
+      sendTurn,
+      restartResume,
+      credentialRecoveryAdapter: {
+        stage: async () => ({
+          candidateProfileRef: 'backup',
+          capability: 'restart_resume',
+        }),
+        commit: vi.fn(async () => ({ kind: 'adopted' as const })),
+        rollback: vi.fn(),
+      },
+      autoResume,
+      now: () => now,
+    });
+    store.appendEvent({
+      eventId: 'started-limit-profile',
+      provider: 'codex',
+      threadId: 'thread-limit-profile',
+      turnId: 'turn-limit-profile',
+      createdAt: now.toISOString(),
+      method: 'turn.started',
+      prompt: 'authoritative input',
+    });
+    coordinator.observe({
+      eventId: 'limit-profile',
+      provider: 'codex',
+      threadId: 'thread-limit-profile',
+      turnId: 'turn-limit-profile',
+      createdAt: now.toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'usageLimitExceeded',
+      message: "You've hit your usage limit.",
+      details: {
+        usageLimit: true,
+        scope: 'account',
+        resetAt: '2026-07-29T14:00:00.000Z',
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(restartResume).toHaveBeenCalledOnce();
+    expect(sendTurn).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection('thread-limit-profile')).toMatchObject({
+      outcome: 'resumed',
+    });
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
+  });
 
   test('commit rejection rolls back, restores the committed profile session, and records failure', async () => {
     vi.useFakeTimers();

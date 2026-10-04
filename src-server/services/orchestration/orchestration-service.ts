@@ -18,6 +18,7 @@ import type {
   ClientOrigin,
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -828,6 +829,11 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
+   * defaults above. Absent means off: an unattended resume spends quota.
+   */
+  resolveUsageLimitAutoResume?: () => Promise<boolean | undefined>;
   /**
    * #1796: whether the device that granted a session's `host` stamp still
    * holds `approval:full-access` (live, not revoked). Read at every turn
@@ -2478,8 +2484,10 @@ export class OrchestrationService {
       logger: options.logger,
     });
     this.credentialProfileRecovery = new CredentialProfileRecovery({
-      dispatchSendTurn: (replay) =>
-        this.dispatch({ type: 'sendTurn', input: replay }),
+      dispatchSendTurn: async (replay) => {
+        await this.parkEndedEngineForReplay(replay.threadId);
+        return this.dispatch({ type: 'sendTurn', input: replay });
+      },
       providerAcceptsResponse: (provider) =>
         this.options.adapterRegistry.get(provider)?.metadata.recovery
           ?.dispatchSettlement === 'provider-response',
@@ -2665,6 +2673,8 @@ export class OrchestrationService {
         credentialRecovery: this.credentialRecovery,
         isCredentialRestarting: (threadId) =>
           this.credentialProfileRecovery.isRestarting(threadId),
+        autoResume: async () =>
+          (await options.resolveUsageLimitAutoResume?.()) === true,
         onOutcome: ({ failureKind, decision, outcome }) => {
           this.usageTelemetry?.trackSessionRecovery({
             failure_kind: failureKind,
@@ -4175,7 +4185,13 @@ export class OrchestrationService {
       (event) => event.payload,
     );
 
-    const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
+    // #3157: a waiting usage-limit resume says whether the setting would let
+    // it run unattended now; the coordinator applies it only at the reset.
+    const recovery =
+      latestRecovery?.usageLimit && latestRecovery.outcome === 'armed'
+        ? await this.withUsageLimitAutoResume(latestRecovery)
+        : latestRecovery;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
@@ -4207,6 +4223,24 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  /**
+   * #3157: an unreadable setting omits `autoResume` rather than failing the
+   * session read; the coordinator separately treats it as off.
+   */
+  private async withUsageLimitAutoResume(
+    recovery: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    try {
+      return {
+        ...recovery,
+        autoResume:
+          (await this.options.resolveUsageLimitAutoResume?.()) === true,
+      };
+    } catch {
+      return recovery;
+    }
   }
 
   // Conversation lineage/handoff/history forwarders (epic archive#4024,
@@ -10450,6 +10484,20 @@ export class OrchestrationService {
     // its engine, which is what holds that request.
     const lifecycle = this.readCurrentLifecycleState(threadId);
     return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
+  }
+
+  /**
+   * #3157: an engine that marks a failed turn's session `error` (Claude)
+   * refuses another turn on it, so a recovery replay into that Session would
+   * be refused. Parking stops that engine the way an idle one is stopped, and
+   * the replay's own dispatch restarts it in place from its resume cursor.
+   * No-op for a session that can still take a turn, or one parking refuses.
+   */
+  private async parkEndedEngineForReplay(threadId: string): Promise<void> {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.sessionReadModel.get(threadId)?.status !== 'error')
+      return;
+    await this.parkIdleSession(threadId, adapter, Date.now(), 0);
   }
 
   private parkIdleSession(

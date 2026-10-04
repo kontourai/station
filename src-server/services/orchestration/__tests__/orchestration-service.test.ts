@@ -2848,6 +2848,115 @@ describe('OrchestrationService', () => {
     }
   });
 
+  // #3157: Claude marks a failed turn's session `error` and refuses another
+  // turn on it. A recovery replay into that Session parks the ended engine
+  // first, so the replay's own send restarts it in place.
+  test('a recovery replay into a Claude session whose turn failed restarts its engine in place', async () => {
+    const replayService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      idleSessionParkAfterMs: 60_000,
+      idleSessionSweepMs: 3_600_000,
+    });
+    const threadId = 'limited-claude-conversation';
+    claude.stopSession.mockImplementation(async (stopped) => {
+      claude.sessions.delete(stopped);
+      claude.events.push({
+        eventId: `${stopped}:exited`,
+        provider: 'claude',
+        threadId: stopped,
+        sessionId: stopped,
+        method: 'session.exited',
+        reason: 'stopped',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+    });
+    try {
+      claude.startSession.mockImplementationOnce(async (input) => {
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          resumeCursor: { claudeSessionId: `native-${threadId}` },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        claude.sessions.set(input.threadId, session);
+        return session;
+      });
+      const started = await replayService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      claude.events.push({
+        eventId: `${threadId}-turn-started`,
+        provider: 'claude',
+        threadId,
+        turnId: 'limited-turn',
+        method: 'turn.started',
+        prompt: 'work',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      claude.events.push({
+        eventId: `${threadId}-turn-failed`,
+        provider: 'claude',
+        threadId,
+        turnId: 'limited-turn',
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'engine-turn-failed',
+        retriable: false,
+        message: "You've hit your session limit",
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          (replayService as any).sessionReadModel.get(threadId)?.status,
+        ).toBe('error'),
+      );
+      const startsBefore = claude.startSession.mock.calls.length;
+      const outcome = await (replayService as any).credentialProfileRecovery
+        .createDispatchAdapter()
+        .dispatch({
+          intent: { provider: 'claude', threadId },
+          replay: {
+            threadId,
+            input: 'work',
+            recoveryCorrelationId: 'usage-limit-replay',
+            signal: new AbortController().signal,
+          },
+        });
+      expect(outcome.kind).not.toBe('indeterminate');
+      expect(claude.stopSession).toHaveBeenCalledWith(threadId);
+      expect(claude.startSession.mock.calls.length).toBe(startsBefore + 1);
+      expect(claude.sendTurn.mock.calls.at(-1)?.[0]).toMatchObject({
+        threadId,
+        recoveryCorrelationId: 'usage-limit-replay',
+      });
+      // The park's exit was absorbed: nothing saw the Session end.
+      expect(
+        eventStore
+          .listEvents(threadId)
+          .some((event) => event.payload.method === 'session.exited'),
+      ).toBe(false);
+    } finally {
+      await replayService.shutdown();
+    }
+  });
+
   // #2540 review B1: a send resolves its engine BEFORE it takes the turn
   // lock. If a park takes the session's lifecycle lock in that window and
   // stops the engine, the send must restart it in place, never dispatch into
@@ -7214,6 +7323,64 @@ describe('OrchestrationService', () => {
    * event that reports a constant while a classifier sits right next to it is
    * worse than no event — it answers the question wrongly and confidently.
    */
+  test('#3157: with no usage-limit setting wired, automatic resume is off', async () => {
+    const coordinatorOptions = (service as any).recoveryCoordinator?.options;
+    expect(
+      coordinatorOptions?.autoResume,
+      'the recovery coordinator lost its automatic-resume gate',
+    ).toBeTypeOf('function');
+    await expect(coordinatorOptions.autoResume()).resolves.toBe(false);
+  });
+
+  test('#3157: a waiting usage-limit resume tells the session detail whether auto-resume is on', async () => {
+    const threadId = 'usage-limit-detail';
+    eventStore.upsertSession({
+      provider: 'codex',
+      threadId,
+      status: 'ready',
+      createdAt: '2026-09-24T21:00:00.000Z',
+      updatedAt: '2026-09-24T21:00:00.000Z',
+    });
+    eventStore.createRecoveryLedger().arm({
+      fingerprint: `${threadId}:turn:rate-limit:account`,
+      threadId,
+      provider: 'codex',
+      sourceEventId: 'source',
+      sourceTurnId: 'turn',
+      failureKind: 'rate-limit',
+      scope: 'account',
+      decision: 'wait-until-reset',
+      dueAt: '2099-01-01T00:00:00.000Z',
+      maxAttempts: 1,
+      outcome: 'armed',
+      usageLimit: true,
+      createdAt: '2026-09-24T21:00:00.000Z',
+      updatedAt: '2026-09-24T21:00:00.000Z',
+    });
+    const detail = await service.readSession(threadId);
+    expect(detail?.recovery).toMatchObject({
+      outcome: 'armed',
+      usageLimit: true,
+      autoResume: false,
+    });
+    // An unreadable setting omits the field; it never fails the read.
+    const options = (service as any).options;
+    const original = options.resolveUsageLimitAutoResume;
+    options.resolveUsageLimitAutoResume = async () => {
+      throw new Error('config unreadable');
+    };
+    try {
+      const unreadable = await service.readSession(threadId);
+      expect(unreadable?.recovery).toMatchObject({
+        outcome: 'armed',
+        usageLimit: true,
+      });
+      expect(unreadable?.recovery).not.toHaveProperty('autoResume');
+    } finally {
+      options.resolveUsageLimitAutoResume = original;
+    }
+  });
+
   test("RECOVERY TELEMETRY DEFECT: the emitted event carries the classifier's verdict, not a constant", () => {
     const telemetry = {
       trackSessionRecovery: vi.fn(),
