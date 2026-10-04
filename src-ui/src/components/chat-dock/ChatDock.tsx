@@ -3170,7 +3170,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             cancelFork();
           },
           onCloseSettings: () => setShowChatSettings(() => false),
-          // #3310: "Summarize session" demoted out of the transcript — this
+          // #3310: "Summarize chat" demoted out of the transcript — this
           // gear panel is the entry point; the card renders only once a
           // summary exists, generation is in flight, or generation failed.
           sessionSummary:
