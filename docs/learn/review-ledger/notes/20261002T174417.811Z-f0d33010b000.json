@@ -1,0 +1,7 @@
+{
+  "revision": "82fea394a09cdf62071b073d09aa6cb08ebbca48",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the chat.css and ChatDockHeader delta against region chrome ownership. Added the direct chat-list toggle to the pane toolbar description. Composer-local container layout does not change region placement, visibility, tab order, or persistence. No placement claims strengthened.","inputs":["docs/design/placement.md"]}
+  ]
+}

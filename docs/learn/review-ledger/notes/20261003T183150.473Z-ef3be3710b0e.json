@@ -1,7 +1,0 @@
-{
-  "revision": "483d772e419dc6622b7d52be2b731842d07ae99e",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed the native link intake boundary against its controller, typed envelope, custody owner, and shared Tauri event helper. The documented custody, authorization, delivery ordering, and evidence limits remain current; event payload delivery now uses the shared lazy helper."}
-  ]
-}

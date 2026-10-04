@@ -4,6 +4,7 @@
 //
 //   npm run docs:review:record -- <path> --note "<what you checked>" [--drop-source <path>]... [--add-source <path>]... [--rereview]
 //   npm run docs:review:record -- --batch <file.json>
+//   npm run docs:review:record -- --advance-baseline
 //   npm run docs:review:record -- --show-delta [<path>...]
 //   npm run docs:review:record -- --verify-bindings [<path>...]
 //
@@ -18,7 +19,12 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { createRepositorySnapshot } from './lib/documentation-freshness.mjs';
+import {
+  assertDocumentationFresh,
+  checkDocumentationFreshness,
+  createRepositorySnapshot,
+  resolveDocumentationFreshness,
+} from './lib/documentation-freshness.mjs';
 import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
 import { compileLearningMedia } from './lib/learning-media.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -34,6 +40,7 @@ import {
   REVIEW_LEDGER_INDEX,
   readGitObjects,
   readReviewFiles,
+  readReviewState,
   reviewError,
   serializeCaptureReviewFile,
   serializeLedgerIndex,
@@ -44,6 +51,7 @@ import {
 const USAGE = [
   'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview] [--json]',
   '       docs:review:record -- --batch <file.json>',
+  '       docs:review:record -- --advance-baseline',
   '       docs:review:record -- --show-delta [<path>...]',
   '       docs:review:record -- --verify-bindings [<path>...]',
 ].join('\n');
@@ -92,7 +100,11 @@ export function parseRecordArguments(argv) {
     else if (arg === '--add-source') addedSources.push(value());
     else if (arg === '--rereview') rereview = true;
     else if (arg === '--json') continue;
-    else if (arg === '--show-delta' || arg === '--verify-bindings') {
+    else if (
+      arg === '--show-delta' ||
+      arg === '--verify-bindings' ||
+      arg === '--advance-baseline'
+    ) {
       if (mode !== 'record')
         throw reviewError(
           'usage',
@@ -110,10 +122,12 @@ export function parseRecordArguments(argv) {
     removedSources.length ||
     addedSources.length;
   if (mode !== 'record') {
+    if (mode === 'advance-baseline' && paths.length)
+      throw reviewError('usage', USAGE);
     if (recording)
       throw reviewError(
         'usage',
-        `--${mode} reads the ledger and records nothing\n${USAGE}`,
+        `--${mode} cannot be combined with recording options\n${USAGE}`,
       );
     return { mode, paths };
   }
@@ -262,20 +276,27 @@ export function unverifiableBindings(root, bindings) {
   });
 }
 
-const bindingsOf = (kind, entry) => [
-  ...(kind === 'review'
-    ? [
-        {
+const bindingsOf = (kind, entry) =>
+  entry.historyChanges !== undefined
+    ? []
+    : [
+        ...(kind === 'review'
+          ? [
+              {
+                owner: entry.path,
+                kind,
+                path: entry.path,
+                digest: entry.documentDigest ?? entry.document.digest,
+                revision: entry.documentRevision ?? entry.document.revision,
+              },
+            ]
+          : []),
+        ...entry.sources.map((source) => ({
           owner: entry.path,
           kind,
-          path: entry.path,
-          digest: entry.documentDigest ?? entry.document.digest,
-          revision: entry.documentRevision ?? entry.document.revision,
-        },
-      ]
-    : []),
-  ...entry.sources.map((source) => ({ owner: entry.path, kind, ...source })),
-];
+          ...source,
+        })),
+      ];
 
 function editSources(file, sources, removed, added) {
   for (const source of removed)
@@ -474,6 +495,17 @@ export async function recordDocumentationReviews({
   const snapshot = createRepositorySnapshot(root);
   const { parsed, manifest } = readReviewFiles(root);
   const before = serializeLedgerFiles(parsed);
+  if (parsed.index.version === 3)
+    return recordReviewNotes(
+      root,
+      entries,
+      head,
+      snapshot,
+      parsed,
+      manifest,
+      before,
+      now,
+    );
   const owners = entries.map((entry) => {
     const record = parsed.records.get(entry.path);
     if (record) return { kind: 'review', entry, raw: record };
@@ -584,11 +616,140 @@ export async function recordDocumentationReviews({
   };
 }
 
+/** Version 3 records decisions; a review run writes only its new notes file. */
+async function recordReviewNotes(
+  root,
+  entries,
+  head,
+  snapshot,
+  parsed,
+  manifest,
+  before,
+  now,
+) {
+  const state = readReviewState(root);
+  const committed = reviewedAtHead(root);
+  const policy = resolveDocumentationFreshness({
+    root,
+    env: { ...process.env, STATION_DOCS_FRESHNESS: 'scoped' },
+    ledger: state.ledger,
+    media: state.media,
+  });
+  const notes = [];
+  const recorded = [];
+  for (const entry of entries) {
+    const raw =
+      parsed.records.get(entry.path) ?? parsed.captures.get(entry.path);
+    if (!raw)
+      throw reviewError(
+        'unknown-entry',
+        `No review record or capture for ${entry.path}`,
+      );
+    if (
+      raw.data.document ||
+      raw.data.sources.some((source) => typeof source !== 'string')
+    )
+      throw reviewError(
+        'migration-required',
+        'Old bindings remain; run node scripts/migrate-review-ledger.mjs --path-only first',
+      );
+    const kind = parsed.records.has(entry.path) ? 'review' : 'capture';
+    const owner = [
+      ...state.ledger.records,
+      ...(state.media?.captures ?? []),
+    ].find((item) => item.path === entry.path);
+    const sources = editSources(
+      entry.path,
+      owner.sources,
+      entry.removedSources,
+      entry.addedSources,
+    );
+    const inputs = [
+      ...new Set([
+        entry.path,
+        ...(owner.historyChanges ?? []),
+        ...(policy.sourceDrops ?? [])
+          .filter((problem) => problem.path === entry.path)
+          .flatMap((problem) => problem.changed),
+        ...entry.addedSources,
+        ...entry.removedSources,
+        ...(owner.historyUnavailable
+          ? sources.map((source) => source.path)
+          : []),
+      ]),
+    ];
+    for (const input of [entry.path, ...sources.map((source) => source.path)]) {
+      const file = bindingFile(input);
+      if (!snapshot.tracked.has(file))
+        throw reviewError(
+          'untracked',
+          `Recorded input is not tracked: ${input}; add it or drop its citation`,
+        );
+      const bytes = await snapshot.read(file);
+      const value = bindingDigest(input, bytes);
+      if (value === undefined)
+        throw reviewError('missing-value', `No value at ${input}`);
+      if (!committed(input, value, bytes))
+        throw reviewError(
+          'not-committed',
+          `Reviewed bytes are not committed: ${input}; commit them first`,
+        );
+      if (
+        kind === 'capture' &&
+        input === entry.path &&
+        owner.digest !== digest(bytes)
+      )
+        throw reviewError(
+          'capture-changed',
+          `Capture bytes differ from the recorded digest: ${entry.path}; update capture metadata`,
+        );
+    }
+    raw.data.sources = sources.map((source) => source.path);
+    notes.push({ path: entry.path, note: entry.note, inputs });
+    recorded.push({ kind, path: entry.path, rebound: [] });
+  }
+  const notesText = serializeNotesFile({ revision: head, notes });
+  const notesFile = notesFileName(notesText, now);
+  const after = serializeLedgerFiles(parsed);
+  after.set(notesFile, notesText);
+  const proposed = compileReviewState(parseReviewLedgerFiles(after), manifest);
+  const documents = new Map();
+  for (const record of proposed.ledger.records)
+    if (snapshot.tracked.has(record.path))
+      documents.set(record.path, digest(await snapshot.read(record.path)));
+  for (const item of recorded.filter((item) => item.kind === 'review'))
+    await evaluateDocumentationReview(
+      proposed.ledger.records.find((record) => record.path === item.path),
+      documents,
+      snapshot.tracked,
+      snapshot.read,
+    );
+  if (proposed.media)
+    await compileLearningMedia(
+      proposed.media,
+      snapshot.tracked,
+      snapshot.read,
+      { reportMissing: true },
+    );
+  for (const [file, text] of after)
+    if (before.get(file) !== text) {
+      mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      writeFileSync(path.join(root, file), text);
+    }
+  return {
+    revision: head,
+    notesFile,
+    recorded,
+    dependents: readReviewState(root)
+      .ledger.records.filter((record) => record.historyChanges?.length)
+      .map((record) => ({ path: record.path, changed: record.historyChanges })),
+  };
+}
+
 /** Every recorded review and capture, evaluated against current bytes. */
 async function evaluateAll(root, paths) {
   const snapshot = createRepositorySnapshot(root);
-  const { parsed, manifest } = readReviewFiles(root);
-  const state = compileReviewState(parsed, manifest);
+  const state = readReviewState(root);
   const documents = new Map();
   for (const record of state.ledger.records)
     if (snapshot.tracked.has(record.path))
@@ -637,6 +798,36 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
   for (const { kind, record, evaluated } of entries) {
     if (!evaluated.changed.length) {
       if (paths.length) deltas.push({ kind, path: record.path, fresh: true });
+      continue;
+    }
+    if (record.historyChanges !== undefined) {
+      const revision = record.reviewBaseline;
+      const files = [...new Set(evaluated.changed.map(bindingFile))];
+      deltas.push({
+        kind,
+        path: record.path,
+        fresh: false,
+        historyUnavailable: record.historyUnavailable,
+        diffs: revision
+          ? [
+              {
+                revision,
+                inputs: evaluated.changed,
+                files,
+                lacksReviewedBytes: [],
+                uncommitted: [],
+                available: true,
+                diff: git(root, [
+                  'diff',
+                  '--no-color',
+                  revision,
+                  '--',
+                  ...files,
+                ]).trimEnd(),
+              },
+            ]
+          : [],
+      });
       continue;
     }
     const bindings = bindingsOf(kind, record);
@@ -741,6 +932,51 @@ export async function main(argv = process.argv.slice(2)) {
   const json = argv.includes('--json');
   const parsed = parseRecordArguments(argv);
   const root = git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
+  if (parsed.mode === 'advance-baseline') {
+    if (git(root, ['status', '--porcelain']).trim())
+      throw reviewError(
+        'dirty-tree',
+        'Commit all changes before advancing the coverage baseline.',
+      );
+    const head = git(root, ['rev-parse', 'HEAD']).trim();
+    let remoteMain;
+    try {
+      remoteMain = git(root, [
+        'rev-parse',
+        '--verify',
+        'refs/remotes/origin/main^{commit}',
+      ]).trim();
+    } catch {
+      throw reviewError(
+        'missing-remote-main',
+        'Cannot advance the baseline: origin/main is missing. Run git fetch origin main, then retry on main.',
+      );
+    }
+    try {
+      git(root, ['merge-base', '--is-ancestor', head, remoteMain]);
+    } catch {
+      throw reviewError(
+        'head-not-on-main',
+        'Cannot advance the baseline: HEAD is not reachable from origin/main. Run git fetch origin main, then retry at a commit already on remote main; a PR commit cannot be the coverage baseline.',
+      );
+    }
+    const result = await checkDocumentationFreshness({
+      root,
+      env: { STATION_DOCS_FRESHNESS: 'strict' },
+    });
+    assertDocumentationFresh(result);
+    if (readReviewState(root, { history: false }).ledger.layoutVersion !== 3)
+      throw reviewError(
+        'unsupported-version',
+        'Advance the baseline only after path-only migration.',
+      );
+    writeFileSync(
+      path.join(root, REVIEW_LEDGER_INDEX),
+      serializeLedgerIndex({ version: 3, coverageBaseline: head }),
+    );
+    console.log(`Advanced coverage baseline to ${head}; commit the index.`);
+    return;
+  }
   if (parsed.mode === 'show-delta') {
     const deltas = await showReviewDelta({ root, paths: parsed.paths });
     console.log(json ? JSON.stringify({ deltas }) : formatReviewDelta(deltas));
