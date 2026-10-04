@@ -134,7 +134,7 @@ describe('bounded synchronous capture (#2787)', () => {
   });
 
   test('the ratchet family reads a tracked-file listing larger than 1 MiB whole', () => {
-    const root = makeTempDir('station-ratchet-ls-files-');
+    const root = makeTempDir('station-ratchet-listing-');
     const git = (args: string[], input?: string) =>
       execFileSyncBounded('git', args, {
         cwd: root,
