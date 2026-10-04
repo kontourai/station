@@ -76,7 +76,7 @@ shown; each stays open.
 
 | Question | Slice 1 default |
 | --- | --- |
-| Dirty-tree policy: may an Agent run on a checkout with modified tracked files? | No. Any staged or unstaged change to a tracked file refuses (`execution_preparation_tracked_changes`). |
+| Dirty-tree policy: may an Agent run on a checkout with modified tracked files? | No. Any staged or unstaged change to a tracked file or to a submodule's recorded commit refuses (`execution_preparation_tracked_changes`). Index entries marked assume-unchanged or skip-worktree hide their changes from git, so they refuse as `execution_preparation_tracked_state_unverifiable`; this also refuses sparse checkouts. |
 | Untracked files | Allowed. Their **count** is reported in the receipt; their names are not. |
 | Transfer of unpublished work (commits the receiver does not have) | Not performed. A receiver without the commit refuses as a version mismatch. |
 | Setup authority (dependency install, setup scripts) | None. Preparation runs no project code; the receipt says `setup: 'not-performed'`. Setup, if any, runs inside the Session under its existing approvals. |
@@ -123,7 +123,7 @@ tell the caller nothing about what this receiver supports.
 | Dimension | Known values | This build |
 | --- | --- | --- |
 | `mode` | `existing-realization` | Supported: the receiver's own bound checkout, no transfer |
-| | `remote-reference` | Known, refused by name (deferred) |
+| | `remote-reference` | Known, refused by name: `execution_preparation_remote_reference_unsupported` (deferred) |
 | `version.scheme` | `git-commit` | Supported for resources of kind `git`. `value` must be the full object id; an abbreviation never matches |
 | guarantee | `version-matched-when-checked` | Supported |
 | | `protected-during-execution` | Known, refused by name (decision 4) |
@@ -132,8 +132,11 @@ The **preparation receipt** rides the existing execution resolution receipt
 (`handle.resolution.preparation`). It carries the mode, resource id,
 requested and observed versions, the guarantee met
 (`version-matched-when-checked`), when the check ran, the tracked-file state
-(`clean`), the untracked-file count and `setup: 'not-performed'`. It carries
-no path.
+(`trackedChanges: 'none'`), the untracked-file count and
+`setup: 'not-performed'`. It carries no path. The same handle's
+`resolution.workspace.cwd` does carry the receiver's absolute execution
+directory; that is a pre-existing exposure of every portable dispatch
+(#484), not something this receipt adds.
 
 The capability flag `executionPreparation` on the public handshake is a
 static protocol fact: "this build understands the variant". It says nothing
@@ -156,8 +159,10 @@ before a session exists or a provider is invoked.
 3. **Claim.** The receiver reserves the #485 claim. The intent digest covers
    the whole target including the requirement, so retrying the same attempt
    with a different version conflicts.
-4. **Requirement check.** Protocol, mode, scheme and guarantees are checked
-   against this build. These refusals need no repository read.
+4. **Requirement check.** Protocol, mode and guarantees are checked against
+   this build, before admission. These refusals need no repository read.
+   The scheme is checked in step 7, because it depends on the admitted
+   resource's kind.
 5. **Admission and resolution** run exactly as for `project-portable`.
 6. **Isolation.** A receiver whose Project resolves to worktree isolation
    refuses (`execution_preparation_isolation_unsupported`): the checked
@@ -165,22 +170,38 @@ before a session exists or a provider is invoked.
 7. **Adapter.** The adapter registered for the admitted resource's kind
    reads the checkout. No adapter for the kind refuses
    (`execution_preparation_kind_unsupported`); a scheme the adapter does not
-   produce refuses (`execution_preparation_scheme_unsupported`). The Git
-   adapter refuses modified tracked files
-   (`execution_preparation_tracked_changes`) and a different `HEAD`
-   (`execution_preparation_version_mismatch`). An unreadable repository, a
+   produce refuses (`execution_preparation_scheme_unsupported`), and so does
+   a value the scheme could never observe, such as an abbreviated commit
+   (`execution_preparation_version_mismatch`). Both are checked before the
+   checkout is read, so a malformed request learns nothing about its state.
+   The Git adapter then refuses modified tracked files or submodule commits
+   (`execution_preparation_tracked_changes`), assume-unchanged or
+   skip-worktree entries (`execution_preparation_tracked_state_unverifiable`)
+   and a different `HEAD` (`execution_preparation_version_mismatch`). The
+   hardened git runner forces `--ignore-submodules=all` onto `status`, so
+   submodule drift is read from the index's gitlinks against `HEAD`'s and
+   from `ls-files --modified`, which compares a submodule's checked-out
+   commit without running git inside it. An unreadable repository, a
    refused repository config or a repository that kept changing is
    `execution_preparation_unavailable`, not a policy denial.
-8. **Bind.** The matched facts are bound to the claim with the admitted
-   facts.
+8. **Bind.** The step 7 receipt is bound to the claim with the admitted
+   facts. The claim keeps that first matched check; the handle carries the
+   step 9 receipt.
 9. **Recheck.** Immediately before the session start, after the admission
-   recheck, the adapter runs again. A change since step 7 refuses with the
-   same codes; the claim is still pre-effect.
+   recheck, the adapter runs again. On the reattach path (the reserved
+   session already exists, so nothing starts) the same recheck runs before
+   the claim advances and before the turn. A change since step 7 refuses
+   with the same codes; the claim is still pre-effect.
 10. **Execute** through the existing session start and initial turn. The
-    receipt's `checkedAt` is the step 9 check.
+    handle receipt's `checkedAt` is the step 9 check.
 
-A refused claim records its refusal code, and the attempt lookup reports it,
-so a caller that lost the reply learns why the attempt refused.
+A refused claim records its refusal code and drops any bound preparation
+receipt, because a refused attempt never ran. The attempt lookup reports the
+code, so a caller that lost the reply learns why the attempt refused. Two
+refusals are never on a claim: `execution_preparation_attempt_required`
+(there is no attempt) and a sender's `execution_preparation_unsupported`
+(nothing was sent). Continuation turns on an already-running prepared task
+are not re-verified.
 
 ## Race disclosure
 
