@@ -216,10 +216,20 @@ system Node.
   ([Instance Registry](../design/instance-registry.md)): the desktop launch,
   `station service install`, and the service supervisor all claim through it,
   and the desktop maps its result to an owner without a separate launch read.
-  An unreadable registry refuses service startup. Bare container runs without
-  installed policy remain unfenced; this slice's exclusive-owner guarantee
-  covers installed services and Desktop sidecars. Runtime preparation's
-  safety read does not choose the launch owner.
+  Installation reserves the home with the installer's live PID and writes
+  policy before starting the OS backend; backend failure restores the prior
+  registry entry. The supervisor refuses startup without installed policy or
+  on claim failure, and stops Station if readiness publication fails. Desktop
+  records the spawned child's PID and birth before waiting for Listening, so
+  an orphan still shutting down holds the reservation after desktop death.
+  Runtime preparation's safety read does not choose the launch owner.
+  This is cooperative fencing for installed services and Desktop sidecars,
+  not an OS lock around every server. Direct `command-station.js` launches
+  do not claim the registry, including a container that invokes that entry
+  point directly; when bound to `0.0.0.0`, they are reachable through the
+  container's exposed/published ports. The current Dockerfile's bare
+  `service run --instance=container` now refuses without installed policy:
+  a container policy-registration boundary remains required.
 
 Mobile apps keep their bundled web UI and store-gated builds. Store rules
 forbid downloading executable code, so the download model applies only to

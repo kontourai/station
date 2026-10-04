@@ -313,40 +313,24 @@ export async function superviseService(
 
   // ONE HOST OWNER (#2961, ADR 0020 D4): claim the home before starting
   // Station on it. A live Desktop sidecar (or another live service) owns the
-  // home, so wait in-process for it to exit rather than exit into a
-  // launchd/systemd restart loop. A registry failure cannot license a host:
+  // home, so refuse startup with a readable remedy. A registry failure cannot
+  // license a host:
   // another owner may already be running even if its record is unreadable.
-  let reportedHostRefusal = false;
-  for (;;) {
-    if (shuttingDown) {
-      await shutdownPromise;
-      return;
-    }
-    let claim: ClaimHostOwnerResult;
-    try {
-      claim = claimHost();
-    } catch (error) {
-      console.error(
-        `Station service could not claim its home in the registry: ${(error as Error).message}`,
+  try {
+    const claim = claimHost();
+    if (!claim.won) {
+      throw new Error(
+        claim.reason === 'host-owned'
+          ? describeServiceHostRefusal(livenessTarget, claim.owners)
+          : `Station service '${instanceName}' cannot claim its registry id: it is held by a live '${claim.existing.type}' process. Stop that process or install under a different instance name.`,
       );
-      exit(1);
-      return;
     }
-    if (claim.won) break;
-    if (claim.reason === 'id-held') {
-      console.error(
-        `Station service '${instanceName}' cannot claim its registry id: it is held by a live '${claim.existing.type}' process. Stop that process or install under a different instance name.`,
-      );
-      exit(1);
-      return;
-    }
-    if (!reportedHostRefusal) {
-      console.error(
-        `${describeServiceHostRefusal(livenessTarget, claim.owners)} Waiting for it to exit.`,
-      );
-      reportedHostRefusal = true;
-    }
-    await new Promise<void>((resolve) => setTimer(resolve, CHECK_INTERVAL_MS));
+  } catch (error) {
+    console.error(
+      `Station service could not claim its home in the registry: ${(error as Error).message}`,
+    );
+    exit(1);
+    return;
   }
 
   try {
@@ -420,7 +404,15 @@ export async function superviseService(
   // above already fenced the home with this supervisor's pid as `starting`
   // unless another live process of this unit (an update's launcher, a
   // replaced generation) still held it; this write takes it over.
-  publishServiceLiveness(true);
+  try {
+    publishServiceLiveness(true);
+  } catch (error) {
+    console.error(
+      `Station service lost its home ownership fence: ${(error as Error).message}`,
+    );
+    await shutdown(1);
+    return;
+  }
   // A trial reports prepared only now, with its identity proven.
   launcherLink?.onReady();
 

@@ -9601,11 +9601,17 @@ fn launch_owner(
 ) -> DesktopOwner {
     owner_after_launch_claim(
         preparation,
-        || claim_sidecar_registry_bridge(
-            resource_dir, station_home, registry_id,
-            serde_json::json!({"type":"sidecar","status":"starting","port":0}),
-        ),
-        || { let _ = release_sidecar_registry_bridge(resource_dir, station_home, registry_id); },
+        || {
+            claim_sidecar_registry_bridge(
+                resource_dir,
+                station_home,
+                registry_id,
+                serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+            )
+        },
+        || {
+            let _ = release_sidecar_registry_bridge(resource_dir, station_home, registry_id);
+        },
     )
 }
 
@@ -11507,10 +11513,22 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
-    build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-        .spawn()
-        .map(|child| (child, boot_id))
-        .map_err(|error| format!("launch Station sidecar: {error}"))
+    let mut child =
+        build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
+            .spawn()
+            .map_err(|error| format!("launch Station sidecar: {error}"))?;
+    // Record the child before waiting for Listening: after desktop death its
+    // watchdog may still be shutting down, so the child must retain the fence.
+    if !registry_claim_allows_running(publish_sidecar_registry_bridge(
+        &context.launch.resource_dir,
+        &context.launch.station_home,
+        &context.registry_id,
+        serde_json::json!({"type":"sidecar","status":"starting","port":context.launch.pinned_port.unwrap_or(0),"pid":child.id()}),
+    )) {
+        terminate_desktop_child(&mut child);
+        return Err("Station could not fence its spawned sidecar; the child was stopped.".into());
+    }
+    Ok((child, boot_id))
 }
 
 #[cfg(not(mobile))]
@@ -13989,14 +14007,22 @@ mod tests {
             ),
             DesktopOwner::Unowned
         );
-        assert!(released.get(), "an unprepared home must release its won reservation");
+        assert!(
+            released.get(),
+            "an unprepared home must release its won reservation"
+        );
         assert_eq!(
             owner_after_launch_claim(
                 PrepareRuntimeKind::ServiceOwned,
-                || parse_host_claim_output(br#"{"ok":true,"claimed":false,"owners":[{"id":"owned-service","type":"service","port":4123}]}"#),
+                || {
+                    parse_host_claim_output(br#"{"ok":true,"claimed":false,"owners":[{"id":"owned-service","type":"service","port":4123}]}"#)
+                },
                 || panic!("a losing claim has no reservation to release"),
             ),
-            DesktopOwner::Service { id: "owned-service".into(), port: 4123 }
+            DesktopOwner::Service {
+                id: "owned-service".into(),
+                port: 4123
+            }
         );
         assert_eq!(
             owner_after_launch_claim(
@@ -15280,16 +15306,42 @@ mod tests {
             }).to_string()).unwrap();
             std::fs::set_permissions(&registry, std::fs::Permissions::from_mode(0o600)).unwrap();
             let before = std::fs::read(&registry).unwrap();
-            let owner = launch_owner(PrepareRuntimeKind::Absent, resources.path(), home.path(), "loser");
-            assert_eq!(owner, if owner_type == "service" {
-                DesktopOwner::Service { id: "winner".into(), port: 38141 }
-            } else { DesktopOwner::None }, "the atomic claim must decide launch ownership");
-            let started = start_owned_sidecar(owner, || thread::spawn(|| {
-                let mut child = Command::new("node").args(["-e", "process.exit(0)"]).spawn().unwrap();
-                child.wait().unwrap()
-            }));
-            assert!(started.is_none(), "a losing desktop must start no supervisor and spawn no child");
-            assert_eq!(std::fs::read(&registry).unwrap(), before, "the loser must preserve the winning record");
+            let owner = launch_owner(
+                PrepareRuntimeKind::Absent,
+                resources.path(),
+                home.path(),
+                "loser",
+            );
+            assert_eq!(
+                owner,
+                if owner_type == "service" {
+                    DesktopOwner::Service {
+                        id: "winner".into(),
+                        port: 38141,
+                    }
+                } else {
+                    DesktopOwner::None
+                },
+                "the atomic claim must decide launch ownership"
+            );
+            let started = start_owned_sidecar(owner, || {
+                thread::spawn(|| {
+                    let mut child = Command::new("node")
+                        .args(["-e", "process.exit(0)"])
+                        .spawn()
+                        .unwrap();
+                    child.wait().unwrap()
+                })
+            });
+            assert!(
+                started.is_none(),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
+            assert_eq!(
+                std::fs::read(&registry).unwrap(),
+                before,
+                "the loser must preserve the winning record"
+            );
         }
     }
 
@@ -15324,18 +15376,25 @@ mod tests {
             (Err(RegistryBridgeFailure::Invocation), DesktopOwner::None),
         ] {
             assert!(!registry_claim_allows_running(loser.clone()));
-            let owner = owner_after_launch_claim(PrepareRuntimeKind::Absent, || loser, || {
-                panic!("a losing desktop has no claim to release")
-            });
+            let owner = owner_after_launch_claim(
+                PrepareRuntimeKind::Absent,
+                || loser,
+                || panic!("a losing desktop has no claim to release"),
+            );
             assert_eq!(owner, expected);
             let started = start_owned_sidecar(owner, || {
                 thread::spawn(|| {
-                    let mut child = Command::new("node").args(["-e", "process.exit(0)"])
-                        .spawn().expect("spawn child");
+                    let mut child = Command::new("node")
+                        .args(["-e", "process.exit(0)"])
+                        .spawn()
+                        .expect("spawn child");
                     child.wait().expect("reap child")
                 })
             });
-            assert!(started.is_none(), "a losing desktop must start no supervisor and spawn no child");
+            assert!(
+                started.is_none(),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
         }
         assert_eq!(
             parse_host_claim_output(
@@ -15900,6 +15959,45 @@ mod tests {
         );
         assert!(command_station_script_path(&context.resource_dir)
             .ends_with("dist-server/command-station.js"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_spawn_publishes_child_before_listening() {
+        let temp = tempfile::tempdir().unwrap();
+        let resources = temp.path().join("resources");
+        std::fs::create_dir_all(resources.join("dist-server")).unwrap();
+        std::fs::write(
+            resources.join("dist-server/command-station.js"),
+            "setInterval(() => {}, 1000);",
+        )
+        .unwrap();
+        // Transport fixture captures the real Rust spawn caller's publication.
+        // The TS bridge suite owns actual locked claim and PID-birth semantics.
+        std::fs::write(resources.join("dist-server/instance-registry-bridge.js"), r#"
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+          fs.writeFileSync(require('node:path').join(input.home, 'publication.json'), JSON.stringify(input));
+          console.log(JSON.stringify({ok:true,claimed:true,owners:[]}));
+        "#).unwrap();
+        let mut launch = sample_sidecar_context(None);
+        launch.resource_dir = resources;
+        launch.station_home = temp.path().into();
+        launch.station_root = temp.path().into();
+        let context = SidecarRuntimeContext {
+            launch,
+            registry_id: "reserved-desktop".into(),
+        };
+        let (mut child, _) = spawn_sidecar_child(&context).unwrap();
+        let publication = std::fs::read_to_string(temp.path().join("publication.json"));
+        terminate_desktop_child(&mut child);
+        let publication: serde_json::Value = serde_json::from_str(
+            &publication.expect("spawn must publish child ownership before Listening"),
+        )
+        .unwrap();
+        assert_eq!(publication["instance"]["pid"], child.id());
+        assert_eq!(publication["instance"]["status"], "starting");
+        assert_eq!(publication["id"], "reserved-desktop");
     }
 
     #[cfg(not(mobile))]

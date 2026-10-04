@@ -8,9 +8,9 @@ then validates that runtime's exact `service/<instance-id>.json` manifest. It
 never guesses from `service/default.json`, filename order, or the shared global
 default, so selecting another channel or a remote Station cannot retarget tray
 service actions. For a Desktop-owned sidecar, it reports the built-in backend
-but does not offer service controls. A home has one live host: the sidecar and
-an installed service claim it through the same registry claim, so a service
-that starts while this app's sidecar holds the home waits until the app quits,
+but does not offer service controls. Desktop sidecars and installed services
+claim the home through the same registry protocol, so a service
+that starts while this app's sidecar holds the home refuses with a remedy,
 and quitting never signals a service-owned backend. Startup
 recovery and its evidence boundary live in [Recover a desktop
 start](../user/native-recovery.md) and [Native shell
@@ -242,6 +242,15 @@ shell log and service/server logs, use [Recover a desktop
 start](../user/native-recovery.md). Logs are diagnostic evidence, not proof
 that native chrome was displayed or that a renderer recovered.
 
-The service supervisor fails closed if its registry cannot be read. A bare
-`station service run` without installed policy remains supported for containers;
-it respects a live sidecar but publishes no home-wide ownership fence.
+Service install reserves the home and writes policy before starting its OS
+backend. The supervisor refuses missing policy or a conflicting claim, and
+stops Station if readiness publication fails. Desktop publishes the child
+PID/birth immediately after spawn, before Listening, retaining the fence
+while an orphan is shutting down. This does not make spawn and publication
+one atomic OS operation.
+
+Bare `station service run` now refuses missing policy, including the current
+Dockerfile's fresh-home container invocation. Direct `command-station.js`
+launches remain unfenced, including containers invoking that entry point;
+a `0.0.0.0` listener is reachable through their exposed/published ports.
+Container policy registration remains a separate lifecycle requirement.

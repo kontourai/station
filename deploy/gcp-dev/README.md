@@ -6,6 +6,15 @@ a completed cloud-move workflow. The shared cloud preview supports the
 `gcp-compute` profile; automatic GCP template generation and setup transfer
 remain unavailable. See [cloud move](../../docs/design/cloud-move.md).
 
+> **Current container startup limitation (#2961):** the repository Dockerfile
+> invokes bare `service run`, which now refuses a fresh home without installed
+> policy. A container policy-registration lifecycle is still required; the
+> recipe below does not supply it. Direct `command-station.js` startup would
+> bypass the registry fence and could serve the same writable home as another
+> host. Its `0.0.0.0` listener is reachable on the container network and through
+> any published or proxied ports. Historical qualification below does not
+> establish current container startup.
+
 ## Prerequisites and budget
 
 Use a dedicated project in your organization, linked to your billing account.

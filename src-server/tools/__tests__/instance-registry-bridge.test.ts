@@ -1746,6 +1746,50 @@ describe('desktop sidecar host claim through the native bridge (#2961)', () => {
     });
   });
 
+  test('early child publication fences an orphan after its desktop dies (#2961)', () => {
+    const home = root();
+    const desktop = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `
+      const {spawn, spawnSync} = require('node:child_process');
+      const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio:'ignore', windowsHide:true});
+      child.unref();
+      const bridge = (operation, instance) => spawnSync(process.execPath,
+        ['--import','tsx','src-server/tools/instance-registry-bridge.ts',operation],
+        {windowsHide:true,encoding:'utf8',input:JSON.stringify({home:${JSON.stringify(home)},id:'old-desktop',instance})});
+      const claim = bridge('claimSidecar',{type:'sidecar',status:'starting',port:0});
+      const publish = bridge('publishSidecar',{type:'sidecar',status:'starting',port:0,pid:child.pid});
+      console.log(JSON.stringify({childPid:child.pid,desktopPid:process.pid,claimStatus:claim.status,publishStatus:publish.status,publish:JSON.parse(publish.stdout)}));
+    `,
+      ],
+      { windowsHide: true, encoding: 'utf8' },
+    );
+    expect(desktop.status).toBe(0);
+    const result = JSON.parse(desktop.stdout);
+    try {
+      expect(result.claimStatus).toBe(0);
+      expect(result.publishStatus).toBe(0);
+      expect(result.publish.claimed).toBe(true);
+      expect(() => process.kill(result.desktopPid, 0)).toThrow();
+      const entry = readInstanceRegistry(home).instances['old-desktop'];
+      expect(entry.pid).toBe(result.childPid);
+      expect(entry.birth).toBe(lookupProcessBirthFingerprint(result.childPid));
+      const next = bridgeChild('claimSidecar', {
+        home,
+        id: 'new-desktop',
+        instance: { type: 'sidecar', status: 'starting', port: 0 },
+      });
+      expect(JSON.parse(next.stdout).claimed).toBe(false);
+      expect(readInstanceRegistry(home).instances['old-desktop']).toEqual(
+        entry,
+      );
+    } finally {
+      process.kill(result.childPid);
+    }
+  });
+
   test('release removes only a sidecar record this desktop owns', () => {
     const home = root();
     const release = (id: string) =>

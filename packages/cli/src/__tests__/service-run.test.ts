@@ -1,9 +1,10 @@
+import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   readInstanceRegistry,
-  removeInstance,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
@@ -398,6 +399,7 @@ describe('service supervisor', () => {
     await superviseService(
       { ...lifecycle, allowedOrigins: ['https://kontour.example.ts.net'] },
       {
+        publishServiceLiveness: vi.fn(),
         claimServiceHost: () => ({ won: true, published: false }),
         collect,
         exit,
@@ -1002,21 +1004,31 @@ describe('supervised service liveness (station#3064)', () => {
       {
         port: 3242,
         type: 'service',
+        status: 'installing',
+        pid: process.ppid,
+        birth: lookupProcessBirthFingerprint(process.ppid)!,
         env: { ALLOWED_ORIGINS: 'https://paired.example' },
       },
       home,
     );
 
+    let pidAtStart: number | undefined;
     await superviseService(serviceLifecycle(home), {
       collect: readyCollect() as never,
       exit: vi.fn(),
       onSignal: vi.fn(),
       processIsAlive: () => true,
       setTimer: vi.fn(() => 1 as never),
-      start: vi.fn().mockResolvedValue(undefined),
+      start: vi.fn(async () => {
+        pidAtStart = readInstanceRegistry(home).instances['service-test'].pid;
+      }),
       stop: vi.fn(),
     });
 
+    expect(
+      pidAtStart,
+      'supervisor must take installer reservation before starting Station',
+    ).toBe(process.pid);
     const entry = readInstanceRegistry(home).instances['service-test'];
     // The signal Desktop's decide_home_ownership selects on: service-typed,
     // with a live pid. Before this change nothing produced one, so the
@@ -1152,85 +1164,113 @@ describe('supervised service liveness (station#3064)', () => {
     expect(entry.status).not.toBe('stopped');
   });
 
-  test('waits for a live Desktop sidecar to leave the home before starting (#2961)', async () => {
-    // One host per home (ADR 0020 D4): the supervisor claims BEFORE it starts
-    // Station, so a live sidecar keeps it waiting in-process rather than
-    // serving the same home or exiting into a KeepAlive restart loop.
+  test('refuses a live Desktop owner before starting Station (#2961)', async () => {
     const home = makeTempDir('station-svc-live-');
-    upsertInstance(
-      'service-test',
-      { port: 3242, type: 'service', env: { ALLOWED_ORIGINS: 'x' } },
-      home,
-    );
-    // A live desktop: this test runner's parent outlives the test, with its
-    // real birth fingerprint.
-    const desktopPid = process.ppid;
+    upsertInstance('service-test', { port: 3242, type: 'service' }, home);
     upsertInstance(
       'desktop-sidecar-7',
       {
         port: 38141,
         type: 'sidecar',
         status: 'starting',
-        pid: desktopPid,
-        birth: lookupProcessBirthFingerprint(desktopPid)!,
+        pid: process.ppid,
+        birth: lookupProcessBirthFingerprint(process.ppid)!,
       },
       home,
     );
-    const ticks: Array<() => void> = [];
-    const start = vi.fn().mockResolvedValue(undefined);
+    const start = vi.fn();
+    const exit = vi.fn();
+    await superviseService(serviceLifecycle(home), {
+      exit,
+      onSignal: vi.fn(),
+      start,
+      stop: vi.fn(),
+    });
+    expect(start).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  test('refuses to start Station without installed policy (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    const start = vi.fn();
+    const exit = vi.fn();
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const supervision = superviseService(serviceLifecycle(home), {
-        collect: readyCollect() as never,
-        exit: vi.fn(),
+      await superviseService(serviceLifecycle(home), {
+        exit,
         onSignal: vi.fn(),
-        processIsAlive: () => true,
-        setTimer: vi.fn((callback: () => void) => {
-          ticks.push(callback);
-          return 1 as never;
-        }),
         start,
         stop: vi.fn(),
       });
-      await vi.waitFor(() => expect(ticks).toHaveLength(1));
       expect(start).not.toHaveBeenCalled();
+      expect(exit).toHaveBeenCalledWith(1);
       expect(errors).toHaveBeenCalledWith(
-        `Station service 'service-test' cannot own Station home ${home}: it is in use by Station Desktop's built-in server (registry id 'desktop-sidecar-7', pid ${desktopPid}). Quit Station Desktop so the background service can own this home, or install the service for a different home. Waiting for it to exit.`,
+        expect.stringContaining('no installed policy entry'),
       );
-      expect(
-        readInstanceRegistry(home).instances['service-test'].pid,
-      ).toBeUndefined();
-
-      // The desktop quits: its supervisor releases the sidecar record.
-      removeInstance('desktop-sidecar-7', home);
-      ticks.shift()!();
-      await supervision;
-
-      expect(start).toHaveBeenCalledTimes(1);
-      const entry = readInstanceRegistry(home).instances['service-test'];
-      expect(entry.pid).toBe(process.pid);
-      expect(entry.env).toEqual({ ALLOWED_ORIGINS: 'x' });
+      expect(readInstanceRegistry(home).instances).toEqual({});
     } finally {
       errors.mockRestore();
     }
   });
 
-  test('a bare service run preserves the container path without minting installed policy', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
-    const start = vi.fn().mockResolvedValue(undefined);
-    await superviseService(serviceLifecycle(home), {
-      collect: readyCollect() as never,
-      exit: vi.fn(),
-      onSignal: vi.fn(),
-      processIsAlive: () => true,
-      setTimer: vi.fn(() => 1 as never),
-      start,
-      stop: vi.fn(),
+  test('readiness publication refusal stops Station and exits nonzero (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    upsertInstance('service-test', { port: 3242, type: 'service' }, home);
+    let host: ChildProcess | undefined;
+    const start = vi.fn(async () => {
+      host = spawn(
+        process.execPath,
+        [
+          '-e',
+          "require('node:http').createServer((req,res) => res.end('host')).listen(0,'127.0.0.1', function() {console.log(this.address().port)});",
+        ],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      await once(host.stdout!, 'data');
     });
-    expect(start).toHaveBeenCalledTimes(1);
-    expect(
-      readInstanceRegistry(home).instances['service-test'],
-    ).toBeUndefined();
+    const stop = vi.fn(async () => {
+      const exited = once(host!, 'exit');
+      host!.kill();
+      await exited;
+    });
+    const exit = vi.fn();
+    const collect = readyCollect().mockImplementation(async () => {
+      // A conflicting owner appears after startup but before readiness publication.
+      upsertInstance(
+        'other-desktop',
+        { port: 38141, type: 'sidecar', pid: process.ppid },
+        home,
+      );
+      return instanceStatus(okChild(10), okChild(11));
+    });
+    try {
+      await superviseService(serviceLifecycle(home), {
+        collect,
+        exit,
+        onSignal: vi.fn(),
+        start,
+        stop,
+        setTimer: vi.fn(() => 1 as never),
+      });
+      expect(stop).toHaveBeenCalledWith({
+        instanceName: 'service-test',
+        stateHome: home,
+      });
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(
+        readInstanceRegistry(home).instances['service-test'].pid,
+      ).toBeUndefined();
+      expect(
+        host?.exitCode !== null || host?.signalCode !== null,
+        'refused publication must reap the running host',
+      ).toBe(true);
+    } finally {
+      if (host && host.exitCode === null && host.signalCode === null) {
+        const exited = once(host, 'exit');
+        host.kill();
+        await exited;
+      }
+    }
   });
 
   test('refuses startup with a corrupt service registry (#2961)', async () => {

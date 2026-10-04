@@ -28,8 +28,8 @@ export interface ServiceLivenessTarget {
  * the record does not flap. Publishing goes through the host-owner claim
  * (#2961) and builds from the existing record: the entry's
  * `env.ALLOWED_ORIGINS` is durable origin-policy authority (#1983) and must
- * survive every liveness write. A bare `service run` with no install does not mint policy owned by the
- * installer and remains invisible home-wide. The retract stays an identity-guarded update.
+ * survive every liveness write. A bare `service run` refuses without installed
+ * policy. The retract stays an identity-guarded update.
  */
 export function publishServiceLivenessRecord(
   target: ServiceLivenessTarget,
@@ -38,8 +38,12 @@ export function publishServiceLivenessRecord(
   try {
     if (live) {
       const claim = claimServiceHost(target, 'running');
-      if (!claim.won && claim.reason === 'host-owned') {
-        console.error(describeServiceHostRefusal(target, claim.owners));
+      if (!claim.won) {
+        throw new Error(
+          claim.reason === 'host-owned'
+            ? describeServiceHostRefusal(target, claim.owners)
+            : `Station service '${target.instanceName}' lost its registry id.`,
+        );
       }
       return;
     }
@@ -65,8 +69,8 @@ export function publishServiceLivenessRecord(
       },
     );
   } catch (error) {
-    // Best-effort, exactly like the CLI producer: a registry that cannot be
-    // written must never take down a supervised unit.
+    if (live) throw error;
+    // Retraction is best-effort while the supervisor is already exiting.
     console.error(
       `Station service could not record its liveness in the home registry: ${(error as Error).message}`,
     );
@@ -79,7 +83,7 @@ export function publishServiceLivenessRecord(
  * this home blocks the service instead of the two serving one home. A won
  * claim publishes this supervisor's pid on its own installed service record,
  * preserving every field `service install` owns; with no installed record it
- * publishes nothing (a bare `service run` never mints the installer's entry).
+ * refuses startup rather than minting the installer's policy.
  *
  * `starting` leaves a record another live process of this unit already holds
  * untouched: during an update (#2675 D) that is the fixed launcher, and a
@@ -99,9 +103,14 @@ export function claimServiceHost(
     type: 'service',
     ownerPids: [process.pid],
     publish: (existing) => {
-      if (existing?.type !== 'service') return null;
+      if (existing?.type !== 'service') {
+        throw new Error(
+          `Station service '${target.instanceName}' has no installed policy entry. Run station service install for this home before starting the supervisor.`,
+        );
+      }
       if (
         status === 'starting' &&
+        existing.status !== 'installing' &&
         entryOwnedByLiveProcess(existing, process.pid)
       )
         return null;

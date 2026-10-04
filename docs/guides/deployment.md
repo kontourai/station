@@ -30,6 +30,15 @@ Do not apply that override to make a disposable recipe work on a real home.
 
 ## Docker Production
 
+> **Current startup limitation (#2961):** the Dockerfile invokes bare
+> `service run` without fresh-home policy registration. The supervisor now
+> refuses that startup rather than serving an unfenced home. A container
+> policy-registration lifecycle is still required. Direct `command-station.js`
+> remains unfenced and can coexist with another host on a shared writable home;
+> a `0.0.0.0` listener is reachable through container networking and any
+> published/proxied ports. These recipes are not current startup evidence.
+
+
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
 Dedicated terminal and voice listeners are separate; this proxy has no WebSocket

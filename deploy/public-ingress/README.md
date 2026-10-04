@@ -12,6 +12,15 @@ public-ingress operation: Caddy publishes TCP 80 and 443, while the Station
 service publishes no host ports. Do not attach untrusted containers to this
 Compose network or mount another customer's volumes into it.
 
+> **Current container startup limitation (#2961):** the repository Dockerfile
+> invokes bare `service run`, which now refuses a fresh home without installed
+> policy. A container policy-registration lifecycle is still required; the
+> recipe below does not supply it. Direct `command-station.js` startup would
+> bypass the registry fence and could serve the same writable home as another
+> host. Its `0.0.0.0` listener is reachable on the container network and through
+> any published or proxied ports. Historical qualification below does not
+> establish current container startup.
+
 ## Prepare
 
 Requirements: a reviewed Station container image pinned by digest, Docker

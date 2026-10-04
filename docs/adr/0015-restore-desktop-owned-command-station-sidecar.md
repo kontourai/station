@@ -104,9 +104,14 @@ claims atomically, releasing a won reservation without spawning if the service
 exited meanwhile. The status refresh retains a display-only read that
 re-derives a non-sidecar owner. Also, `service install` and the service
 supervisor claim through the same primitive, so a live sidecar also blocks
-them. Installer policy publication retains any live service fence, and an
-unreadable service registry refuses supervisor startup. Bare container runs
-without installed policy still publish no fence. The service-owner report, no automatic attachment, and the lifetime
+them. Installation reserves the home and writes policy before backend startup;
+backend failure restores the prior entry. Missing policy or a refused claim
+prevents supervisor startup, and readiness-publication failure stops Station.
+Desktop records the child's PID/birth immediately after spawn, before Listening,
+so stale recovery retains a live orphan. Spawn and publication are still
+separate operations. Bare container `service run` now refuses missing policy;
+direct `command-station.js` remains unfenced, including a container invoking
+it directly and exposing a `0.0.0.0` listener through published ports. The service-owner report, no automatic attachment, and the lifetime
 split are unchanged.
 
 ## Evidence addendum (2026-09-29, #2957)

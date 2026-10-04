@@ -100,8 +100,8 @@ The cross-concept topology and authority boundary is defined in
   compensation paths restoring a captured prior entry.
 - `claimHostOwner(id, { home?, type, ownerPids?, publish })` — the one
   atomic host-owner claim (#2961, [ADR 0020](../adr/0020-distribution-two-trains-channels-as-pointers.md)
-  D4). A home has at most one live host, a Desktop `sidecar` or a durable
-  `service`. Under one mutation lock it reaps other ids' provably stale
+  D4). Cooperating Desktop `sidecar` and durable `service` producers admit
+  at most one live host through this protocol. Under one mutation lock it reaps other ids' provably stale
   non-service records, refuses while any other id holds a live host owner of
   either type (reporting those owners), guards the claimant's own id (a
   sidecar never displaces a service record; a service adopts its own unit's
@@ -228,25 +228,29 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   chimera that could flip Desktop's home-ownership decision off a live CLI
   process. Since #2961 that claim is `claimHostOwner`. Install refuses a
   foreign live owner of its id and a live Desktop sidecar or other live
-  service on the home (pre-checks before backend mutation, re-checked under
-  the lock; a refusal after the backend install rolls the backend back),
+  service on the home (pre-checks followed by a locked claim before backend
+  startup),
   adopts a service-typed entry during its own reconfiguration, replaces a dead
   entry cleanly, and derives origin policy/env only from a prior service-typed
-  entry. Policy publication preserves a currently live service generation's
-  pid/birth under the claim lock; erasing it could admit a sidecar while the
-  backend's new supervisor is already running.
+  entry. Installation records its own live PID/birth as a reservation before
+  the backend can spawn (`status: installing`). The supervisor replaces that
+  reservation with its own PID before starting Station; readiness marks it
+  running, so an installer exit cannot expose an unfenced startup window.
+  Backend failure restores the captured prior registry entry and policy.
 - **Service supervisor.** Before it starts Station, the supervisor claims the
-  home through `claimHostOwner`. While a live sidecar or another live service
-  holds the home it logs the holder and a remedy, then waits in-process and
-  retries every five seconds instead of exiting into a launchd/systemd restart
-  loop. A won claim publishes its pid (`starting`) on its own installed record
-  unless another live process of the unit (an update's launcher, a replaced
-  generation) already holds it; readiness then publishes `running`. With no
-  installed record it publishes nothing, preserving bare `station service run`
-  for containers. Such a run respects existing live host owners but does not
-  fence a subsequent claimant; exclusive ownership covers installed services
-  and Desktop sidecars. An unreadable registry refuses startup: it cannot
-  prove that an already-running owner is absent.
+  home through `claimHostOwner`. A conflicting live owner, missing installed
+  policy, or unreadable registry refuses startup with a readable reason and
+  nonzero exit. A won claim publishes its PID (`starting`) unless a live
+  process of this unit (installer or update launcher) already fences it.
+  Readiness publishes `running`; refusal or publication I/O failure stops
+  Station and exits nonzero. Retraction during shutdown remains best effort.
+  Bare `service run` no longer starts an unfenced container supervisor. The
+  current Dockerfile invokes that command without policy registration and
+  therefore refuses a fresh home. Direct `command-station.js` remains
+  unfenced: a container invoking it can serve a shared home alongside a
+  registry claimant, and a `0.0.0.0` bind is reachable through exposed/published
+  container ports. Container policy registration needs its own explicit
+  lifecycle boundary; no implicit supervisor exception provides exclusivity.
 - **Desktop sidecar producer and consumer.** Desktop resolves one absolute
   `STATION_HOME` and, after runtime preparation, claims the home through the
   packaged Node bridge's `claimSidecar`, which runs `claimHostOwner`. The
@@ -263,8 +267,13 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   on a serving home; it is a preparation safety check, not display-only.
   The status refresh retains a display-only read; it cannot select a sidecar
   (`adoptable_refreshed_owner` maps that decision to `Unowned`). The supervisor re-claims before every
-  respawn, publishes the listening child through the same claim
-  (`publishSidecar`), and releases with the owner-checked
+  respawn, publishes the child PID/birth immediately after spawn with
+  `status: starting` through the same owner-checked claim (`publishSidecar`),
+  then publishes `running` after Listening. A live child therefore retains
+  ownership while an orphan's watchdog shuts it down; stale recovery cannot
+  reap it merely because Desktop died. There remains a small spawn-to-bridge
+  publication interval: this cooperative protocol is not an atomic OS
+  parent-death facility. Publication failure kills and reaps the child. It and releases with the owner-checked
   `removeOwnedInstance` (`releaseSidecar`). Rust never writes
   `instances.json` directly, so owner checks, atomic publishing, and the
   cross-process mutation lock remain shared-module responsibilities.
