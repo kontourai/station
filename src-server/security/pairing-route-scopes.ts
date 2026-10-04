@@ -2868,6 +2868,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    // Immutable experience history uses the same Session read authority;
+    // the reader also authorizes every historical thread before publication.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/skill-experience',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/requests/:requestId',
@@ -3228,6 +3234,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // discloses no peer/environment data and cannot mutate evidence.
     { method: 'GET', path: '/api/review-evidence' },
     { method: 'GET', path: '/api/skills' },
+    // Installed definitions for this Station's existing Skill catalog. This
+    // read starts no execution and does not resolve another Station's data.
+    { method: 'GET', path: '/api/skills/experiences' },
     { method: 'POST', path: '/api/skills' },
     { method: 'DELETE', path: '/api/skills/:name' },
     { method: 'GET', path: '/api/skills/:name' },
@@ -3538,6 +3547,28 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/visibility' },
     { method: 'POST', path: '/api/plugins/visibility/grants' },
     { method: 'DELETE', path: '/api/plugins/visibility/grants' },
+    // kontourai/station#1418, #1419: plugin command effects. Admission and
+    // settlement are the family's ordinary mutate tier: admission answers
+    // only for a plugin the caller's own principal can see (an invisible one
+    // is refused as absent) and grants no capability beyond a local palette
+    // effect; a settlement is bound to that principal and a per-document key.
+    // Listing, reading and resolving withdrawals, listing uncaptured effects
+    // and abandoning one are refused to non-operators inside the handler, the
+    // same shape as the visibility grants above; none reaches another
+    // environment's or another Station's data.
+    { method: 'POST', path: '/api/plugins/:name/command-effects' },
+    { method: 'POST', path: '/api/plugins/command-effects/settlements' },
+    { method: 'GET', path: '/api/plugins/command-effects/withdrawals' },
+    { method: 'GET', path: '/api/plugins/command-effects/withdrawals/:id' },
+    { method: 'GET', path: '/api/plugins/command-effects/uncaptured' },
+    {
+      method: 'POST',
+      path: '/api/plugins/command-effects/effects/:effectId/abandon',
+    },
+    {
+      method: 'POST',
+      path: '/api/plugins/command-effects/withdrawals/:id/resolve',
+    },
     { method: 'GET', path: '/api/plugins/:name/retained-generations' },
     { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
     { method: 'POST', path: '/api/plugins/:name/recover' },

@@ -42,6 +42,7 @@
         "SessionQueryModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
+        "SkillExperienceRuntime",
         "SessionLifecycleModule",
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",
@@ -187,6 +188,7 @@
         "InstalledPluginInventory",
         "PluginCompositionModule",
         "PluginGrantReconciliation",
+        "PluginCommandEffects",
         "RegistrySupplyChainPolicy",
         "LocalSkillMutationAuthority and SetupImportEffectJournal"
       ],

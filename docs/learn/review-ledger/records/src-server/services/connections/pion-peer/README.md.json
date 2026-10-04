@@ -9,50 +9,48 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"b1a56cbfb7ac3c067c4b105ba00f4f34b4e7a4a33b9526074a7e28352d6dc2ac","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"packages/contracts/src/self-hosted-broker.ts","digest":"31f204b0b16cbe3abeee7038efe9d0d139a585ec4a46f85cce622a6d2261d2bf","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
+    "packages/contracts/src/self-hosted-broker.ts",
 
-    {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    "scripts/self-hosted-broker.ts",
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    "src-desktop/src/native_relay_key_approval.rs",
 
-    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    "src-desktop/src/native_relay_proof_key.rs",
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "src-desktop/src/native_relay_redemption.rs",
 
-    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"ede5f4ea69dcb8fc6ad5570d70fdc5cae848467335d6c393277c6dbc8fe2ccf5","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    "src-desktop/src/native_station_key_custody.rs",
 
-    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"8a81abcb1d765efe8fee54b06346efc83d05b9562712d03e06c02ba72457a1dd","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "src-server/routes/connections/self-hosted-broker.ts",
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    "src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts",
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"bf1a6e8cbaa90f70068cb932c5fbfece01180b2624ff66c0847f3ea326ce5309","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
+    "src-server/runtime/bootstrap/self-hosted-broker-runtime.ts",
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"70ff7d48537ce8caae62b57449d990dbce05fe151c6eb8127f567f0b289ac98d","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "src-server/runtime/bootstrap/self-hosted-connector-config.ts",
 
-    {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/connections/pion-application-adapter.ts",
 
-    {"path":"src-server/services/connections/pion-application-ipc.ts","digest":"749be274c2a4463d31a0559eef36c90709563fcd485c32f93412fd91c5951ec5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/connections/pion-application-ipc.ts",
 
-    {"path":"src-server/services/connections/pion-peer/application.go","digest":"c3b7e9cad12b95030dfe5c81a5d4f4844cc9fadfd529b95105432c144101de14","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/connections/pion-peer/application.go",
 
-    {"path":"src-server/services/connections/pion-peer/go.mod","digest":"ad634d5c4189fd181f9134cf7265110d3b6176758990977927c35d902dc8cbc7","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/connections/pion-peer/go.mod",
 
-    {"path":"src-server/services/connections/pion-peer/go.sum","digest":"fdf0b96211b22c5a69e84fc733cf71166d18dbb9121e419d22875eb4ed2a85ec","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/connections/pion-peer/go.sum",
 
-    {"path":"src-server/services/connections/pion-peer/main.go","digest":"83c91702c8b30efb4a1b2439a4f23703f28a4c9889b47824453c08e927269077","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/connections/pion-peer/main.go",
 
-    {"path":"src-server/services/connections/self-hosted-broker-client.ts","digest":"a49988c4c0ff373806f7a15d3f6ce8451a639847c0cd1eeed8f3119436e7bba2","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "src-server/services/connections/self-hosted-broker-client.ts",
 
-    {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
+    "src-server/services/connections/self-hosted-broker-connector.ts",
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"14d84787028115548c0b594e20b5077ce47b24f1e72785332d9486f83b946241","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "src-server/services/connections/self-hosted-broker-service.ts",
 
-    {"path":"src-server/services/infra/process-utils.ts","digest":"ee4b40d76a59bc8c4af9dd2a5ea9622007d84e2aa5254fdf579c52b6a8e6b5ba","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    "src-server/services/infra/process-utils.ts"
   ],
 
   "checks": [

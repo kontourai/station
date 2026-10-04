@@ -9,16 +9,14 @@
 
   "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
 
-  "document": {"digest":"7279b1e379189132d851b493d7d60e3908140e270af8b040d660a620e17c0cbe","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
-
   "sources": [
-    {"path":"examples/visual-project-inspection/plugin.json","digest":"a567bd81ce900bae622258955132bb3527472d78496cadcf13f365003f447769","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    "examples/visual-project-inspection/plugin.json",
 
-    {"path":"examples/visual-project-inspection/skills/inspect-onboarding/SKILL.md","digest":"f28c1804a6c64d083c7b4c3a34a2e36c62ad090b439c4b044cc3978c617ebefe","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "examples/visual-project-inspection/skills/inspect-onboarding/SKILL.md",
 
-    {"path":"examples/visual-project-inspection/io.kontourai.station/experiences/inspect-onboarding.json","digest":"28694c46ce8f7f6036f5a587d21c6b7eb5d7b0ee2c1eae6d3fe24dd3f3d594a8","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "examples/visual-project-inspection/io.kontourai.station/experiences/inspect-onboarding.json",
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"6601a6595d1103210663e99bbc68ec889c296b1b"}
+    "packages/shared/src/skill-experience-author.ts"
   ],
 
   "checks": [

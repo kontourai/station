@@ -9,16 +9,14 @@
 
   "limits": "The 2026-07-05 Ollama/sqlite-vec/LanceDB timings, package sizes, rankings, license observations and external ecosystem survey were not rerun or refreshed. No live provider, rebuild equivalence, migration completeness, root authorization, or Neo4j qualification is certified. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): The 2026-07-05 Ollama/sqlite-vec/LanceDB timings, package sizes, rankings, license observations and external ecosystem survey were not rerun or refreshed. No live provider, rebuild equivalence, migration completeness, root authorization, or Neo4j qualification is certified.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]",
 
-  "document": {"digest":"88fd109b12ec637aae8b81fe9d7a11fac8a250f530b3a4a4804b9c805cc276c3","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
   "sources": [
-    {"path":"docs/guides/knowledge.md","digest":"c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "docs/guides/knowledge.md",
 
-    {"path":"src-server/knowledge-index/sqlite-vec-index-provider.ts","digest":"96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/knowledge-index/sqlite-vec-index-provider.ts",
 
-    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "src-server/knowledge-store/knowledge-store-provider.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"69a193fa859291b6023d0439515a179602f115c268e418ee6c94fe7bd5bb85ab","revision":"2a2786ea4751b7aead50fe91ebec03b8da8676dc"}
+    "src-server/runtime/routes/runtime-routes.ts"
   ],
 
   "checks": [

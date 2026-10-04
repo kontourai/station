@@ -769,6 +769,7 @@ describe('pairing-route-scopes: leaf-level coverage (station#1131)', () => {
 describe('pairing-route-scopes: table-driven lookups', () => {
   test.each([
     ['GET', '/api/projects', 'orchestration:read'],
+    ['GET', '/api/skills/experiences', 'orchestration:read'],
     ['GET', '/api/tasks/task-1/user-input-references', 'orchestration:read'],
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
@@ -803,6 +804,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       'orchestration:operate',
     ],
     ['GET', '/api/orchestration/runs', 'orchestration:read'],
+    [
+      'GET',
+      '/api/orchestration/sessions/thread-1/skill-experience',
+      'orchestration:read',
+    ],
     [
       'GET',
       '/api/starter-work/inspect-approval/candidate',

@@ -9,18 +9,18 @@
 
   "limits": "Owner/caller wiring checked, not every payload clone-safety property, bridge refusal, same-artifact compatibility, install trust prompt, or iframe threat-model claim.",
 
-  "document": {"digest":"620f783a5b956c3789d15c2f36c87ef11eb3adcf9e21b145cdf157e4bbc2f77c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"0a6c458c7300c90d534f85ca5cd72869763875ed6ef2452b4482e9b635156ee3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/workspace-pane-host-contract.ts",
 
-    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
+    "packages/sdk/src/index.ts",
 
-    {"path":"src-ui/src/components/plugins/framePaneHost.tsx","digest":"6bf2356c1be5d613095175322bbc3d851e9c75699b87c256f1b82e5d2b807a3f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/plugins/PluginFrameHost.tsx",
 
-    {"path":"src-ui/src/components/plugins/PluginFrameHost.tsx","digest":"8675ac0b041936053e70ec9d762e1707d816bf9ea7cf081f31ef4501f813f7f6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/plugins/framePaneHost.tsx",
 
-    {"path":"src-ui/src/workspace-panes/inProcessPaneHost.tsx","digest":"1da9d2ca44fc97a740f3b8025678e5bcb4d4c929df6c1e0c6445d00c2bc7bd3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-ui/src/workspace-panes/inProcessPaneHost.tsx",
+
+    "src-ui/src/components/plugins/plugin-frame-runtime.ts"
   ],
 
   "checks": [

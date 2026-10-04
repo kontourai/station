@@ -9,20 +9,18 @@
 
   "limits": "The old flag-off transcript behavior, historical CLI/UI parity, permanent legacy-conversation claims and original rollout receipts were not requalified. This does not certify all current chat paths or a release cutover.",
 
-  "document": {"digest":"7f3b951e2319d56b29e31488507f5c69c13b31ef589a7a18da3e6e8ef371245c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":"docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md","digest":"fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md",
 
-    {"path":"docs/reference/session-api.md","digest":"b1768e5b06eb190cb374bc359adf8285f8c2cd3dec739f8de674df9fbc8655da","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    "docs/reference/session-api.md",
 
-    {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/cli/src/commands/session-client.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"4cc7b1bd67a9a9cf35a904dfa0806bfcc811ffc63de3a5c9af26c92a754f9687","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-features.ts","digest":"55c74fed5caae236c699dfc66ac63bb298b40abe1efd1b59dcf40a95e27842da","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/station-features.ts",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"}
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
   ],
 
   "checks": [

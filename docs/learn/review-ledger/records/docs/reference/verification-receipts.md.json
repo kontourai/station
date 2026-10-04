@@ -9,38 +9,36 @@
 
   "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"}]",
 
-  "document": {"digest":"8023542d969ef6f61d7e990869f117e454579f8fdf4b12961d47337b0e9c252e","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
-
   "sources": [
-    {"path":"package.json","digest":"4b367a2c40a0613ebe8d9c35e26ff7c2a454ca84abd543856d84b88bd3201019","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    "package.json",
 
-    {"path":"schemas/verification-receipt.schema.json","digest":"e55f778235daf8e47bee50ee85e5b81bb652037fe3710fcbf8db4cdbd71f4cb8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "schemas/verification-receipt.schema.json",
 
-    {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/classify-ci-change.mjs",
 
-    {"path":"scripts/lib/test-reliability.mjs","digest":"98e4353f73733faa96bfdc45a5df0df763bd66abf0b3d3554c6a17f7f6a349ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/test-reliability.mjs",
 
-    {"path":"scripts/lib/verification-coordinator.mjs","digest":"e720935b978eb3e8aad4f3dc4c8391af36b01ed0583a3954b8cf0b5554a4e414","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-coordinator.mjs",
 
-    {"path":"scripts/lib/verification-receipt.mjs","digest":"c401880576b2d43560572ab2c02a7388eaa925926f5e358babfe9fc5985d49a6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-receipt.mjs",
 
-    {"path":"scripts/lib/verification-redaction.mjs","digest":"f7214a9928f8d2dd90950efa8ab72f57df9915316851113a4a28cccebb1e3726","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-redaction.mjs",
 
-    {"path":"scripts/lib/verification-reporter.mjs","digest":"4b37b2cac52ce0d2dc2f55f2bf382f980d9addae087702c4ea1fa07d0cc16070","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "scripts/lib/verification-reporter.mjs",
 
-    {"path":"scripts/lib/verification-retention-inventory.mjs","digest":"e54cb647b5a480255133a204369accd8a419ecc06d9a4a1183deb4fd998b016a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-retention-inventory.mjs",
 
-    {"path":"scripts/lib/verification-submission.mjs","digest":"ee6dbec0f6260801f7910e35b194c8fb9eb97ecd24f48e43b4d9231c988fa582","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-submission.mjs",
 
-    {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-terminal-receipt.mjs",
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
+    "scripts/run-changed-verification.mjs",
 
-    {"path":"scripts/run-verification.mjs","digest":"cb92060b3ba75731d2685b2907036333948df8b1a654980a0c120af237145e8c","revision":"87d45fd9b238d6b9891d7d6167c72a035cf8363c"},
+    "scripts/run-verification.mjs",
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/verification-lanes.mjs",
 
-    {"path":"scripts/__tests__/trust-reconcile-manifest.test.ts","digest":"bb88093ff64ee3ea5e49c091122b473ed43c7076aae75226931305a9c016d8d4","revision":"bd3c66c56cfee6af5662438fdf3ceda335eda251"}
+    "scripts/__tests__/trust-reconcile-manifest.test.ts"
   ],
 
   "checks": [
