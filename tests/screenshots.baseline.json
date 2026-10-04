@@ -89,7 +89,7 @@
       "name": "mobile-activity-compact",
       "width": 390,
       "height": 844,
-      "sha256": "b0fa2a4c51369ff62a020aa3eb4d28f4f5b387f6d908f16167c581519222ea0d"
+      "sha256": "f3e8f2e843d9144a8443353a93bc8b0ecb64f2f260dffdf8297a4a0b1aeefb17"
     },
     {
       "name": "mobile-agent-editor",
@@ -113,7 +113,7 @@
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "2ef2c1ee8ee365c56e317ec2b7253ba9efe772fe99bd1198e12a94ce2b5b9f8c"
+      "sha256": "4f4278d3d99800a73cdc65054c343beee6ac8d2c564de4c22961e7c066be2f1a"
     },
     {
       "name": "mobile-chat-dock-header-320",
@@ -125,7 +125,7 @@
       "name": "mobile-connections",
       "width": 390,
       "height": 844,
-      "sha256": "0dc6edd11c02a4255779afa0c1b646ce611db4c5e468a1e278920c0986f69810"
+      "sha256": "66cb3bb5ad42bb012d35233441ca7513f942c2694891ac98c1135ee45ccd2a84"
     },
     {
       "name": "mobile-home",
