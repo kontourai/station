@@ -205,13 +205,16 @@ describe('station dev server file access (#3254 review)', () => {
   });
 
   test('a page on another localhost port cannot read repo files', async () => {
-    const response = await fetch(`${origin}/@fs${repo}CLAUDE.md`, {
+    // package.json sits at the repo root, outside every allowed root.
+    const target = join(repo, 'package.json');
+    const response = await fetch(`${origin}/@fs${target}`, {
       headers: { Origin: 'http://localhost:9999' },
     });
     const body = await response.text();
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
-    // Denied paths fall through to the SPA shell; the file's bytes must not appear.
-    expect(body).not.toContain(readFileSync(join(repo, 'CLAUDE.md'), 'utf8'));
+    // Refused outright; an SPA-shell 200 does not count as a pass.
+    expect(response.status).toBe(403);
+    expect(body).not.toContain(readFileSync(target, 'utf8').slice(0, 200));
   });
 
   test('a UI source module is still served, without CORS headers', async () => {
