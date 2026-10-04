@@ -21,6 +21,7 @@ export const ORCHESTRATION_TRANSFER_INPUT_FILES = Object.freeze([
   'pnpm-workspace.yaml',
   'scripts/orchestration-transfer-capture.ts',
   'scripts/lib/transfer-capture-progress.ts',
+  'scripts/lib/liveness-scale.mjs',
   'scripts/orchestration-transfer-budget.mjs',
   'scripts/orchestration-transfer-gate.mjs',
   'scripts/check-prepush-orchestration-transfer.mjs',
