@@ -230,6 +230,11 @@ import {
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
 import {
+  createSqliteSessionControlRequestKeys,
+  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
+  type SessionControlRequestKeys,
+} from './session-control-request-keys.js';
+import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from './session-owner-attribution.js';
@@ -256,11 +261,6 @@ import {
   createSkillExperienceSnapshots,
   type SkillExperienceSnapshots,
 } from './skill-experience-snapshots.js';
-import {
-  createSqliteSessionControlRequestKeys,
-  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
-  type SessionControlRequestKeys,
-} from './session-control-request-keys.js';
 import { createSqliteAdoptionCoordinator } from './sqlite-adoption-persistence.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
 import {
@@ -11067,9 +11067,8 @@ export class EventStore {
 
   /** #3160: the durable request keys of Station Control's Session tools. */
   sessionControlRequestKeys(): SessionControlRequestKeys {
-    return (this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(
-      this.db,
-    ));
+    this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(this.db);
+    return this.sessionControlKeys;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
