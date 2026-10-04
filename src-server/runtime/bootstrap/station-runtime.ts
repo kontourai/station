@@ -4251,6 +4251,7 @@ export class StationRuntime {
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
+      operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
