@@ -264,16 +264,6 @@ function NativeRelayGrantControls({
       className="connections-computers__note"
       aria-label={`Routing grant for ${profile.name}`}
     >
-      <h3>
-        {profile.configurationState === 'configured'
-          ? 'Device access ready'
-          : 'Connect this device'}
-      </h3>
-      <p>
-        {trustMatchesRoute
-          ? 'Use the setup invitation from the Station owner to continue.'
-          : 'Confirm this Station first. Device approval comes next.'}
-      </p>
       {trust.isPending ? (
         <SkeletonBlock count={1} label="Checking Station key trust" />
       ) : null}
@@ -282,12 +272,6 @@ function NativeRelayGrantControls({
           Station key trust could not be checked. Retry when the device key
           store is available.
         </p>
-      ) : null}
-      {!trust.isPending && !trust.isError && !trustMatchesRoute ? (
-        <p role="status">Confirm this Station before continuing.</p>
-      ) : null}
-      {trustMatchesRoute ? (
-        <p role="status">Station confirmed. Your device still needs access.</p>
       ) : null}
       {status.isPending ? (
         <SkeletonBlock count={1} label="Checking this device’s routing grant" />
@@ -615,8 +599,12 @@ function NativeRelayAccountSessionPanel({
       className="connections-computers__note"
       aria-label={`Station account for ${profile.name}`}
     >
-      <h3>Sign in</h3>
-      <p>Sign in to see the projects shared with your account.</p>
+      {!hasAccountSession && (
+        <>
+          <h3>Sign in</h3>
+          <p>Sign in to see the Projects shared with you.</p>
+        </>
+      )}
       {hasAccountSession ? (
         <>
           <label className="editor-field">
@@ -781,8 +769,11 @@ function NativeRelaySetupQueryRefresh() {
 
 export function RelayRouteProfiles({
   onInvitationAccepted,
+  showHeading = true,
 }: {
   readonly onInvitationAccepted?: InvitationAcceptedCallback;
+  /** False when a surrounding dialog already titles this list. */
+  readonly showHeading?: boolean;
 } = {}) {
   const { isTauri, channel, pairingDeepLinkScheme } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
@@ -925,14 +916,18 @@ export function RelayRouteProfiles({
     >
       <NativeRelaySetupQueryRefresh />
       <div className="native-relay-setup__heading">
-        <h2 className="relay-route-profiles__heading">Your Stations</h2>
-        <RelaySetupHelp label="About your Stations">
-          <p>
-            Choose a Station, then finish its steps to see shared Projects.
-            Approved routing grants renew while this app is awake. Remove a
-            Station to stop maintaining its connection.
-          </p>
-        </RelaySetupHelp>
+        {showHeading && (
+          <>
+            <h2 className="relay-route-profiles__heading">Your Stations</h2>
+            <RelaySetupHelp label="About your Stations">
+              <p>
+                Choose a Station, then finish its steps to see shared Projects.
+                Approved routing grants renew while this app is awake. Remove a
+                Station to stop maintaining its connection.
+              </p>
+            </RelaySetupHelp>
+          </>
+        )}
         <Button
           size="sm"
           className="relay-route-profiles__add"

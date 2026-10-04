@@ -1,10 +1,10 @@
 /** @vitest-environment jsdom */
 
+import { NATIVE_DEVICE_BINDING_CANDIDATE_VERSION } from '@kontourai/station-contracts/native-device-proof';
 import type {
   RelayManagementView,
   RelaySetupApproval,
 } from '@kontourai/station-contracts/relay-management';
-import { NATIVE_DEVICE_BINDING_CANDIDATE_VERSION } from '@kontourai/station-contracts/native-device-proof';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -161,7 +161,11 @@ test('the invite dialog copies the chosen app link, then approves pasted setup i
       value: `Here is my setup info:\n${JSON.stringify(setupInfo)}\nthanks`,
     },
   });
-  expect(dialog.getByText('Nightly app for this Station.')).toBeTruthy();
+  // Valid setup info collapses to what it names; the raw text is gone.
+  expect(dialog.getByText('Nightly app').parentElement?.textContent).toBe(
+    'Nightly app for this Station',
+  );
+  expect(dialog.queryByLabelText('Their setup info')).toBeNull();
   const expiry = dialog.getByRole('combobox', { name: 'Invitation expires' });
   expect((expiry as HTMLSelectElement).value).toBe('24h');
   fireEvent.change(expiry, { target: { value: 'never' } });

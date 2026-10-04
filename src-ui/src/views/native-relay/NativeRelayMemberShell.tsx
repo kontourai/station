@@ -13,8 +13,8 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { ThemeToggle } from '../../components/header/ThemeToggle';
 import { Dialog } from '../../components/Dialog';
+import { ThemeToggle } from '../../components/header/ThemeToggle';
 import { PageFrame, PageFrameActions } from '../../components/page-frame';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -204,7 +204,6 @@ function NativeMemberProjects({
     return <SkeletonBlock label="Loading shared Projects" />;
   return (
     <section aria-label="Shared Projects">
-      <h2>Shared Projects</h2>
       {projects.data?.unsupported && (
         <p>
           Some Projects need connection capabilities that are not available here
@@ -220,17 +219,21 @@ function NativeMemberProjects({
         />
       ) : (
         <>
-          <nav aria-label="Shared Projects">
-            {projects.data?.members.map((item) => (
-              <Button
-                key={item.id}
-                active={item.id === selected.id}
-                onClick={() => setProject(item.slug)}
-              >
-                {item.name}
-              </Button>
-            ))}
-          </nav>
+          {/* The selected Project's own header names it, so a switcher is
+              only shown when there is something to switch to. */}
+          {(projects.data?.members.length ?? 0) > 1 && (
+            <nav aria-label="Shared Projects">
+              {projects.data?.members.map((item) => (
+                <Button
+                  key={item.id}
+                  active={item.id === selected.id}
+                  onClick={() => setProject(item.slug)}
+                >
+                  {item.name}
+                </Button>
+              ))}
+            </nav>
+          )}
           {project.isError ? (
             <ErrorState
               title="This Project is unavailable"
@@ -327,8 +330,9 @@ function NativeRelayMemberContent() {
   const route = activeConnection?.nativeBrokerRoute;
   if (!route) return null;
   const currentScope = scope?.isCurrent() ? scope : null;
-  const stations = (
+  const stations = (showHeading: boolean) => (
     <RelayRouteProfiles
+      showHeading={showHeading}
       onInvitationAccepted={(accepted, capturedScope) => {
         if (
           !memberClient ||
@@ -382,7 +386,7 @@ function NativeRelayMemberContent() {
             {currentScope ? (
               <RelayOperatorPanel />
             ) : (
-              <div className="native-relay-setup">{stations}</div>
+              <div className="native-relay-setup">{stations(true)}</div>
             )}
             {currentScope && stationsOpen && (
               <Dialog
@@ -391,7 +395,7 @@ function NativeRelayMemberContent() {
                 onClose={() => setStationsOpen(false)}
                 size="md"
               >
-                <div className="native-relay-setup">{stations}</div>
+                <div className="native-relay-setup">{stations(false)}</div>
               </Dialog>
             )}
           </QueryClientProvider>

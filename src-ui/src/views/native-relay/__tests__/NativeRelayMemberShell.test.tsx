@@ -281,8 +281,11 @@ it('reads published task content through the real member SDK without starting op
   });
   render(<NativeRelayMemberShell />);
   await screen.findByRole('heading', { name: 'Shared research' });
-  fireEvent.click(screen.getByRole('button', { name: member.name }));
-  expect(window.location.pathname).toBe('/projects/shared');
+  // One shared Project opens directly; its own header names it, so there is
+  // no switcher repeating the name.
+  expect(
+    screen.queryByRole('navigation', { name: 'Shared Projects' }),
+  ).toBeNull();
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Read shared item: Published task',
@@ -389,7 +392,7 @@ it('drops a late Project body after account loss and performs a fresh read for t
     release();
     await held;
   });
-  expect(screen.queryByRole('button', { name: member.name })).toBeNull();
+  expect(screen.queryByRole('heading', { name: member.name })).toBeNull();
   expect(paths()).not.toContain('/api/projects/shared');
   expect(screen.getByText('Native account recovery')).toBeDefined();
   current = true;

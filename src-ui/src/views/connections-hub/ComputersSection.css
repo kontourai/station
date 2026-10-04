@@ -13,7 +13,9 @@
 .relay-route-profiles__setup > summary {
   min-height: 44px;
   padding: var(--k-space-3) 0;
-  color: var(--k-text);
+  color: var(--k-text-muted);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-sm);
   cursor: pointer;
 }
 
@@ -553,12 +555,20 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.relay-invite__input {
+.native-relay-setup .relay-invite__input {
   width: 100%;
   min-height: 44px;
-  font-family: var(--k-font-mono);
+  font-family: var(--k-font-ui);
   font-size: var(--k-text-sm);
   resize: vertical;
+}
+.relay-invite__recipient {
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-positive);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
 }
 .native-relay-setup .relay-invite__select {
   width: auto;
@@ -572,4 +582,12 @@
 }
 .relay-invite__code .native-relay-setup__code {
   text-align: center;
+}
+/* Your Stations: heading and its info stay together; Add trails the row. */
+.relay-route-profiles > .native-relay-setup__heading {
+  justify-content: flex-start;
+  gap: var(--k-space-1);
+}
+.native-relay-setup .relay-route-profiles__add {
+  margin-left: auto;
 }

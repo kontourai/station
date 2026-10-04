@@ -186,11 +186,7 @@ function OperatorPanel({ scope }: { scope: Scope }) {
           className="relay-operator__menu"
           overflowLabel="More device actions"
           primary={
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => setInviting(true)}
-            >
+            <Button size="sm" onClick={() => setInviting(true)}>
               Invite device
             </Button>
           }
@@ -487,44 +483,65 @@ function InviteDeviceDialog({
         )}
         {step === 2 && (
           <>
-            <div className="relay-invite__field">
-              <label htmlFor={fieldId}>Their setup info</label>
-              {typeof navigator.clipboard?.readText === 'function' && (
+            {setupInfo && 'value' in setupInfo ? (
+              // Valid setup info collapses to what it means; the raw JSON is
+              // never the thing the operator has to read.
+              <div className="relay-invite__field relay-invite__recipient">
+                <span>
+                  <strong>
+                    {typeof setupInfo.value.channel === 'string' &&
+                    setupInfo.value.channel in APP_LABEL
+                      ? `${APP_LABEL[setupInfo.value.channel as AppChannel]} app`
+                      : 'Station app'}
+                  </strong>{' '}
+                  for this Station
+                </span>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={busy}
-                  onClick={() => void paste()}
+                  onClick={() => {
+                    setSetupText('');
+                    approval.reset();
+                    invitation.reset();
+                  }}
                 >
-                  Paste
+                  Change
                 </Button>
-              )}
-            </div>
-            <textarea
-              id={fieldId}
-              className="editor-input relay-invite__input"
-              rows={3}
-              placeholder="Paste what they sent"
-              spellCheck={false}
-              value={setupText}
-              disabled={busy}
-              onChange={(event) => {
-                setSetupText(event.target.value);
-                approval.reset();
-                invitation.reset();
-              }}
-            />
-            {setupInfo && 'error' in setupInfo && (
-              <p role="alert">{setupInfo.error}</p>
-            )}
-            {setupInfo && 'value' in setupInfo && (
-              <p className="connections-computers__note">
-                {typeof setupInfo.value.channel === 'string' &&
-                setupInfo.value.channel in APP_LABEL
-                  ? `${APP_LABEL[setupInfo.value.channel as AppChannel]} app`
-                  : 'Station app'}{' '}
-                for this Station.
-              </p>
+              </div>
+            ) : (
+              <>
+                <div className="relay-invite__field">
+                  <label htmlFor={fieldId}>Their setup info</label>
+                  {typeof navigator.clipboard?.readText === 'function' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => void paste()}
+                    >
+                      Paste
+                    </Button>
+                  )}
+                </div>
+                <textarea
+                  id={fieldId}
+                  className="editor-input relay-invite__input"
+                  rows={2}
+                  placeholder="Paste what they sent"
+                  spellCheck={false}
+                  value={setupText}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setSetupText(event.target.value);
+                    approval.reset();
+                    invitation.reset();
+                  }}
+                />
+                {setupInfo && 'error' in setupInfo && (
+                  <p role="alert">{setupInfo.error}</p>
+                )}
+              </>
             )}
             <div className="relay-invite__field">
               <label htmlFor={`${fieldId}-expiry`}>Invitation expires</label>
@@ -589,11 +606,7 @@ function InviteDeviceDialog({
               <code className="native-relay-setup__code">
                 {view.confirmationCode}
               </code>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void copy(view.keyId, 'Key ID')}
-              >
+              <Button size="sm" onClick={() => void copy(view.keyId, 'Key ID')}>
                 Copy key ID
               </Button>
             </div>
