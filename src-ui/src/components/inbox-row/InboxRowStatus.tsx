@@ -1,5 +1,9 @@
 import { absoluteTime, relativeTime } from '../../utils/relativeTime';
-import type { WorkStatus, WorkStatusRung } from '../../views/home/work-status';
+import {
+  type WorkStatus,
+  type WorkStatusRung,
+  workStatusText,
+} from '../../views/home/work-status';
 import { ElapsedDuration } from '../ElapsedDuration';
 import {
   CheckGlyph,
@@ -60,7 +64,7 @@ export function InboxRowStatusGlyph({ rung }: { rung: WorkStatusRung }) {
  * this, so they show the same number as the inbox row beside them.
  */
 export function WorkStatusLineText({ status }: { status: WorkStatus }) {
-  const text = [status.word, status.detail].filter(Boolean).join(' · ');
+  const text = workStatusText(status);
   if (status.since === undefined) return <>{text}</>;
   return (
     <>

@@ -257,3 +257,12 @@ export function workStatus(
     .join(' · ');
   return { ...rung, line };
 }
+
+/**
+ * The line without its duration: the word and what it is about. For text
+ * that does not tick (a tooltip, a title): a duration frozen at a list's
+ * coarse `now` would disagree with the ticking number beside it.
+ */
+export function workStatusText(status: Pick<WorkStatus, 'word' | 'detail'>) {
+  return [status.word, status.detail].filter(Boolean).join(' · ');
+}

@@ -19,7 +19,7 @@ import {
 } from '../../views/home/draft-lane';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
-import { workStatus } from '../../views/home/work-status';
+import { workStatus, workStatusText } from '../../views/home/work-status';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -693,7 +693,9 @@ export function InboxRow({
               id={statusId}
               className="inbox-row__slim-word"
               data-testid="inbox-row-status"
-              title={status.line}
+              // No duration in the tooltip: it would be frozen at the
+              // list's coarse clock beside a ticking number.
+              title={workStatusText(status)}
             >
               {status.word}
               {/* One line shows only the word; the detail and reason
