@@ -3665,7 +3665,7 @@ export class OrchestrationService {
   recordPeerDelegationPendingRequest(input: {
     taskId: string;
     environmentId: string;
-    pendingRequest: { id: string; type?: string; title?: string } | null;
+    pendingRequest: PeerReportedPendingRequest | null;
     /**
      * Set when the paired Station has just answered `respond` for this
      * request id: clear the observation only if it still names that request,
