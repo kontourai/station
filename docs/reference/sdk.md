@@ -3192,8 +3192,9 @@ returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`.
 
-Every fetcher under `@kontourai/station-sdk/client` now builds its refusal
-through the same helper (#2708). The account, application-session,
+Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
+builds it through the same helper (#2708); the plugin command-effect client
+returns business refusals as values instead. The account, application-session,
 authority-observation, checkpoint-restore, conversation pull-request link,
 fleet-routing receipt, learning-source, personal Board and Project layout
 delete, pull-request review, quote-source, runs and setup-import fetchers
