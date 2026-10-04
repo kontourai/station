@@ -204,7 +204,7 @@ function usableFigure(value: unknown): number | undefined {
 }
 
 function recordedDate(value: string | number | undefined): string | undefined {
-  if (value === undefined) return undefined;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
   const date = new Date(value);
   return Number.isFinite(date.getTime())
     ? date.toISOString().slice(0, 10)

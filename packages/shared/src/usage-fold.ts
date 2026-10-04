@@ -579,13 +579,9 @@ class UsageObservationCollector {
           this.turnModels.get(event.turnId)) ||
         this.modelId,
       principal:
-        event.turnId && this.ambiguousPrincipalTurns.has(event.turnId)
-          ? undefined
-          : isPrincipalRef(event.principal)
-            ? event.principal
-            : event.turnId
-              ? this.turnPrincipals.get(event.turnId)
-              : undefined,
+        event.turnId && !this.ambiguousPrincipalTurns.has(event.turnId)
+          ? this.turnPrincipals.get(event.turnId)
+          : undefined,
       messages: 0,
     };
   }
