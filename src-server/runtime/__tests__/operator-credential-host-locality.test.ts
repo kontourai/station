@@ -11,6 +11,7 @@ import {
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { reportOperatorCredentialUse } from '../../security/host-operator-credential.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -18,6 +19,7 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
+  INTERNAL_PROXY_CLIENT_FORWARDED_HEADER,
   INTERNAL_PROXY_FORWARDED_HOST_HEADER,
   INTERNAL_PROXY_PEER_HEADER,
 } from '../../utils/internal-api-token.js';
@@ -64,7 +66,9 @@ const logger: Logger = {
   getLevel: vi.fn(() => 'info' as const),
 };
 
-async function createHarness() {
+async function createHarness(
+  observe: (record: OperatorCredentialUseRecord) => void = () => {},
+) {
   const homeDir = makeTempDir('station-operator-host-');
   const security = new EnvironmentSecurityService({ homeDir });
   const { credential: operatorCredential } = await security.initialize();
@@ -111,7 +115,10 @@ async function createHarness() {
       isRuntimeRequestPrincipalCurrent(request, security),
     isRequestPrincipalCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(request, security),
-    observeOperatorCredentialUse: (record) => observed.push(record),
+    observeOperatorCredentialUse: (record) => {
+      observed.push(record);
+      observe(record);
+    },
   });
 
   /** One caller position: socket peer plus the headers that hop sets. */
@@ -293,9 +300,94 @@ const positions = {
       [INTERNAL_API_TOKEN_HEADER]: 'not-the-per-boot-token',
     },
   },
+  /**
+   * A remote client re-dialled onto loopback by a same-host forwarder that
+   * keeps a loopback Host but adds its forwarding header (#2894 review).
+   */
+  forwardedFor: (name: string, value: string) => ({
+    peer: LOOPBACK,
+    headers: { host: LOOPBACK_HOST, [name]: value },
+  }),
+  /**
+   * The UI proxy's client was itself a forwarder (for example Tailscale
+   * Serve on the UI port, whose `tailscale-*` headers the proxy strips), and
+   * the client chose a loopback Host: the proxy's marker decides.
+   */
+  remoteBehindUiProxyWithLoopbackHost: () => ({
+    peer: LOOPBACK,
+    headers: {
+      host: LOOPBACK_HOST,
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_PROXY_CALLER_HEADER]: 'remote',
+      [INTERNAL_PROXY_PEER_HEADER]: LOOPBACK,
+      [INTERNAL_PROXY_FORWARDED_HOST_HEADER]: 'localhost:3000',
+      [INTERNAL_PROXY_CLIENT_FORWARDED_HEADER]: '1',
+    },
+  }),
 };
 
 describe('device-admin routes observe raw operator-credential position (#2894 S1)', () => {
+  /**
+   * The residual, pinned so nobody reads S1's position as authority: a
+   * same-host forwarder that strips forwarding headers and keeps a loopback
+   * Host is byte-identical to the host CLI. S1b must refuse on proof of a
+   * host-only secret, never on this position.
+   */
+  test('a forwarder that strips forwarding headers is indistinguishable from the host CLI', async () => {
+    const harness = await createHarness();
+    const target = await harness.pairDevice('Phone');
+    harness.observed.length = 0;
+    const remoteRedialledByStrippingProxy = {
+      peer: LOOPBACK,
+      headers: { host: LOOPBACK_HOST },
+    };
+
+    const response = await harness.call(
+      `/api/pairing/devices/${target.device.id}/scope`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...harness.bearer(harness.operatorCredential),
+        },
+        body: JSON.stringify({ scope: ['orchestration:read'] }),
+      },
+      remoteRedialledByStrippingProxy,
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.observed.map(({ position }) => position)).toEqual([
+      'host-direct',
+    ]);
+  });
+
+  test('an observer that throws neither fails the request nor blocks the change', async () => {
+    const harness = await createHarness(() => {
+      throw new Error('telemetry sink down');
+    });
+    const target = await harness.pairDevice('Phone');
+
+    const response = await harness.call(
+      `/api/pairing/devices/${target.device.id}/scope`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...harness.bearer(harness.operatorCredential),
+        },
+        body: JSON.stringify({ scope: ['orchestration:read'] }),
+      },
+      positions.remotePeer,
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      harness.security.devicePairing.identifyDevice(target.credential)?.scope,
+    ).toBe('orchestration:read');
+    // The observer was reached, so the throw came from inside it.
+    expect(harness.observed).toHaveLength(1);
+  });
+
   test.each([
     ['the host CLI', 'host-direct', positions.hostCli, true],
     [
@@ -318,6 +410,42 @@ describe('device-admin routes observe raw operator-credential position (#2894 S1
       false,
     ],
     ['a forged proxy token', 'off-host', positions.forgedProxyToken, false],
+    [
+      'a loopback re-dial carrying x-forwarded-for',
+      'off-host',
+      positions.forwardedFor('x-forwarded-for', REMOTE_PEER),
+      false,
+    ],
+    [
+      'a loopback re-dial carrying forwarded',
+      'off-host',
+      positions.forwardedFor('forwarded', `for=${REMOTE_PEER}`),
+      false,
+    ],
+    [
+      'a loopback re-dial carrying x-forwarded-host',
+      'off-host',
+      positions.forwardedFor('x-forwarded-host', 'station.example.ts.net'),
+      false,
+    ],
+    [
+      'a loopback re-dial carrying x-real-ip',
+      'off-host',
+      positions.forwardedFor('x-real-ip', REMOTE_PEER),
+      false,
+    ],
+    [
+      'a loopback re-dial carrying a tailscale header',
+      'off-host',
+      positions.forwardedFor('tailscale-user-login', 'someone@example.test'),
+      false,
+    ],
+    [
+      'a forwarder in front of the UI proxy with a loopback Host',
+      'off-host',
+      positions.remoteBehindUiProxyWithLoopbackHost(),
+      false,
+    ],
   ] as const)(
     '%s: the scope change applies and is recorded as %s',
     async (_label, expected, position, hostLocal) => {
@@ -507,4 +635,58 @@ describe('device-admin routes observe raw operator-credential position (#2894 S1
       expect(harness.observed).toEqual([]);
     },
   );
+});
+
+describe('reportOperatorCredentialUse, the production sink (#2894 S1)', () => {
+  const record = (
+    position: OperatorCredentialUseRecord['position'],
+    hostLocal: boolean,
+  ): OperatorCredentialUseRecord => ({
+    event: 'station.pairing.operator_credential_used',
+    route: 'POST /api/pairing/devices/:deviceId/scope',
+    position,
+    hostLocal,
+    offHostUses: hostLocal ? 0 : 4,
+    timestamp: 1_700_000_000_000,
+  });
+
+  test('counts every use by route and position, and warns only on an off-host use', () => {
+    const add = vi.fn();
+    const warn = vi.fn();
+    const sinks = { counter: { add }, logger: { warn } };
+
+    reportOperatorCredentialUse(record('host-direct', true), sinks);
+    reportOperatorCredentialUse(record('host-ui-proxy', true), sinks);
+    reportOperatorCredentialUse(record('off-host', false), sinks);
+
+    expect(add.mock.calls).toEqual([
+      [
+        1,
+        {
+          route: 'POST /api/pairing/devices/:deviceId/scope',
+          position: 'host-direct',
+        },
+      ],
+      [
+        1,
+        {
+          route: 'POST /api/pairing/devices/:deviceId/scope',
+          position: 'host-ui-proxy',
+        },
+      ],
+      [
+        1,
+        {
+          route: 'POST /api/pairing/devices/:deviceId/scope',
+          position: 'off-host',
+        },
+      ],
+    ]);
+    expect(warn.mock.calls).toEqual([
+      [
+        'Operator credential used off-host for device administration',
+        record('off-host', false),
+      ],
+    ]);
+  });
 });

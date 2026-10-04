@@ -24,7 +24,8 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
-  type OperatorCredentialPosition,
+  type OperatorCredentialUseRecord,
+  reportOperatorCredentialUse,
   usesOperatorCredential,
 } from '../../security/host-operator-credential.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
@@ -2448,20 +2449,12 @@ export function configureRuntimeRoutes(
       relayEnrollment: context.relayEnrollment,
       resetFullAccessGrantedBy: (input) =>
         context.orchestrationService.resetFullAccessGrantedBy(input),
-      // #2894 S1 (D2, observe first): count every use; log the off-host ones
-      // at warn so they are readable beside the pairing approval audit.
-      observeOperatorCredentialUse: (record) => {
-        operatorCredentialDeviceAdminUses.add(1, {
-          route: record.route,
-          position: record.position,
-        });
-        if (!record.hostLocal) {
-          context.logger.warn(
-            'Operator credential used off-host for device administration',
-            { ...record },
-          );
-        }
-      },
+      // #2894 S1 (D2, observe first): count every use, warn on off-host ones.
+      observeOperatorCredentialUse: (record) =>
+        reportOperatorCredentialUse(record, {
+          counter: operatorCredentialDeviceAdminUses,
+          logger: context.logger,
+        }),
     },
   );
 
@@ -8183,26 +8176,8 @@ export interface PairingApprovalAuditRecord {
   readonly timestamp: number;
 }
 
-/**
- * #2894 S1 (owner decision D2, observe first): one raw operator-credential
- * use on a device-admin route. The routes do not refuse an off-host use yet;
- * this record is how the operator sees how often that happens before the
- * refusal ships. Like the approval record above it carries no device id,
- * device name, credential or address.
- */
-export interface OperatorCredentialUseRecord {
-  readonly event: 'station.pairing.operator_credential_used';
-  readonly route:
-    | 'GET /api/pairing/devices'
-    | 'DELETE /api/pairing/devices/:deviceId'
-    | 'POST /api/pairing/devices/:deviceId/scope'
-    | 'DELETE /api/pairing/devices/:deviceId/record';
-  readonly position: OperatorCredentialPosition;
-  readonly hostLocal: boolean;
-  /** Off-host uses this process has observed so far, this one included. */
-  readonly offHostUses: number;
-  readonly timestamp: number;
-}
+/** #2894 S1: see `security/host-operator-credential.ts`. */
+export type { OperatorCredentialUseRecord };
 
 /**
  * Durable, secret-safe public pairing failure evidence. The raw source is
@@ -8277,17 +8252,23 @@ export function configureDevicePairingHostRoutes(
     c: Parameters<typeof isHostLocalOperatorCredentialUse>[0],
     route: OperatorCredentialUseRecord['route'],
   ): void => {
-    if (!usesOperatorCredential(c)) return;
-    const hostLocal = isHostLocalOperatorCredentialUse(c);
-    if (!hostLocal) offHostOperatorCredentialUses += 1;
-    options.observeOperatorCredentialUse?.({
-      event: 'station.pairing.operator_credential_used',
-      route,
-      position: classifyOperatorCredentialPosition(c),
-      hostLocal,
-      offHostUses: offHostOperatorCredentialUses,
-      timestamp: Date.now(),
-    });
+    // Observe-only, structurally: nothing here may fail the request or keep
+    // it from reaching its mutation.
+    try {
+      if (!usesOperatorCredential(c)) return;
+      const hostLocal = isHostLocalOperatorCredentialUse(c);
+      if (!hostLocal) offHostOperatorCredentialUses += 1;
+      options.observeOperatorCredentialUse?.({
+        event: 'station.pairing.operator_credential_used',
+        route,
+        position: classifyOperatorCredentialPosition(c),
+        hostLocal,
+        offHostUses: offHostOperatorCredentialUses,
+        timestamp: Date.now(),
+      });
+    } catch {
+      // Dropped observation: the counter and the log are telemetry.
+    }
   };
   /**
    * #1796: the revocation's report, added to the route's answer. The scope

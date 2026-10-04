@@ -2,6 +2,7 @@ import { identifyIngress } from '../services/identity/identity-source.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
+  INTERNAL_PROXY_CLIENT_FORWARDED_HEADER,
 } from '../utils/internal-api-token.js';
 import {
   attestedBrowserVisibleHost,
@@ -14,50 +15,75 @@ import {
 
 /**
  * Where a raw operator-credential use came from (#2894 S1, owner decision
- * D2). The device-admin routes will accept the raw operator credential only
- * from this Station's own host; S1 observes the off-host uses before any
- * refusal ships.
+ * D2). S1 only observes this; it is telemetry, not authority.
  *
- *  - `host-direct`: a process on this machine dialled the API socket directly
- *    on loopback and addressed it by a loopback name. The host CLI's
- *    `openLocalOperatorChannel` is this caller.
- *  - `host-ui-proxy`: a browser on this machine reached the API through
- *    Station's own attested UI proxy, and addressed this machine's loopback.
- *  - `off-host`: anything else, including any caller this host cannot prove
- *    is local.
+ *  - `host-direct`: a direct loopback socket, no forwarding evidence, and a
+ *    loopback `Host`. The host CLI's `openLocalOperatorChannel` is this
+ *    caller.
+ *  - `host-ui-proxy`: Station's own attested UI proxy, whose client was on
+ *    loopback, addressed loopback, and sent no forwarding evidence.
+ *  - `off-host`: anything else, including any caller this host cannot place.
+ *
+ * WHAT THIS DOES NOT PROVE. `Host` is client-controlled, and so is the
+ * forwarded host the UI proxy copies from its client. Any proxy or tunnel on
+ * this machine that re-dials loopback and strips forwarding headers (an SSH
+ * local forward, a reverse proxy, a tunnel client) makes a remote caller read
+ * as `host-direct` or `host-ui-proxy`. Refusing a raw operator credential
+ * (S1b) must therefore rest on proof of a host-only secret, never on this
+ * position. See `docs/design/operator-device-access.md`.
  */
 export type OperatorCredentialPosition =
   | 'host-direct'
   | 'host-ui-proxy'
   | 'off-host';
 
-/** A Hono context, narrowed to what the position derivation reads. */
-interface PositionContext {
-  env: unknown;
-  req: { header: (name: string) => string | undefined };
-}
+/**
+ * Headers a forwarding hop adds. Any of them present means the request did
+ * not originate on this machine as far as the hop is concerned. Their
+ * presence can only move a request to `off-host`, so a forger gains nothing
+ * by adding them.
+ */
+const FORWARDING_HEADERS = [
+  'forwarded',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-real-ip',
+] as const;
 
-interface CallerContext extends PositionContext {
-  req: PositionContext['req'] & { raw: Request };
+/** A Hono context, narrowed to what the position derivation reads. */
+interface CallerContext {
+  env: unknown;
+  req: { header: (name: string) => string | undefined; raw: Request };
 }
 
 /**
- * Same three facts as the same-machine browser predicate in
- * `runtime-routes.ts` (`isSameMachineBrowserCaller`), with one addition on
- * the direct path: the request's own `Host` must also name loopback. A
- * `tailscale serve` mapping pointed straight at the API port (the channel
- * apps' topology) re-dials from loopback with no proxy headers and, without a
- * configured trusted origin, no ingress identity. Its socket alone reads as
- * loopback, but Serve preserves the browser's tailnet `Host`, which this
- * check refuses.
- *
- * Not proved, as for every loopback position: an SSH local forward or any
- * process already running as this user satisfies all of it.
+ * Forwarding evidence on THIS request: a forwarding header, any `tailscale-*`
+ * header, or the UI proxy's own marker that its client sent one (it strips
+ * `tailscale-*` before relaying, so the marker carries that fact across).
+ */
+function carriesForwardingEvidence(c: CallerContext): boolean {
+  if (c.req.header(INTERNAL_PROXY_CLIENT_FORWARDED_HEADER) !== undefined) {
+    return true;
+  }
+  if (FORWARDING_HEADERS.some((name) => c.req.header(name) !== undefined)) {
+    return true;
+  }
+  for (const name of c.req.raw.headers.keys()) {
+    if (name.startsWith('tailscale-')) return true;
+  }
+  return false;
+}
+
+/**
+ * Like the same-machine browser predicate in `runtime-routes.ts`
+ * (`isSameMachineBrowserCaller`), plus two refusals: any forwarding evidence,
+ * and, on the direct path, a `Host` that does not name loopback.
  */
 export function classifyOperatorCredentialPosition(
-  c: PositionContext,
+  c: CallerContext,
 ): OperatorCredentialPosition {
   if (identifyIngress(c) !== null) return 'off-host';
+  if (carriesForwardingEvidence(c)) return 'off-host';
   const socket = getDirectSocketAddress(c.env);
   if (classifyRuntimePeer(socket).peerClass !== 'loopback') return 'off-host';
   const request = {
@@ -85,11 +111,10 @@ export function classifyOperatorCredentialPosition(
 }
 
 /**
- * Whether this request presents the raw operator credential from this
- * Station's host. False for every other credential: the question is about
- * the operator credential only, so a device credential (including the
- * desktop app's local-grant-minted one) is never "a host-local operator
- * credential use". Reads the principal the auth boundary already bound.
+ * Whether this request presents the raw operator credential from what looks
+ * like this Station's host. False for every other credential, including the
+ * desktop app's local-grant-minted device credential. Telemetry only: see
+ * {@link OperatorCredentialPosition} for what it does not prove.
  */
 export function isHostLocalOperatorCredentialUse(c: CallerContext): boolean {
   return (
@@ -104,4 +129,48 @@ export function usesOperatorCredential(c: { req: { raw: Request } }): boolean {
     getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority ===
     'operator-credential'
   );
+}
+
+/**
+ * One raw operator-credential use on a device-admin route (#2894 S1). Carries
+ * no device id, device name, credential or address.
+ */
+export interface OperatorCredentialUseRecord {
+  readonly event: 'station.pairing.operator_credential_used';
+  readonly route:
+    | 'GET /api/pairing/devices'
+    | 'DELETE /api/pairing/devices/:deviceId'
+    | 'POST /api/pairing/devices/:deviceId/scope'
+    | 'DELETE /api/pairing/devices/:deviceId/record';
+  readonly position: OperatorCredentialPosition;
+  readonly hostLocal: boolean;
+  /** Off-host uses this process has observed so far, this one included. */
+  readonly offHostUses: number;
+  readonly timestamp: number;
+}
+
+export const OPERATOR_CREDENTIAL_OFF_HOST_LOG_MESSAGE =
+  'Operator credential used off-host for device administration';
+
+/**
+ * The production sink for {@link OperatorCredentialUseRecord}: every use is
+ * counted by route and position, and an off-host use is logged at warn so it
+ * is readable beside the pairing approval audit.
+ */
+export function reportOperatorCredentialUse(
+  record: OperatorCredentialUseRecord,
+  sinks: {
+    counter: {
+      add: (
+        value: number,
+        attributes: Pick<OperatorCredentialUseRecord, 'route' | 'position'>,
+      ) => void;
+    };
+    logger: { warn: (message: string, attributes: object) => void };
+  },
+): void {
+  sinks.counter.add(1, { route: record.route, position: record.position });
+  if (!record.hostLocal) {
+    sinks.logger.warn(OPERATOR_CREDENTIAL_OFF_HOST_LOG_MESSAGE, { ...record });
+  }
 }
