@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import {
+  assertRuntimeHttpRouteCoverage,
   pairingScopeSatisfiesHttpRoute,
   requiredPairingScope,
 } from '../../../security/pairing-route-scopes.js';
@@ -143,6 +144,11 @@ async function fixture(
       isManager: (request) =>
         hasRelayManagementAuthority(request, security, security.devicePairing),
     }),
+  );
+  assertRuntimeHttpRouteCoverage(
+    app.routes.filter((route) =>
+      route.path.startsWith('/api/relay-management'),
+    ),
   );
   const send = (path: string, body?: unknown, bearer = credential) =>
     app.request(`/api/relay-management${path}`, {

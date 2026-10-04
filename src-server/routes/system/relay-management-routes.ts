@@ -6,7 +6,7 @@ import {
   stationConnectionKeyConfirmationCode,
   stationConnectionSigningKeyId,
 } from '@kontourai/station-shared/connection-proof';
-import { type Context, Hono } from 'hono';
+import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import type { RelayManagementActorCurrency } from '../../security/relay-management-actor.js';
@@ -67,7 +67,7 @@ export function createRelayManagementRoutes(deps: {
       'Cache-Control': 'no-store',
     });
   });
-  app.use('*', async (c, next) => {
+  const managerGuard: MiddlewareHandler = async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (!deps.isManager(c.req.raw))
       return c.json({ error: { code: 'relay_management_required' } }, 403);
@@ -79,7 +79,19 @@ export function createRelayManagementRoutes(deps: {
         ? 'current'
         : 'invalid',
     );
-  });
+  };
+  app.get('/', managerGuard);
+  app.on(
+    'POST',
+    [
+      '/approvals',
+      '/approvals/revoke',
+      '/invitations',
+      '/devices/:enrollmentId/approve',
+      '/devices/:enrollmentId/deny',
+    ],
+    managerGuard,
+  );
   app.get('/', async (c) => {
     try {
       const { route, trust } = await deps.owner.describe(
