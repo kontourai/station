@@ -7,9 +7,10 @@
 > raw operator-credential use from off the host. Passkeys, operator sessions
 > and step-up do not exist yet. Successor: none.
 
-The body was read at `origin/main` 1aecbf3555 (2026-10-03); the S1 sections
-were re-read at c2c67c2f25. Line numbers are as read then and drift with later
-edits.
+The body was read at `origin/main` 1aecbf3555 (2026-10-03). The S1 sections
+and every `runtime-routes.ts` line citation were re-read after merging
+`origin/main` 91ec8af5d4; citations into other files are as first read. Line
+numbers drift with later edits.
 
 Citation rule: `path:line` means I read it. **REASONED** marks an inference
 that I did not read in code or did not execute. **NOT VERIFIED** marks a
@@ -50,9 +51,9 @@ direction did not state, and they change the shape of the design:
 3. **"Nothing weaker" reaches the raw operator credential.** Today the scope
    and revoke routes accept the operator bootstrap credential as a bearer from
    any peer. The check is only `authority === 'operator-credential'`
-   (`src-server/runtime/routes/runtime-routes.ts:8165-8189`), and that
+   (`src-server/runtime/routes/runtime-routes.ts:8301-8326`), and that
    authority comes from the credential value alone
-   (`runtime-routes.ts:1323-1330`). A remote browser that has that bearer is
+   (`runtime-routes.ts:1345-1352`). A remote browser that has that bearer is
    strictly weaker than passkey plus step-up. The design limits the
    raw-credential path to the host. That is owner decision D2, which S1
    starts by observing off-host uses before anything is refused.
@@ -74,10 +75,10 @@ list never loads, whatever is pasted.
 
 | Route | Gate today | Evidence |
 |---|---|---|
-| `GET /api/pairing/devices` | Middleware only: `access:manage` family scope (`src-server/security/pairing-route-scopes.ts:879-884`), plus `authorizeCredential`, which admits the operator credential and local-grant-minted credentials and refuses every other device | `runtime-routes.ts:8491-8503`; `environment-security-service.ts:488, 498-509` |
-| `DELETE /api/pairing/devices/:id` | `currentOperator` (operator-credential authority + principal still current) | `runtime-routes.ts:8524-8545` |
-| `POST /api/pairing/devices/:id/scope` | `currentOperator`, checked twice; `expectedScope` makes the write conditional; drops live leases; resets full access | `runtime-routes.ts:8555-8638` |
-| `DELETE /api/pairing/devices/:id/record` | `currentOperator`; service also requires actor `operator-credential` | `runtime-routes.ts:8640-8655`; `src-server/services/ssh/device-pairing-service.ts:2316-2322` |
+| `GET /api/pairing/devices` | Middleware only: `access:manage` family scope (`src-server/security/pairing-route-scopes.ts:879-884`), plus `authorizeCredential`, which admits the operator credential and local-grant-minted credentials and refuses every other device | `runtime-routes.ts:8627-8641`; `environment-security-service.ts:488, 498-509` |
+| `DELETE /api/pairing/devices/:id` | `currentOperator` (operator-credential authority + principal still current) | `runtime-routes.ts:8661-8682` |
+| `POST /api/pairing/devices/:id/scope` | `currentOperator`, checked twice; `expectedScope` makes the write conditional; drops live leases; resets full access | `runtime-routes.ts:8693-8781` |
+| `DELETE /api/pairing/devices/:id/record` | `currentOperator`; service also requires actor `operator-credential` | `runtime-routes.ts:8782-8804`; `src-server/services/ssh/device-pairing-service.ts:2316-2322` |
 
 - The service-side approval vocabulary is
   `presented-credential | local-grant | ui-bootstrap | unauthenticated`
@@ -185,7 +186,7 @@ says otherwise for writes:
   (`station_native_http_request_to_sink_blocking`, `lib.rs`). Nothing in
   `src-desktop` reads the operator credential.
 - That credential resolves to `device-credential` authority
-  (`runtime-routes.ts:1323-1330`), and `currentOperator` requires
+  (`runtime-routes.ts:1345-1352`), and `currentOperator` requires
   `operator-credential`.
 
 So the host desktop app can **list** devices (the local-grant read exception
@@ -228,8 +229,8 @@ operator passkey is rooted in a host confirmation.
 | T5 | Stolen paired device with no operator session | Become an operator | A device credential never becomes an operator session. Sign-in needs a passkey assertion with UV. `access:manage` or `access:approve` on the device grants nothing new (the owner's rejected alternative). |
 | T6 | Attacker on the tailnet who has a paired device | Enroll their own passkey | Enrollment requires host confirmation of a pending request. The host shows the requesting device's server-verified name, the RP ID, and a 6-digit code that the operator must match against their own browser. Residual: the operator approving the wrong request. This is the same residual pairing accepts. |
 | T7 | Lost or destroyed passkey | Lockout | The host channel always works (CLI, host desktop app). The operator enrolls a replacement from the host and revokes the lost one from the host. Two passkeys are recommended at enrollment. |
-| T8 | Leaked raw operator credential, used remotely | Administer devices | After D2, the device-admin routes accept the raw credential only from a host-local caller. Other uses of the credential are unchanged (out of scope). |
-| T9 | Racing operators or stale review | Re-grant what another operator removed | Keep `expectedScope` (`runtime-routes.ts:8569-8576`). The transaction fingerprint includes `expectedScope`, and the target is revalidated immediately before commit. |
+| T8 | Leaked raw operator credential, used remotely | Administer devices | After D2 (S1b), the device-admin routes accept the raw credential only with proof of a host-only secret, not on network position, which a same-host proxy or tunnel can fake. Other uses of the credential are unchanged (out of scope). |
+| T9 | Racing operators or stale review | Re-grant what another operator removed | Keep `expectedScope` (`runtime-routes.ts:8712-8718`). The transaction fingerprint includes `expectedScope`, and the target is revalidated immediately before commit. |
 | T10 | Downgrade: no HTTPS operator origin | Fall back to something weaker | Fail closed. Without an HTTPS operator origin, remote operator sign-in is unavailable and the panel says to use the host. No password, code, or bearer fallback. |
 
 Out of scope: a compromised host OS (it is the root), hosted multi-tenant
@@ -283,32 +284,43 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
      `fullAccessRevocationError`), so callers cannot tell the paths apart.
    - Per-action only, with no step-up window. That is the owner's decision,
      and per-action binding is the only form that defeats T3.
-5. **Host operator authority (unchanged mechanism, narrower acceptance).**
-   - `hostOperator(request)` is true when either:
-     - `isHostLocalOperatorCredentialUse` holds: authority is
-       `operator-credential` **and** the caller's position is on this host
-       (S1, `src-server/security/host-operator-credential.ts`); or
-     - `isBoundLocalGrantMintedOperator(request)` is true (new on the write
-       routes; see section 1).
-   - "On this host" is not the effective peer class. That class is `remote`
-     for every UI-proxied browser, including one on the host, and it reads a
-     `tailscale serve` mapping pointed straight at the API port as
-     `loopback`, because Serve re-dials from loopback. S1's position is
-     instead:
-     - `host-direct`: a direct loopback socket, no proxy attestation headers,
-       no verified ingress identity, **and** a loopback `Host`. Serve
-       preserves the browser's tailnet `Host`, so this refuses it.
+5. **Host operator authority (narrower acceptance, proved by a secret).**
+   - `hostOperator(request)` must rest on **proof of a host-only secret**,
+     never on network position. Two forms qualify:
+     - `isBoundLocalGrantMintedOperator(request)`: the credential was minted
+       by presenting the per-boot local-grant secret file (new on the write
+       routes; see section 1);
+     - the raw operator credential **together with** a proof that only a
+       process able to read this host's per-boot secret can produce (S1b
+       designs the exact proof; the host CLI already reads the home it
+       operates on). A remote holder of the operator credential alone fails
+       it.
+   - S1's position (`classifyOperatorCredentialPosition`,
+     `src-server/security/host-operator-credential.ts`) is **telemetry
+     only**. It is not the effective peer class, which is `remote` for every
+     UI-proxied browser, including one on the host:
+     - `host-direct`: a direct loopback socket, no forwarding evidence, no
+       proxy attestation headers, no verified ingress identity, and a
+       loopback `Host`;
      - `host-ui-proxy`: Station's attested UI proxy, whose attested client
-       address and attested browser `Host` are both loopback (the same facts
-       as `isSameMachineBrowserCaller` in `runtime-routes.ts`).
-     - `off-host`: everything else, including untrusted attestation headers.
-   - The CLI's `openLocalOperatorChannel` is `host-direct` by construction
-     (`environment.ts:1477-1490`). Whether `host-ui-proxy` (a host browser
-     holding a pasted operator credential) stays accepted when D2 refuses is
-     for the owner; S1 records the two positions separately so the counts
-     can inform it.
-   - Residual, as for every loopback position: an SSH local forward or any
-     process running as this user satisfies `host-direct`.
+       address and attested browser `Host` are both loopback and whose client
+       sent no forwarding evidence (the same facts as
+       `isSameMachineBrowserCaller` in `runtime-routes.ts`, plus that one);
+     - `off-host`: everything else. Forwarding evidence is `forwarded`,
+       `x-forwarded-for`, `x-forwarded-host`, `x-real-ip` or any
+       `tailscale-*` header, or the UI proxy's `x-station-proxy-client-forwarded`
+       marker that its own client sent one. Presence alone decides, so adding
+       them cannot help a forger.
+   - **Why position cannot be authority.** `Host`, and the forwarded host the
+     UI proxy copies from its client, are client-controlled. Any same-host
+     proxy or tunnel that re-dials loopback and strips forwarding headers (an
+     SSH local forward, a reverse proxy, a tunnel client) makes a remote
+     caller byte-identical to the host CLI. S1 pins that residual in a test.
+     The counts S1 collects tell the owner how often off-host use is
+     *visible*; they cannot prove that a `host-*` use was local.
+   - Whether a host browser holding a pasted operator credential
+     (`host-ui-proxy` today) can produce the S1b proof is for the owner. S1
+     records the two host positions separately so the counts can inform it.
 
 ### 3.2 What each route accepts afterward ("exactly, and nothing weaker")
 
@@ -371,10 +383,10 @@ All new paths are proposals. Existing paths are cited.
    - Add `RuntimeAuthenticatedRequestPrincipal.operatorSession?: { sessionId; passkeyId; boundDeviceId }`.
      The server writes it; the request never supplies it.
    - Add `isHostOperator(request)`: true for
-     `isHostLocalOperatorCredentialUse` (S1) or
-     `isBoundLocalGrantMintedOperator`. Consider binding it once at the
-     boundary like `bindRuntimeLocalOperator` (`:722-741`) when the refusal
-     ships; S1 evaluates it in the device-admin routes.
+     `isBoundLocalGrantMintedOperator`, or for the operator credential plus
+     S1b's host-secret proof (section 3.1, item 5). Never for S1's network
+     position, which stays telemetry. Bind it once at the boundary like
+     `bindRuntimeLocalOperator` (`:722-741`).
 2. `src-server/runtime/bootstrap/runtime-http.ts`
    - Add an operator-session admission branch, placed like the native-proof
      branch (`:766-780`) and before credential selection (`:847-853`). It
@@ -410,13 +422,13 @@ All new paths are proposals. Existing paths are cited.
 ### 4.2 Server: routes
 
 4. `src-server/runtime/routes/runtime-routes.ts`
-   - Replace `currentOperator` (`:8165-8189`) with two predicates:
+   - Replace `currentOperator` (`:8301-8326`) with two predicates:
      `hostOperator(c, request)` (`isHostOperator` plus the existing
      `isRequestPrincipalCurrent` fail-closed check) and
      `operatorSessionReader(request)`.
-   - `GET /api/pairing/devices` (`:8491`) allows either.
-   - `POST .../scope` (`:8555`), `DELETE .../:id` (`:8524`), and
-     `DELETE .../:id/record` (`:8640`):
+   - `GET /api/pairing/devices` (`:8627`) allows either.
+   - `POST .../scope` (`:8693`), `DELETE .../:id` (`:8661`), and
+     `DELETE .../:id/record` (`:8782`):
      - `hostOperator`: unchanged path, with approval `presented-credential`
        or `local-grant`.
      - `operatorSessionReader`: validate the body exactly as today. Then
@@ -428,7 +440,7 @@ All new paths are proposals. Existing paths are cited.
      - Otherwise: 401 or 403, as today.
    - New `GET /api/pairing/device-access-transactions/:id` returns
      `{ status, effect? }`. `effect` is the direct route's body.
-   - Wiring at `:2359-2387`: pass `operatorPasskeys`, `operatorSessions`,
+   - Wiring at `:2426-2459`: pass `operatorPasskeys`, `operatorSessions`,
      and `consentChannel`.
 5. `src-server/services/ssh/device-pairing-service.ts`
    - Add `{ kind: 'operator-passkey'; passkeyId; sessionId }` to
@@ -603,7 +615,7 @@ session expires after 15 minutes idle or 60 minutes absolute.
 
 | Event | Action | Who |
 |---|---|---|
-| Paired browser stolen | Revoke the device on the host. Bound operator sessions end, and live leases drop (existing `disconnectDevice`, `runtime-routes.ts:8532`). | host, or another operator session + step-up |
+| Paired browser stolen | Revoke the device on the host. Bound operator sessions end, and live leases drop (existing `disconnectDevice`, `runtime-routes.ts:8670`). | host, or another operator session + step-up |
 | Passkey lost | `station environment operator passkeys revoke <id>`. Sessions created with it end. | host (D8 for remote) |
 | Every passkey lost | Use the host. Device admin keeps working through the host CLI and desktop app. Enroll a new passkey with host confirmation. | host |
 | Suspected session theft | `DELETE /api/operator/sessions` (all), or `sessions revoke --all` on the host | host, or step-up |
@@ -699,7 +711,7 @@ break), restore, and confirm green.
 | Challenge not consumed | replay test |
 | Device binding of the session ignored | other-device row |
 | Operator-session branch falls through to device admission on an invalid cookie | invalid-cookie test |
-| `isHostOperator` position clause removed | remote operator credential row (S1: off-host position rows) |
+| `isHostOperator` host-secret proof clause removed | remote operator credential row (S1 itself injects the forwarding-evidence check and the position clause against its off-host rows) |
 | `ceremony: 'webauthn'` gate removed | device-cookie decision row |
 
 ### 7.5 CLI
@@ -770,7 +782,7 @@ point:
 |---|---|---|---|
 | **S0** (this change, except the threat model) | Docs: amend `identity.md` "Where passkeys fit" (operator passkeys yes, pairing passkeys still no) and `principals.md`, and record the decisions. The threat model's credential and recovery sections change with S1b and S3, when behaviour does. | none | owner decisions |
 | **S1** (this change) | The host-locality predicate (`src-server/security/host-operator-credential.ts`) and its route-matrix test. The host desktop credential question is resolved (section 1). Observe only: each raw operator-credential use on the four device-admin routes is recorded with its position; an off-host use is logged at warn with a per-process count (readable through the diagnostics log read) and counted in `station.device_pairing.operator_credential_uses`. Nothing is refused, and the panel's paste field stays. | none (observation) | S0 |
-| **S1b** | After an owner-chosen observation period: refuse an off-host raw operator credential on the four device-admin routes with a stable error that names the host CLI. | D2 | S1, owner |
+| **S1b** | After an owner-chosen observation period: refuse the raw operator credential on the four device-admin routes **unless it comes with proof of a host-only secret** (not network position), with a stable error that names the host CLI. | D2 | S1, owner |
 | **S2a** | HTTPS operator origin: `STATION_TRUSTED_CONSENT_ORIGIN`, `reviewUrlFor` HTTPS, docs for the second Tailscale Serve mapping. | none by default | S0 |
 | **S2b** | Passkey registry, enrollment requests, host confirm/deny/revoke (CLI verbs, desktop section), enrollment pages on the operator origin, WebAuthn dependency. | new opt-in surface | S2a, D6 |
 | **S3** | Operator sessions: sign-in pages, the middleware branch, the `'operator-session'` authority (with the negative-comparison audit), `GET /api/pairing/devices` accepting a session, panel sign-in, list load. | reads only | S2b |
@@ -791,7 +803,7 @@ the #2377 slices also edit. Check for in-flight lanes before starting.
 | # | Decision |
 |---|---|
 | D1 | Step-up runs on the **separate consent origin**, as a new kind of the existing consent transaction. Remote use needs an HTTPS mapping for that origin (S2a). |
-| D2 | The raw operator credential on the device-admin routes becomes **host-only** (loopback, or the desktop app's local-grant credential). **Observe first:** log and count off-host uses for a period (S1), then refuse in a later step (S1b). The panel's paste field is removed only when the passkey path exists (S4), not in S1. |
+| D2 | The raw operator credential on the device-admin routes becomes **host-only** (loopback, or the desktop app's local-grant credential). **Observe first:** log and count off-host uses for a period (S1), then refuse in a later step (S1b). The panel's paste field is removed only when the passkey path exists (S4), not in S1. Security review of S1 (2026-10-03): "host-only" must be enforced by proof of a host-only secret; loopback position is telemetry, because a same-host proxy or tunnel can fake it. |
 | D6 | Add `@simplewebauthn/server` (and `/browser`) in the enrollment slice (S2b), not before. It must pass the Dependency review check. |
 
 Scope: this record and S1. S2a, S2b, S3, S4 (and S1b) are follow-ups.

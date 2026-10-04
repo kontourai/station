@@ -1133,13 +1133,18 @@ than left to inspection.
 **Detection for off-host operator-credential use (#2894 S1).** The four
 device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
 record removal) record each raw operator-credential use with its host position.
-An off-host use, including one through Station's UI proxy from another machine
-or a `tailscale serve` mapping straight at the API port, is still allowed. It
-is logged at warn as `station.pairing.operator_credential_used` with a
-per-process count and counted in
+A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
+any forwarding header, including Station's UI proxy reporting that its client
+sent one) is still allowed. It is logged at warn with the message `Operator
+credential used off-host for device administration` and the record's `event`
+field `station.pairing.operator_credential_used`, carrying a per-process
+count, and every use is counted in
 `station.device_pairing.operator_credential_uses` by route and position, with
-no device or network identity. Refusing it is a later step of
-[operator device access](../design/operator-device-access.md).
+no device or network identity. The position is telemetry, not proof: a
+same-host proxy or tunnel that strips forwarding headers makes a remote caller
+read as on-host. Refusing the raw credential is a later step of
+[operator device access](../design/operator-device-access.md) and must rest on
+proof of a host-only secret.
 
 **The rest of the family, assessed then.** These were reachable on the
 old floor, each because it was the operator's own panel doing its job before any
