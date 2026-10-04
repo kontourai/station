@@ -20,6 +20,7 @@ import {
 } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import type { CollectedInstanceStatus } from '../commands/lifecycle.js';
 import type { ServiceFs } from '../commands/service.js';
 
 const makeTempDir = trackTempDirs();
@@ -1113,20 +1114,27 @@ describe('station service dispatch', () => {
         exit: supervisorExit,
         onSignal: vi.fn(),
         needsBuildForInstance: () => false,
-        collect: vi.fn(async () => ({
-          found: true,
-          healthy: true,
-          bootId: 'boot',
-          sha: 'sha',
-          instanceId: 'service-test',
-          server: {
-            pid: host!.pid,
-            probe: 'ok',
-            listening: true,
-            reachable: true,
-          },
-          ui: { pid: host!.pid, probe: 'ok', listening: true, reachable: true },
-        })),
+        collect: vi.fn(
+          async (): Promise<CollectedInstanceStatus> => ({
+            found: true,
+            healthy: true,
+            bootId: 'boot',
+            sha: 'sha',
+            instanceId: 'service-test',
+            server: {
+              pid: host?.pid ?? null,
+              probe: 'ok',
+              listening: true,
+              reachable: true,
+            },
+            ui: {
+              pid: host?.pid ?? null,
+              probe: 'ok',
+              listening: true,
+              reachable: true,
+            },
+          }),
+        ),
         setTimer: vi.fn(() => 1 as never),
       });
       const sidecar = spawnSync(
