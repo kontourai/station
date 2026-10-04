@@ -584,6 +584,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
+  // #2959: runs the release publication and signer CLIs, the release and
+  // publish workflows' own bash steps, and install.sh as bounded children.
+  'scripts/__tests__/portable-release-publish-workflow.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
@@ -822,6 +825,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // user's index/HEAD and stays invisible to branch/tag/log --all — the
   // same child-process shape as content-integrity-gate.test.ts.
   'src-server/services/checkpoints/__tests__/checkpoint-ref-store.test.ts',
+  // kontourai/station#1419: drives the real legacy Git update route against
+  // throwaway fixture repositories through execFileSync, alongside removal,
+  // grant revocation and consent-listener approval over one Station home.
+  'src-server/routes/plugins/__tests__/plugin-command-effect-lifecycle.test.ts',
   // station#2923: builds and restores real Git fixture repositories through
   // the transitive execGit process helper, not a direct test-file import.
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
