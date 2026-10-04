@@ -5,7 +5,10 @@ import type {
   RelayManagementView,
   RelaySetupApproval,
 } from '@kontourai/station-contracts/relay-management';
-import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import {
+  StationHttpError,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -209,22 +212,75 @@ test('setup info for another Station is refused before any approval write', asyn
   expect(state.approve).not.toHaveBeenCalled();
 });
 
-test('an uncertain issuance does not offer automatic retry, and retired authority removes the controls', async () => {
-  state.invite.mockRejectedValue(new Error('The write outcome is uncertain'));
-  const mounted = mount();
-  const dialog = await openInvite();
-  fireEvent.click(dialog.getByRole('button', { name: 'Next' }));
+async function enterSetup(dialog: ReturnType<typeof within>, info: object) {
+  if (!dialog.queryByLabelText('Their setup info'))
+    fireEvent.click(dialog.getByRole('button', { name: 'Next' }));
   fireEvent.change(dialog.getByLabelText('Their setup info'), {
-    target: { value: JSON.stringify(setupInfo) },
+    target: { value: JSON.stringify(info) },
   });
-  const approve = dialog.getByRole('button', { name: 'Approve and invite' });
+  return dialog.getByRole('button', { name: 'Approve and invite' });
+}
+
+test('an uncertain issuance blocks that recipient across Change and close/reopen until explicitly allowed, and retired authority removes the controls', async () => {
+  state.invite.mockRejectedValueOnce(
+    new Error('The write outcome is uncertain'),
+  );
+  const mounted = mount();
+  let dialog = await openInvite();
+  let approve = await enterSetup(dialog, setupInfo);
   fireEvent.click(approve);
-  await dialog.findByText(/the invitation couldn’t be confirmed/);
+  await dialog.findByText(/last invitation wasn’t confirmed/);
   expect(approve.hasAttribute('disabled')).toBe(true);
   fireEvent.click(approve);
   expect(state.approve).toHaveBeenCalledTimes(1);
   expect(state.invite).toHaveBeenCalledTimes(1);
   expect(dialog.queryByRole('button', { name: 'Copy invitation' })).toBeNull();
+
+  // Change, then the same setup info: still blocked.
+  fireEvent.click(dialog.getByRole('button', { name: 'Change' }));
+  approve = await enterSetup(dialog, setupInfo);
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  dialog.getByText(/last invitation wasn’t confirmed/);
+
+  // Closing unmounts the dialog; reopening with the same setup info is still
+  // blocked and writes nothing.
+  fireEvent.click(dialog.getByRole('button', { name: 'Close invite device' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  dialog = await openInvite();
+  approve = await enterSetup(dialog, setupInfo);
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(approve);
+  expect(state.approve).toHaveBeenCalledTimes(1);
+  expect(state.invite).toHaveBeenCalledTimes(1);
+
+  // Another phone is unaffected.
+  fireEvent.click(dialog.getByRole('button', { name: 'Change' }));
+  const other = {
+    ...setupInfo,
+    clientInstanceId: '679f0519-95eb-47b8-846b-5908dcb52251',
+  };
+  approve = await enterSetup(dialog, other);
+  expect(approve.hasAttribute('disabled')).toBe(false);
+  expect(dialog.queryByText(/last invitation wasn’t confirmed/)).toBeNull();
+  fireEvent.click(approve);
+  await dialog.findByRole('heading', { name: 'Send the invitation' });
+  expect(state.invite.mock.calls[1]?.[2]).toEqual(other);
+  fireEvent.click(dialog.getByRole('button', { name: 'Done' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+  // The original phone stays blocked until the operator explicitly allows
+  // another; allowing does not itself write.
+  dialog = await openInvite();
+  approve = await enterSetup(dialog, setupInfo);
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(dialog.getByRole('button', { name: 'Allow another' }));
+  expect(state.invite).toHaveBeenCalledTimes(2);
+  expect(approve.hasAttribute('disabled')).toBe(false);
+  fireEvent.click(approve);
+  await dialog.findByRole('heading', { name: 'Send the invitation' });
+  expect(state.invite).toHaveBeenCalledTimes(3);
+  expect(state.invite.mock.calls[2]?.[2]).toEqual(setupInfo);
+
   state.current = false;
   mounted.rerender(
     <QueryClientProvider client={clients[0]!}>
@@ -233,6 +289,22 @@ test('an uncertain issuance does not offer automatic retry, and retired authorit
   );
   expect(screen.queryByRole('region', { name: 'Devices' })).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('a refusal the server makes before issuing is not treated as an uncertain invitation', async () => {
+  state.invite.mockRejectedValueOnce(
+    new StationHttpError(403, 'Relay management is unavailable.'),
+  );
+  mount();
+  const dialog = await openInvite();
+  const approve = await enterSetup(dialog, setupInfo);
+  fireEvent.click(approve);
+  await dialog.findByText(
+    'Couldn’t create the invitation. Check it with them.',
+  );
+  expect(dialog.queryByText(/last invitation wasn’t confirmed/)).toBeNull();
+  expect(approve.hasAttribute('disabled')).toBe(false);
+  expect(state.invite).toHaveBeenCalledTimes(1);
 });
 
 test('a waiting device is approved from its own row, and removal of an approved device needs confirmation', async () => {

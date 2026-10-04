@@ -77,6 +77,20 @@ function readSetupInfo(
   return { value: info };
 }
 
+/**
+ * The phone an invitation is bound to, within the route it names. It holds
+ * public setup fields only, never the invitation link.
+ */
+function recipientKey(info: Record<string, unknown>): string {
+  return JSON.stringify([
+    info.brokerOrigin,
+    info.stationId,
+    info.enrollmentId,
+    info.clientInstanceId,
+    info.keyThumbprint,
+  ]);
+}
+
 export function RelayOperatorPanel() {
   const scope = useHostRequestAuthorityScope();
   if (!scope) return null;
@@ -91,6 +105,13 @@ export function RelayOperatorPanel() {
 function OperatorPanel({ scope }: { scope: Scope }) {
   const [inviting, setInviting] = useState(false);
   const [removing, setRemoving] = useState<RelaySetupApproval | null>(null);
+  // Recipients whose invitation write may have happened without its link
+  // coming back. It lives here, not in the dialog, so closing the dialog or
+  // changing the setup info cannot quietly allow a second invitation. This
+  // panel is keyed by authority, so another account or Station starts empty.
+  const [unconfirmed, setUnconfirmed] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const request = {
     requestScope: scope,
     requireCredential: scope.requiresEnrolledCredential ?? true,
@@ -298,6 +319,15 @@ function OperatorPanel({ scope }: { scope: Scope }) {
         <InviteDeviceDialog
           scope={scope}
           view={view}
+          unconfirmed={unconfirmed}
+          onUnconfirmed={(recipient, uncertain) =>
+            setUnconfirmed((current) => {
+              const next = new Set(current);
+              if (uncertain) next.add(recipient);
+              else next.delete(recipient);
+              return next;
+            })
+          }
           onClose={() => {
             setInviting(false);
             void query.refetch();
@@ -330,15 +360,20 @@ function OperatorPanel({ scope }: { scope: Scope }) {
  * The invitation journey as three short steps. Approval and invitation stay
  * two server writes in that order; the dialog runs them from one action
  * because the operator always does both with the same setup info. An
- * uncertain invitation write disables the action instead of retrying.
+ * uncertain invitation write blocks that recipient instead of retrying, until
+ * the operator explicitly allows another.
  */
 function InviteDeviceDialog({
   scope,
   view,
+  unconfirmed,
+  onUnconfirmed,
   onClose,
 }: {
   scope: Scope;
   view: RelayManagementView;
+  unconfirmed: ReadonlySet<string>;
+  onUnconfirmed: (recipient: string, uncertain: boolean) => void;
   onClose: () => void;
 }) {
   const platformChannel = usePlatformProfile().channel;
@@ -357,6 +392,9 @@ function InviteDeviceDialog({
     requireCredential: scope.requiresEnrolledCredential ?? true,
   };
   const setupInfo = readSetupInfo(setupText, view.route);
+  const recipient =
+    setupInfo && 'value' in setupInfo ? recipientKey(setupInfo.value) : null;
+  const uncertain = recipient !== null && unconfirmed.has(recipient);
   const approval = useMutation({
     gcTime: 0,
     mutationFn: async (prepare: unknown) => {
@@ -366,24 +404,41 @@ function InviteDeviceDialog({
   });
   const invitation = useMutation({
     gcTime: 0,
-    mutationFn: async (prepare: unknown) => {
+    mutationFn: async (target: {
+      prepare: Record<string, unknown>;
+      recipient: string;
+    }) => {
       if (!scope.isCurrent()) throw new Error('Station access changed.');
-      return createRelayInvitation(
-        scope.apiBase,
-        view.route,
-        prepare,
-        lifetime,
-        request,
-      );
+      try {
+        return await createRelayInvitation(
+          scope.apiBase,
+          view.route,
+          target.prepare,
+          lifetime,
+          request,
+        );
+      } catch (error) {
+        // The server answers 400 and 403 only before it issues anything.
+        // Every other failure may have left an invitation behind.
+        if (
+          !(
+            error instanceof StationHttpError &&
+            (error.status === 400 || error.status === 403)
+          )
+        )
+          onUnconfirmed(target.recipient, true);
+        throw error;
+      }
     },
     onSuccess: () => setStep(3),
   });
   const busy = approval.isPending || invitation.isPending;
   async function approveAndInvite() {
-    if (!setupInfo || !('value' in setupInfo)) return;
+    if (!setupInfo || !('value' in setupInfo) || !recipient || uncertain)
+      return;
     try {
       if (!approval.isSuccess) await approval.mutateAsync(setupInfo.value);
-      await invitation.mutateAsync(setupInfo.value);
+      await invitation.mutateAsync({ prepare: setupInfo.value, recipient });
     } catch {
       /* Rendered from the mutation state below. */
     }
@@ -424,9 +479,7 @@ function InviteDeviceDialog({
         </Button>
         <Button
           variant="primary"
-          disabled={
-            busy || !setupInfo || !('value' in setupInfo) || invitation.isError
-          }
+          disabled={busy || !setupInfo || !('value' in setupInfo) || uncertain}
           pending={busy}
           pendingLabel={approval.isPending ? 'Approving…' : 'Creating…'}
           onClick={() => void approveAndInvite()}
@@ -570,11 +623,30 @@ function InviteDeviceDialog({
                 Couldn’t approve this setup info. Check it with them.
               </p>
             )}
-            {invitation.isError && (
-              <p role="alert">
-                Approved, but the invitation couldn’t be confirmed. Check with
-                them before creating another.
-              </p>
+            {uncertain ? (
+              <div role="alert" className="relay-invite__field">
+                <p>
+                  This phone’s last invitation wasn’t confirmed. Creating
+                  another may leave an unused one.
+                </p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => {
+                    if (recipient) onUnconfirmed(recipient, false);
+                    invitation.reset();
+                  }}
+                >
+                  Allow another
+                </Button>
+              </div>
+            ) : (
+              invitation.isError && (
+                <p role="alert">
+                  Couldn’t create the invitation. Check it with them.
+                </p>
+              )
             )}
           </>
         )}
