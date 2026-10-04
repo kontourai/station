@@ -141,7 +141,8 @@ Common fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
-| `commands` | PluginCommandContribution[] | no | Inert palette-command declarations; registration alone grants no execution authority |
+| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id and uses the built-in palette's page behavior. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
+| `commandsRejected` | `{ reason: string }` | no | Set by Station, not by authors: the loader discards any value in `plugin.json` and sets it only when `commands` failed validation and was dropped |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |
@@ -174,8 +175,8 @@ a plugin installed under one of those names would find Station's routes inside
 the namespace it believes it owns. Install refuses these names outright:
 
 ```
-check-updates   fetch   home-role   host-approvals   install   preview   reload
-validate        visibility
+check-updates   command-effects   fetch   home-role   host-approvals
+install         preview           reload            validate    visibility
 ```
 
 The [reserved-identity list](../../src-server/services/plugins/reserved-plugin-identities.ts)
@@ -319,6 +320,31 @@ setting `registryUrl`:
   "registryUrl": "examples/registry/manifest.json"
 }
 ```
+
+Managing connected sources requires the Station operator and an
+`access:manage` credential. Standard paired clients can browse ordinary
+catalog items without gaining host source-management authority.
+
+The Registry's Add marketplace flow connects additional public GitHub Skill
+libraries, local Skill directories and local/HTTPS Station manifests without
+changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+and report offline/stale/error status independently. Offline plugin rows retain
+the current installed state from the local Library, even after an update or
+removal; cached catalog metadata cannot declare a package installed. Removing one preserves
+installed content and provenance in the Library. Unsupported marketplace index
+formats and private credential-bearing URLs are refused rather than imported
+as an assumed compatible catalog. Plugin-contributed registry providers appear
+through their existing visibility/grant lifecycle; manage their availability
+through the owning plugin. Source configuration is a regular file bounded to
+8 MiB, at most 32 user-added sources and 32 retained catalog snapshots, with
+at most 512 rows in each snapshot. Corrupt, oversized, unsupported and
+nonregular configuration is refused without replacing its bytes; restore the
+existing file before continuing. Plugin catalog rows and package claims from
+a Station manifest are read together from one fresh observation. Existing
+bare-item registry aliases can become source-qualified on a reviewed update
+only when the original item ID and registry key match. The update retains the
+existing plugin data owner; a different registry key cannot claim it. See [marketplace APIs](../reference/api.md#manage-marketplaces)
+and the published provider types in `@kontourai/station-contracts/catalog`.
 
 A configured value always wins over the bundle. Relative paths resolve against
 the install root; absolute paths and `https://` URLs are used as given. An

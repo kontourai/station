@@ -17,7 +17,9 @@ import {
   assertSafeSkillName,
   PROTOTYPE_AFFECTING_KEYS,
 } from '../../domain/skill-paths.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
+import { readBoundedJson } from './catalog-http.js';
 
 interface GitHubTreeItem {
   path: string;
@@ -67,9 +69,35 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
   }) {
     this.owner = opts?.owner || 'anthropics';
     this.repo = opts?.repo || 'skills';
-    this.skillsPath = opts?.path || 'skills';
+    this.skillsPath = opts?.path ?? 'skills';
     this.branch = opts?.branch || 'main';
-    this.assertRelativePath(this.skillsPath);
+    if (this.skillsPath) this.assertRelativePath(this.skillsPath);
+  }
+
+  get registryKey(): string {
+    return `github:${this.owner}/${this.repo}/${this.branch}/${this.skillsPath}`;
+  }
+
+  async refresh(): Promise<void> {
+    if (this.pending) await this.pending;
+    this.cache = null;
+    await this.snapshot();
+  }
+
+  async getPackageRevision(id: string): Promise<string | null> {
+    const snapshot = await this.snapshot();
+    const skill = snapshot.packages.get(id);
+    if (!skill) return null;
+    return createHash('sha256')
+      .update(
+        JSON.stringify([
+          snapshot.commit,
+          snapshot.tree.filter((entry) =>
+            entry.path.startsWith(`${skill.directory}/`),
+          ),
+        ]),
+      )
+      .digest('hex');
   }
 
   private assertRelativePath(path: string): void {
@@ -82,9 +110,12 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
     }
   }
 
-  private async request(path: string): Promise<Response> {
+  private async request(path: string, signal?: AbortSignal): Promise<Response> {
     const url = `https://api.github.com/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/${path}`;
     const response = await fetch(url, {
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+        : AbortSignal.timeout(15000),
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'station',
@@ -105,15 +136,35 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
   private async fetchBlob(
     entry: GitHubTreeItem,
     commit: string,
+    budget: { remainingBytes: number },
+    signal: AbortSignal,
   ): Promise<Buffer> {
     this.assertSha(entry.sha);
     const url = `https://raw.githubusercontent.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/${commit}/${entry.path.split('/').map(encodeURIComponent).join('/')}`;
-    const response = await fetch(url, { headers: { 'User-Agent': 'station' } });
+    const response = await fetch(url, {
+      signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+      headers: { 'User-Agent': 'station' },
+    });
     if (!response.ok)
       throw new Error(
         `GitHub skill blob acquisition failed: ${response.status}`,
       );
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('GitHub skill response body is unavailable.');
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      budget.remainingBytes -= value.byteLength;
+      if (length > 1024 * 1024 || budget.remainingBytes < 0) {
+        await reader.cancel();
+        throw new Error('GitHub skill acquisition exceeds its byte budget.');
+      }
+      chunks.push(value);
+    }
+    const bytes = Buffer.concat(chunks);
     const digest = createHash('sha1')
       .update(`blob ${bytes.length}\0`)
       .update(bytes)
@@ -162,10 +213,13 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
   }
 
   private async readSnapshot(): Promise<CatalogSnapshot> {
+    const signal = AbortSignal.timeout(60000);
+    const budget = { remainingBytes: 8 * 1024 * 1024 };
     const response = await this.request(
       `commits/${encodeURIComponent(this.branch)}`,
+      signal,
     );
-    const commit = (await response.json()) as {
+    const commit = (await readBoundedJson(response)) as {
       sha: string;
       commit: { tree: { sha: string } };
     };
@@ -173,8 +227,9 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
     this.assertSha(commit.commit.tree.sha);
     const treeResponse = await this.request(
       `git/trees/${commit.commit.tree.sha}?recursive=1`,
+      signal,
     );
-    const result = (await treeResponse.json()) as {
+    const result = (await readBoundedJson(treeResponse)) as {
       sha: string;
       truncated: boolean;
       tree: GitHubTreeItem[];
@@ -186,7 +241,7 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
     ) {
       throw new Error('GitHub skill registry returned an incomplete tree');
     }
-    const prefix = `${this.skillsPath}/`;
+    const prefix = this.skillsPath ? `${this.skillsPath}/` : '';
     const tree = result.tree.filter((entry) => entry.path.startsWith(prefix));
     for (const entry of tree) {
       this.assertRelativePath(entry.path);
@@ -200,40 +255,44 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
         );
       }
     }
-    const discovered = await Promise.all(
-      tree
-        .filter(
-          (entry) => entry.type === 'blob' && entry.path.endsWith('/SKILL.md'),
-        )
-        .map(async (entry): Promise<SkillPackage> => {
-          const directory = entry.path.slice(0, -'/SKILL.md'.length);
-          const markdown = (await this.fetchBlob(entry, commit.sha)).toString(
-            'utf-8',
-          );
-          const document = this.readCatalogDocument(markdown);
-          const id = document.name;
-          const unsupportedName = PROTOTYPE_AFFECTING_KEYS.includes(id);
-          if (!unsupportedName) assertSafeSkillName(id);
-          return {
-            directory,
-            markdown,
-            body: document.body,
-            formatCompatible: document.formatCompatible,
-            item: {
-              id,
-              displayName: id,
-              description: document.description,
-              version: document.version,
-              installed: false,
-              ...(unsupportedName
-                ? { status: 'unsupported-skill-name' }
-                : !document.formatCompatible
-                  ? { status: 'unsupported-skill-format' }
-                  : {}),
-              source: `https://github.com/${this.owner}/${this.repo}/tree/${commit.sha}/${directory}`,
-            },
-          };
-        }),
+    const markdownEntries = tree.filter(
+      (entry) => entry.type === 'blob' && entry.path.endsWith('/SKILL.md'),
+    );
+    if (markdownEntries.length > 512 || tree.length > 8192)
+      throw new Error('GitHub skill catalog exceeds its entry budget.');
+    const discovered = await mapWithConcurrency(
+      markdownEntries,
+      4,
+      async (entry): Promise<SkillPackage> => {
+        const directory = entry.path.slice(0, -'/SKILL.md'.length);
+        const markdown = (
+          await this.fetchBlob(entry, commit.sha, budget, signal)
+        ).toString('utf-8');
+        const document = this.readCatalogDocument(markdown);
+        const id = document.name;
+        const unsupportedName = PROTOTYPE_AFFECTING_KEYS.includes(id);
+        if (!unsupportedName) assertSafeSkillName(id);
+        return {
+          directory,
+          markdown,
+          body: document.body,
+          formatCompatible: document.formatCompatible,
+          item: {
+            id,
+            displayName: id,
+            description: document.description,
+            version: document.version,
+            installed: false,
+            ...(unsupportedName
+              ? { status: 'unsupported-skill-name' }
+              : !document.formatCompatible
+                ? { status: 'unsupported-skill-format' }
+                : {}),
+            source: `https://github.com/${this.owner}/${this.repo}/tree/${commit.sha}/${directory}`,
+          },
+        };
+      },
+      signal,
     );
     const packages = new Map<string, SkillPackage>();
     // Resolve every name before publishing the snapshot: partial discovery can
@@ -291,7 +350,11 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
       validateWorkspacePackagePaths([...names]);
   }
 
-  async install(id: string, targetDir: string): Promise<InstallResult> {
+  async install(
+    id: string,
+    targetDir: string,
+    options?: { expectedPackageRevision?: string },
+  ): Promise<InstallResult> {
     try {
       assertSafeSkillName(id);
       const snapshot = await this.snapshot();
@@ -301,12 +364,21 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
           success: false,
           message: `Skill '${id}' not found in registry`,
         };
+      if (
+        options?.expectedPackageRevision &&
+        (await this.getPackageRevision(id)) !== options.expectedPackageRevision
+      )
+        throw new Error('Registry skill source changed; inspect it again.');
       if (!skill.formatCompatible)
         throw new UnsupportedRegistrySkillFormatError();
       const prefix = `${skill.directory}/`;
       const files = snapshot.tree.filter(
         (entry) => entry.type === 'blob' && entry.path.startsWith(prefix),
       );
+      if (files.length > 256)
+        throw new Error('GitHub skill package exceeds its entry budget.');
+      const signal = AbortSignal.timeout(60000);
+      const budget = { remainingBytes: 8 * 1024 * 1024 };
       this.assertPackagePaths(
         files.map((file) => file.path.slice(prefix.length)),
       );
@@ -326,7 +398,12 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
       }
       for (const file of files) {
         const filePath = join(skillDir, file.path.slice(prefix.length));
-        const bytes = await this.fetchBlob(file, snapshot.commit);
+        const bytes = await this.fetchBlob(
+          file,
+          snapshot.commit,
+          budget,
+          signal,
+        );
         await writeFile(filePath, bytes, {
           flag: 'wx',
           mode: file.mode === '100755' ? 0o755 : 0o644,

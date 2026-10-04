@@ -458,3 +458,12 @@
   width: 16px;
   height: 16px;
 }
+
+/* Touch lists give the work title room while metadata remains compact. */
+.inbox-row--card.inbox-row--touch .inbox-row__title {
+  font-size: max(var(--inbox-row-title-size), var(--k-text-md));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+}

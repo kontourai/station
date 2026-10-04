@@ -34,6 +34,7 @@
     "./flow-gate-evaluations": "./src/flow-gate-evaluations.ts",
     "./client/flow-gate-evaluations": "./src/client/flow-gate-evaluations.ts",
     "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
+    "./client/plugin-command-effects": "./src/client/plugin-command-effects.ts",
     "./client": "./src/client/index.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
@@ -103,7 +104,7 @@
   "dependencies": {
     "@kontourai/console-core": "^0.3.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.4.0",
+    "@kontourai/flow-agents": "6.5.1",
     "@kontourai/station-contracts": "^0.8.0",
     "@kontourai/station-shared": "^0.8.0",
     "@kontourai/surface": "^3.2.0",

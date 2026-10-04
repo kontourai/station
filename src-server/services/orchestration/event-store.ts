@@ -252,6 +252,10 @@ import {
   type SessionWorkItemAdmissionRegistry,
 } from './session-work-item-admission.js';
 import type { SessionWorkItemCandidate } from './session-work-item-candidate.js';
+import {
+  createSkillExperienceSnapshots,
+  type SkillExperienceSnapshots,
+} from './skill-experience-snapshots.js';
 import { createSqliteAdoptionCoordinator } from './sqlite-adoption-persistence.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
 import {
@@ -1802,6 +1806,7 @@ export class EventStore {
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
+  private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
 
   constructor(
@@ -2058,6 +2063,7 @@ export class EventStore {
       }
       this.nativeInvocationRuns = this.composeNativeInvocationRuns();
       this.initializeNativeInvocationRuns();
+      this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
       this.voiceTurnRuns = this.composeVoiceTurnRuns();
       this.initializeVoiceTurnRuns();
       this.sessionTurnBoundaries = this.composeSessionTurnBoundaries();
@@ -4335,6 +4341,42 @@ export class EventStore {
           (thread_id, fact_key, event_id) VALUES (?, 'turn-origin:other', ?)`,
       )
       .run(event.threadId, event.eventId);
+  }
+
+  listSkillExperienceEvents(
+    threadId: string,
+    cursor?: string,
+    limit = 21,
+  ): PersistedRuntimeEvent[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 101)
+      throw new Error('Invalid experience history limit');
+    const conversationId =
+      this.conversationForSession(threadId)?.conversationId ?? threadId;
+    let before: number | undefined;
+    if (cursor) {
+      const row = this.db
+        .prepare(`SELECT e.global_sequence FROM orchestration_events e
+        WHERE e.id = ? AND e.thread_id IN (SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id = ? UNION SELECT ?)`)
+        .get(cursor, conversationId, conversationId) as
+        | { global_sequence?: number }
+        | undefined;
+      if (row?.global_sequence === undefined)
+        throw new Error('Invalid experience history cursor');
+      before = row.global_sequence;
+    }
+    return this.db
+      .prepare(`SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload, e.created_at, e.observed_at, e.sequence, e.global_sequence
+      FROM orchestration_events e
+      WHERE e.thread_id IN (SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id = ? UNION SELECT ?) AND e.method = 'turn.started'
+      AND json_type(e.payload, '$.metadata.stationSkillExperience') IS NOT NULL
+      ${before === undefined ? '' : 'AND e.global_sequence < ?'} ORDER BY e.global_sequence DESC LIMIT ?`)
+      .all(
+        conversationId,
+        conversationId,
+        ...(before === undefined ? [] : [before]),
+        limit,
+      )
+      .map((row) => this.mapEventRow(row));
   }
 
   listEvents(threadId?: string): PersistedRuntimeEvent[] {
@@ -9626,6 +9668,12 @@ export class EventStore {
   }
 
   /** Deliberate composition seam; SQLite coordination remains private. */
+  createSkillExperienceSnapshots(): SkillExperienceSnapshots {
+    if (!this.skillExperienceSnapshots)
+      this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
+    return this.skillExperienceSnapshots;
+  }
+
   createAdoptionLedger(): AdoptionLedger {
     return createAdoptionLedger({
       coordinator: createSqliteAdoptionCoordinator({
@@ -11644,6 +11692,7 @@ export class EventStore {
     ).map((row) => row.blob_ref);
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      this.createSkillExperienceSnapshots().deleteThread(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db

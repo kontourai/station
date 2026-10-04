@@ -4,6 +4,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
+import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
@@ -67,6 +68,7 @@ interface ChatDockModalStackProps {
   newChatRequestEpoch?: number;
   newChatStartWithDefault?: boolean;
   newChatInitialPrompt?: string;
+  recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -86,6 +88,8 @@ interface ChatDockModalStackProps {
     providerOptions?: Record<string, unknown>,
     providerId?: string,
     providerType?: string,
+    experienceDraft?: SkillExperienceDraft,
+    sendInitialMessage?: boolean,
   ) => void;
   onCloseNewChat: () => void;
   onCloseSettings: () => void;
@@ -121,6 +125,7 @@ export function ChatDockModalStack({
   newChatRequestEpoch,
   newChatStartWithDefault,
   newChatInitialPrompt,
+  recentChats,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -166,6 +171,8 @@ export function ChatDockModalStack({
             requestAuthority,
             startWithDefault: newChatStartWithDefault,
             initialPrompt: newChatInitialPrompt,
+            startSurface: true,
+            recentChats,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,

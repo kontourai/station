@@ -43,6 +43,7 @@ and the category decides how it crosses the boundary:
 | `isMobile` (Board) | **Environment fact** | `host.facts.device` — a subscribable value; in-process a context read, across the frame pushed on change. Later members (theme, locale) join here, never as new ad-hoc messages |
 | `ErrorState` (Board) | **Visual primitive** | NOT host surface. Inline chrome cannot be shell-rendered into an iframe; publish it instead — `ErrorState` joins the published component set in `@kontourai/station-sdk` (which already ships React components), both tiers import it, the iframe bundles it |
 | `usePageHeader` (Board, moved to its mounter) | **Placement concern** | stays OUT of the contract — the placement (route mounter, dock host) owns header/banner/redirect, as M4a established. A pane that thinks it needs the page header is a pane doing its placement's job |
+| Selected Skill view, exact question answer and explicit next-stage draft | **Occurrence-bound request/response** | Optional `host.skillExperience` fixes Session, invocation event and package outside frame parameters; its three methods use canonical Session owners and the fresh `agents.invoke` grant |
 | ready / initialize / fill / teardown (iframe, today) | **Lifecycle** | the contract's handshake; in-process equivalents are mount/unmount and layout, already owned by the pane frame |
 
 Two rules fall out and are worth stating as rules:
@@ -82,10 +83,14 @@ cases rather than staying bespoke).
 
 ## What this deliberately does not include
 
-- **Data access.** Panes read server state through the SDK (tier 2) or the
-  HTTP surface (tier 3) — the host contract is about the SHELL, not the
-  server. Folding data into it would recreate the god-object the shell just
-  finished decomposing.
+- **Generic data access.** Panes read server state through the SDK (tier 2) or
+  declared protocol surfaces (tier 3). The optional Skill occurrence capability
+  is a narrow exception: a placement-bound immutable view and canonical pending
+  questions, plus exact answers and user-selected draft continuation. It carries
+  no transcript, credential, arbitrary API path or independently chosen Session.
+  See [the Skill contract](../reference/skill-experiences.md#add-an-isolated-rich-pane).
+  Its standalone DOM example qualifies the existing isolated document; this
+  does not assert React/SDK host contexts inside that sandbox.
 - **Arbitrary extension.** A pane needing a capability not listed here files
   it; the categories above decide its shape. The contract growing a
   `ComponentType` member is the regression tripwire.

@@ -21,6 +21,22 @@ They do not replace foreground chat or the Task's current-session association.
 
 ---
 
+## Visual Skill presentation
+
+Installed [Skill experiences](skill-experiences.md) use this same foreground
+Session lifecycle. A supported inventory advertises `executionContract: "1.0"`.
+An explicit composer send may carry `skillExperience` with pinned installed
+identity, validated inputs and a client turn ID. Project Environment defaults are
+resolved normally; remote execution is refused for this contract.
+
+`GET /api/orchestration/sessions/:threadId/skill-experience` projects immutable
+invocation history across existing conversation lineage. Canonical turns,
+requests, answers, decisions and outputs remain the execution facts. A removed
+source leaves history readable and refuses subsequent source-backed effects.
+Rich frame reads/answers additionally bind `{identity, eventId}` in
+`expectedSkillExperience` and require its fresh `agents.invoke` grant. Ordinary
+user controls omit that frame-specific admission.
+
 ## Start a conversation
 
 ```
@@ -212,6 +228,12 @@ organization requires approval for this tool`; and a request flagged
 SDK 0.3.278 forwards the first two; Station reads `requiresUserInteraction`
 from the engine's own request. `request.opened` carries the sanitised
 `decisionReason` and any of the flags that are set.
+
+An approval-guardian allow is held to the same rule (#2947). In a Claude
+Session it answers a plain call with no `request.opened`; an escalation, a
+plan exit or a question opens a request even when the guardian allowed the
+call. In an ACP Session it answers no plan exit, question or sandbox
+network-host ask.
 
 Station also reads the engine's structured reason for each ask, which the
 SDK does not forward, from the engine's `can_use_tool` request (#2932). The

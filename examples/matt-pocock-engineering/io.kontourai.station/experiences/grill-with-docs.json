@@ -309,5 +309,16 @@
   "presentation": {
     "modes": ["guided", "alongside"],
     "defaultMode": "guided"
-  }
+  },
+  "entrySkillId": "grill-with-docs",
+  "transitions": [
+    {
+      "experienceId": "to-spec",
+      "label": "Write a specification",
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "Station offers this optional next stage after the user reviews current work. Selecting it prepares a draft; sending and concrete tool actions remain explicit user decisions."
+      }
+    }
+  ]
 }

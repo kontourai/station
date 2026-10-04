@@ -293,6 +293,10 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
+  skillExperienceDraftInvalid?: boolean;
+  skillExperienceActive?: boolean;
+  skillExperienceMode?: 'guided' | 'alongside' | 'chat';
   id: string;
   conversationId?: string;
   /** Replaceable execution context beneath this durable conversation. */
