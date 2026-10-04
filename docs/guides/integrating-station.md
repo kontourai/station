@@ -74,9 +74,10 @@ references, and measure recovery time and recoverable data loss.
 
 AWS remains the first planned commercial deployment profile. A [private GCP
 development recipe](../../deploy/gcp-dev/README.md) retains historical testing
-in an existing Google Cloud organization. Its current fresh-home container
-startup requires a separate policy-registration lifecycle; follow that recipe's
-explicit limitation before treating it as runnable. Start with one small EC2 instance for a
+in an existing Google Cloud organization. Its foreground `service run`
+supervisor self-claims a fresh home without policy registration and waits while
+another live owner holds that home. Current image and cloud qualification remain
+separate from that startup contract. Start with one small EC2 instance for a
 persistent private development environment, using the existing local storage
 contracts. The larger service mapping below is an evolution target, not a
 prerequisite for testing, a provisioned deployment, or a claim that Station
