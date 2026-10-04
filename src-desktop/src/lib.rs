@@ -9574,22 +9574,45 @@ fn owner_for_host_claim(claim: Result<HostClaim, RegistryBridgeFailure>) -> Desk
     }
 }
 
-/// Launch-time owner selection. After runtime preparation, the atomic host
-/// claim is the only ownership decision. A home preparation reported as
-/// service-owned was deliberately left unprepared, so it is never claimed:
-/// its owner comes from a display-only observation that cannot select
-/// `Sidecar` (a service that exited meanwhile reads as `Unowned`).
+/// The claim is the launch decision, including when preparation skipped a
+/// service-owned home. If that service exited, release the reservation: the
+/// home still needs preparation before any sidecar can run.
+#[cfg(not(mobile))]
+fn owner_after_launch_claim(
+    preparation: PrepareRuntimeKind,
+    claim: impl FnOnce() -> Result<HostClaim, RegistryBridgeFailure>,
+    release: impl FnOnce(),
+) -> DesktopOwner {
+    let owner = owner_for_host_claim(claim());
+    if preparation == PrepareRuntimeKind::ServiceOwned && owner == DesktopOwner::Sidecar {
+        release();
+        DesktopOwner::Unowned
+    } else {
+        owner
+    }
+}
+
 #[cfg(not(mobile))]
 fn launch_owner(
     preparation: PrepareRuntimeKind,
-    claim: impl FnOnce() -> Result<HostClaim, RegistryBridgeFailure>,
-    observe: impl FnOnce() -> HomeOwnershipDecision,
+    resource_dir: &Path,
+    station_home: &Path,
+    registry_id: &str,
 ) -> DesktopOwner {
-    if preparation == PrepareRuntimeKind::ServiceOwned {
-        adoptable_refreshed_owner(owner_for_decision(observe()))
-    } else {
-        owner_for_host_claim(claim())
-    }
+    owner_after_launch_claim(
+        preparation,
+        || claim_sidecar_registry_bridge(
+            resource_dir, station_home, registry_id,
+            serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+        ),
+        || { let _ = release_sidecar_registry_bridge(resource_dir, station_home, registry_id); },
+    )
+}
+
+/// Setup starts a supervisor thread only for the desktop that won the claim.
+#[cfg(not(mobile))]
+fn start_owned_sidecar<T>(owner: DesktopOwner, start: impl FnOnce() -> T) -> Option<T> {
+    owner_owns_reapable_child(owner).then(start)
 }
 
 /// Window destruction is not application exit: preview and workspace pop-out
@@ -12623,28 +12646,9 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // returns the winner, so there is no separate ownership read
                 // for a service to slip past (#2961).
                 let owner = launch_owner(
-                    preparation_kind,
-                    || {
-                        let claim = claim_sidecar_registry_bridge(
-                            &resource_dir,
-                            &station_home,
-                            &supervisor.context.registry_id,
-                            serde_json::json!({"type":"sidecar","status":"starting","port":0}),
-                        );
-                        match &claim {
-                            Ok(claim) => log::info!(
-                                "desktop host claim: claimed={} owners={}",
-                                claim.claimed,
-                                claim.owners.len()
-                            ),
-                            Err(error) => log::error!(
-                                "desktop registry bridge could not claim the host: {error:?}"
-                            ),
-                        }
-                        claim
-                    },
-                    || decide_home_ownership_from_runtime(&resource_dir, &station_home),
+                    preparation_kind, &resource_dir, &station_home, &supervisor.context.registry_id,
                 );
+                log::info!("desktop atomic host claim selected {owner:?}");
                 let (readiness, effects) = startup_readiness::transition(
                     &startup_readiness::StartupReadiness::default(),
                     startup_readiness::ReadinessInput::Begin {
@@ -12671,10 +12675,12 @@ If a stable instance is running, this launch will focus its window and exit.",
                 notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
-                if owner_owns_reapable_child(owner.clone()) {
+                if let Some(handle) = start_owned_sidecar(owner.clone(), || {
                     let app_handle = app.handle().clone();
                     let handle = thread::Builder::new().name("station-sidecar-supervisor".into()).spawn(move || run_sidecar_supervisor(supervisor, app_handle, rx))
                         .expect("failed to start Station sidecar supervisor thread");
+                    handle
+                }) {
                     *app.state::<DesktopServerState>().supervisor.thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
                 }
             }
@@ -13973,33 +13979,30 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
-    fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
-        let never_claim = || -> Result<HostClaim, RegistryBridgeFailure> {
-            panic!("a service-owned preparation must never claim the unprepared home")
-        };
+    fn service_exit_during_preparation_releases_claim_without_spawning() {
+        let released = std::cell::Cell::new(false);
         assert_eq!(
-            launch_owner(PrepareRuntimeKind::ServiceOwned, never_claim, || {
-                HomeOwnershipDecision::SpawnSidecar
-            }),
+            owner_after_launch_claim(
+                PrepareRuntimeKind::ServiceOwned,
+                || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
+                || released.set(true),
+            ),
             DesktopOwner::Unowned
         );
+        assert!(released.get(), "an unprepared home must release its won reservation");
         assert_eq!(
-            launch_owner(PrepareRuntimeKind::ServiceOwned, never_claim, || {
-                HomeOwnershipDecision::ServiceOwnsHome {
-                    id: "owned-service".into(),
-                    port: 4123,
-                }
-            }),
-            DesktopOwner::Service {
-                id: "owned-service".into(),
-                port: 4123
-            }
+            owner_after_launch_claim(
+                PrepareRuntimeKind::ServiceOwned,
+                || parse_host_claim_output(br#"{"ok":true,"claimed":false,"owners":[{"id":"owned-service","type":"service","port":4123}]}"#),
+                || panic!("a losing claim has no reservation to release"),
+            ),
+            DesktopOwner::Service { id: "owned-service".into(), port: 4123 }
         );
         assert_eq!(
-            launch_owner(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::Absent,
                 || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
-                || panic!("a prepared launch decides ownership from the claim alone"),
+                || panic!("a prepared winner keeps its reservation"),
             ),
             DesktopOwner::Sidecar
         );
@@ -14356,10 +14359,6 @@ mod tests {
             .find("let owner = launch_owner(")
             .map(|offset| preparation + offset)
             .expect("setup selects ownership only on the prepared path");
-        let claim = source[ownership..]
-            .find("claim_sidecar_registry_bridge(")
-            .map(|offset| ownership + offset)
-            .expect("setup's ownership selection is the atomic sidecar claim");
         let supervisor = source[preparation..]
             .find("let supervisor = Arc::new(ServerSupervisor")
             .map(|offset| preparation + offset)
@@ -14374,7 +14373,6 @@ mod tests {
                 && recovery < recovery_return
                 && recovery_return < supervisor
                 && supervisor < ownership
-                && ownership < claim
                 && supervisor < tray,
             "a runtime refusal must exit through native recovery before ownership, claim, supervisor, or tray start"
         );
@@ -15257,6 +15255,44 @@ mod tests {
         }
     }
 
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn losing_launch_claim_starts_no_supervisor_or_child() {
+        use std::os::unix::fs::PermissionsExt;
+        let resources = tempfile::tempdir().expect("resources");
+        let home = tempfile::tempdir().expect("home");
+        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        std::fs::create_dir(resources.path().join("dist-server")).unwrap();
+        let loader = checkout.join("node_modules/tsx/dist/esm/api/index.cjs");
+        let source = checkout.join("src-server/tools/instance-registry-bridge.ts");
+        std::fs::write(registry_bridge_script_path(resources.path()), format!(
+            "require({}).register(); import({}).then(m => m.runInstanceRegistryBridge()).catch(e => {{ console.error(e); process.exit(1); }});",
+            serde_json::to_string(&loader).unwrap(),
+            serde_json::to_string(&format!("file://{}", source.display())).unwrap(),
+        )).unwrap();
+        for owner_type in ["service", "sidecar"] {
+            let registry = home.path().join("instances.json");
+            std::fs::write(&registry, serde_json::json!({
+                "version": 1, "instances": { "winner": {
+                    "type": owner_type, "port": 38141, "pid": std::process::id(), "status": "running"
+                }}
+            }).to_string()).unwrap();
+            std::fs::set_permissions(&registry, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let before = std::fs::read(&registry).unwrap();
+            let owner = launch_owner(PrepareRuntimeKind::Absent, resources.path(), home.path(), "loser");
+            assert_eq!(owner, if owner_type == "service" {
+                DesktopOwner::Service { id: "winner".into(), port: 38141 }
+            } else { DesktopOwner::None }, "the atomic claim must decide launch ownership");
+            let started = start_owned_sidecar(owner, || thread::spawn(|| {
+                let mut child = Command::new("node").args(["-e", "process.exit(0)"]).spawn().unwrap();
+                child.wait().unwrap()
+            }));
+            assert!(started.is_none(), "a losing desktop must start no supervisor and spawn no child");
+            assert_eq!(std::fs::read(&registry).unwrap(), before, "the loser must preserve the winning record");
+        }
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn sidecar_claim_admits_only_one_launcher() {
@@ -15288,12 +15324,18 @@ mod tests {
             (Err(RegistryBridgeFailure::Invocation), DesktopOwner::None),
         ] {
             assert!(!registry_claim_allows_running(loser.clone()));
-            let owner = owner_for_host_claim(loser);
+            let owner = owner_after_launch_claim(PrepareRuntimeKind::Absent, || loser, || {
+                panic!("a losing desktop has no claim to release")
+            });
             assert_eq!(owner, expected);
-            assert!(
-                !owner_owns_reapable_child(owner),
-                "a losing desktop must start no supervisor and spawn no child"
-            );
+            let started = start_owned_sidecar(owner, || {
+                thread::spawn(|| {
+                    let mut child = Command::new("node").args(["-e", "process.exit(0)"])
+                        .spawn().expect("spawn child");
+                    child.wait().expect("reap child")
+                })
+            });
+            assert!(started.is_none(), "a losing desktop must start no supervisor and spawn no child");
         }
         assert_eq!(
             parse_host_claim_output(

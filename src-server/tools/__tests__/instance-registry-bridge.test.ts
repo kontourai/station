@@ -1801,6 +1801,7 @@ describe('desktop sidecar host claim through the native bridge (#2961)', () => {
           const child = spawnSync(process.execPath, ['--import', 'tsx/esm',
             'src-server/tools/instance-registry-bridge.ts', 'claimSidecar'], {
             encoding: 'utf8',
+            windowsHide: true,
             input: JSON.stringify({ home: process.env.REGISTRY_HOME,
               id: process.env.CLAIM_ID,
               instance: { type: 'sidecar', status: 'starting', port: 0 } }),

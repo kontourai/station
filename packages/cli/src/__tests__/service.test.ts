@@ -1293,10 +1293,10 @@ describe('station service dispatch', () => {
 
     expect(installLaunchd).toHaveBeenCalled();
     const entry = readInstanceRegistry(baseDir).instances['service-test'];
-    // Replaced, not merged: the retired generation's liveness must not ride
-    // into the new record (#3047), while its origin policy is preserved.
-    expect(entry.pid).toBeUndefined();
-    expect(entry.birth).toBeUndefined();
+    // Policy publication must not erase a supervisor that is still live:
+    // it may have claimed while the backend was being installed.
+    expect(entry.pid).toBe(process.pid);
+    expect(entry.birth).toBe(lookupProcessBirthFingerprint(process.pid));
     expect(entry.env).toEqual({ ALLOWED_ORIGINS: 'https://paired.example' });
   });
 

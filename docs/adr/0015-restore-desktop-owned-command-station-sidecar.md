@@ -98,12 +98,15 @@ remain untested.
 the read-then-claim sequence in the Decision above with one atomic host-owner
 claim. The launch no longer decides ownership from a read: the shared module
 refuses the sidecar claim while any live service or other sidecar holds the
-home and returns that owner. Two reads remain and neither selects a sidecar:
-runtime preparation's service-owned check (it only leaves a service-owned home
-unprepared) and the status refresh that re-derives a non-sidecar owner for
-display. Also, `service install` and the service
+home and returns that owner. A preparation safety read remains to leave a
+serving home unprepared; it does not decide launch ownership. Even that path
+claims atomically, releasing a won reservation without spawning if the service
+exited meanwhile. The status refresh retains a display-only read that
+re-derives a non-sidecar owner. Also, `service install` and the service
 supervisor claim through the same primitive, so a live sidecar also blocks
-them. The service-owner report, no automatic attachment, and the lifetime
+them. Installer policy publication retains any live service fence, and an
+unreadable service registry refuses supervisor startup. Bare container runs
+without installed policy still publish no fence. The service-owner report, no automatic attachment, and the lifetime
 split are unchanged.
 
 ## Evidence addendum (2026-09-29, #2957)

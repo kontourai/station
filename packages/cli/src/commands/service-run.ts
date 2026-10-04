@@ -314,9 +314,8 @@ export async function superviseService(
   // ONE HOST OWNER (#2961, ADR 0020 D4): claim the home before starting
   // Station on it. A live Desktop sidecar (or another live service) owns the
   // home, so wait in-process for it to exit rather than exit into a
-  // launchd/systemd restart loop. The claim is best-effort only against a
-  // registry that cannot be read: Desktop fails closed on that same registry
-  // and spawns nothing, so this service stays the home's only writer.
+  // launchd/systemd restart loop. A registry failure cannot license a host:
+  // another owner may already be running even if its record is unreadable.
   let reportedHostRefusal = false;
   for (;;) {
     if (shuttingDown) {
@@ -330,11 +329,17 @@ export async function superviseService(
       console.error(
         `Station service could not claim its home in the registry: ${(error as Error).message}`,
       );
-      break;
+      exit(1);
+      return;
     }
-    // `id-held`: a live CLI process holds this service's id, the case
-    // `station start --force` below already resolves. Not a host owner.
-    if (claim.won || claim.reason === 'id-held') break;
+    if (claim.won) break;
+    if (claim.reason === 'id-held') {
+      console.error(
+        `Station service '${instanceName}' cannot claim its registry id: it is held by a live '${claim.existing.type}' process. Stop that process or install under a different instance name.`,
+      );
+      exit(1);
+      return;
+    }
     if (!reportedHostRefusal) {
       console.error(
         `${describeServiceHostRefusal(livenessTarget, claim.owners)} Waiting for it to exit.`,

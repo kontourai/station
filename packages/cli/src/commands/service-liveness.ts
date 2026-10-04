@@ -28,9 +28,8 @@ export interface ServiceLivenessTarget {
  * the record does not flap. Publishing goes through the host-owner claim
  * (#2961) and builds from the existing record: the entry's
  * `env.ALLOWED_ORIGINS` is durable origin-policy authority (#1983) and must
- * survive every liveness write. A bare `service run` with no install does
- * not mint an entry the installer owns (disclosed limit: such a run stays
- * invisible home-wide). The retract stays an identity-guarded update.
+ * survive every liveness write. A bare `service run` with no install does not mint policy owned by the
+ * installer and remains invisible home-wide. The retract stays an identity-guarded update.
  */
 export function publishServiceLivenessRecord(
   target: ServiceLivenessTarget,
@@ -80,8 +79,7 @@ export function publishServiceLivenessRecord(
  * this home blocks the service instead of the two serving one home. A won
  * claim publishes this supervisor's pid on its own installed service record,
  * preserving every field `service install` owns; with no installed record it
- * publishes nothing (a bare `service run` never mints the installer's entry)
- * but still respects a live sidecar or another live service.
+ * publishes nothing (a bare `service run` never mints the installer's entry).
  *
  * `starting` leaves a record another live process of this unit already holds
  * untouched: during an update (#2675 D) that is the fixed launcher, and a
@@ -100,18 +98,22 @@ export function claimServiceHost(
     home: target.home,
     type: 'service',
     ownerPids: [process.pid],
-    publish: (existing) =>
-      existing?.type === 'service' &&
-      (status === 'running' || !entryOwnedByLiveProcess(existing, process.pid))
-        ? {
-            ...existing,
-            port: target.serverPort,
-            uiPort: target.uiPort,
-            status,
-            pid: process.pid,
-            birth,
-          }
-        : null,
+    publish: (existing) => {
+      if (existing?.type !== 'service') return null;
+      if (
+        status === 'starting' &&
+        entryOwnedByLiveProcess(existing, process.pid)
+      )
+        return null;
+      return {
+        ...existing,
+        port: target.serverPort,
+        uiPort: target.uiPort,
+        status,
+        pid: process.pid,
+        birth,
+      };
+    },
   });
 }
 

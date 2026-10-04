@@ -232,7 +232,9 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   the lock; a refusal after the backend install rolls the backend back),
   adopts a service-typed entry during its own reconfiguration, replaces a dead
   entry cleanly, and derives origin policy/env only from a prior service-typed
-  entry.
+  entry. Policy publication preserves a currently live service generation's
+  pid/birth under the claim lock; erasing it could admit a sidecar while the
+  backend's new supervisor is already running.
 - **Service supervisor.** Before it starts Station, the supervisor claims the
   home through `claimHostOwner`. While a live sidecar or another live service
   holds the home it logs the holder and a remedy, then waits in-process and
@@ -240,8 +242,11 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   loop. A won claim publishes its pid (`starting`) on its own installed record
   unless another live process of the unit (an update's launcher, a replaced
   generation) already holds it; readiness then publishes `running`. With no
-  installed record it publishes nothing. A registry that cannot be read does
-  not block it: Desktop fails closed on that registry and spawns nothing.
+  installed record it publishes nothing, preserving bare `station service run`
+  for containers. Such a run respects existing live host owners but does not
+  fence a subsequent claimant; exclusive ownership covers installed services
+  and Desktop sidecars. An unreadable registry refuses startup: it cannot
+  prove that an already-running owner is absent.
 - **Desktop sidecar producer and consumer.** Desktop resolves one absolute
   `STATION_HOME` and, after runtime preparation, claims the home through the
   packaged Node bridge's `claimSidecar`, which runs `claimHostOwner`. The
@@ -251,11 +256,13 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   without setting an API base or attaching automatically, and opening it
   remains a user choice. Any other refusal (another desktop's sidecar,
   several owners) or an unreadable registry selects no owner and spawns
-  nothing. A preparation that found a live service skips the claim and only
-  observes the owner for display. The display-only reads are runtime
-  preparation's service-owned check and the status refresh; neither can
-  select a sidecar (`adoptable_refreshed_owner` maps that decision to
-  `Unowned`). The supervisor re-claims before every
+  nothing. A preparation that found a live service still uses the atomic
+  claim for ownership. If the service exited meanwhile, Desktop releases
+  its won reservation and stays `Unowned`: that home was left unprepared.
+  Runtime preparation retains a service liveness read to skip maintenance
+  on a serving home; it is a preparation safety check, not display-only.
+  The status refresh retains a display-only read; it cannot select a sidecar
+  (`adoptable_refreshed_owner` maps that decision to `Unowned`). The supervisor re-claims before every
   respawn, publishes the listening child through the same claim
   (`publishSidecar`), and releases with the owner-checked
   `removeOwnedInstance` (`releaseSidecar`). Rust never writes

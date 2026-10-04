@@ -215,7 +215,11 @@ system Node.
   Scheduler) and lifetime policy. #2961 implements this as `claimHostOwner`
   ([Instance Registry](../design/instance-registry.md)): the desktop launch,
   `station service install`, and the service supervisor all claim through it,
-  and the desktop maps its result to an owner without a separate read.
+  and the desktop maps its result to an owner without a separate launch read.
+  An unreadable registry refuses service startup. Bare container runs without
+  installed policy remain unfenced; this slice's exclusive-owner guarantee
+  covers installed services and Desktop sidecars. Runtime preparation's
+  safety read does not choose the launch owner.
 
 Mobile apps keep their bundled web UI and store-gated builds. Store rules
 forbid downloading executable code, so the download model applies only to
@@ -336,8 +340,9 @@ roots keyed by channel until promotion.
 
 ## NOT_VERIFIED
 
-Nothing here is implemented. Each decision is unproven until its phase lands
-with enforcing tests. These packaged-build divergences from
+Decisions remain implementation targets until their phases land with
+enforcing tests. The #2961 claim-path notes describe that bounded source
+slice, not delivery of D4's first-run fetch or package changes. These packaged-build divergences from
 [ADR 0015's evidence addendum](0015-restore-desktop-owned-command-station-sidecar.md#evidence-addendum-2026-09-29-2957)
 bear on D4's claim path and startup, and the implementing phases carry them:
 

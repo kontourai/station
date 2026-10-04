@@ -195,6 +195,7 @@ describe('service supervisor', () => {
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       start,
       stop,
     });
@@ -228,6 +229,7 @@ describe('service supervisor', () => {
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       start,
       stop,
     });
@@ -263,6 +265,7 @@ describe('service supervisor', () => {
       onSignal: (signal, listener) => signals.set(signal, listener),
       processIsAlive: () => true,
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       setTimer,
       start: vi.fn().mockResolvedValue(undefined),
       stop,
@@ -289,6 +292,7 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       collect,
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
@@ -321,6 +325,7 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       collect,
       exit,
       processIsAlive: () => true,
@@ -349,6 +354,7 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       collect,
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
@@ -391,6 +397,7 @@ describe('service supervisor', () => {
     await superviseService(
       { ...lifecycle, allowedOrigins: ['https://kontour.example.ts.net'] },
       {
+        claimServiceHost: () => ({ won: true, published: false }),
         collect,
         exit,
         onSignal: (signal, listener) => signals.set(signal, listener),
@@ -420,6 +427,7 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       exit,
       onSignal: vi.fn(),
       setTimer,
@@ -439,6 +447,7 @@ describe('service supervisor', () => {
     const exit = vi.fn();
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
       collect: vi.fn().mockResolvedValue({
         found: false,
         healthy: false,
@@ -1204,26 +1213,48 @@ describe('supervised service liveness (station#3064)', () => {
     }
   });
 
-  test('a run with no installed service entry mints nothing', async () => {
-    // Own-type-only by design: `service run` without an install must not
-    // create the record `service install` owns (its absence of env would
-    // otherwise suppress the manifest origin-migration bridge). Disclosed
-    // limit: such a run stays invisible home-wide.
+  test('a bare service run preserves the container path without minting installed policy', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
-
+    const start = vi.fn().mockResolvedValue(undefined);
     await superviseService(serviceLifecycle(home), {
       collect: readyCollect() as never,
       exit: vi.fn(),
       onSignal: vi.fn(),
       processIsAlive: () => true,
       setTimer: vi.fn(() => 1 as never),
-      start: vi.fn().mockResolvedValue(undefined),
+      start,
       stop: vi.fn(),
     });
-
+    expect(start).toHaveBeenCalledTimes(1);
     expect(
       readInstanceRegistry(home).instances['service-test'],
     ).toBeUndefined();
+  });
+
+  test('refuses startup with a corrupt service registry (#2961)', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
+    writeFileSync(join(home, 'instances.json'), '{broken');
+    const start = vi.fn().mockResolvedValue(undefined);
+    const exit = vi.fn();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await superviseService(serviceLifecycle(home), {
+        collect: readyCollect() as never,
+        exit,
+        onSignal: vi.fn(),
+        processIsAlive: () => true,
+        setTimer: vi.fn(() => 1 as never),
+        start,
+        stop: vi.fn(),
+      });
+      expect(start).not.toHaveBeenCalled();
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining('could not claim its home'),
+      );
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   test('never adopts a foreign-typed entry at the same id', async () => {

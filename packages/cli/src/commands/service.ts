@@ -1507,7 +1507,16 @@ export async function runServiceCommand(
       claim = claimHostOwner(instanceId, {
         home: lifecycle.baseDir,
         type: 'service',
-        publish: () => serviceEntry,
+        publish: (existing) => ({
+          ...serviceEntry,
+          ...(existing?.type === 'service' && entryOwnedByLiveProcess(existing)
+            ? {
+                pid: existing.pid,
+                birth: existing.birth,
+                status: existing.status,
+              }
+            : {}),
+        }),
       });
     } catch (error) {
       // A registry read/publish I/O failure here would otherwise strand a
@@ -1615,7 +1624,17 @@ export async function runServiceCommand(
           const recoveryClaim = claimHostOwner(instanceId, {
             home: lifecycle.baseDir,
             type: 'service',
-            publish: () => serviceEntry,
+            publish: (existing) => ({
+              ...serviceEntry,
+              ...(existing?.type === 'service' &&
+              entryOwnedByLiveProcess(existing)
+                ? {
+                    pid: existing.pid,
+                    birth: existing.birth,
+                    status: existing.status,
+                  }
+                : {}),
+            }),
           });
           const recoveryRegistryNote = recoveryClaim.won
             ? ''

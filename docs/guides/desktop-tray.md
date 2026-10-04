@@ -241,3 +241,7 @@ For a hidden-window timeout, a sidecar failure, or a distinction between this
 shell log and service/server logs, use [Recover a desktop
 start](../user/native-recovery.md). Logs are diagnostic evidence, not proof
 that native chrome was displayed or that a renderer recovered.
+
+The service supervisor fails closed if its registry cannot be read. A bare
+`station service run` without installed policy remains supported for containers;
+it respects a live sidecar but publishes no home-wide ownership fence.
