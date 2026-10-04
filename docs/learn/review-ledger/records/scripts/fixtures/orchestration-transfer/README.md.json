@@ -9,16 +9,14 @@
 
   "limits": "Initial 39-52 KB window, 0.9-1.7 KB snapshot, and roughly 1 MB live-turn observations were not reproduced. The historical calibration is not current performance evidence or authority to change ceilings.",
 
-  "document": {"digest":"74b59d96e3480808afb793cf1c096e01fc6992d05bd5b4e421ec407bd6d71a39","revision":"671be0593127cb01daf7085071ea22003752fe2c"},
-
   "sources": [
-    {"path":"scripts/fixtures/orchestration-transfer/budget.json","digest":"47a0ff2379a93d58de745f0fdc26350e448ae31290eb87cdcd22ee0205d47f9b","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/fixtures/orchestration-transfer/budget.json",
 
-    {"path":"scripts/orchestration-transfer-capture.ts","digest":"ba4a10c37c9f079a8365238564edd2e181f566c4340885adbd67fa28256ad150","revision":"2dbaa00a465eb63e07c4b524cec5298ebffd449c"},
+    "scripts/orchestration-transfer-capture.ts",
 
-    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"c10941f00e2d434ca22c4cc4e4bdfb1c892cde9e18e7fb8cf558d4acf3c5eaed","revision":"10355abb29c67ba8bac4c9ad44c8718d0f42a85c"},
+    "scripts/orchestration-transfer-gate.mjs",
 
-    {"path":"src-server/__test-utils__/orchestration-transfer-scenario.ts","digest":"60dc57d9467b9a610eeb68e7cc052307303fb2c91924364959facfcdcc43044b","revision":"216c4c8b23280db636d2fb76465639955ddfe3a2"}
+    "src-server/__test-utils__/orchestration-transfer-scenario.ts"
   ],
 
   "checks": [

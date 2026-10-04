@@ -1,0 +1,7 @@
+{
+  "revision": "d93991f52363d8d7d2a1fa12938ba5783158b27c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reproduced premature goal dispatch during installed-app catalog refresh in the mounted NewChatModal/AutomaticEnginePreparation path. Two regression cases failed before the fix; both now wait for refresh, and warned preparation renders its prerequisite without dispatch. The guide already states warnings prevent launch; the corrected state lifetime now fulfills that claim. 39 focused cases passed.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

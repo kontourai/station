@@ -1,0 +1,7 @@
+{
+  "revision": "c259630c0b3c332e6808dcc79425ea2eb3f4732c",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"navigation-store.ts gained a same-URL index assignment in handlePopState, two read-only getters (traversalAwaitsGuard, traversalDepartedIndex), an exported navigationEntryIndex, and navigate() no longer copies main's page stamp to a new entry. The document's claims about this file are that it is the navigation authority and that URL/popstate/back-forward remain authoritative over persisted host selection; both still hold — the change adds history entries for main's page swap and does not move authority.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md"]}
+  ]
+}

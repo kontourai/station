@@ -1,0 +1,7 @@
+{
+  "revision": "7be721b29fb6742b6e66cf8f952782481b3f0fe0",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"Reviewed Registry route and catalog model deltas: unsupported-format handling applies only to Skill acquisition/status, leaving Layout profile policy, lifecycle badges, catalog actions, and server application unchanged. Existing Layout and ordinary Registry regression cases pass.","inputs":["docs/guides/distribution-profiles.md"]}
+  ]
+}

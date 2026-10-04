@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3071 final round, after merging origin/main. Changed inputs: claude-adapter.test.ts (main's #2933 tests plus this branch's two #3071 tests); claude-adapter.ts (merged bytes: main's #2933 autoApprove change, reviewed in main's record, plus this branch's #3071 hunks: main-thread request.opened carries turnId, and interruptTurn cancels every request raised during the SDK interrupt before turn.aborted; the two auto-merged in separate hunks and the Claude adapter suite passes on the merged file). Read the canUseTool statements: this branch adds turnId to the request.opened envelope and a second cancel on interrupt; neither changes an approval decision or the payload fields the page describes. Main's #2933 edits to this page were reviewed in main's record, not by me. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}
