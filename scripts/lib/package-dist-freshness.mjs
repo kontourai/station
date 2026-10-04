@@ -27,10 +27,10 @@
  * than silent.
  */
 
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { spawnSyncBounded } from './bounded-capture.mjs';
 
 /** Bumping this invalidates every existing stamp on purpose. */
 export const DIGEST_VERSION = 1;
@@ -166,7 +166,7 @@ export function entryPointSpecifiers(manifest) {
  */
 export function ignoredPaths(repoRoot, paths) {
   if (paths.length === 0) return new Set();
-  const result = spawnSync('git', ['check-ignore', '--stdin'], {
+  const result = spawnSyncBounded('git', ['check-ignore', '--stdin'], {
     cwd: repoRoot,
     input: `${paths.join('\n')}\n`,
     encoding: 'utf8',

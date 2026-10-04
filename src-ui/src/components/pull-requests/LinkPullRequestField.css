@@ -1,0 +1,10 @@
+.link-pull-request {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.link-pull-request__input {
+  flex: 1;
+  min-width: 0;
+}

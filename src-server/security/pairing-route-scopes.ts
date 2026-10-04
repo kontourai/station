@@ -2708,6 +2708,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and transcript facts as the ordinary conversation surface and performs
     // no mutation, so it inherits `orchestration:read`.
     { method: 'GET', path: '/api/conversations/:id/open' },
+    // #3159: a paged, bounded read of one conversation's transcript under
+    // the request's own authority (station-control callers are further
+    // limited to what their conversation may read). No mutation and nothing
+    // beyond this Station, so it inherits `orchestration:read`.
+    { method: 'GET', path: '/api/conversations/:id/read' },
     // Records the caller's own rendered conversation version. It does not
     // expose another Station's data, so the conversations family's normal
     // mutating `orchestration:operate` scope applies.

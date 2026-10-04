@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Design round: the action-surface inventory lost PullRequestsPanel.tsx and ConversationPullRequestLinks.tsx (their rows no longer carry an actions class, the ratchet no longer discovers them) and re-describes BranchToolbar.tsx and PullRequestReviewPanel.tsx (IconButton controls, one Merge menu, 44px hit areas via pseudo-elements). The guide's description of the inventory, the mobile CSS ratchet and the button-cap ratchet matches how this change used them; the DiffPanel row left the button-cap baseline. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

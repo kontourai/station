@@ -73,6 +73,9 @@ const DECISION_2_OPERATOR_READS = [
 const DECISION_2_PRINCIPAL_READS = [
   'list_conversations',
   'get_conversation_messages',
+  // #3159: the route further limits it to the caller's conversation, its
+  // scope, and conversations a person referenced there.
+  'read_conversation',
   'board_read',
   'get_basis',
   'get_task_basis',
