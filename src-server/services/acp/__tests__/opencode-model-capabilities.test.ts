@@ -1,6 +1,7 @@
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -24,10 +25,10 @@ import {
 // Captured from `opencode models --verbose` (OpenCode 1.18.18), trimmed to
 // three models: image input false, true (with variants), and false for a
 // provider-prefixed id that itself contains a slash.
-const FIXTURE = readFileSync(
-  join(__dirname, 'fixtures', 'opencode-models-verbose.txt'),
-  'utf8',
+const FIXTURE_PATH = fileURLToPath(
+  new URL('./fixtures/opencode-models-verbose.txt', import.meta.url),
 );
+const FIXTURE = readFileSync(FIXTURE_PATH, 'utf8');
 
 const OPENCODE: ACPConnectionConfig = {
   id: 'opencode',
@@ -116,7 +117,7 @@ describe.skipIf(process.platform === 'win32')(
         options(
           `if (process.argv.slice(2).join(' ') !== 'models --verbose') process.exit(9);
 process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(
-            join(__dirname, 'fixtures', 'opencode-models-verbose.txt'),
+            FIXTURE_PATH,
           )}, 'utf8'));`,
         ),
       );
@@ -557,7 +558,7 @@ describe('manager wiring', () => {
 const fs = require('node:fs');
 if (process.argv[2] === 'models') {
   process.stdout.write(fs.readFileSync(${JSON.stringify(
-    join(__dirname, 'fixtures', 'opencode-models-verbose.txt'),
+    FIXTURE_PATH,
   )}, 'utf8'));
   process.exit(0);
 }
