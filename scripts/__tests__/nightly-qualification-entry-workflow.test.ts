@@ -47,7 +47,7 @@ describe('Main qualification: the qualified-Nightly entry point', () => {
     expect(decide.needs).toEqual(['qualification']);
     expect(decide.if).toBe(
       expr(
-        "github.ref == 'refs/heads/main' && needs.qualification.result == 'success'",
+        "vars.STATION_QUALIFIED_NIGHTLY == 'enabled' && github.ref == 'refs/heads/main' && needs.qualification.result == 'success'",
       ),
     );
     expect(decide.permissions).toEqual({ contents: 'read' });

@@ -32,10 +32,14 @@ jobs:
   # triggering commit. Here that commit is the qualified one by construction.
   # The scheduled Nightly stays as the fallback and the CLI's npm
   # trusted-publisher path.
+  # Dormant until the owner sets STATION_QUALIFIED_NIGHTLY to `enabled`, after
+  # admitting main-qualification.yml@refs/heads/main to the GCP workload
+  # identity condition (Android staging) and, for the CLI, to npm trusted
+  # publishing. Before that, an attempt would burn a version code and fail.
   nightly-decide:
     name: Decide qualified Nightly publication
     needs: [qualification]
-    if: ${{ github.ref == 'refs/heads/main' && needs.qualification.result == 'success' }}
+    if: ${{ vars.STATION_QUALIFIED_NIGHTLY == 'enabled' && github.ref == 'refs/heads/main' && needs.qualification.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions: { contents: read }
