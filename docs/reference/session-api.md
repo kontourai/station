@@ -619,7 +619,13 @@ Only Claude subagents have a transcript today. Claude Code keeps it under the
 config home the session's engine was spawned with (its app-home or credential
 profile, a connection's config home, or the global one); the adapter records
 that config home with the reference, so a profile session's transcript is
-read from its own profile. Codex child threads have no transcript reference.
+read from its own profile. No symbolic link below that config home is
+followed. Codex child threads have no transcript reference.
+
+The transcript is shown in file order, so it can include what Claude Code's
+own reader hides: a branch abandoned by a retry or an edit, and a compaction
+summary. A single record larger than 4 MiB is skipped and shown as one
+`too-large` entry.
 
 ### Live SSE feed (`GET /events`)
 

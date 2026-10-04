@@ -13,6 +13,9 @@ import { SkeletonBlock } from '../../components/state';
  * session and the child. Pages load on request, never by polling.
  */
 
+/** How long a reporting child must stay quiet before its transcript re-reads. */
+const TRANSCRIPT_REFRESH_DEBOUNCE_MS = 2_000;
+
 function failureText(error: unknown): string {
   if (error instanceof StationHttpError && error.status === 503)
     return 'The engine no longer has this transcript.';
@@ -77,6 +80,14 @@ function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
           </p>
         </li>
       );
+    case 'too-large':
+      return (
+        <li className="child-work-transcript__entry" data-kind="too-large">
+          <p className="child-work-transcript__note">
+            An entry too large to show was left out.
+          </p>
+        </li>
+      );
   }
 }
 
@@ -106,7 +117,13 @@ export function ChildWorkTranscript({
     if (seenRevision.current === revision) return;
     seenRevision.current = revision;
     // Including the change that settles it: its last messages land then.
-    void refetch();
+    // Debounced: a chatty child reports progress every few hundred ms, and
+    // each re-read walks the pages loaded so far.
+    const timer = setTimeout(
+      () => void refetch(),
+      TRANSCRIPT_REFRESH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(timer);
   }, [revision, refetch]);
   const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
   return (

@@ -6,7 +6,13 @@
  */
 
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
@@ -379,6 +385,7 @@ test('#3163: a transcript the engine no longer has says so', () => {
 });
 
 test('#3163: a running child’s open transcript re-reads when the child reports, and offers Refresh', () => {
+  vi.useFakeTimers();
   useChildWorkTranscriptQuery.mockReturnValue(
     transcriptQuery({
       isSuccess: true,
@@ -418,9 +425,19 @@ test('#3163: a running child’s open transcript re-reads when the child reports
       />
     </ul>,
   );
+  // Debounced: nothing until the child has been quiet for 2 s.
+  expect(refetch).not.toHaveBeenCalled();
+  act(() => {
+    vi.advanceTimersByTime(1_999);
+  });
+  expect(refetch).not.toHaveBeenCalled();
+  act(() => {
+    vi.advanceTimersByTime(1);
+  });
   expect(refetch).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(refetch).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
 });
 
 test('#3163: a settled child’s transcript offers no Refresh', () => {

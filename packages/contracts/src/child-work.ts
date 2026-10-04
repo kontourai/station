@@ -255,6 +255,8 @@ export type ChildWorkTranscriptEntry = {
   | { kind: 'tool-result'; text?: string; isError?: true }
   /** Blocks of one message past the per-message bound. */
   | { kind: 'omitted'; count: number }
+  /** A transcript record too large to read; it is skipped, not cut. */
+  | { kind: 'too-large' }
 );
 
 export interface ChildWorkTranscriptPage {

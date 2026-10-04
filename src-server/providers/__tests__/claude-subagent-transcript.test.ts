@@ -2,6 +2,8 @@
  * #3163: a Claude subagent's transcript, read through the REAL SDK reader
  * (`getSubagentMessages`) from a transcript laid out as Claude Code writes it.
  */
+import { appendFileSync, mkdirSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -176,5 +178,91 @@ describe('#3163 Claude subagent transcript', () => {
     expect(entries[0]).toMatchObject({ kind: 'text', truncated: true });
     if (entries[0].kind !== 'text') throw new Error('kind');
     expect(entries[0].text).toHaveLength(CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS);
+  });
+
+  test('no symlink below the config home is followed: a linked session or projects directory finds nothing', async () => {
+    const real = installClaudeSubagentTranscript(makeTempDir, {
+      asProfile: true,
+    });
+    const realSession = join(
+      real.configDir,
+      'projects',
+      '-workspace-example',
+      TRANSCRIPT_SESSION_ID,
+    );
+    // Control: the real tree is found.
+    expect(
+      (
+        await readClaudeSubagentTranscriptPage(
+          { ...ref, configHome: real.configDir },
+          { offset: 0, limit: 30 },
+        )
+      ).status,
+    ).toBe('found');
+    const linkedSession = makeTempDir('station-claude-3163-linked-session-');
+    mkdirSync(join(linkedSession, 'projects', '-workspace-example'), {
+      recursive: true,
+    });
+    symlinkSync(
+      realSession,
+      join(
+        linkedSession,
+        'projects',
+        '-workspace-example',
+        TRANSCRIPT_SESSION_ID,
+      ),
+    );
+    const linkedProjects = makeTempDir('station-claude-3163-linked-projects-');
+    symlinkSync(
+      join(real.configDir, 'projects'),
+      join(linkedProjects, 'projects'),
+    );
+    for (const configHome of [linkedSession, linkedProjects]) {
+      expect(
+        await readClaudeSubagentTranscriptPage(
+          { ...ref, configHome },
+          { offset: 0, limit: 30 },
+        ),
+      ).toEqual({ status: 'unavailable' });
+    }
+  });
+
+  test('a record past the byte cap is skipped as one too-large entry, and reading goes on after it', async () => {
+    const profile = installClaudeSubagentTranscript(makeTempDir, {
+      asProfile: true,
+    });
+    const file = join(
+      profile.configDir,
+      'projects',
+      '-workspace-example',
+      TRANSCRIPT_SESSION_ID,
+      'subagents',
+      `agent-${TRANSCRIPT_AGENT_ID}.jsonl`,
+    );
+    // A 5 MiB record, written a MiB at a time (never held whole here).
+    const mib = 'x'.repeat(1024 * 1024);
+    appendFileSync(
+      file,
+      '{"type":"assistant","message":{"role":"assistant","content":"',
+    );
+    for (let chunk = 0; chunk < 5; chunk++) appendFileSync(file, mib);
+    appendFileSync(file, '"}}\n');
+    appendFileSync(
+      file,
+      `${JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'AFTER THE BIG ONE' }] } })}\n`,
+    );
+    const outcome = await readClaudeSubagentTranscriptPage(
+      { ...ref, configHome: profile.configDir },
+      { offset: 0, limit: 30 },
+    );
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    const kinds = outcome.page.entries.map((entry) => entry.kind);
+    expect(kinds.slice(-2)).toEqual(['too-large', 'text']);
+    expect(outcome.page.entries.at(-1)).toMatchObject({
+      text: 'AFTER THE BIG ONE',
+    });
+    // The skipped record keeps its place in the message numbering.
+    const [big, after] = outcome.page.entries.slice(-2);
+    expect(after.message).toBe(big.message + 1);
   });
 });
