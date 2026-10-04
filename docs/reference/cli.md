@@ -2039,7 +2039,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2051,6 +2051,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
 | `--build` | — | Force rebuild before starting (even if dist exists) |
+| `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory |
@@ -2137,7 +2138,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -2145,6 +2146,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--port-offset=<n>` | derived | Force an exact offset (`0`-`500`), overriding the derivation. `--port-offset=0` is valid and yields the base ports `39140`/`40140` (just below the derived `39141`-`39640` band). |
 | `--host=<address>` | `0.0.0.0` | Bind address; the default is a wildcard so a phone or LAN/tailnet client can reach the stable URL |
 | `--build` | — | Force a rebuild before starting |
+| `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
 | `--features=<flags>` | — | Comma-separated feature flags |
