@@ -9,16 +9,18 @@
 
   "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
 
-  "document": {"digest":"b6f2510fa89e1f5dc49113d6fee278cdccf6dbfc12b4a90ecf11ec0f4f8edb67","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
-
   "sources": [
-    {"path":"examples/matt-pocock-engineering/plugin.json","digest":"b6ebdeab7bff481cc948a5556f3a7c2726b9d0444f261810b69341b4ef4786a0","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    "examples/matt-pocock-engineering/plugin.json",
 
-    {"path":"examples/matt-pocock-engineering/ADAPTATIONS.json","digest":"55407b097633ef9c6430260373c74453f4a76ac1f59f11506a8e9e76a92108a4","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "examples/matt-pocock-engineering/ADAPTATIONS.json",
 
-    {"path":"examples/matt-pocock-engineering/SOURCE-TRACE.json","digest":"f3a19118238ea07b420e8b4a0c874857dd53eac21baf9032493f45b78351a678","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "examples/matt-pocock-engineering/SOURCE-TRACE.json",
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"6601a6595d1103210663e99bbc68ec889c296b1b"}
+    "packages/shared/src/skill-experience-author.ts",
+
+    "examples/matt-pocock-engineering/EVALUATION-CASES.json",
+
+    "examples/matt-pocock-engineering/qualification/browser-focus-board-20261003.json"
   ],
 
   "checks": [

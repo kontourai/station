@@ -1,0 +1,7 @@
+{
+  "revision": "427048f4d9704126317aaa1667d5b39e56ecd0ed",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"After merging main: this branch adds resolveLayoutChatPlacement to project-layout-kind.ts. The page cites that file only as one place where type 'coding' is special-cased, which the addition reinforces (the coding kind now also decides Chat placement). No statement changes; other claims were not re-reviewed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}
