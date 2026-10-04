@@ -364,6 +364,57 @@ describe('#3157 usage-limit banner actions', () => {
     store.close();
   });
 
+  test.each([
+    ['already past (a stale provider time)', -3_600_000],
+    ['under the minimum wait', 30_000],
+  ])(
+    'a replay refused again with a reset %s ends failed after one dispatch, never looping',
+    async (_label, offsetMs) => {
+      vi.useFakeTimers({ now: STOPPED_AT });
+      const { store, coordinator, dispatch } = setup(() => true);
+      stopOnUsageLimit(coordinator, store);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await coordinator.resumeUsageLimitNow(THREAD);
+      await vi.advanceTimersByTimeAsync(0);
+      const replay = dispatch.mock.calls[0]?.[0].replay;
+      observe(coordinator, store, {
+        eventId: 'replay-start',
+        provider: 'codex',
+        threadId: THREAD,
+        turnId: 'resumed-turn',
+        createdAt: new Date(Date.now()).toISOString(),
+        method: 'turn.started',
+        prompt: 'Finish the migration.',
+        metadata: { recoveryCorrelationId: replay?.recoveryCorrelationId },
+      });
+      observe(coordinator, store, {
+        eventId: 'replay-error',
+        provider: 'codex',
+        threadId: THREAD,
+        turnId: 'resumed-turn',
+        createdAt: new Date(Date.now()).toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'usageLimitExceeded',
+        retriable: false,
+        message: "You've hit your usage limit.",
+        details: {
+          usageLimit: true,
+          scope: 'account',
+          resetAt: new Date(Date.now() + offsetMs).toISOString(),
+        },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'failed',
+      });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(dispatch).toHaveBeenCalledOnce();
+      await coordinator.dispose();
+      store.close();
+    },
+  );
+
   test('a resumed turn that fails for another reason still ends the intent, with nothing armed', async () => {
     vi.useFakeTimers({ now: STOPPED_AT });
     const { store, coordinator, dispatch } = setup(() => true);

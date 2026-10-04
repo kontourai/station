@@ -54,6 +54,15 @@ export type UsageLimitRecoveryActionResult =
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
   | { kind: 'not-waiting' };
 
+/**
+ * #3157: the shortest wait a refused replay may re-arm for. A refusal that
+ * names a reset under a minute away is the provider disagreeing with itself,
+ * not a limit worth waiting out; ending the intent as failed keeps the user's
+ * next message the way forward. A minute also bounds an unattended
+ * resume-refuse-resume cycle to one dispatch per minute at the very worst.
+ */
+const REARM_MIN_WAIT_MS = 60_000;
+
 const DEFAULT_MAX_ATTEMPTS = 1;
 const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
@@ -242,7 +251,7 @@ export class SessionRecoveryCoordinator {
         await this.failIntent(resumed);
         if (!limitedAgain || this.disposed || this.stopping) return;
         try {
-          this.armForRuntimeError(event);
+          this.armForRuntimeError(event, REARM_MIN_WAIT_MS);
         } catch {
           // Fail closed, as the rest of this observer does.
         }
@@ -340,6 +349,13 @@ export class SessionRecoveryCoordinator {
 
   private armForRuntimeError(
     event: Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>,
+    /**
+     * #3157: arm only a wait that ends at least this long from now. A replay
+     * refused again re-arms through here, and a reset that is already past
+     * (a stale provider time, clock skew) classifies as `retry-now`, which
+     * would send the replay again at once, forever.
+     */
+    minWaitMs?: number,
   ): void {
     const adapter = this.options.adapterForProvider(event.provider);
     const failure = classifyConnectionFailure(event);
@@ -348,6 +364,15 @@ export class SessionRecoveryCoordinator {
       failure,
       now: this.now(),
     });
+    if (
+      minWaitMs !== undefined &&
+      !(
+        decision.decision === 'wait-until-reset' &&
+        decision.dueAt !== undefined &&
+        Date.parse(decision.dueAt) - this.now().getTime() >= minWaitMs
+      )
+    )
+      return;
     const source = this.findSourceTurn(event.threadId, event.turnId);
     if (!source) return;
     // #2324: a turn the engine opened on its own has no send to replay.
