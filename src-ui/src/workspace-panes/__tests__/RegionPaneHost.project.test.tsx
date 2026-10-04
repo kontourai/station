@@ -38,7 +38,10 @@ import {
   writeBrowserPreviewPaneState,
 } from '../browserPreviewPaneStateStorage';
 import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
-import { warmRegionHostImports } from './warmRegionHostImports';
+import {
+  REGION_HOST_WARM_TIMEOUT_MS,
+  warmRegionHostImports,
+} from './warmRegionHostImports';
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
@@ -140,7 +143,7 @@ function currentModel(): ReturnType<typeof useRegionModel> {
 }
 
 // First-mount import cost is paid here, once, not inside the first test's waits.
-beforeAll(warmRegionHostImports);
+beforeAll(warmRegionHostImports, REGION_HOST_WARM_TIMEOUT_MS);
 
 beforeEach(() => {
   model = null;
