@@ -252,6 +252,10 @@ import {
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
+  type ChildWorkTranscriptModule,
+  createChildWorkTranscriptModule,
+} from './child-work-transcript.js';
+import {
   ClientOriginTurnPropagation,
   withClientOrigin,
 } from './client-origin-propagation.js';
@@ -1578,6 +1582,8 @@ export class OrchestrationService {
   readonly conversationOpenResolver: ConversationOpenResolver;
   /** Explicit declared-output inventory; separate from transcript/Basis reads. */
   readonly sessionOutputs: SessionOutputsModule;
+  /** #3163: a child's own read-only transcript, resolved from persisted facts. */
+  readonly childWorkTranscripts: ChildWorkTranscriptModule;
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
@@ -2346,6 +2352,16 @@ export class OrchestrationService {
             pullRequestResolver: this.options.nativeDeclaredPullRequestResolver,
           }
         : {}),
+    });
+    this.childWorkTranscripts = createChildWorkTranscriptModule({
+      listChildWorkHistory: (threadId) =>
+        (
+          this.options.eventStore
+            ?.listChildWorkHistoryForThreads([threadId])
+            .get(threadId) ?? []
+        ).map((row) => row.payload),
+      canReadSession: (threadId, authority) =>
+        this.sessionAuthz.canReadSession(threadId, authority),
     });
     this.monitoringBridge = new OrchestrationMonitoringBridge(
       options.monitoringEmitter,
@@ -4944,7 +4960,13 @@ export class OrchestrationService {
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: import('@kontourai/station-contracts/usage-rollup').UsageReceipt[];
     nextCursor?: string;

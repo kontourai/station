@@ -2714,6 +2714,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // expose another Station's data, so the conversations family's normal
     // mutating `orchestration:operate` scope applies.
     { method: 'POST', path: '/api/conversations/:id/acknowledgement' },
+    // `rename_session`'s leaf. It writes one conversation title, so the
+    // family's mutating `orchestration:operate` scope applies. The handler
+    // answers only a station-control tool call with a verified caller (it
+    // stamps `titleSource: 'agent'`), so a paired device that reaches it is
+    // refused there; the scope is the floor, not the gate.
+    { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
@@ -2993,6 +2999,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/basis',
+    },
+    // #3163: one engine subagent's own transcript, a bounded read-only page.
+    // Deliberate family inheritance, considered: it never mutates, and it
+    // re-checks the Session read ACL and the request principal before AND
+    // after the engine read, so it reaches nothing a read credential could
+    // not already reach in that Session. The transcript is located from the
+    // child-work facts this Station persisted for the thread (no request
+    // input becomes a path) and read from this Station's own host, so it
+    // carries no other environment's or Station's data. Its content (the
+    // subagent's messages and tool calls, inline image data redacted, text
+    // cut) is the same kind the `messages` and `tool-results` leaves at this
+    // tier already return for the whole Session, a level deeper in the same
+    // work, so read tier is the right scope and no override is needed.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/child-work/:childId/transcript',
     },
     { method: 'GET', path: '/api/orchestration/sessions/loaded' },
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },

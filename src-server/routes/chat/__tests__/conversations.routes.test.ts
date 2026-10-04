@@ -3109,6 +3109,45 @@ describe('Global Conversation Routes', () => {
     );
   });
 
+  // #176: `rename_session` stamps `titleSource: 'agent'`; an inventory that
+  // dropped it would show the title as having no provenance at all.
+  test.each(['user', 'generated', 'provider', 'prompt', 'agent'])(
+    'GET / carries the %s titleSource of a store conversation',
+    async (titleSource) => {
+      const adapter = createMockAdapter();
+      adapter.queryConversations.mockResolvedValue([
+        {
+          id: 'store-1',
+          userId: 'agent:default',
+          resourceId: 'default',
+          title: 'Store Chat',
+          createdAt: '2026-07-20T00:00:00Z',
+          updatedAt: '2026-07-20T00:01:00Z',
+          metadata: { titleSource },
+        },
+      ]);
+      const app = createGlobalConversationRoutes(
+        new Map([['default', adapter]]) as any,
+        { getConversation: vi.fn().mockReturnValue(null) } as any,
+        mockLogger,
+        undefined,
+        {
+          readSessionConversation: vi.fn(),
+          listConversationHistoryPage: vi
+            .fn()
+            .mockResolvedValue({ hasMore: false, items: [] }),
+        },
+        () => 'bound-user',
+      );
+
+      const body = await json(await app.request('/'));
+
+      expect(body.data.items).toEqual([
+        expect.objectContaining({ id: 'store-1', titleSource }),
+      ]);
+    },
+  );
+
   // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered
   // adapter's file-store conversations, tags each item's `source`, and

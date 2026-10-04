@@ -228,6 +228,7 @@ import { createTemplateRoutes } from '../../routes/agents/templates.js';
 import { createToolRoutes } from '../../routes/agents/tools.js';
 import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
 import { createBoardRoutes } from '../../routes/board.js';
+import { createAgentConversationTitleRoutes } from '../../routes/chat/agent-conversation-title.js';
 import { createChatRoutes } from '../../routes/chat/chat.js';
 import {
   conversationReferenceReadDeps,
@@ -6179,6 +6180,19 @@ export function configureRuntimeRoutes(
           peerCredentialStore,
         ),
     ),
+  );
+  // `rename_session`'s own leaf (never the person's `PATCH`, which stamps
+  // `titleSource: 'user'`): the rename a station-control agent makes, stamped
+  // `'agent'` and refused over a person's title.
+  context.app.route(
+    '/api/conversations',
+    createAgentConversationTitleRoutes({
+      memoryAdapters: context.memoryAdapters,
+      sessionConversationReader: context.orchestrationService,
+      authorityFor: conversationReadAuthorityForRequest,
+      scope: stationControlDispatchScope,
+      logger: context.logger,
+    }),
   );
   // #3159: the paged, read-only transcript read behind station-control's
   // `read_conversation` — an agent's own conversation, one in its scope, or
