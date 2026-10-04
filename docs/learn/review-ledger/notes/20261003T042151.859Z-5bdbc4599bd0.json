@@ -1,0 +1,15 @@
+{
+  "revision": "ce9bde4b63fef48f485252fdcdbe088d923de8bc",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the testing-guide delta adding the Profile gallery timestamp exclusion. Only completed live rebuild-time copy is hidden for pixel capture; unknown timestamps, errors, scope and controls remain visible. Existing focused-evidence, fixture fidelity, source-review, scheduling and promotion guidance referenced by this document is unchanged. Pixel equality is not accounting freshness or runtime qualification.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the testing-guide delta adding the Profile gallery timestamp exclusion. Only completed live rebuild-time copy is hidden for pixel capture; unknown timestamps, errors, scope and controls remain visible. Existing focused-evidence, fixture fidelity, source-review, scheduling and promotion guidance referenced by this document is unchanged. Pixel equality is not accounting freshness or runtime qualification.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the testing-guide delta adding the Profile gallery timestamp exclusion. Only completed live rebuild-time copy is hidden for pixel capture; unknown timestamps, errors, scope and controls remain visible. Existing focused-evidence, fixture fidelity, source-review, scheduling and promotion guidance referenced by this document is unchanged. Pixel equality is not accounting freshness or runtime qualification.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the testing-guide delta adding the Profile gallery timestamp exclusion. Only completed live rebuild-time copy is hidden for pixel capture; unknown timestamps, errors, scope and controls remain visible. Existing focused-evidence, fixture fidelity, source-review, scheduling and promotion guidance referenced by this document is unchanged. Pixel equality is not accounting freshness or runtime qualification.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the testing-guide delta adding the Profile gallery timestamp exclusion. Only completed live rebuild-time copy is hidden for pixel capture; unknown timestamps, errors, scope and controls remain visible. Existing focused-evidence, fixture fidelity, source-review, scheduling and promotion guidance referenced by this document is unchanged. Pixel equality is not accounting freshness or runtime qualification.","inputs":["tests/AGENTS.md"]}
+  ]
+}

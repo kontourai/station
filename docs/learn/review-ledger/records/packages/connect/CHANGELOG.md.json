@@ -9,8 +9,6 @@
 
   "limits": "Changelog retention is not a receipt for live relay/WebRTC/device qualification or npm publication.",
 
-  "document": {"digest":"6002873fb4d8537aa609783912dac95bcd54c575a851b991122b2ef874d53895","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
-
   "sources": [],
 
   "checks": []

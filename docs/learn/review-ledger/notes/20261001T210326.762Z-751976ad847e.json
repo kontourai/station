@@ -1,0 +1,7 @@
+{
+  "revision": "9cf642d7a6b549c38973149cc2fae2800744551b",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"pull-request-review.test.ts changed after the last record only in its old-gh case reading the optional reviewComments observation with optional chaining; the paragraph on checks and reviewComments is unchanged and still matches pull-request-provider.ts and pull-request-review.ts.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

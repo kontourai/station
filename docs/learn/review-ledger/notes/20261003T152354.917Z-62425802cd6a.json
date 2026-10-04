@@ -1,0 +1,13 @@
+{
+  "revision": "cb4a5f3de881faa98cf8ba8bcf33445c8b0c0d10",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed follow-up merged input delta. Connections guide now points to the lazy iOS intake controller and describes no-expiry/no-timer plus bounded finite rechecks; it grants no account, Device or Project authority. Shared package manifest adds only the skill-experience-workflow export, without token/primitive, responsive geometry or theme behavior changes. Existing transport/query ownership and documented physical acceptance limits remain accurate.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed follow-up merged input delta. Connections guide now points to the lazy iOS intake controller and describes no-expiry/no-timer plus bounded finite rechecks; it grants no account, Device or Project authority. Shared package manifest adds only the skill-experience-workflow export, without token/primitive, responsive geometry or theme behavior changes. Existing transport/query ownership and documented physical acceptance limits remain accurate.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed follow-up merged input delta. Connections guide now points to the lazy iOS intake controller and describes no-expiry/no-timer plus bounded finite rechecks; it grants no account, Device or Project authority. Shared package manifest adds only the skill-experience-workflow export, without token/primitive, responsive geometry or theme behavior changes. Existing transport/query ownership and documented physical acceptance limits remain accurate.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed follow-up merged input delta. Connections guide now points to the lazy iOS intake controller and describes no-expiry/no-timer plus bounded finite rechecks; it grants no account, Device or Project authority. Shared package manifest adds only the skill-experience-workflow export, without token/primitive, responsive geometry or theme behavior changes. Existing transport/query ownership and documented physical acceptance limits remain accurate.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

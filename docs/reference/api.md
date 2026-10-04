@@ -50,6 +50,43 @@ and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-ru
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
 
+### Keep a declared output
+
+`POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts
+`{operationId}` and resolves the declaration from the authorized Session owner.
+The [route](../../src-server/routes/orchestration/task-outputs.ts) captures the
+Task's Project, creation time and workspace. Its publication witness refuses a
+changed Task incarnation, Project or workspace, including at the pull-request
+commit boundary. Reusing an ID and path does not make a replacement Task the
+original target.
+
+The [Session output owner](../../src-server/services/orchestration/session-outputs-module.ts)
+checks the durable declaration and source workspace. File curation reaches the
+[immutable output store](../../src-server/services/projects/task-output-module.ts),
+which checks declared digest/length against captured bytes and rechecks the
+publication witness under its lock. A successful keep is `201` with a
+`task-declared-output-keep/v1` result; conflicts are `409`, previously deleted kept outputs
+are `410`, unavailable storage is `503`, and lost current authority is opaque
+`404`. A keep preserves an artifact or reference; it does not establish agent
+attribution, accepted quality or feedback. Shared review and exact-version
+feedback remain programme work.
+
+New snapshots store their Task creation identity and, for admitted Session
+declarations, the declaration's Session/event/turn/tool identities privately.
+Public output records remain schema version 1 and omit those private fields.
+Reads and operation receipts for new outputs do not cross a Task incarnation;
+legacy outputs retain unknown provenance rather than receiving invented values.
+Legacy deletion receipts conservatively continue to block the same declared
+candidate under a fresh operation ID.
+
+The private index becomes schema version 2 on the first new snapshot. The new
+reader accepts existing version 1 rows; older binaries reject the version 2
+index, so downgrade requires an explicit migration. Task deletion clears its
+retained identity reservations only while the Task remains absent under the
+output lock. This module contract has no current mounted cascade caller and
+does not establish a joint transaction with TaskGraph.
+
+
 ## Table of Contents
 
 | Area | Route families |

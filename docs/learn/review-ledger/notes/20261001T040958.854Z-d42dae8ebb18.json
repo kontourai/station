@@ -1,0 +1,7 @@
+{
+  "revision": "614b823795c9613223a0da34e209fb852b72e91d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed removal of misleading project-group count and Station-engine scheduled-job setup action.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

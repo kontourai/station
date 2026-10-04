@@ -1,0 +1,15 @@
+{
+  "revision": "c97e259bbacd23a3bc8fc25accb253a8cb2a7e43",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked native link intake ownership against the retry preflight: renderer review now stops on any saved grant; host still owns cleanup and redemption.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Checked enrollment custody and deadlines against the new routing preflight; it changes invitation retry sequencing only, not Device challenge authority.","inputs":["docs/design/native-relay-enrollment.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked Station connection, Device and Project distinctions against the updated native invitation retry instructions; relationship boundaries remain accurate.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed installed G11 same-generation retry ambiguity and updated guidance: any saved grant requires explicit preview and removal before a new invitation is consumed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed native grant lifecycle and G11 retry evidence; updated linked review to include same-generation saved grants while retaining broker retirement authority.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

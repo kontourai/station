@@ -1,0 +1,33 @@
+{
+  "revision": "24d0063f45516c1d6c7cddec670c60ef0185f1f2",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/cli-triage.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["docs/user/native-recovery.md"]},
+
+    {"path":"packages/cli/README.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["packages/cli/README.md"]},
+
+    {"path":"README.md","note":"Re-record after merging main: the connections routes, connection-service, CLI surfaces and lifecycle-doctor sources carry this branch own reviewed duplicate-create refusal plus main api/cli reference updates; each affected document claims were re-checked against the merged tree.","inputs":["README.md"]}
+  ]
+}

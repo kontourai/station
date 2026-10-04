@@ -1,0 +1,17 @@
+{
+  "revision": "2f639f566d9d14feed1c4afc9ae6547b261392ca",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["scripts/AGENTS.md"]}
+  ]
+}
