@@ -259,7 +259,7 @@ export function ChatDockHeader({
           componentProps={{ sessionInventory: inventory }}
         />
       ) : null}
-      {chatIdentity ? (
+      {chatIdentity && !slots?.namesPane ? (
         <div className="chat-dock__header-identity">{chatIdentity}</div>
       ) : null}
       {contextMeter ? (
@@ -319,7 +319,15 @@ export function ChatDockHeader({
         <LazyBoundary
           load={loadChatDockWorkspaceActions}
           pending={null}
-          componentProps={workspaceControls}
+          componentProps={{
+            ...workspaceControls,
+            iconOnly: Boolean(slots?.namesPane),
+            // Under a naming bar the session count rides the Open icon
+            // (its badge and tooltip) rather than sitting as loose text.
+            sessionCount: slots?.namesPane
+              ? (chatControls?.sessions.length ?? 0)
+              : 0,
+          }}
         />
       ) : null}
       {activeSessions.length > 0 && (
@@ -368,6 +376,7 @@ export function ChatDockHeader({
         </div>
       )}
       {chatControls &&
+        !slots?.namesPane &&
         (!chatIdentity || chatControls.sessions.length > 0) &&
         (chatControls.sessions.length === 0 ? (
           !isDockOpen ? (
@@ -428,7 +437,11 @@ export function ChatDockHeader({
   // ownership (the More menu's anchor ref, the lazy chunks) stays here. A
   // slot that has not mounted yet renders nothing for that render rather
   // than flashing an inline bar first.
-  if (!fullscreen && slots) {
+  //
+  // A full-screen placement has no region bar and ignores a region's slots —
+  // except a bar that names the pane itself (the Coding layout's
+  // breadcrumb, #3046), which it joins: its own bar would repeat the title.
+  if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>
         {slots.leading ? createPortal(leading, slots.leading) : null}

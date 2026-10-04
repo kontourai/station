@@ -60,6 +60,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
+| [StationKnowledgeMcpServer](#stationknowledgemcpserver) | Serve scoped read/capture tools separately from platform controls. | `src-server/tools/station-knowledge-mcp-server.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
@@ -1281,7 +1282,7 @@ Recovery must distinguish a requested retry, an observed provider turn, and an a
 
 **Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim, observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
 
-**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback.
+**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
 
 **Code and evidence.** `EventStore` composes the private RecoveryLedger and CredentialApplicationFactory/Handle Implementations over SQLite at runtime startup. `SessionRecoveryCoordinator` uses ordinary recovery claims; `CredentialRecoveryModule` receives opaque startup/claim capabilities and the concrete credential Adapter. Real SQLite proof is in `recovery-ledger.test.ts`, `credential-application-ledger.test.ts`, `credential-recovery-module.test.ts`, and `session-recovery-coordinator.test.ts` under `src-server/services/orchestration/__tests__/`. **Do not reintroduce:** `RecoveryDispatchSettlement`, process-local correlation maps, raw attempt IDs, public storage reopen operations, or automatic retry of indeterminate work.
 
@@ -1694,6 +1695,23 @@ real Git checkouts, real filesystem publication/faults, conflicts and the HTTP
 surface; `client-project-identity.test.ts` covers the public wire consumer and
 incompatible/changed responses. Physical multi-machine and independent-human
 acceptance remain separate from these tests.
+
+## StationKnowledgeMcpServer
+
+The [Knowledge MCP factory](../../src-server/tools/station-knowledge-mcp-server.ts)
+registers five read/capture tools through the shared caller-policy wrapper.
+Station Control retains index rebuild, migration, and its compatibility search.
+[Runtime routes](../../src-server/runtime/routes/runtime-routes.ts) admit only
+loopback MCP requests with a credential for this server and enforce the Session
+owner’s store access before reading or writing records.
+
+Claude uses a session-bound in-process server. Native agents use the
+[custodied HTTP bridge](../../src-server/runtime/mcp/station-knowledge-native-tools.ts)
+inside the accepted authorized turn, while Codex and ACP use their existing
+wire delivery channels with separate Knowledge credentials. SDK cleanup and
+cancellation bound local waiting; they do not undo a write already admitted by
+the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
+[mounted owner/access evidence](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts).
 
 ## KnowledgeStoreProvider
 

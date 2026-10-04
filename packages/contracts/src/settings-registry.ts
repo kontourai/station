@@ -358,6 +358,19 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineSetting({
+    key: 'usageLimitAutoResume',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Resume after usage limits',
+    help: 'When Claude Code or Codex stops on a usage limit with a known reset time, Station sends the stopped turn again after the limit resets.',
+    // #3157: read by SessionRecoveryCoordinator when a resume is due
+    // (`autoResume`, wired in runtime-initialize.ts), so a flip applies to
+    // stops already waiting. Credential-profile failover has its own policy.
+    description:
+      'Send a Claude Code or Codex turn that stopped on a usage limit again once the limit resets, in the same session. Off by default: each resume spends quota while you are away. With it off, the conversation still shows when the limit resets. Resets more than a day away, or unknown, always wait for you.',
+    defaultValue: false,
+  }),
+  defineSetting({
     key: 'distributionProfile',
     scope: 'station',
     descriptor: { kind: 'composite' },

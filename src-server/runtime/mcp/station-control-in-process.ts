@@ -44,6 +44,7 @@ import {
   type StationControlCallerRecordResolver,
 } from './station-control-caller.js';
 import {
+  type BuiltinStationApiMcpId,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
   verifyStationControlMcpToken,
@@ -64,25 +65,27 @@ export interface InProcessStationControlServer {
 
 /**
  * The `sdk-in-process` token each session's in-process servers share. The
- * registry holds one credential per session, so a second server for the
- * same session (station-browser beside station-control, #90 D14) must reuse
+ * registry holds one credential per session and API server, so a second server for the
+ * same purpose (station-browser beside station-control, #90 D14) must reuse
  * the live one rather than mint a replacement that would revoke it.
  * Cleared with the revocation; a revoked or expired token is never reused.
  */
-const inProcessTokens = new Map<string, string>();
+const inProcessTokens = new Map<string, Map<BuiltinStationApiMcpId, string>>();
 
 function inProcessToken(
   sessionId: string,
   tenantExecutionContext: TenantExecutionContext | undefined,
   mode: 'fresh' | 'reuse',
+  serverId: BuiltinStationApiMcpId = 'station-control',
 ): string {
   if (mode === 'reuse') {
-    const existing = inProcessTokens.get(sessionId);
+    const existing = inProcessTokens.get(sessionId)?.get(serverId);
     const entry = verifyStationControlMcpTokenEntry(existing);
     if (
       existing &&
       entry?.sessionId === sessionId &&
-      entry.channel === 'sdk-in-process'
+      entry.channel === 'sdk-in-process' &&
+      entry.serverId === serverId
     )
       return existing;
   }
@@ -91,8 +94,12 @@ function inProcessToken(
     'sdk-in-process',
     undefined,
     tenantExecutionContext,
+    undefined,
+    serverId,
   );
-  inProcessTokens.set(sessionId, token);
+  const tokens = inProcessTokens.get(sessionId) ?? new Map();
+  tokens.set(serverId, token);
+  inProcessTokens.set(sessionId, tokens);
   return token;
 }
 
@@ -117,11 +124,13 @@ function createInProcessServer(input: {
     close(): Promise<void>;
   };
   token: 'fresh' | 'reuse';
+  serverId?: BuiltinStationApiMcpId;
 }): InProcessStationControlServer {
   const token = inProcessToken(
     input.sessionId,
     input.tenantExecutionContext,
     input.token,
+    input.serverId,
   );
   const server = input.createServer();
   const binding = createHash('sha256').update(token).digest('base64url');
@@ -196,9 +205,32 @@ export function claudeInProcessStationControlOptions(
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
   ) => InProcessStationControlServer;
+  createInProcessStationKnowledge: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
+  ) => InProcessStationControlServer;
   revokeStationControlCallerToken: (threadId: string) => void;
 } {
   return {
+    createInProcessStationKnowledge: (
+      threadId,
+      tenantExecutionContext,
+      allowedTools,
+    ) =>
+      createInProcessServer({
+        sessionId: threadId,
+        tenantExecutionContext,
+        resolveRecord: (sessionId) => resolveRecord()?.(sessionId),
+        createServer: () =>
+          createSelectedStationControlMcpServer(
+            allowedTools,
+            undefined,
+            'station-knowledge',
+          ),
+        token: 'reuse',
+        serverId: 'station-knowledge',
+      }),
     createInProcessStationControl: (
       threadId,
       tenantExecutionContext,
