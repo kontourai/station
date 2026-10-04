@@ -45,7 +45,10 @@ function OperatorPanel({
   );
   const [notice, setNotice] = useState('');
   const [removing, setRemoving] = useState<RelaySetupApproval | null>(null);
-  const request = { requestScope: scope, requireCredential: true };
+  const request = {
+    requestScope: scope,
+    requireCredential: scope.requiresEnrolledCredential ?? true,
+  };
   const capabilities = useQuery({
     queryKey: [
       'relay-management-capabilities',

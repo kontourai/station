@@ -4,6 +4,7 @@ import type {
   RelayManagementView,
   RelaySetupApproval,
 } from '@kontourai/station-contracts/relay-management';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -17,6 +18,7 @@ import { RelayOperatorPanel } from '../RelayOperatorPanel';
 
 const state = vi.hoisted(() => ({
   current: true,
+  requiresEnrolledCredential: true,
   capabilities: vi.fn(),
   view: vi.fn(),
   approve: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'https://station.example',
     authorityKey: 'operator-one',
+    requiresEnrolledCredential: state.requiresEnrolledCredential,
     isCurrent: () => state.current,
   }),
 }));
@@ -94,6 +97,7 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   state.current = true;
+  state.requiresEnrolledCredential = true;
   state.capabilities.mockResolvedValue({ canManage: true, configured: true });
   state.view.mockResolvedValue(view);
   state.approve.mockResolvedValue(approval);
@@ -105,6 +109,8 @@ beforeEach(() => {
   state.revoke.mockResolvedValue(undefined);
 });
 afterEach(() => {
+  setClientCredentialResolver(undefined);
+  vi.restoreAllMocks();
   cleanup();
   for (const client of clients.splice(0)) client.clear();
 });
@@ -175,5 +181,47 @@ test('an uncertain issuance does not offer automatic retry, and retired authorit
       <RelayOperatorPanel />
     </QueryClientProvider>,
   );
+  expect(screen.queryByRole('region', { name: 'Invite a device' })).toBeNull();
+});
+
+test('cookie-authenticated operator controls reach the real SDK while enrolled-only requests remain closed', async () => {
+  const sdk = await vi.importActual<
+    typeof import('@kontourai/station-sdk/relay-management')
+  >('@kontourai/station-sdk/relay-management');
+  state.capabilities.mockImplementation(sdk.getRelayManagementCapabilities);
+  setClientCredentialResolver(() => ({
+    origin: 'https://station.example',
+    credential: '',
+    requestAuthority: {
+      apiBase: 'https://station.example',
+      authorityKey: 'operator-one',
+      isCurrent: () => state.current,
+    },
+  }));
+  const wire = vi
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation(async (input) => {
+      if (
+        String(input) !==
+        'https://station.example/api/relay-management/capabilities'
+      )
+        throw new Error('unexpected fixture request');
+      return Response.json({ data: { canManage: true, configured: true } });
+    });
+  state.requiresEnrolledCredential = false;
+  mount();
+  await screen.findByRole('region', { name: 'Invite a device' });
+  expect(wire).toHaveBeenCalledTimes(1);
+  cleanup();
+  for (const client of clients.splice(0)) client.clear();
+  wire.mockClear();
+  state.capabilities.mockClear();
+  state.requiresEnrolledCredential = true;
+  mount();
+  await waitFor(() => expect(state.capabilities).toHaveBeenCalledTimes(1));
+  await expect(state.capabilities.mock.results[0].value).rejects.toThrow(
+    'An enrolled Station credential for this target is required',
+  );
+  expect(wire).not.toHaveBeenCalled();
   expect(screen.queryByRole('region', { name: 'Invite a device' })).toBeNull();
 });
