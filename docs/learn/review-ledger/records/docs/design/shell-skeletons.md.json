@@ -16,7 +16,7 @@
 
     {"path":"src-ui/src/app-shell/page-frame-registry.ts","digest":"f7c858e6d53e55db464ffc7e9af1594fc9b7df4695a7a9932ad8f4cb6d92c378","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"f7973d439ee749a6c5bb641387613f9272e43aa4f0af2c3650cd7c72d339b7b2","revision":"d1acf3d5ebc08bb8c0c617ad7392d635ea12f1ae"},
 
     {"path":"src-ui/src/views/ConnectionsHub.tsx","digest":"5c0aa36c80d1c78197030068ba0151e39fbe2bf4566dc492e3555b0ce3046567","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
