@@ -897,12 +897,13 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/');
 
     await expect(page).toHaveURL(/\/$/);
+    // With work on the page Home leads with the start form and the work; the
+    // "What's next?" heading is an empty Station's (design round 2026-10, V1).
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
-    const continuation = page.getByRole('button', {
-      name: /Continue most recent work/i,
-    });
+    ).toHaveCount(0);
+    const continuation = page.getByRole('button', { name: /^Continue/ });
     await expect(continuation).toContainText('Codex · gpt-5.3-codex');
     await expect(
       page
@@ -2049,7 +2050,7 @@ test('profiles Home with substantial session history', async ({
       await page.goto('/');
       expect((await (await response).json()).data).toHaveLength(1000);
       await expect(
-        page.getByRole('heading', { name: "What's next?" }),
+        page.getByRole('form', { name: 'Start work' }),
       ).toBeVisible();
       await expect(
         page.getByText('History session 0', { exact: true }).first(),

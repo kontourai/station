@@ -458,9 +458,14 @@ async function openDefaultAgentSession(page: import('@playwright/test').Page) {
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
   await expect(
-    page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
+    page
+      .locator('.chat-dock__tab-actions')
+      .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
-  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
+  await page
+    .locator('.chat-dock__tab-actions')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
   // archive#3309 (`components/agent-selection-policy.ts:129-141`,
   // `ChatDock.tsx:1005-1016`): with exactly one chat-ready agent — which is
   // all this fixture seeds — the dock's New button opens that chat DIRECTLY
@@ -573,7 +578,7 @@ test.describe('Default agent workflow', () => {
     await sendButton.click();
     await expect(clearedNotices).toHaveCount(2);
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'History (1)',
     );
@@ -832,12 +837,12 @@ test.describe('Default agent workflow', () => {
     await page.goto('/?dock=open');
     await dismissSetupLauncher(page);
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({
       timeout: 15_000,
     });
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Failed Chat',
     );
@@ -900,12 +905,12 @@ test.describe('Default agent workflow', () => {
     await page.goto('/?dock=open');
     await dismissSetupLauncher(page);
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({
       timeout: 15_000,
     });
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     const history = page.locator('.conversation-history');
     await expect(history).toContainText('Alpha Chat');
     await expect(history).toContainText('Beta Chat');
