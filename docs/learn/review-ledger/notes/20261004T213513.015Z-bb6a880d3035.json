@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"The handshake capabilities paragraph now names delegatedInputAnswers as a Station-to-Station gate; checked against assertTargetEnforcesInputBinding.","inputs":["docs/reference/connect.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the bound-answers section; checked the continue schema, receiver check (current Session plus open input request, invocation recheck), 409 codes, sender handshake gate, pendingRequest fields, callerCanRespond route rule, delegator bounds and UI offer rules against the code and tests.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

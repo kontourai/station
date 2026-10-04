@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Inbox section: a paired input question can now be answered with a bound reply when the paired Station supports it; the guide makes no contrary claim (it says peer items offer no local reply, still true: the reply is forwarded, never local).","inputs":["docs/guides/agents.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

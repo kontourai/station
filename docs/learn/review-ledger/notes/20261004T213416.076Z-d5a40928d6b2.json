@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/guides/workspace-packages.md","note":"No prose change: it makes no claim about delegated input answers, the delegated continue route or handshake capabilities; the SDK adds expectedInputRequest and the pendingRequest fields; the orchestration routes accept expectedInputRequest on delegated continue, map binding refusals to 409, and decorate pendingRequest.callerCanRespond on a served read.","inputs":["docs/guides/workspace-packages.md","packages/sdk/src/client/delegations.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/design/answer-share-permalinks.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; the handshake contract adds the delegatedInputAnswers flag.","inputs":["docs/design/answer-share-permalinks.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}
