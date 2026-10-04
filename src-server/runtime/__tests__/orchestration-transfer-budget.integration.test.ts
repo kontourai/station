@@ -175,195 +175,227 @@ async function runtime() {
 }
 
 describe('orchestration transfer byte budgets', () => {
-  test('measures the same five bounded phases through external and native engines', async () => {
-    const {
-      baseUrl,
-      externalAdapter,
-      nativeAdapter,
-      nativeBoundary,
-      service,
-      store,
-    } = await runtime();
-    const externalRecorder = new HttpTransferRecorder(baseUrl);
-    sdk.setClientCredentialResolver(() => ({
-      origin: baseUrl,
-      transport: externalRecorder.transport,
-    }));
-    const externalFinalPair = heavyTransferFinalPair();
-    const externalMeasurement = await measureOrchestrationTransfer({
-      source: {
-        scenario: 'external-engine',
-        provider: 'claude',
-        threadId: ORCHESTRATION_TRANSFER_THREAD_ID,
-        heavyTurnId: () => 'transfer-heavy-turn',
-        finalToolOutput: () => finalToolOutputOf(externalFinalPair),
-        finalReplayEventCount: 3,
-        heavyLiveFrameCount: 42,
-        async seedRetained() {
-          for (const event of retainedTransferEvents())
-            externalAdapter.events.push(event);
-          await until(
-            () =>
-              store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
-              retainedTransferEvents().length,
-            'external retained history persisted through adapter ingestion',
-          );
+  test.each([false, true])(
+    'measures five bounded phases and retains refusal diagnostics (%s)',
+    async (refusal) => {
+      const {
+        baseUrl,
+        externalAdapter,
+        nativeAdapter,
+        nativeBoundary,
+        service,
+        store,
+      } = await runtime();
+      const externalRecorder = new HttpTransferRecorder(baseUrl);
+      sdk.setClientCredentialResolver(() => ({
+        origin: baseUrl,
+        transport: externalRecorder.transport,
+      }));
+      const externalFinalPair = heavyTransferFinalPair();
+      const externalMeasurement = await measureOrchestrationTransfer({
+        source: {
+          scenario: 'external-engine',
+          provider: 'claude',
+          threadId: ORCHESTRATION_TRANSFER_THREAD_ID,
+          heavyTurnId: () => 'transfer-heavy-turn',
+          finalToolOutput: () => finalToolOutputOf(externalFinalPair),
+          finalReplayEventCount: 3,
+          heavyLiveFrameCount: 42,
+          async seedRetained() {
+            for (const event of retainedTransferEvents())
+              externalAdapter.events.push(event);
+            await until(
+              () =>
+                store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
+                retainedTransferEvents().length,
+              'external retained history persisted through adapter ingestion',
+            );
+          },
+          async startHeavyPrefix() {
+            for (const event of heavyTransferPrefix())
+              externalAdapter.events.push(event);
+            await until(
+              () =>
+                store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
+                retainedTransferEvents().length + heavyTransferPrefix().length,
+              'external heavy prefix persisted through adapter ingestion',
+            );
+          },
+          async finishHeavyTurn() {
+            for (const event of externalFinalPair)
+              externalAdapter.events.push(event);
+            await until(
+              () =>
+                store
+                  .listEvents(ORCHESTRATION_TRANSFER_THREAD_ID)
+                  .some(
+                    (stored) =>
+                      (stored.payload as { eventId?: unknown }).eventId ===
+                      externalFinalPair[2]!.eventId,
+                  ),
+              'external heavy terminal persisted through adapter ingestion',
+            );
+          },
         },
-        async startHeavyPrefix() {
-          for (const event of heavyTransferPrefix())
-            externalAdapter.events.push(event);
-          await until(
-            () =>
-              store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
-              retainedTransferEvents().length + heavyTransferPrefix().length,
-            'external heavy prefix persisted through adapter ingestion',
-          );
-        },
-        async finishHeavyTurn() {
-          for (const event of externalFinalPair)
-            externalAdapter.events.push(event);
-          await until(
-            () =>
-              store
-                .listEvents(ORCHESTRATION_TRANSFER_THREAD_ID)
-                .some(
-                  (stored) =>
-                    (stored.payload as { eventId?: unknown }).eventId ===
-                    externalFinalPair[2]!.eventId,
-                ),
-            'external heavy terminal persisted through adapter ingestion',
-          );
-        },
-      },
-      baseUrl,
-      store,
-      service,
-      recorder: externalRecorder,
-      sdk,
-      budget: transferBudget.policy,
-    });
+        baseUrl,
+        store,
+        service,
+        recorder: externalRecorder,
+        sdk,
+        budget: transferBudget.policy,
+      });
 
-    const nativeThreadId = 'transfer-budget-station-agent-thread';
-    let nativeHeavyTurnId: string | undefined;
-    const nativeRecorder = new HttpTransferRecorder(baseUrl);
-    sdk.setClientCredentialResolver(() => ({
-      origin: baseUrl,
-      transport: nativeRecorder.transport,
-    }));
-    const nativeMeasurement = await measureOrchestrationTransfer({
-      source: {
-        scenario: 'station-native',
-        provider: 'station-agent',
-        threadId: nativeThreadId,
-        heavyTurnId: () => {
-          if (!nativeHeavyTurnId) throw new Error('native heavy turn missing');
-          return nativeHeavyTurnId;
-        },
-        finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
-        finalReplayEventCount: 4,
-        heavyLiveFrameCount: 44,
-        async seedRetained() {
-          await nativeAdapter.startSession({
-            threadId: nativeThreadId,
-            provider: 'station-agent',
-            metadata: {
-              agentId: 'transfer-native-agent',
-              userId: ORCHESTRATION_TRANSFER_OWNER,
-            },
-          });
-          for (const [index, turn] of groupTransferEventsByTurn(
-            retainedTransferEvents(),
-          ).entries()) {
-            nativeBoundary.queueComplete(turn);
-            await nativeAdapter.sendTurn({
+      const nativeThreadId = 'transfer-budget-station-agent-thread';
+      let nativeHeavyTurnId: string | undefined;
+      const nativeRecorder = new HttpTransferRecorder(baseUrl);
+      sdk.setClientCredentialResolver(() => ({
+        origin: baseUrl,
+        transport: nativeRecorder.transport,
+      }));
+      const nativeMeasurementPromise = measureOrchestrationTransfer({
+        source: {
+          scenario: 'station-native',
+          provider: 'station-agent',
+          threadId: nativeThreadId,
+          heavyTurnId: () => {
+            if (!nativeHeavyTurnId)
+              throw new Error('native heavy turn missing');
+            return nativeHeavyTurnId;
+          },
+          finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
+          finalReplayEventCount: 4,
+          heavyLiveFrameCount: 44,
+          async seedRetained() {
+            await nativeAdapter.startSession({
               threadId: nativeThreadId,
-              input: `Run retained transfer turn ${index}.`,
+              provider: 'station-agent',
+              metadata: {
+                agentId: 'transfer-native-agent',
+                userId: ORCHESTRATION_TRANSFER_OWNER,
+              },
+            });
+            for (const [index, turn] of groupTransferEventsByTurn(
+              retainedTransferEvents(),
+            ).entries()) {
+              nativeBoundary.queueComplete(turn);
+              await nativeAdapter.sendTurn({
+                threadId: nativeThreadId,
+                input: `Run retained transfer turn ${index}.`,
+                modelId: 'fixture-model',
+              });
+              await until(
+                () =>
+                  store
+                    .listEvents(nativeThreadId)
+                    .filter(
+                      (stored) =>
+                        (stored.payload as { method?: unknown }).method ===
+                        'turn.completed',
+                    ).length ===
+                  index + 1,
+                `native retained turn ${index} persisted through adapter ingestion`,
+              );
+            }
+          },
+          async startHeavyPrefix() {
+            nativeBoundary.queuePaused(
+              heavyTransferPrefix(),
+              externalFinalPair,
+            );
+            const nativeTurn = await nativeAdapter.sendTurn({
+              threadId: nativeThreadId,
+              input: 'Run the bounded native transfer fixture.',
               modelId: 'fixture-model',
             });
+            nativeHeavyTurnId = nativeTurn.turnId;
             await until(
               () =>
                 store
                   .listEvents(nativeThreadId)
                   .filter(
                     (stored) =>
+                      (stored.payload as { turnId?: unknown }).turnId ===
+                        nativeHeavyTurnId &&
                       (stored.payload as { method?: unknown }).method ===
-                      'turn.completed',
-                  ).length ===
-                index + 1,
-              `native retained turn ${index} persisted through adapter ingestion`,
+                        'tool.completed',
+                  ).length === 19,
+              'native heavy prefix persisted through adapter ingestion',
             );
-          }
+          },
+          async finishHeavyTurn() {
+            nativeBoundary.releaseFinal();
+            await until(
+              () =>
+                store
+                  .listEvents(nativeThreadId)
+                  .filter(
+                    (stored) =>
+                      (stored.payload as { turnId?: unknown }).turnId ===
+                        nativeHeavyTurnId &&
+                      (stored.payload as { method?: unknown }).method ===
+                        'turn.completed',
+                  ).length === 1,
+              'native heavy terminal persisted through adapter ingestion',
+            );
+          },
         },
-        async startHeavyPrefix() {
-          nativeBoundary.queuePaused(heavyTransferPrefix(), externalFinalPair);
-          const nativeTurn = await nativeAdapter.sendTurn({
-            threadId: nativeThreadId,
-            input: 'Run the bounded native transfer fixture.',
-            modelId: 'fixture-model',
-          });
-          nativeHeavyTurnId = nativeTurn.turnId;
-          await until(
-            () =>
-              store
-                .listEvents(nativeThreadId)
-                .filter(
-                  (stored) =>
-                    (stored.payload as { turnId?: unknown }).turnId ===
-                      nativeHeavyTurnId &&
-                    (stored.payload as { method?: unknown }).method ===
-                      'tool.completed',
-                ).length === 19,
-            'native heavy prefix persisted through adapter ingestion',
-          );
-        },
-        async finishHeavyTurn() {
-          nativeBoundary.releaseFinal();
-          await until(
-            () =>
-              store
-                .listEvents(nativeThreadId)
-                .filter(
-                  (stored) =>
-                    (stored.payload as { turnId?: unknown }).turnId ===
-                      nativeHeavyTurnId &&
-                    (stored.payload as { method?: unknown }).method ===
-                      'turn.completed',
-                ).length === 1,
-            'native heavy terminal persisted through adapter ingestion',
-          );
-        },
-      },
-      baseUrl,
-      store,
-      service,
-      recorder: nativeRecorder,
-      sdk,
-      budget: transferBudget.policy,
-    });
+        baseUrl,
+        store,
+        service,
+        recorder: nativeRecorder,
+        sdk,
+        budget: refusal
+          ? {
+              ...transferBudget.policy,
+              live: { ...transferBudget.policy.live, frames: 43 },
+            }
+          : transferBudget.policy,
+      });
 
-    expect(externalMeasurement.phases).toHaveLength(5);
-    expect(nativeMeasurement.phases).toHaveLength(5);
-    expect(
-      [...externalMeasurement.phases, ...nativeMeasurement.phases].map(
-        (phase) => `${phase.scenario}/${phase.name}`,
-      ),
-    ).toEqual([
-      ...ORCHESTRATION_TRANSFER_PHASE_NAMES.map(
-        (name) => `external-engine/${name}`,
-      ),
-      ...ORCHESTRATION_TRANSFER_PHASE_NAMES.map(
-        (name) => `station-native/${name}`,
-      ),
-    ]);
-    expect(nativeMeasurement.finalCursor).toBeGreaterThan(
-      nativeMeasurement.beforeHeavyCursor,
-    );
-    expect(nativeBoundary.calls).toHaveLength(11);
-    expect(
-      nativeBoundary.calls.every(([url]) =>
-        String(url).endsWith('/api/agents/transfer-native-agent/chat'),
-      ),
-    ).toBe(true);
-    expect(transferFixtureDigest()).toMatch(/^[0-9a-f]{64}$/);
-  });
+      if (refusal) {
+        await expect(nativeMeasurementPromise).rejects.toMatchObject({
+          diagnostic: {
+            kind: 'station-transfer-failure',
+            phase: { scenario: 'station-native', name: 'live', frames: 44 },
+            limit: { frames: 43 },
+            eventIdentities: expect.arrayContaining([
+              expect.objectContaining({ event: 'orchestration:event' }),
+            ]),
+            truncated: false,
+          },
+        });
+        const failure = await nativeMeasurementPromise.catch((error) => error);
+        expect(JSON.stringify(failure.diagnostic)).not.toContain(
+          finalToolOutputOf(externalFinalPair),
+        );
+        return;
+      }
+      const nativeMeasurement = await nativeMeasurementPromise;
+
+      expect(externalMeasurement.phases).toHaveLength(5);
+      expect(nativeMeasurement.phases).toHaveLength(5);
+      expect(
+        [...externalMeasurement.phases, ...nativeMeasurement.phases].map(
+          (phase) => `${phase.scenario}/${phase.name}`,
+        ),
+      ).toEqual([
+        ...ORCHESTRATION_TRANSFER_PHASE_NAMES.map(
+          (name) => `external-engine/${name}`,
+        ),
+        ...ORCHESTRATION_TRANSFER_PHASE_NAMES.map(
+          (name) => `station-native/${name}`,
+        ),
+      ]);
+      expect(nativeMeasurement.finalCursor).toBeGreaterThan(
+        nativeMeasurement.beforeHeavyCursor,
+      );
+      expect(nativeBoundary.calls).toHaveLength(11);
+      expect(
+        nativeBoundary.calls.every(([url]) =>
+          String(url).endsWith('/api/agents/transfer-native-agent/chat'),
+        ),
+      ).toBe(true);
+      expect(transferFixtureDigest()).toMatch(/^[0-9a-f]{64}$/);
+    },
+  );
 });
