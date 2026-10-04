@@ -368,7 +368,7 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"b5f610fd62427ae800634fdc1861ec2920a269d52d01df346ba6ed9b1807c395","revision":"ee91b3c22044c36448de9fdc156916f8d1db4bf2"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5a474d9d1704e96ac761c8c963e7068b633684c190917724b6bbd43ce63a80bc","revision":"c8a4c8b75fd57cf6b9a909ddaafce31d476d4d49"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

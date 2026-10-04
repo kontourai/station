@@ -144,7 +144,7 @@
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"b5f610fd62427ae800634fdc1861ec2920a269d52d01df346ba6ed9b1807c395","revision":"ee91b3c22044c36448de9fdc156916f8d1db4bf2"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5a474d9d1704e96ac761c8c963e7068b633684c190917724b6bbd43ce63a80bc","revision":"c8a4c8b75fd57cf6b9a909ddaafce31d476d4d49"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 

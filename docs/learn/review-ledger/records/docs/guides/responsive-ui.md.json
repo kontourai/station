@@ -66,7 +66,7 @@
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"b5f610fd62427ae800634fdc1861ec2920a269d52d01df346ba6ed9b1807c395","revision":"ee91b3c22044c36448de9fdc156916f8d1db4bf2"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5a474d9d1704e96ac761c8c963e7068b633684c190917724b6bbd43ce63a80bc","revision":"c8a4c8b75fd57cf6b9a909ddaafce31d476d4d49"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"1f1521dd54b22054545dfe7d1d3c20289b87c77905e02154205c764ccb406354","revision":"f839dde2f787fe0fd94842c715748a3885dec59e"},
 
