@@ -2,10 +2,11 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
-  sendExecutionMessage,
+  sendExecutionMessageWithInventory,
 } from '@kontourai/station-sdk/client';
 import { skillExperienceAttachmentInputs } from '@kontourai/station-shared/skill-experience-values';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
+import { readSkillExperienceInventoryLazily } from './lazySkillExperienceInventory';
 import { resolveTurnModel } from './turnModel';
 
 /**
@@ -140,7 +141,7 @@ export async function dispatchForeground(input: {
     throw new Error(
       'Composer files must have distinct identities before assigning visual skill roles.',
     );
-  return sendExecutionMessage(
+  return sendExecutionMessageWithInventory(
     input.apiBase,
     {
       target: {
@@ -189,6 +190,7 @@ export async function dispatchForeground(input: {
         : {}),
       ...approvalPick,
     },
+    readSkillExperienceInventoryLazily,
     {
       signal: input.signal,
       ...(input.requestScope ? { requestScope: input.requestScope } : {}),

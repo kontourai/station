@@ -23,9 +23,18 @@ const sendExecutionMessage = vi.fn(
   ) => ({}) as unknown,
 );
 const attachmentQueueImported = vi.hoisted(() => vi.fn());
+const dispatchedInventoryReader = vi.fn();
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
-  sendExecutionMessage,
+  sendExecutionMessageWithInventory: (
+    apiBase: string,
+    input: { target: Record<string, unknown> },
+    readInventory: unknown,
+    opts?: unknown,
+  ) => {
+    dispatchedInventoryReader(readInventory);
+    return sendExecutionMessage(apiBase, input, opts);
+  },
 }));
 vi.mock('../lib/attachment-staging-queue', () => {
   attachmentQueueImported();
@@ -35,6 +44,9 @@ vi.mock('../lib/attachment-staging-queue', () => {
 });
 
 const { dispatchForeground } = await import('../lib/foregroundMessageDispatch');
+const { readSkillExperienceInventoryLazily } = await import(
+  '../lib/lazySkillExperienceInventory'
+);
 
 type DispatchInput = Parameters<typeof dispatchForeground>[0];
 
@@ -286,6 +298,15 @@ describe('dispatchForeground target', () => {
         'setApprovalMode',
       );
     });
+  });
+
+  test('sends with the lazily loaded inventory reader, never the static one', async () => {
+    dispatchedInventoryReader.mockClear();
+    await dispatchForeground(baseInput());
+
+    expect(dispatchedInventoryReader).toHaveBeenCalledWith(
+      readSkillExperienceInventoryLazily,
+    );
   });
 
   test('the target never leaks transport or credential identity', async () => {

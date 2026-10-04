@@ -8,8 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const sendExecutionMessageMock = vi.fn();
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
-  sendExecutionMessage: (...args: unknown[]) =>
-    sendExecutionMessageMock(...args),
+  sendExecutionMessageWithInventory: (
+    apiBase: string,
+    input: unknown,
+    _readInventory: unknown,
+    opts?: unknown,
+  ) => sendExecutionMessageMock(apiBase, input, opts),
 }));
 
 const updateChatMock = vi.fn((sessionId: string, updates: unknown) => {
