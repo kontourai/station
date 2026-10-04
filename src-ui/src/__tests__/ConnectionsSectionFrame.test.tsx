@@ -29,6 +29,11 @@ const state: {
   ssh: [],
 };
 const navigate = vi.fn();
+const viewport = vi.hoisted(() => ({ mobile: false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => viewport.mobile,
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useConnectionsQuery: () => ({ data: state.connections }),
@@ -99,6 +104,7 @@ describe('ConnectionsSectionFrame', () => {
     state.savedStations = [];
     state.ssh = [];
     navigate.mockReset();
+    viewport.mobile = false;
   });
 
   test('the rail offers the five user-facing sections, in order', () => {
@@ -244,5 +250,23 @@ describe('ConnectionsSectionFrame', () => {
       expect(navigate).toHaveBeenCalledWith(path);
       unmount();
     }
+  });
+
+  test('on a phone the add action floats instead of taking a header row, and still opens the chooser', () => {
+    viewport.mobile = true;
+    render(
+      <ConnectionsSectionFrame sectionId="computers">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(screen.queryByTestId('frame-actions')).toBeNull();
+    const add = screen.getByRole('button', { name: 'Add computer' });
+    expect(add.className).toBe('page-create-action');
+    // Portaled out of the page frame, whose entrance animation would
+    // otherwise contain `position: fixed`.
+    expect(add.parentElement).toBe(document.body);
+    expect(add.textContent).toBe('');
+    fireEvent.click(add);
+    expect(screen.getByTestId('chooser')).toBeTruthy();
   });
 });
