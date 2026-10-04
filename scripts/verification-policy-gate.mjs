@@ -104,6 +104,8 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  // #3149: the renderer-wide native platform scan; see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
