@@ -22,7 +22,7 @@
 
     {"path":"src-ui/src/views/KnowledgeConnectionView.tsx","digest":"181467ae0c819b14bc7ddfa09fd13b0e805951c3c1e7572f0a77ebfa9b482b93","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-ui/src/views/ProjectSettingsView.tsx","digest":"c885257bd9890341084143051c3211c1f40385df8e90254444c4dd270ed63e20","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    {"path":"src-ui/src/views/ProjectSettingsView.tsx","digest":"07aabe00bc751e3e66c0765eb3744e953862b5a15c1b79816a2b15027dc3db06","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"}
   ],
 
   "checks": [

@@ -224,6 +224,9 @@ function tabs(region: string): [string, string | null][] {
  * runner fact, not a product one: every later assertion is immediate.
  */
 async function awaitChatPane() {
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(
     () => expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -678,10 +681,8 @@ test('a dock binding naming a project that no longer exists falls back to the ro
     maximize: null,
     dockSlotPlacement: null,
   });
-  // Set AFTER the navigation: opening a project's workspace now makes it the
-  // default for new chats (#3144), which would overwrite a binding set
-  // before. What this pins is a stale binding that is already there — e.g.
-  // the project was deleted elsewhere — and that the host reads around it.
+  // Project entry chooses its chat default; restore the stale saved binding
+  // after that transition so this fixture reaches the read-only fallback.
   deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
@@ -799,12 +800,14 @@ test('a pull request and a file preview render as their own dock tabs, named by 
     ['#2049', 'false'],
     ['Header.tsx', 'true'],
   ]);
-  const pane = await screen.findByTestId('coding-pane');
-  expect(pane.closest('.chat-dock')).toBe(shell('right'));
-  expect(pane.dataset.descriptor).toBe(
-    'pane:builtin:workspace-preview:file-preview',
-  );
-  expect(pane.dataset.project).toBe('alpha-id');
+  await waitFor(() => {
+    const pane = within(shell('right')).getByTestId('coding-pane');
+    expect(pane.closest('.chat-dock')).toBe(shell('right'));
+    expect(pane.dataset.descriptor).toBe(
+      'pane:builtin:workspace-preview:file-preview',
+    );
+    expect(pane.dataset.project).toBe('alpha-id');
+  });
 
   act(() => currentModel().selectPane('right', PR_PANE_ID));
   await act(async () => {
