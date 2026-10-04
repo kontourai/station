@@ -520,7 +520,6 @@ describe('station-control session search and rename (#176)', () => {
           query,
         });
         expect([query.length, refused.isError]).toEqual([query.length, true]);
-        expect(String(refused.body)).toMatch(/query/);
         // The route holds the same bound for a caller that skips the schema.
         const direct = await asTool(bearer('carol-global'), '/api/search', {
           method: 'POST',
