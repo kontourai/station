@@ -9,7 +9,7 @@
 
   "limits": "Current HTTP schemas and send/per-Agent caller boundaries were checked. Dated UI observations and mobile policy are preserved; no exhaustive composer, approval, accessibility, or physical-device certification.",
 
-  "document": {"digest":"01b5e0f57a74ae8f20ed5c9bde68a9851bbe6cf16ae44fab42ba6597fc9e63b5","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+  "document": {"digest":"f5959dbab94a41bc8e86e3d952a4a7fa0739b5623487aa82463a58d55ea2d52c","revision":"cc0ac8a7a50dac68be01c51c6ae9b5393274cab8"},
 
   "sources": [
     {"path":"packages/contracts/src/orchestration.ts","digest":"f4382b75efdacd6c780ffcf9677df499b8b19d9b99592cb5fb5e0afc2f9c10ae","revision":"8cfd3514b2d67f7b6a3b415f3cc5c76f4bf1126f"},
