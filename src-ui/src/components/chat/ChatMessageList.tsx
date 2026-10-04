@@ -158,8 +158,9 @@ const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 // the reader landing pixel-exact on a stale write minutes later.
 const PROGRAMMATIC_SCROLL_ECHO_MS = 500;
 const PROGRAMMATIC_SCROLL_ECHO_PX = 1;
-// An "Earlier messages" request stays in flight until the reader's row is back
-// within this distance of where it was for this many consecutive frames.
+// Scroll-driven history loads stay suppressed after an "Earlier messages"
+// request until the reader's row is back within this distance of where it was
+// for this many consecutive frames.
 const OLDER_RESTORE_TOLERANCE_PX = 1;
 const OLDER_RESTORE_STABLE_FRAMES = 3;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
@@ -256,6 +257,7 @@ function ChatMessageListComponent({
   );
   const loadingOlderRef = useRef(false);
   const olderCommitPendingRef = useRef(false);
+  const olderRestoringRef = useRef(false);
   const olderRestoreAnchorRef = useRef<ChatScrollAnchor | null>(null);
   const olderRestoreFrameRef = useRef<number>();
   const [olderCommitEpoch, setOlderCommitEpoch] = useState(0);
@@ -580,6 +582,12 @@ function ChatMessageListComponent({
   const loadOlder = async () => {
     if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
     loadingOlderRef.current = true;
+    // A press during an earlier request's restoration starts a new one; the
+    // old frame loop must not clear the new request's scroll suppression.
+    if (olderRestoreFrameRef.current !== undefined)
+      cancelAnimationFrame(olderRestoreFrameRef.current);
+    olderRestoreFrameRef.current = undefined;
+    olderRestoringRef.current = true;
     const element = messagesContainerRef.current;
     const anchor = element ? captureChatScrollAnchor(element) : null;
     if (element) {
@@ -592,18 +600,21 @@ function ChatMessageListComponent({
       await onLoadOlder();
     } catch (error) {
       loadingOlderRef.current = false;
+      olderRestoringRef.current = false;
       throw error;
     }
-    // The request is not over when its promise settles. The merged page is
-    // still queued behind this tick, and once it commits the virtualizer walks
-    // the reader's row back over several frames, passing through positions
-    // inside the auto-load band that nothing marks as ours. A press or a scroll
-    // event landing anywhere in that stretch would request the next page for
-    // one visible action (#3288). The shared in-flight flag therefore holds
-    // until the page has committed and the reader's row is back where it was
-    // (the frame loop below). The state write guarantees a commit even when
-    // the load changed nothing, and batches with the hook's own writes so that
-    // commit carries the page.
+    // The request is not over when its promise settles, and the stretch after
+    // it has two parts (#3288). Until the merged page commits, the DOM still
+    // shows the old top with the button enabled, so a press there is a press
+    // on a view that is already being replaced: the shared in-flight flag
+    // holds until that commit. After the commit the view is current, so a
+    // press is a new request; but the virtualizer then walks the reader's row
+    // back over several frames, through positions inside the auto-load band
+    // that nothing marks as ours, and those scroll events are the press's own
+    // restoration, not the reader: scroll-driven loads stay suppressed until
+    // the row is back where it was (the frame loop below). The state write
+    // guarantees a commit even when the load changed nothing, and batches with
+    // the hook's own writes so that commit carries the page.
     olderRestoreAnchorRef.current = anchor;
     olderCommitPendingRef.current = true;
     setOlderCommitEpoch((epoch) => epoch + 1);
@@ -614,11 +625,12 @@ function ChatMessageListComponent({
     olderCommitPendingRef.current = false;
     const anchor = olderRestoreAnchorRef.current;
     olderRestoreAnchorRef.current = null;
+    loadingOlderRef.current = false;
     let stableFrames = 0;
     let frames = 0;
     const release = () => {
       olderRestoreFrameRef.current = undefined;
-      loadingOlderRef.current = false;
+      olderRestoringRef.current = false;
     };
     const step = () => {
       const element = messagesContainerRef.current;
@@ -636,7 +648,7 @@ function ChatMessageListComponent({
         ) <= OLDER_RESTORE_TOLERANCE_PX;
       stableFrames = restored ? stableFrames + 1 : 0;
       // The frame cap only bounds a reader who drags the row away mid-restore
-      // (or a row that never comes back), so the flag cannot stay held.
+      // (or a row that never comes back), so the suppression cannot stay on.
       if (stableFrames >= OLDER_RESTORE_STABLE_FRAMES || frames >= 120)
         return release();
       olderRestoreFrameRef.current = requestAnimationFrame(step);
@@ -695,7 +707,12 @@ function ChatMessageListComponent({
       return;
     }
     setReaderRestoreRequest(null);
-    if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
+    if (
+      hasOlderMessages &&
+      target.scrollTop <= 96 &&
+      !olderRestoringRef.current
+    )
+      void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
     // Resize animations can emit a scroll event between two ResizeObserver
     // frames. Treat a small transient gap as still pinned so a dock/keyboard
