@@ -86,6 +86,15 @@ state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
 to prune a pending credential operation. Cleanup runs outside the owned scope
 to avoid waiting on itself; local inspection counts these retained operations.
 
+Connected accounts (#3279) keep these custody rules and add one binding. For an
+integration with `credentialOwnership: {owner: "principal"}`, a consent flow is
+keyed by the principal who started it, and its provider writes only that
+person's credential bucket in a separate principal credential document. A
+callback from another principal finds only its own flow, so it cannot complete
+or write tokens for someone else's. Such a flow never changes the integration's
+shared `probe.authorization`. MCP Apps requests carry no turn principal, so they
+are refused for these integrations rather than borrowing a shared credential.
+
 This local custody layer originated as the first tranche of #1409. SDK close fulfillment does **not**
 prove that a stdio process, SDK-internal negotiation child, descendant process,
 or remote effect has drained. This owner is neither a shared-home lease nor a
