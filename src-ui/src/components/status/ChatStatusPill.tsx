@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
 import {
@@ -32,37 +33,13 @@ function clockText(ms: number): string {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-/** Now, once a second, paused while the page is hidden. */
-function useSecondTick(): number {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const start = () => {
-      if (timer || document.hidden) return;
-      setNow(Date.now());
-      timer = setInterval(() => setNow(Date.now()), 1000);
-    };
-    const stop = () => {
-      if (timer) clearInterval(timer);
-      timer = undefined;
-    };
-    const sync = () => (document.hidden ? stop() : start());
-    start();
-    document.addEventListener('visibilitychange', sync);
-    return () => {
-      stop();
-      document.removeEventListener('visibilitychange', sync);
-    };
-  }, []);
-  return now;
-}
-
 /**
  * The turn clock, the pill's only ticking part: it re-renders this one text
- * node once a second, and stops while the page is hidden.
+ * node off the shared elapsed clock, which stops while the page is hidden.
+ * The face is a stopwatch (`m:ss`), not the row's duration words.
  */
 const PillClock = memo(function PillClock({ from }: { from: number }) {
-  const now = useSecondTick();
+  const now = useElapsedClock();
   return (
     <span className="chat-status-pill__clock" aria-hidden="true">
       {clockText(now - from)}
@@ -77,7 +54,7 @@ function PillDetails({
   id: string;
   lines: ChatStatus['details'];
 }) {
-  const now = useSecondTick();
+  const now = useElapsedClock();
   return (
     <div id={id} className="chat-status-pill__details">
       {lines.map((line) => (
