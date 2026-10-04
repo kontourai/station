@@ -9,148 +9,146 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/reference/contracts.md\",\"ours\":{\"digest\":\"1e06c4d2ab884910199b6a0926f4d34806eff1ec180b778593c3c07cc559ad55\",\"revision\":\"a320658a37b9537b814c0acb8460e7bf1b6018ea\"},\"main\":{\"digest\":\"164bf82aecbeff9fe134157d47a0676ee6fb8ecbdc6ee9f4b82b619c30d383f6\",\"revision\":\"5fe409ae3a57e640ad6e9e9271eeaa7a5d58c717\"}},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"digest\":\"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64\",\"revision\":\"92636a1751411426e2972236b7416e50b18daf32\"},\"main\":{\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"packages/contracts/src/runtime-events.ts\",\"ours\":{\"digest\":\"d1fbeb20a129b2fb75e7b08ccd792e228f7b47f52eee85327d0b00ab44b09a0c\",\"revision\":\"92636a1751411426e2972236b7416e50b18daf32\"},\"main\":{\"digest\":\"f58bc6f78acd49d8857178c91306d6ea19ff790cd453b8dd8ea0d8495ee78114\",\"revision\":\"94e8da3b253080c2450e333ebbe98acfaf35b7b8\"}},{\"path\":\"packages/contracts/src/application-session.ts\",\"ours\":{\"digest\":\"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"digest\":\"46663ea304ab3e2b0d63ae3eff1500055e386d4601f0e2050c35e6abc2d5215e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"}},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"src-server/providers/adapters/muse-serve-session.ts\",\"ours\":{\"digest\":\"fc26c0fe95cf84da1c1f602a5b55f93f79edeeacc8be42d07bf035cca0908c41\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"d6d4fb0a88ed0a02851c8a60aa28bbbddb9c079ee834f12ebc7c16fc3b78c84f\",\"revision\":\"af3c8fbfee90c9179a0ac19659b76d24c707d574\"}},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"digest\":\"43543da11ee56e6978d3f13131846cd118a4390639c84528a840eb54880f60b4\",\"revision\":\"7dc84da36281cace63d55fbd59fac3f64fcb3721\"},\"main\":{\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"src-server/services/identity/application-session-service.ts\",\"ours\":{\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"digest\":\"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"}},{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"ours\":{\"digest\":\"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce\",\"revision\":\"84b98846bc1582f438d70871d4479283b5db1e67\"},\"main\":{\"digest\":\"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b\",\"revision\":\"17f96f535b5e1f8339d821a6b9cff9299f895b0e\"}},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"digest\":\"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a\",\"revision\":\"92636a1751411426e2972236b7416e50b18daf32\"},\"main\":{\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"src-server/services/orchestration/session-lifecycle-service.ts\",\"ours\":{\"digest\":\"136074378e76fe6e9fe6a000d29eeb0bd436625f3f7213dddf7ca1a480d21e1a\",\"revision\":\"92636a1751411426e2972236b7416e50b18daf32\"},\"main\":{\"digest\":\"bbfb45fc9d241f43c63c30fdf9a6b6696390b7ab44cbfc6c3b24966e7895b179\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"src-server/tools/station-control-delegation.ts\",\"ours\":{\"digest\":\"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"main\":{\"digest\":\"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"src-server/services/orchestration/orchestration-session-state.ts\",\"ours\":{\"digest\":\"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04\",\"revision\":\"92636a1751411426e2972236b7416e50b18daf32\"},\"main\":{\"digest\":\"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943\",\"revision\":\"af3c8fbfee90c9179a0ac19659b76d24c707d574\"}}].\n\nAdditional existing main limits (preserved verbatim): Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/reference/contracts.md\",\"ours\":{\"digest\":\"181b3cdbf7cdafccac2757a632d18ecaa0c827ed1614703f064e5e76d314a8ad\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"main\":{\"digest\":\"a92feb608ff35eb575e312d234f3b6d4de46735add00702bad15160005a2e942\",\"revision\":\"9816185d79a9c9f83a325d7bc16905765ea66705\"},\"active\":{\"digest\":\"181b3cdbf7cdafccac2757a632d18ecaa0c827ed1614703f064e5e76d314a8ad\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/contracts/src/application-session.ts\",\"ours\":{\"path\":\"packages/contracts/src/application-session.ts\",\"digest\":\"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"path\":\"packages/contracts/src/application-session.ts\",\"digest\":\"46663ea304ab3e2b0d63ae3eff1500055e386d4601f0e2050c35e6abc2d5215e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"active\":{\"path\":\"packages/contracts/src/application-session.ts\",\"digest\":\"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/contracts/src/pull-request-provider.ts\",\"ours\":{\"path\":\"packages/contracts/src/pull-request-provider.ts\",\"digest\":\"569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34\",\"revision\":\"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a\"},\"main\":{\"path\":\"packages/contracts/src/pull-request-provider.ts\",\"digest\":\"2dfca6b4c1aae914499a369879547be630bc22000a101cac765f23b556968448\",\"revision\":\"6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247\"},\"active\":{\"path\":\"packages/contracts/src/pull-request-provider.ts\",\"digest\":\"2dfca6b4c1aae914499a369879547be630bc22000a101cac765f23b556968448\",\"revision\":\"6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/identity/application-session-service.ts\",\"ours\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"active\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"decision\":\"oursMatch\"}]\n\nAdditional existing main limits (preserved verbatim): Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/reference/contracts.md\",\"ours\":{\"digest\":\"bed2d47ec281b1c7d81e12eb990739cd153f74525c1fdd30258353ebb55e9827\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"digest\":\"91f07d13e66545c07aad8b506e741687a7d6291b86a5453419ef26ade50b8f88\",\"revision\":\"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb\"},\"active\":{\"digest\":\"bed2d47ec281b1c7d81e12eb990739cd153f74525c1fdd30258353ebb55e9827\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/contracts/src/application-session.ts\",\"ours\":{\"path\":\"packages/contracts/src/application-session.ts\",\"digest\":\"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"path\":\"packages/contracts/src/application-session.ts\",\"digest\":\"46663ea304ab3e2b0d63ae3eff1500055e386d4601f0e2050c35e6abc2d5215e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"active\":{\"path\":\"packages/contracts/src/application-session.ts\",\"digest\":\"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/contracts/src/runtime-events.ts\",\"ours\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"f58bc6f78acd49d8857178c91306d6ea19ff790cd453b8dd8ea0d8495ee78114\",\"revision\":\"94e8da3b253080c2450e333ebbe98acfaf35b7b8\"},\"main\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"ours\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b\",\"revision\":\"17f96f535b5e1f8339d821a6b9cff9299f895b0e\"},\"main\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65\",\"revision\":\"b2d3503cd33490cf074a99eae94562607360f72b\"},\"active\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65\",\"revision\":\"b2d3503cd33490cf074a99eae94562607360f72b\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"},\"main\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"active\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/services/identity/application-session-service.ts\",\"ours\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"active\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"}] Integration reconciliation retains branch source anchors and upstream-only bindings without refreshing hashes. Both original records are retained in Git parents; merged-byte semantic review remains required.",
 
-  "document": {"digest":"d77861b89b3a5376fcb60cbdb1a5bd9bd2b2307e1e4a138278b657226f6bf1d3","revision":"cd948fbcd88d50f27ad0033c61804578dfb28f84"},
-
   "sources": [
-    {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/cli/src/commands/delegate.ts",
 
-    {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "packages/connect/src/core/nativeRelayLink.ts",
 
-    {"path":"packages/contracts/package.json","digest":"612f3e57184cb49ef117d8256894c3d6aba2e3ecbeadf367f1f9f9b48ef8d6ac","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    "packages/contracts/package.json",
 
-    {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/__tests__/learning-review.test.ts",
 
-    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    "packages/contracts/src/agent.ts",
 
-    {"path":"packages/contracts/src/application-session.ts","digest":"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
+    "packages/contracts/src/application-session.ts",
 
-    {"path":"packages/contracts/src/attention.ts","digest":"f24a25ff663776f1cbaf5b59d305a2074328b37e024a57786ad15cd33e9430ca","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    "packages/contracts/src/attention.ts",
 
-    {"path":"packages/contracts/src/child-work.ts","digest":"329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35","revision":"9ed8cdffa9ba991c5bcd085b9a53c4368798fac2"},
+    "packages/contracts/src/child-work.ts",
 
-    {"path":"packages/contracts/src/conversation-pull-request-links.ts","digest":"f49fc639b21741343e1a4fce0ea30314cec0e8b36c1ac34a8dd69fff4ab0777c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/conversation-pull-request-links.ts",
 
-    {"path":"packages/contracts/src/deployment-authentication.ts","digest":"e4665bfa103bf73250bf5d06776ed48fde193b57adfdfec91634568024745050","revision":"6c81ee1abdc1d8bbb91eb0c1565fa280d232c65e"},
+    "packages/contracts/src/deployment-authentication.ts",
 
-    {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    "packages/contracts/src/harness-questions.ts",
 
-    {"path":"packages/contracts/src/index.ts","digest":"8622b3bbcdb622dbc385cf285e83654139eaea3d9338464125c1d103bd99f29c","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    "packages/contracts/src/index.ts",
 
-    {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/layout.ts",
 
-    {"path":"packages/contracts/src/learning-review.ts","digest":"b62b6b9a2a3c6d8e623ca9851f5a9f7a870b9eee0f96a87677967a95c4b05ad6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/learning-review.ts",
 
-    {"path":"packages/contracts/src/mobile-device.ts","digest":"0b7073c81f961bf6f06ee49bf2c2c25ef9f2fead7bebe8b0a677181540701f1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/mobile-device.ts",
 
-    {"path":"packages/contracts/src/native-device-proof.ts","digest":"b127a8c088a98e9c5b2b99f1eae2848f6f61a848be415f6496ff32b6bedcd502","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "packages/contracts/src/native-device-proof.ts",
 
-    {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/native-push.ts",
 
-    {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"39289764a99e5fd01e6a2ddc474b5dc1977a4b134ca217492357cf2ff1c6dfdd","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
+    "packages/contracts/src/native-relay-enrollment.ts",
 
-    {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    "packages/contracts/src/native-relay-link.ts",
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"b85426d08406de6a1e6f42dd2b8e356ea3995df5be0929390fa7d17fa00bfd64","revision":"68231f2caead4680fb4dfa036d25b1a4a2a836bb"},
+    "packages/contracts/src/orchestration.ts",
 
-    {"path":"packages/contracts/src/plugin.ts","digest":"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30","revision":"91ec8af5d451ec5be73d2cfe18dcc7afa2170909"},
+    "packages/contracts/src/plugin.ts",
 
-    {"path":"packages/contracts/src/project-membership.ts","digest":"8b3317731a3d6766b08756ae78895e214e2c34ee48c2256da4961a8f2aa0d332","revision":"623ff3525e54ab5b505d1c4f4790da5a0b3aec24"},
+    "packages/contracts/src/project-membership.ts",
 
-    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"3730c7e7f8ea295b0c859620f72ae25bdfa19a2dd8f6cbb0512d2928356a67a1","revision":"8d286272ad9c762b8c5a16dbe32f22dbd74898bc"},
+    "packages/contracts/src/pull-request-provider.ts",
 
-    {"path":"packages/contracts/src/relay-enrollment.ts","digest":"622325708688314a4f708985de77a330c30cfe2615559fc32837f780b7932f22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/relay-enrollment.ts",
 
-    {"path":"packages/contracts/src/runtime-events.ts","digest":"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    "packages/contracts/src/runtime-events.ts",
 
-    {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/runtime.ts",
 
-    {"path":"packages/contracts/src/scheduler.ts","digest":"8d2dc7aaeeca2b4ea4a0763109edb7f792fb29ce6f6f1817c5a3e721cdc2e4f3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/scheduler.ts",
 
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    "packages/contracts/src/skill-experience.ts",
 
-    {"path":"packages/contracts/src/system-status.ts","digest":"e6c0fca10299ba45c02922feb40fc4e483f722c23e254256b121f9417a56eb3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/system-status.ts",
 
-    {"path":"packages/contracts/src/task-room-work.ts","digest":"02c044c3f8b04a116c48a14ad0273baba2d44afb4540fbd720732e7c08f2968f","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
+    "packages/contracts/src/task-room-work.ts",
 
-    {"path":"packages/contracts/src/turn-stall-window.ts","digest":"e7badf0063faefcf896d0b180e80a236c4af662541acb54372ee50a494294151","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/turn-stall-window.ts",
 
-    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+    "packages/contracts/src/usage-rollup.ts",
 
-    {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/mobile-device.ts",
 
-    {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/index.ts",
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
+    "src-desktop/src/native_relay_link_intake.rs",
 
-    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
+    "src-server/analytics/usage-rollup-service.ts",
 
-    {"path":"src-server/knowledge-store/knowledge-record-observation.ts","digest":"2f31998cc94993c1e8502f1407f167c2d56b8380c50045b8d78948391915d7a0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/knowledge-store/knowledge-record-observation.ts",
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    "src-server/providers/adapters/acp-adapter.ts",
 
-    {"path":"src-server/providers/adapters/claude-sdk-turns.ts","digest":"3a6e6078a3d208e96742fa1b29877697c6586ca5da312854c9b42adb56760f19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/providers/adapters/claude-sdk-turns.ts",
 
-    {"path":"src-server/providers/adapters/muse-adapter.ts","digest":"058dfcbcbae355d132dfbb617f4c95e0238f23226ac29b14df16240f2217a316","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/providers/adapters/muse-adapter.ts",
 
-    {"path":"src-server/providers/adapters/muse-serve-session.ts","digest":"d6d4fb0a88ed0a02851c8a60aa28bbbddb9c079ee834f12ebc7c16fc3b78c84f","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    "src-server/providers/adapters/muse-serve-session.ts",
 
-    {"path":"src-server/providers/provider-plan-quota.ts","digest":"e13def1c39521df16081d918baa08f96e8e48702e8c89f7e2850eeb46f0592f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/providers/provider-plan-quota.ts",
 
-    {"path":"src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts","digest":"e1d27c67f15a2fe85202ed9f17f4c408118909cd7ce03fbd9128e6f30fb97202","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts",
 
-    {"path":"src-server/routes/knowledge/knowledge-source-routes.ts","digest":"0534e5e64bc316e9637e2892d321daa77323d7c1d0bc389a8cc82f829c10fc67","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/knowledge/knowledge-source-routes.ts",
 
-    {"path":"src-server/routes/operations/native-push-routes.ts","digest":"1b07cce4f490719d705ce042ea58337c59464d07d499069ee7cc2a7ef2c61e8b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/operations/native-push-routes.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts","digest":"066dbb143af1e66c125ca416437a17ec9a852c181ce6ef2f60f9e4dec1db7c45","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts",
 
-    {"path":"src-server/routes/pull-requests/conversation-pull-request-links.ts","digest":"72d275224d9239e6f73f55018058beb81cb41a7589e3e57507a9ce777455173e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/pull-requests/conversation-pull-request-links.ts",
 
-    {"path":"src-server/routes/system/install-provenance.ts","digest":"0c09b22299f50a7af1b3cb590e10ea5868d5d1e664102866f6cfe14cfec5abc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/system/install-provenance.ts",
 
-    {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/system/system-status-routes.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"ec5027141f09ec0945d83e3c704b9f11ea190aa32bf7daecb865521f31371413","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/runtime/conversation/conversation-stats-view.ts","digest":"60cde631c8481e21f8abf3223648d922604e2c31376e805fc3a80caef81a6a23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/conversation/conversation-stats-view.ts",
 
-    {"path":"src-server/services/connections/__tests__/engine-account-history.test.ts","digest":"678515d554351f419a3859463e05da0165a45bc68119df91221a603b7c36ad41","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
 
-    {"path":"src-server/services/connections/engine-account-history.ts","digest":"2c910d0d4d50966962226d3deb8419a138b5c61ce413a3e4dd6276aa100d5f61","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    "src-server/services/connections/engine-account-history.ts",
 
-    {"path":"src-server/services/identity/application-session-service.ts","digest":"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
+    "src-server/services/identity/application-session-service.ts",
 
-    {"path":"src-server/services/identity/authority-observation.ts","digest":"71f96895de96f7be3db860b3d1ce15fac53a09b786eb7be7f0c906ece5573c48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/identity/authority-observation.ts",
 
-    {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/identity/relay-enrollment-service.ts",
 
-    {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    "src-server/services/orchestration/orchestration-session-state.ts",
 
-    {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"bbfb45fc9d241f43c63c30fdf9a6b6696390b7ab44cbfc6c3b24966e7895b179","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
+    "src-server/services/orchestration/session-lifecycle-service.ts",
 
-    {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+    "src-server/services/orchestration/session-transcript-reads.ts",
 
-    {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"b58f46b940884562170520ea71e1df93aef09725de4fd6f1fcf234f9d1ad9faf","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    "src-server/services/orchestration/turn-progress-tracker.ts",
 
-    {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"c8d4f1769c0edfa03e5695d67cade94600ee4cf67c3549d5bd00c8b080041cb7","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    "src-server/services/orchestration/turn-stall-watchdog.ts",
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"63211729227142a5260cc98ccc8f8492941f5d7b3e7f76568873cd20946c8865","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
+    "src-server/services/pull-requests/__tests__/pull-request-review.test.ts",
 
-    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"1ec687c304021edd2d93cd2304e00a6d245b2b613a10c97e041d4fcce0ca2985","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
+    "src-server/services/pull-requests/pull-request-review.ts",
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/tools/station-control-delegation.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
 
-    {"path":"packages/contracts/src/relay-management.ts","digest":"62a5a5aeda577de6a3009ea1643c50855b775d4272526e5bd3427cc5acd9c4b9","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"},
+    "packages/contracts/src/relay-management.ts",
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"320c0225d7f51e39d15a07f8a6906490865e192e7b859aeef18b398155145465","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"}
+    "packages/contracts/src/environment-security.ts"
   ],
 
   "checks": [

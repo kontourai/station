@@ -9,82 +9,80 @@
 
   "limits": "No provisioning, installs, service control, network-policy changes, real credentials, Docker pull/build/run, VM, TLS issuance or live-host operations. Existing fixture tests and read-only configuration checks only. Full reading does not certify every deployment outcome. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): No provisioning, installs, service control, network-policy changes, real credentials, Docker pull/build/run, VM, TLS issuance or live-host operations. Existing fixture tests and read-only configuration checks only. Full reading does not certify every deployment outcome.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"oursMatch\"}]\n\nAdditional existing main limits (preserved verbatim): No provisioning, installs, service control, network-policy changes, real credentials, Docker pull/build/run, VM, TLS issuance or live-host operations. Existing fixture tests and read-only configuration checks only. Full reading does not certify every deployment outcome.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/cli/src/commands/service-windows.ts\",\"ours\":{\"path\":\"packages/cli/src/commands/service-windows.ts\",\"digest\":\"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"path\":\"packages/cli/src/commands/service-windows.ts\",\"digest\":\"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581\",\"revision\":\"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59\"},\"active\":{\"path\":\"packages/cli/src/commands/service-windows.ts\",\"digest\":\"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581\",\"revision\":\"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]",
 
-  "document": {"digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":".dockerignore","digest":"cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    ".dockerignore",
 
-    {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "deploy/gcp-dev/bootstrap.sh",
 
-    {"path":"deploy/public-ingress/Caddyfile","digest":"8836c4eb1f900dbda0aed6f5365f0c3ffb309046224c9470024a6caae31f0598","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "deploy/public-ingress/Caddyfile",
 
-    {"path":"deploy/public-ingress/compose.yaml","digest":"e586d1610427a92aab50e69175f7a86c491cd0ca76f52aa8d538473ffd49f44d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "deploy/public-ingress/compose.yaml",
 
-    {"path":"deploy/public-ingress/smoke.mjs","digest":"5703b039d109226835106c01493893b2340b423d3d574574e571aa53a0d93a74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "deploy/public-ingress/smoke.mjs",
 
-    {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "docker-compose.yml",
 
-    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "Dockerfile",
 
-    {"path":"monitoring/docker-compose.yml","digest":"d095a34bf788ab3ec13c1cc3d65edf8c485d4e5de00005219802ba402683963e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "monitoring/docker-compose.yml",
 
-    {"path":"ops/dogfood/install-macos.zsh","digest":"52671ad89501f9dd231630c17cf06c6d0b4065c47dd2b69d2f6be8e845f6201f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "ops/dogfood/install-macos.zsh",
 
-    {"path":"ops/dogfood/io.kontourai.station-dogfood.plist.template","digest":"d74edf9283a35c4abf32c10f28870128faa98570bf8136938ad04c3b28165602","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "ops/dogfood/io.kontourai.station-dogfood.plist.template",
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/cli/src/commands/environment.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"packages/cli/src/commands/service-windows.ts","digest":"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581","revision":"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"},
+    "packages/cli/src/commands/service-windows.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/cli/src/distribution.ts",
 
-    {"path":"packages/contracts/src/tenancy.ts","digest":"0206fdcf4071f2fd5140a8f096cad83deaf801dd05b381840548c320bc25c8ef","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/tenancy.ts",
 
-    {"path":"packages/shared/src/cloud-move.ts","digest":"9c8c56f5c228b667fc13f583ae5b59117bd4026633984ac9fe7a27c0e1b5245a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/cloud-move.ts",
 
-    {"path":"packages/shared/src/station-home-archive.ts","digest":"2d857da29eb1de501523692cb04839be37b3375b354456fe5b676ae53ef38294","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/station-home-archive.ts",
 
-    {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/station-home-schema.ts",
 
-    {"path":"scripts/__tests__/container-release.test.ts","digest":"11faf6d5d92a2c2a9c72f68a9398b18baafc247183a4a3126d043beef1574a0a","revision":"f0f9e40155cd9cae70d9305a4f80d431b2466a58"},
+    "scripts/__tests__/container-release.test.ts",
 
-    {"path":"scripts/__tests__/gcp-bootstrap.test.ts","digest":"8fe171502e96c4c50c29cda4201f147b3ebefd709a5a197e8bd0da717642a7d0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/__tests__/gcp-bootstrap.test.ts",
 
-    {"path":"scripts/container-healthcheck.mjs","digest":"1c9fd19bf169ef722a2e33655fadd37602779d01c53ef4d9e89e1bdbe5e24daa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/container-healthcheck.mjs",
 
-    {"path":"scripts/lib/container-release-metadata.mjs","digest":"a65c308b32ad9914e24bca36fc89c597c042ae48bffbe17c2a333d02c9e2c2af","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/container-release-metadata.mjs",
 
-    {"path":"scripts/station-dogfood-health.mjs","digest":"3b1eb70615e209fd13ac003b69188439dce353c7734fd0d06f4d2e371dac6285","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/station-dogfood-health.mjs",
 
-    {"path":"scripts/station-dogfood-reconcile.mjs","digest":"0dd83ff4e12ecbaa68761e2a1da836b8d6f1d4612246580b2d30cdbc28dd96cd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/station-dogfood-reconcile.mjs",
 
-    {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-desktop/src/service_state.rs",
 
-    {"path":"src-server/domain/migration.ts","digest":"6e4de108890faf6ab1ce8de05bdecdc8640fbba8c90ff29bb2521e547487fb6e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/migration.ts",
 
-    {"path":"src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts","digest":"a67abcae97b3b45a0a58b235eae5384682c4c921f32f118bade7ef5b51977c0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts",
 
-    {"path":"src-server/runtime/bootstrap/hosted-persistence-boundary.ts","digest":"458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/runtime-tenant-context.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/runtime/bootstrap/station-control-runtime-env.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"ec5027141f09ec0945d83e3c704b9f11ea190aa32bf7daecb865521f31371413","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
+    "src-server/runtime/mcp/mcp-manager.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/__tests__/home-reference-recovery.test.ts",
 
-    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"c1681de45e866b687e5c27ce7a276ad36869784b2a3ac6c0050715487762c72b","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"},
+    "src-server/services/ssh/device-pairing-service.ts",
 
-    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"}
+    "src-server/services/ssh/environment-security-service.ts"
   ],
 
   "checks": [

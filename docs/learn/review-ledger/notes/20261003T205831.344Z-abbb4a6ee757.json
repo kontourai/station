@@ -1,0 +1,7 @@
+{
+  "revision": "83fa149028537db992dfdcaae8772ab68df847fd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the restored current-main composer contract against the updated ChatDockBody.sessionFailureBanner fixture at 83fa149028. Assertions now wait for the lazy composer mount before checking refusal/continuation props. The design still accurately states fail-closed unresolved/denied continuation, authorized draft behavior and successor continuation. Four repaired UI suites pass 54/54. Bypassing the real composer disabled gate made seven refusal assertions fail with expected false to be true; exact source restoration returned the suites to green. Prior equivalent Return-help review notes remain historical; SDK/settings changes are owned by the relay lane.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

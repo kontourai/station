@@ -9,68 +9,66 @@
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"7221e506f4609db018591285bc8e58321e6e1cde85f439008b80bb61e2a8df1d","revision":"37f0ed25455007f32bdf69468451bf9dd85f9fde"},
-
   "sources": [
-    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/sdk/src/client/chatHttpError.ts",
 
-    {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/session-api-roundtrip.mjs",
 
-    {"path":"src-server/providers/__tests__/codex-adapter-rpc-id.test.ts","digest":"b34f7500b2f83fccbe853cf600614dc88c93bdde1d6287d8e3ad5a444191bf4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/providers/__tests__/codex-adapter-rpc-id.test.ts",
 
-    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"},
+    "src-server/providers/adapters/acp-adapter-events.ts",
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    "src-server/providers/adapters/acp-adapter.ts",
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    "src-server/providers/adapters/claude-adapter.ts",
 
-    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    "src-server/providers/adapters/codex-adapter-transport.ts",
 
-    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"f198dc43900198c9f803f64173dcf911d3a76c831a1ec659e28d63542279cddf","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    "src-server/providers/adapters/codex-adapter-types.ts",
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    "src-server/providers/adapters/codex-adapter.ts",
 
-    {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    "src-server/providers/adapters/harness-questions.ts",
 
-    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
 
-    {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/providers/sessions/codex-rollout-session-source.ts",
 
-    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/orchestration/dispatch-scope.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
 
-    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"0d2fe916d5a7818714950c763ab11ee67d325b0779b55c8221c377a0a1239801","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
 
-    {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"db14b46978051e775c9415ad7104054bb41892df40fe50a6be2da0c2ba5b1373","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
+    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
 
-    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "src-server/services/execution-target/execution-target-resolver.ts",
 
-    {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/flow/survey-flow-review-service.ts",
 
-    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/services/orchestration/attached-session-adoption.ts",
 
-    {"path":"src-server/services/orchestration/attached-session-follow-service.ts","digest":"2af62de4e6e4414dd204b33bd4724d382daf5b147946be6a4a2744619e6f563c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/attached-session-follow-service.ts",
 
-    {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/session-command-module.ts",
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763","revision":"42811285ef04d069daf576d46253ac833573f848"},
+    "src-server/services/projects/attention-projection.ts",
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "src-server/tools/station-control-policy.ts",
 
-    {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/utils/path-containment.ts",
 
-    {"path":"src-ui/src/components/attention/AttentionCard.tsx","digest":"823662090b419f8b9d761d3e35d8a872a1720e203865c350f4db941df1830814","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
+    "src-ui/src/components/attention/AttentionCard.tsx",
 
-    {"path":"src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","digest":"311cb357976129526312eddafdaea13d78f1bdb9f96b28adfdf0187388bc1769","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    "src-ui/src/hooks/orchestration/queueDrain.ts",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"}
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
   ],
 
   "checks": [

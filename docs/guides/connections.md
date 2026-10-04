@@ -190,6 +190,11 @@ independent requirements. It grants no Agent, terminal, or Task publication
    exact installation and then creates its invitation. If the invitation's
    outcome is uncertain, the action stays disabled instead of retrying; check
    with the recipient before starting again.
+   This protection survives **Change** and closing/reopening the dialog only
+   within the current Devices panel and Station/account authority. Navigation,
+   reload, or an authority remount resets it. There is no durable invitation
+   deduplication or broker-status reconciliation; manually check with the
+   recipient before creating another invitation.
 3. **Send the invitation.** Copy the invitation link and share the Station code
    and key ID by a separate call or message so the recipient can confirm the
    Station. Invitations are single-use. The default lifetime is 24 hours; choices are

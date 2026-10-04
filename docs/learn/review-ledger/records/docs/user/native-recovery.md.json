@@ -9,42 +9,40 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"0a1501079da1ca412c3eddec11a2c2f57cad82b201b5f90b7e6b68a98027c906","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
+    "packages/cli/src/commands/lifecycle-doctor.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/cli/src/commands/target-command.ts","digest":"fd308f3257b43fcce35e31beedc476be5e27db17cd257af61754eafd6be14ad4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/target-command.ts",
 
-    {"path":"scripts/ios-simulator-build.mjs","digest":"3a813b6fcca91ac673f085f5863e09ad93c165aeadd0c225c507cb43681f2866","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    "scripts/ios-simulator-build.mjs",
 
-    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/run-tauri-shell-e2e.mjs",
 
-    {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+    "src-desktop/Cargo.lock",
 
-    {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/bundled_server_state.rs",
 
-    {"path":"src-desktop/src/lib.rs","digest":"0e567e40a67835b2095f304498e6174df2a9b921bc877dcc563766ba6dfe83bc","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-desktop/src/startup_readiness.rs","digest":"77c26585b925bf67038df2ff3aea842c9ef0c4262914bbf957b2ca30f0332f82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/startup_readiness.rs",
 
-    {"path":"src-server/index.ts","digest":"afff725135d2bdc11aa1c0815b5fbd0a297c52e544e54dae1e069200bf0091b2","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    "src-server/index.ts",
 
-    {"path":"src-server/runtime/bootstrap/readiness-handshake.ts","digest":"321dc2ec9238434fb5b52e7e263c71b64546db0bc56292c164d73ab6fc6fd449","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/bootstrap/readiness-handshake.ts",
 
-    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
+    "src-ui/src/main.tsx",
 
-    {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx",
 
-    {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/rendererLiveness.tsx",
 
-    {"path":"tests/tauri-shell/plugin-host-security.e2e.ts","digest":"963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/plugin-host-security.e2e.ts",
 
-    {"path":"src-ui/src/platform/native/NativeRelayEntryBoundary.tsx","digest":"881077a6e1702484e1dc19315757d53146c77447f280f7eac2dd913045ed3014","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"}
+    "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx"
   ],
 
   "checks": [

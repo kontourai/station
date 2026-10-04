@@ -1,0 +1,7 @@
+{
+  "revision": "9fda044826b30cb28c57a6f6cbdfad6b36394ff6",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Upstream integration review at 9fda044826 combines the published visual authoring lane with landed #3099 Task brief support. Resolved the sole ledger conflict field-by-field: preserve the narrowed task-room-work export citation and the upstream brief document, SDK transport, runtime fixtures and new task-room-context source binding. Reviewed Selected Task brief and its retained-context/public-v1/private-v2/uncertainty limits against the incoming contract, capture helper and SDK negotiation/acknowledgement checks. Product files were not manually edited: visual contract/schema/author validator equal prior PR head, and incoming Task context/transport bytes equal origin/main. Focused author/portable-contract/Task transport suite passed 28 tests; Shared typecheck and all 429 review/8 capture freshness checks pass. No browser, live-model or invited/native/released qualification is inferred.","inputs":["docs/design/task-room-agent-requests.md"]}
+  ]
+}

@@ -9,24 +9,22 @@
 
   "limits": "The isolated normal Linux Node runtime and real loopback Project/shared-work publisher executed in the preserved failed fresh-d8dd-20261001 run. Public connector registration never occurred: its initial lease expired before process spawn, exact credentials/scope matched, actual register/withdraw and cleanup returned 401. Actual fresh native host ceremony, main WebView, ordinary UI driver, physical iOS Nightly and Zach acceptance remain NOT_VERIFIED. Pion staging/build and a matching artifact digest do not establish an application peer. Node guard is not an OS sandbox; routing revocation is not instantaneous TURN credential revocation or a financial spend cap.",
 
-  "document": {"digest":"b6b56384ac7a6320219cbaf1b6fb833abc0518a8f02aa1fdee63842bf0b21037","revision":"c4820d9bc48c6219391e2af97a902a604e91e035"},
-
   "sources": [
-    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"4673c2cc2af412718ed9aeebcd64afd8a248e38c1646b7d8131b66175dcb390f","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    "scripts/lib/native-fresh-relay-fixture.ts",
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"d9f4f79eb7f4b46e575d2b1bd80ff3311ed78668a6f4b0b8a4df1edaf70906bf","revision":"92bfe7c3dce4d852c22f5c1175ebdfb9981ca0a1"},
+    "scripts/native-fresh-relay-fixture.ts",
 
-    {"path":"scripts/__tests__/native-fresh-relay-fixture.test.ts","digest":"d83a98df30452d0a0164d5db0a89e0065ff88f2fa329c32d3d4ddd6133f78a6b","revision":"564e13c2309f192e8ae5077339b39f423cf238b2"},
+    "scripts/__tests__/native-fresh-relay-fixture.test.ts",
 
-    {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
+    "tests/tauri-shell/native-fresh-relay-acceptance-webview.ts",
 
-    {"path":"scripts/native-relay-invite.ts","digest":"3118db6d9a737c421ca9de6ce5da585e5f96d77079328005fcb8bc7e076dfd1f","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "scripts/native-relay-invite.ts",
 
-    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts","digest":"d90fc87546b6da331094a9b2ac21c44e5a99df6567460dcab4dfb50949223a4f","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    "src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts",
 
-    {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    "packages/connect/src/core/nativeRelayLink.ts",
 
-    {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"}
+    "packages/contracts/src/native-relay-link.ts"
   ],
 
   "checks": [

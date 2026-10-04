@@ -1,0 +1,35 @@
+{
+  "revision": "fbe1113cf1e9b76fb3ab0b31d34bdb982f8534bf",
+
+  "notes": [
+    {"path":"README.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["README.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/design/cli-triage.md"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/design/station-instance-reconciler.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["packages/cli/README.md"]},
+
+    {"path":"packaging/manifest/README.md","note":"Carried forward after merging origin/main into the #2970 branch, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["packaging/manifest/README.md"]}
+  ]
+}
