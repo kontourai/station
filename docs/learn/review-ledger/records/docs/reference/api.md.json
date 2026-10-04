@@ -20,8 +20,6 @@
 
     "packages/contracts/src/agent.ts",
 
-    "packages/contracts/src/catalog.ts",
-
     "packages/contracts/src/config.ts",
 
     "packages/contracts/src/connection.ts",
@@ -122,18 +120,6 @@
 
     "src-server/providers/llm/bedrock-region.ts",
 
-    "src-server/providers/registries/filesystem-skill-registry.ts",
-
-    "src-server/providers/registries/github-skill-registry.ts",
-
-    "src-server/providers/registries/json-manifest-registry.ts",
-
-    "src-server/providers/registries/registry-catalog-installed-state.ts",
-
-    "src-server/providers/registries/registry-source-configuration.ts",
-
-    "src-server/providers/registries/registry-source-manager.ts",
-
     "src-server/routes/agents/agent-tools.ts",
 
     "src-server/routes/agents/agents.ts",
@@ -185,10 +171,6 @@
     "src-server/routes/orchestration/orchestration.ts",
 
     "src-server/routes/orchestration/runs.ts",
-
-    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
-
-    "src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts",
 
     "src-server/routes/plugins/plugin-bundles.ts",
 
@@ -282,8 +264,6 @@
 
     "src-server/services/agents/runtime-agent-identity.ts",
 
-    "src-server/services/agents/skill-service.ts",
-
     "src-server/services/connections/__tests__/engine-account-history.test.ts",
 
     "src-server/services/connections/connection-service.ts",
@@ -335,10 +315,6 @@
     "src-server/services/plugins/plugin-visibility-service.ts",
 
     "src-server/services/projects/layout-service.ts",
-
-    "src-server/services/projects/task-room-context.ts",
-
-    "src-server/services/projects/task-room-work-module.ts",
 
     "src-server/services/scheduling/builtin-scheduler.ts",
 
@@ -392,7 +368,31 @@
 
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
-    "src-ui/src/views/layout-workspace-shape.ts"
+    "src-ui/src/views/layout-workspace-shape.ts",
+
+    "src-server/providers/registries/github-skill-registry.ts",
+
+    "src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts",
+
+    "src-server/services/projects/task-room-work-module.ts",
+
+    "src-server/services/projects/task-room-context.ts",
+
+    "packages/contracts/src/catalog.ts",
+
+    "src-server/providers/registries/filesystem-skill-registry.ts",
+
+    "src-server/providers/registries/json-manifest-registry.ts",
+
+    "src-server/providers/registries/registry-catalog-installed-state.ts",
+
+    "src-server/providers/registries/registry-source-configuration.ts",
+
+    "src-server/providers/registries/registry-source-manager.ts",
+
+    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
+
+    "src-server/services/agents/skill-service.ts"
   ],
 
   "checks": [

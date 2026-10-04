@@ -48,6 +48,8 @@
 
     "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
 
+    "scripts/__tests__/ci-health.test.ts",
+
     "scripts/__tests__/ci-workflow-contract.test.ts",
 
     "scripts/__tests__/docs-index-reachability.test.ts",
@@ -67,6 +69,8 @@
     "scripts/__tests__/prepush-typecheck.test.ts",
 
     "scripts/__tests__/run-ci-fast.test.ts",
+
+    "scripts/ci-health.mjs",
 
     "scripts/cli-agent-e2e.mjs",
 
@@ -122,6 +126,8 @@
 
     "src-server/routes/spatial-board.ts",
 
+    "tests/screenshots.spec.ts",
+
     "tests/tauri-shell/native-project-acceptance-webview.ts",
 
     "tests/tauri-shell/native-project-acceptance.e2e.ts",
@@ -130,11 +136,15 @@
 
     "vitest.setup.ts",
 
-    "scripts/ci-health.mjs",
+    "scripts/orchestration-transfer-capture.ts",
 
-    "scripts/__tests__/ci-health.test.ts",
+    "scripts/lib/transfer-capture-progress.ts",
 
-    "tests/screenshots.spec.ts"
+    "scripts/__tests__/transfer-capture-progress.test.ts",
+
+    "scripts/check-prepush-orchestration-transfer.mjs",
+
+    "scripts/__tests__/prepush-orchestration-transfer.test.ts"
   ],
 
   "checks": [

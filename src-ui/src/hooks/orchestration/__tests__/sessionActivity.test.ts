@@ -385,6 +385,31 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.orchestrationStatus).toBe('exited');
   });
 
+  test('the exit of a superseded predecessor leaves the live chat alone', () => {
+    // A never-used first session shares the chat's key; its successor is the
+    // chat's current session. The stop publishes this exact event shape.
+    activeChatsStore.updateChat(threadId, {
+      currentSessionId: `${threadId}:session:2`,
+      orchestrationStatus: 'idle',
+      orchestrationSessionStarted: true,
+    });
+    handleSessionExitedEvent(
+      {
+        eventId: 'evt-2',
+        provider: 'acp',
+        threadId,
+        createdAt: '2026-07-23T00:00:00.000Z',
+        method: 'session.exited',
+        sessionId: threadId,
+        reason: 'stopped',
+      } as any,
+      activeChatsStore,
+    );
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.orchestrationStatus).toBe('idle');
+    expect(chat?.orchestrationSessionStarted).toBe(true);
+  });
+
   test('session.exited clears the unacknowledged-decision note (#2880)', () => {
     activeChatsStore.updateChat(threadId, {
       unacknowledgedDecisions: [

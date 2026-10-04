@@ -1179,8 +1179,17 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
     } else {
       b.ensure();
     }
-    await until(() => requests.length > before);
-    const resumedId = requests.at(-1)?.headers.get('Last-Event-ID');
+    // The event stream's own request, not simply the latest one: a snapshot
+    // reconnect also reads the newest turn to rebuild open approval toasts.
+    const streamRequests = () =>
+      requests
+        .slice(before)
+        .filter(
+          (request) =>
+            new URL(request.url).pathname === '/api/orchestration/events',
+        );
+    await until(() => streamRequests().length > 0);
+    const resumedId = streamRequests().at(-1)?.headers.get('Last-Event-ID');
     // A bounced seed's exact resumed-cursor shape depends on whichever of
     // the 5 reconnect methods the fuzzing last picked (review M2) — a
     // 'reload' bounce, for instance, leaves this exactly like seed 30's
