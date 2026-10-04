@@ -271,9 +271,9 @@ export type SkillExperienceInventoryReader = (
 
 /**
  * `sendExecutionMessage` with the inventory reader supplied by the caller.
- * The client entry must import its reader statically (#3209), so a bundled
- * app that sends from first paint passes a lazily loaded reader here to keep
- * the canonical validator out of its entry chunk. The preflight is unchanged.
+ * This module does not import the static reader (#3209): first-paint code
+ * imports it for the other execution calls, and an import here would carry
+ * the canonical validator into that chunk.
  */
 export async function sendExecutionMessageWithInventory(
   apiBase: string,
