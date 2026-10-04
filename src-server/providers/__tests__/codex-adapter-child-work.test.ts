@@ -172,13 +172,15 @@ describe('#2458 Codex subagents as child work — real captures', () => {
       reporterThreadId: CODEX_COLLAB_STATION_THREAD,
       status: 'completed',
       depth: 1,
-      kindLabel: 'gpt-5.5',
+      // #3163: the spawn result's model is the child's model, not its kind.
+      model: { id: 'gpt-5.5', source: 'spawn-result' },
       parent: { turnId: PARENT_TURN, toolCallId: 'call_0001' },
       // The child thread's own last `thread/tokenUsage/updated` total and
       // its `turn/completed.turn.durationMs`.
       usage: { totalTokens: 36688, durationMs: 5726 },
       result: { summary: 'done' },
     });
+    expect(item.kindLabel).toBeUndefined();
     expect(item.title).toMatch(/^In the current working directory, create/);
     // Nothing can open a Codex child thread, so no handle is invented.
     expect(item.result?.handle).toBeUndefined();
@@ -203,6 +205,42 @@ describe('#2458 Codex subagents as child work — real captures', () => {
       result: { summary: 'done' },
     });
     expect(child(events).usage?.durationMs).toBeGreaterThan(0);
+  });
+
+  test('#3163 v1: a child spawned on a different model than its parent reports its own', () => {
+    // The real capture, with only the completed spawn's `model` changed: the
+    // parent thread runs gpt-5.5 (its thread/start and thread/started say so).
+    const capture = CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED.map((line) =>
+      line.includes('"spawnAgent"') && line.includes('"item/completed"')
+        ? line.replace('"model": "gpt-5.5"', '"model": "gpt-5.5-mini"')
+        : line,
+    );
+    expect(capture.join('\n')).toContain('"model": "gpt-5.5-mini"');
+    expect(
+      capture.some(
+        (line) =>
+          line.includes('"thread/started"') &&
+          line.includes('"model": "gpt-5.5"'),
+      ),
+    ).toBe(true);
+    const { events } = replayCodexCapture(capture);
+    expect(child(events).model).toEqual({
+      id: 'gpt-5.5-mini',
+      source: 'spawn-result',
+    });
+  });
+
+  test('#3163 v2: subAgentActivity names no model, so none is reported — never the parent thread model', () => {
+    const { events } = replayCodexCapture(CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED);
+    // The parent thread's own model is on the wire...
+    expect(CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED.join('\n')).toContain(
+      '"model": "gpt-6-luna"',
+    );
+    // ...and is not the child's.
+    expect(child(events).model).toBeUndefined();
+    for (const delta of deltasOf(events)) {
+      expect(JSON.stringify(delta)).not.toContain('gpt-6-luna');
+    }
   });
 
   for (const [label, capture] of [
@@ -632,6 +670,10 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
                   },
                 },
               },
+              // #3163: the child thread's own model (app-server Thread shape).
+              modelProvider: 'openai',
+              model: 'gpt-5.5-mini',
+              reasoningEffort: 'low',
             },
           },
         },
@@ -643,6 +685,7 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
       depth: 1,
       title: 'Euler',
       kindLabel: 'explorer',
+      model: { id: 'gpt-5.5-mini', source: 'child-thread' },
     });
   });
 
