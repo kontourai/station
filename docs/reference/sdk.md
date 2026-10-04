@@ -2289,8 +2289,9 @@ manifest's field name (`skills`).
 `fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
 from `@kontourai/station-sdk/client`. Both validate the returned inventory or
 session projection before exposing it and preserve HTTP failure details. The
-canonical reader loads after a successful feature response; a reader failure
-remains an error.
+canonical reader is a static import of the client entry, so it adds the shared
+validator to that bundle, and it runs only after a successful feature response;
+a reader failure remains an error.
 `useSkillExperienceInventoryQuery(config?)` and
 `useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
 the SDK root. The session hook remains disabled until a canonical thread exists.
