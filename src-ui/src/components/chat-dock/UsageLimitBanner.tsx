@@ -2,9 +2,11 @@ import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useUsageLimitRecovery } from '../../hooks/useUsageLimitRecovery';
+import type { ChatSession } from '../../types';
 import { Button } from '../Button';
 import './UsageLimitBanner.css';
 
@@ -53,6 +55,42 @@ const isWaiting = (recovery: ConnectionRecoveryProjection | null) =>
 export function UsageLimitBanner({
   apiBase,
   scope,
+  session,
+  summary,
+}: {
+  apiBase: string;
+  scope: ApiRequestScope | undefined;
+  session: ChatSession;
+  summary: OrchestrationSessionSummary | null | undefined;
+}) {
+  // The Session the limit stopped: the dock's own correlation (see
+  // `useChatDockViewModel`), so the banner reads the intent the server armed.
+  const threadId =
+    summary?.threadId ??
+    (session.currentSessionId || session.conversationId || session.id);
+  // The chat's own hold flag (live `runtime.error`, snapshots) or the server
+  // summary the dock already holds. A chat opened fresh gets no snapshot after
+  // it exists, so the flag alone would miss a limit that stopped it earlier.
+  const active =
+    session.usageLimitStopped === true ||
+    (summary?.lastEventMethod === 'runtime.error' &&
+      summary.lastRuntimeErrorUsageLimit === true);
+  const refreshKey = `${summary?.eventCount ?? ''}:${summary?.updatedAt ?? ''}`;
+  return (
+    <UsageLimitBannerFor
+      key={threadId}
+      apiBase={apiBase}
+      scope={scope}
+      threadId={threadId}
+      active={active}
+      refreshKey={refreshKey}
+    />
+  );
+}
+
+function UsageLimitBannerFor({
+  apiBase,
+  scope,
   threadId,
   active,
   refreshKey,
@@ -61,7 +99,7 @@ export function UsageLimitBanner({
   scope: ApiRequestScope | undefined;
   threadId: string;
   active: boolean;
-  refreshKey?: string | number;
+  refreshKey: string;
 }) {
   const { recovery, refetch, resume, cancel } = useUsageLimitRecovery({
     apiBase,

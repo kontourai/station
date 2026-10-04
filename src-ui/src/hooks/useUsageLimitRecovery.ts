@@ -58,7 +58,7 @@ async function readData(response: Response): Promise<{
   };
 }
 
-export const usageLimitRecoveryKey = (
+const usageLimitRecoveryKey = (
   apiBase: string,
   scope: ApiRequestScope | undefined,
   threadId: string,

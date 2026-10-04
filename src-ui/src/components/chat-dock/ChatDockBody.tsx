@@ -378,20 +378,6 @@ export function ChatDockBody({
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const mentionRequestScope = useHostRequestAuthorityScope();
-  // The Session the limit stopped: the dock's own correlation (see
-  // `useChatDockViewModel`), so the banner reads the intent the server armed.
-  // The chat's own hold flag (live `runtime.error`, snapshots) or the server
-  // summary the dock already holds. A chat opened fresh gets no snapshot after
-  // it exists, so the flag alone would miss a limit that stopped it earlier.
-  const usageLimitStopped =
-    activeSession.usageLimitStopped === true ||
-    (activeOrchestrationSession?.lastEventMethod === 'runtime.error' &&
-      activeOrchestrationSession.lastRuntimeErrorUsageLimit === true);
-  const usageLimitThreadId =
-    activeOrchestrationSession?.threadId ??
-    (activeSession.currentSessionId ||
-      activeSession.conversationId ||
-      activeSession.id);
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
   const { navigate } = useNavigationActions();
@@ -1578,12 +1564,10 @@ export function ChatDockBody({
       {/* #3157: the limited conversation's own banner, from the server's
           recovery projection; it re-reads with each snapshot update. */}
       <UsageLimitBanner
-        key={usageLimitThreadId}
         apiBase={apiBase}
         scope={mentionRequestScope}
-        threadId={usageLimitThreadId}
-        active={usageLimitStopped}
-        refreshKey={`${activeOrchestrationSession?.eventCount ?? ''}:${activeOrchestrationSession?.updatedAt ?? ''}`}
+        session={activeSession}
+        summary={activeOrchestrationSession}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (

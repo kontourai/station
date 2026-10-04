@@ -105,25 +105,28 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function renderBanner(
-  props: Partial<Parameters<typeof UsageLimitBanner>[0]> = {},
-) {
+function renderBanner(props: { active?: boolean; eventCount?: number } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const ui = (extra: typeof props = {}) => (
-    <QueryClientProvider client={queryClient}>
-      <UsageLimitBanner
-        apiBase={API}
-        scope={undefined}
-        threadId={THREAD}
-        active
-        refreshKey="1"
-        {...props}
-        {...extra}
-      />
-    </QueryClientProvider>
-  );
+  const ui = (extra: typeof props = {}) => {
+    const { active = true, eventCount = 1 } = { ...props, ...extra };
+    return (
+      <QueryClientProvider client={queryClient}>
+        <UsageLimitBanner
+          apiBase={API}
+          scope={undefined}
+          session={
+            {
+              id: THREAD,
+              usageLimitStopped: active ? true : undefined,
+            } as never
+          }
+          summary={{ threadId: THREAD, eventCount } as never}
+        />
+      </QueryClientProvider>
+    );
+  };
   const view = render(ui());
   return {
     ...view,
@@ -286,7 +289,7 @@ describe('UsageLimitBanner (#3157)', () => {
         outcomeReason: 'request-pending',
       }),
     });
-    rerenderWith({ refreshKey: '2' });
+    rerenderWith({ eventCount: 2 });
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toBe(
         'Auto-resume canceled: the conversation was waiting on a request.',
