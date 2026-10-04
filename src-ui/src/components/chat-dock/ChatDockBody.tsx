@@ -1095,11 +1095,7 @@ export function ChatDockBody({
                */
               <SkeletonList
                 count={4}
-                label={
-                  transcript.catchingUp
-                    ? 'Catching up'
-                    : 'Loading chat'
-                }
+                label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
               />
             ) : (
               <ChatEmptyState

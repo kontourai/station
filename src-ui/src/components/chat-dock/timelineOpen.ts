@@ -46,9 +46,7 @@ export function openTimeline(
     .then(() => undefined)
     .catch((error: unknown) => {
       notify(
-        error instanceof Error
-          ? error.message
-          : 'Could not open history.',
+        error instanceof Error ? error.message : 'Could not open history.',
       );
     })
     .finally(() => {

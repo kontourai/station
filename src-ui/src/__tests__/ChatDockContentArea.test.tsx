@@ -100,9 +100,7 @@ describe('ChatDockContentArea', () => {
 
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText('No chat open')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close history' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
     expect(onCloseHistory).toHaveBeenCalledOnce();
 
     historyError = null;

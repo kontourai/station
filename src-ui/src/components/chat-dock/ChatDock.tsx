@@ -2586,9 +2586,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           isCurrent: () => boolean,
                         ) => openConversationForDock(id, isCurrent, true),
                       }}
-                      pending={
-                        <SkeletonBlock count={1} label="Opening chat" />
-                      }
+                      pending={<SkeletonBlock count={1} label="Opening chat" />}
                     />
                   ) : null}
                   {!conversationOpenRecovery && !importedSessionId ? (

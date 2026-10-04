@@ -47,11 +47,7 @@ test('shows one persistent loading notice and coalesces duplicate opens', async 
     vi.fn(),
   );
   expect(first).toBe(duplicate);
-  expect(notify).toHaveBeenCalledWith(
-    'Loading history…',
-    undefined,
-    0,
-  );
+  expect(notify).toHaveBeenCalledWith('Loading history…', undefined, 0);
   await Promise.resolve();
   expect(open).toHaveBeenCalledTimes(1);
   finish();

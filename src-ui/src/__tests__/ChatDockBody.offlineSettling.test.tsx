@@ -378,9 +378,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       expect(fetchConversationWindow).toHaveBeenCalledTimes(2),
     );
     // B has never loaded: it is loading, and A's transcript is not B's.
-    expect(await screen.findAllByText('Loading chat')).not.toHaveLength(
-      0,
-    );
+    expect(await screen.findAllByText('Loading chat')).not.toHaveLength(0);
     expect(screen.queryByText(/Saved transcript/)).toBeNull();
   });
 
