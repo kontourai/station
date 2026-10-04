@@ -110,6 +110,7 @@ import {
   LARGE_DIFF_COLLAPSE_THRESHOLD,
 } from '../components/coding-layout/DiffPanel';
 import { subscribeInteractiveWorkspacePerformanceMarks } from '../performance/interactive-workspace-performance-hooks';
+import { PaneHeadSlotsContext } from '../workspace-panes/PaneHeadSlots';
 
 const SAMPLE_PATCH = `diff --git a/foo.ts b/foo.ts
 --- a/foo.ts
@@ -226,6 +227,61 @@ describe('DiffPanel', () => {
     expect(deviceSettingCalls).toContainEqual(['diffStyle', 'split']);
     fireEvent.click(tools[3]);
     expect(deviceSettingCalls).toContainEqual(['diffWrap', false]);
+  });
+
+  test('inside a host head the counts join the leading slot and the same four tools the trailing one; the pane draws no bar and leaves the host its own ⋯', () => {
+    diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
+    const leading = document.createElement('div');
+    const trailing = document.createElement('div');
+    document.body.append(leading, trailing);
+    const takeHostActions = vi.fn();
+    try {
+      const view = render(
+        <PaneHeadSlotsContext.Provider
+          value={{
+            leading,
+            trailing,
+            hostActions: [
+              { key: 'remove', label: 'Remove pane', onSelect: () => {} },
+            ],
+            takeHostActions,
+          }}
+        >
+          <DiffPanel workingDir="/repo" projectSlug="project" />
+        </PaneHeadSlotsContext.Provider>,
+      );
+      expect(view.container.querySelector('.diff-panel__bar')).toBeNull();
+      expect(view.container.querySelector('.diff-stat')).toBeNull();
+      expect(leading.querySelector('.diff-stat')?.textContent).toMatch(
+        /^1 file\+\d+−\d+$/,
+      );
+      const tools = [
+        'Collapse all files',
+        'Expand all files',
+        'Split view',
+        'Wrap lines',
+      ].map((name) => within(trailing).getByRole('button', { name }));
+      expect(
+        trailing.querySelector('.diff-panel__tools--head')?.children.length,
+      ).toBe(4);
+      for (const tool of tools) {
+        expect(tool.textContent).toBe('');
+        expect(tool.getAttribute('title')).toBeTruthy();
+        expect(tool.querySelector('svg')).toBeTruthy();
+      }
+      expect(tools[2].getAttribute('aria-pressed')).toBe('false');
+      expect(tools[3].getAttribute('aria-pressed')).toBe('true');
+      fireEvent.click(tools[2]);
+      expect(deviceSettingCalls).toContainEqual(['diffStyle', 'split']);
+      // No overflow of its own: the host's Pop out / Remove pane stay in the
+      // host's ⋯, so the pane must not claim them.
+      expect(trailing.querySelector('[aria-haspopup]')).toBeNull();
+      expect(takeHostActions).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      leading.remove();
+      trailing.remove();
+    }
   });
 
   test('an empty patch is one quiet line, and an error offers Retry', () => {

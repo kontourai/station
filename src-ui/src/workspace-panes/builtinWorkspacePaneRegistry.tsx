@@ -379,8 +379,13 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // keep it in: navigating to `setLayout(project, '')` would leave the
       // dock for a route that is not this pane's, so it keeps the row in
       // its own state only.
+      // Named as the pane's own write: this pane opens its preview itself
+      // (below), so the Chat position must not open a second one.
       if (layoutSlug)
-        setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
+        setLayout(projectSlug, layoutSlug, {
+          openFilePreviewIntent: intent,
+          from: 'pane',
+        });
       if (!layoutSlug && openPreviewInRegion) {
         openPreviewInRegion({
           projectId,

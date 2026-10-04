@@ -271,3 +271,20 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* The same tools in a host's head row (the Coding layout's side panel, past
+   the wide fold): 32px targets like the head's own close and its other
+   panes' controls. The bar's 44px hit areas would overrun the 40px row and
+   reach the close. */
+.diff-panel__tools--head {
+  gap: var(--space-1);
+}
+
+.diff-panel__tools--head .diff-tool {
+  width: 32px;
+  height: 32px;
+}
+
+.diff-panel__tools--head .diff-tool::after {
+  content: none;
+}

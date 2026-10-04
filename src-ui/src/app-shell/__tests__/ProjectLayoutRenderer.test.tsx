@@ -182,6 +182,11 @@ vi.mock('../../hooks/useIsMobile', () => ({
   // A phone-sized viewport folds the dock to one region, so its Coding Chat
   // page is the dock, not the centre (`resolveLayoutChatPlacement`).
   useDockFoldsToOneRegion: () => mobileMock(),
+  // The workbench reads the pointer for the folded inbox's edge (#3046).
+  useDockSlotDevice: () => ({
+    viewportWidth: mobileMock() ? 390 : 1280,
+    coarsePointer: mobileMock(),
+  }),
 }));
 // The Coding stack's Chat page mounts Station's one Chat controller; this
 // file is about the pane host beside it, so Chat is a marker that records
@@ -217,11 +222,18 @@ vi.mock('../../contexts/KeyboardShortcutsContext', async (original) => ({
   >()),
   useKeyboardShortcuts: () => ({ isMac: true }),
 }));
-vi.mock('../../components/coding-layout/CodingTerminalPane', () => ({
-  CodingTerminalPane: ({ workingDir }: { workingDir: string }) => (
-    <div>Terminal pane {workingDir}</div>
-  ),
-}));
+const terminalMounts = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../../components/coding-layout/CodingTerminalPane', async () => {
+  const { useEffect } = await import('react');
+  return {
+    CodingTerminalPane: ({ workingDir }: { workingDir: string }) => {
+      useEffect(() => {
+        terminalMounts.count += 1;
+      }, []);
+      return <div>Terminal pane {workingDir}</div>;
+    },
+  };
+});
 vi.mock('../../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
@@ -1491,6 +1503,9 @@ describe('ProjectLayoutRenderer', () => {
           projectSlug: 'project-route',
           path: 'src/app.ts',
         },
+        // The pane's own row write, named so the Chat position leaves the
+        // preview to the pane (#3040 round 4).
+        from: 'pane',
       },
     );
 
@@ -2577,5 +2592,96 @@ describe('ProjectLayoutRenderer', () => {
     render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="whatever" />);
 
     expect(screen.getByText('Current layout view')).toBeTruthy();
+  });
+});
+
+describe('ProjectLayoutRenderer past the wide fold (#3040 review M5)', () => {
+  test('a URL naming the Terminal on a wide screen mounts the Terminal once — the lower panel’s — and never a second in the host', async () => {
+    const matchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: query === '(min-width: 1280px)',
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+      }),
+    });
+    terminalMounts.count = 0;
+    try {
+      const coding = paneAdaptationFromLayoutTab(
+        {
+          id: 'coding',
+          label: 'Coding',
+          component: { kind: 'builtin-component', name: 'coding' },
+        },
+        {
+          layoutSlug: 'coding',
+          instanceScope: 'project:project-uuid:source:builtin:coding',
+          modeContextRequirement: { project: true, source: true },
+          boundContext: {
+            projectId: 'project-uuid',
+            sourceId: 'builtin:coding',
+          },
+        },
+      )!;
+      const terminal =
+        createWorkspaceCodingTerminalPaneInstance('project-uuid')!;
+      catalogMock.mockReturnValue({
+        projectId: 'project-uuid',
+        projectSlug: 'project-route',
+        entries: [
+          {
+            instance: coding.instance,
+            availability: { state: 'available' },
+            descriptor: coding.descriptor,
+          },
+          {
+            instance: terminal,
+            availability: { state: 'available' },
+            descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+          },
+        ],
+      });
+      mobileMock.mockReturnValue(false);
+      layoutQueryMock.mockReturnValue({
+        data: {
+          type: 'coding',
+          config: { workingDirectory: '/repo/workspace' },
+        },
+      });
+      render(
+        <ProjectLayoutRenderer
+          projectSlug="project-route"
+          layoutSlug="coding"
+        />,
+      );
+      await act(async () => undefined);
+      drillIntoHostPane(terminal.instanceId);
+      await act(async () => undefined);
+      // Past the fold the Terminal is the lower panel's: one on the page,
+      // and one mount in all — the host was never handed it, not even for
+      // the render before the URL's `?pane=` became the panel.
+      expect(screen.getAllByText('Terminal pane /repo/workspace')).toHaveLength(
+        1,
+      );
+      expect(terminalMounts.count).toBe(1);
+      expect(
+        document
+          .querySelector('.coding-workbench__lower')
+          ?.getAttribute('data-active'),
+      ).toBe('true');
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: matchMedia,
+      });
+    }
   });
 });

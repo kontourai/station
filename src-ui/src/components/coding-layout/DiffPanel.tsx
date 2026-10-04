@@ -35,10 +35,12 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { DiffCommentThread } from './DiffCommentThread';
 import './DiffPanel.css';
+import { createPortal } from 'react-dom';
 import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
 } from '../../performance/interactive-workspace-performance-hooks';
+import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { SkeletonBlock } from '../state';
 import {
   CollapseAllGlyph,
@@ -721,71 +723,93 @@ export function ObservedDiffPanel({
     />
   );
 
+  // The counts and the four icon tools, drawn in one of two places. Inside a
+  // host that draws the pane's head itself (the Coding layout's side panel,
+  // #3046 round), the head names the pane: the counts join it after the
+  // name and the tools before the host's close, and the pane draws no row of
+  // its own. On its own, the pane draws them as one quiet row. Either way
+  // the tools are icon-only, named and tipped; the two toggles say which way
+  // they are set (`aria-pressed`). The host keeps its own ⋯ (pop out,
+  // remove): the pane has no overflow to merge it into.
+  const headSlots = usePaneHeadSlots();
+  const stats = (
+    <span className="diff-stat">
+      <span className="diff-stat__files">
+        {files.length} {files.length === 1 ? 'file' : 'files'}
+      </span>
+      <span className="diff-stat__additions">+{totalCounts.additions}</span>
+      <span className="diff-stat__deletions">−{totalCounts.deletions}</span>
+    </span>
+  );
+  const renderTools = (placement: 'head' | 'bar') => (
+    <div
+      className={`diff-panel__tools${placement === 'head' ? ' diff-panel__tools--head' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={collapseAllFiles}
+        title="Collapse all files"
+        aria-label="Collapse all files"
+        className="diff-tool"
+      >
+        <CollapseAllGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={expandAllFiles}
+        title="Expand all files"
+        aria-label="Expand all files"
+        className="diff-tool"
+      >
+        <ExpandAllGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
+        }
+        title="Split view"
+        aria-label="Split view"
+        aria-pressed={diffStyle === 'split'}
+        className="diff-tool"
+      >
+        <ColumnsGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => setWrap(!wrap)}
+        title="Wrap lines"
+        aria-label="Wrap lines"
+        aria-pressed={wrap}
+        className="diff-tool"
+      >
+        <WrapGlyph />
+      </button>
+    </div>
+  );
+
   return (
     <div
       ref={performanceSurfaceRef}
       className="diff-panel"
       data-station-performance-surface="worktree-diff"
     >
-      {/* One row: the counts, then four icon tools. The pane head names the
-          pane; nothing here repeats it. Two of the tools are toggles and say
-          so (`aria-pressed`); none carries a visible word. */}
-      {hasDiff && (
-        <div className="diff-panel__bar">
-          <span className="diff-stat">
-            <span className="diff-stat__files">
-              {files.length} {files.length === 1 ? 'file' : 'files'}
-            </span>
-            <span className="diff-stat__additions">
-              +{totalCounts.additions}
-            </span>
-            <span className="diff-stat__deletions">
-              −{totalCounts.deletions}
-            </span>
-          </span>
-          <div className="diff-panel__tools">
-            <button
-              type="button"
-              onClick={collapseAllFiles}
-              title="Collapse all files"
-              aria-label="Collapse all files"
-              className="diff-tool"
-            >
-              <CollapseAllGlyph />
-            </button>
-            <button
-              type="button"
-              onClick={expandAllFiles}
-              title="Expand all files"
-              aria-label="Expand all files"
-              className="diff-tool"
-            >
-              <ExpandAllGlyph />
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
-              }
-              title="Split view"
-              aria-label="Split view"
-              aria-pressed={diffStyle === 'split'}
-              className="diff-tool"
-            >
-              <ColumnsGlyph />
-            </button>
-            <button
-              type="button"
-              onClick={() => setWrap(!wrap)}
-              title="Wrap lines"
-              aria-label="Wrap lines"
-              aria-pressed={wrap}
-              className="diff-tool"
-            >
-              <WrapGlyph />
-            </button>
+      {headSlots ? (
+        <>
+          {headSlots.leading && hasDiff
+            ? createPortal(stats, headSlots.leading)
+            : null}
+          {headSlots.trailing && hasDiff
+            ? createPortal(renderTools('head'), headSlots.trailing)
+            : null}
+        </>
+      ) : (
+        hasDiff && (
+          <div className="diff-panel__bar">
+            {stats}
+            {renderTools('bar')}
           </div>
-        </div>
+        )
       )}
       <div className="diff-panel__body">
         {loading && <SkeletonBlock count={2} label="Loading diff" />}

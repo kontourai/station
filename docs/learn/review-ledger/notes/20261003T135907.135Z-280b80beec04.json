@@ -1,0 +1,7 @@
+{
+  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Upstream merge moved the device-settings contract bytes; this branch's addition there is the codingPanels per-session record (composite, direct-manipulation key) already described in placement.md; the settings architecture's envelope, migration and export claims are unchanged. No prose change.","inputs":["src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

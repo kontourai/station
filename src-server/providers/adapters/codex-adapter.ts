@@ -31,6 +31,7 @@ import {
   harnessAnswerTexts,
   validateHarnessQuestionAnswers,
 } from '@kontourai/station-shared/harness-questions';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -85,6 +86,7 @@ import {
   snapshotSessionSourceAffinity,
 } from '../sessions/session-source-affinity.js';
 import { readLeadingLine } from '../sessions/transcript-file-io.js';
+import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
   codexRunningChildTurnId,
@@ -195,6 +197,11 @@ interface CodexAdapterOptions {
    * never a thrown/blocked session start.
    */
   mintStationControlMcpAuth?: (
+    threadId: string,
+    tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
+    allowedTools?: readonly string[],
+  ) => string | undefined;
+  mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
@@ -2232,7 +2239,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (toolServers === undefined) return {};
 
     const hasBuiltinStationControl = toolServers.some(
-      (server) => server.id === 'station-control',
+      (server) =>
+        builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
+        'station-control',
     );
     // Only mint (and therefore only ever hand out) a station-control MCP
     // token when the resolved toolServers actually include it — a session
@@ -2264,9 +2273,27 @@ export class CodexAdapter implements ProviderAdapterShape {
           : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
+    const knowledge = toolServers.find(
+      (server) =>
+        builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
+        'station-knowledge',
+    );
+    const selectedKnowledgeTools = knowledge?.disabledTools?.length
+      ? (knowledge.allowedTools ?? knowledge.toolNames ?? []).filter(
+          (name) => !knowledge.disabledTools!.includes(name),
+        )
+      : knowledge?.allowedTools;
+    const stationKnowledgeMcpUrl = knowledge
+      ? this.options.mintStationKnowledgeMcpAuth?.(
+          input.threadId,
+          input.tenantExecutionContext,
+          selectedKnowledgeTools,
+        )
+      : undefined;
     const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
       toolServers,
       stationControlMcpUrl,
+      stationKnowledgeMcpUrl,
     );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
