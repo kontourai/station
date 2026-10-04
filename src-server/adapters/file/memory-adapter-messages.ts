@@ -151,7 +151,9 @@ export async function addStoredMessage({
     ...parsedMessage,
     metadata: {
       ...(parsedMessage as UIMessageWithMetadata).metadata,
-      timestamp: Date.now(),
+      timestamp:
+        (parsedMessage as UIMessageWithMetadata).metadata?.timestamp ??
+        Date.now(),
       modelMetadata: context?.modelMetadata,
       usage: context?.usage,
       model: context?.model,

@@ -1297,10 +1297,17 @@ omit numeric progress, and remain locked; a reported zero remains eligible.
 
 `POST /api/analytics/rescan` returns
 `{success: true, data: stats, message: "Full rescan completed"}`. It scans
-Agent file-memory transcripts and folds available orchestration usage, excluding
-Session IDs already counted in file memory. It merges the rescan with retained
-stats rather than resetting every lifetime counter to zero. An unavailable
-orchestration source is not a measured empty source; inspect coverage metadata.
+Agent file-memory transcripts and folds available orchestration usage into a new
+retained-source projection. Corrected or deleted records decrease current totals
+and remove obsolete buckets. Pre-projection saved summaries remain separate,
+unverified `legacySummary` evidence. Only canonical Station-agent relay provenance
+selects a saved-message primary ledger; a matching conversation ID alone does not
+exclude external-engine usage. `unallocated` exposes missing or ambiguous date,
+model, principal and provider attribution. UTC buckets contain recorded facts,
+not precise consumption dates. Optional cost components and `tokenReports`
+preserve measured zero versus absence. An unavailable orchestration source is not
+a measured empty source; inspect snapshot and coverage metadata. See the
+[stats contract](../../packages/contracts/src/usage-stats.ts).
 
 ## Monitoring
 

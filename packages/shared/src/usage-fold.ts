@@ -1,3 +1,11 @@
+import type { ProviderPromptCacheInclusivity } from '@kontourai/station-contracts/usage-stats';
+
+export type { ProviderPromptCacheInclusivity } from '@kontourai/station-contracts/usage-stats';
+
+import {
+  isPrincipalRef,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -259,11 +267,6 @@ export function providerCostScope(
  * the one outcome a usage label must never produce (station#4196's 212x
  * under-report is the disjoint-side twin of that failure).
  */
-export type ProviderPromptCacheInclusivity =
-  | 'disjoint'
-  | 'subset'
-  | 'unverified';
-
 export const PROVIDER_PROMPT_CACHE_INCLUSIVITY: ReadonlyMap<
   string,
   ProviderPromptCacheInclusivity
@@ -472,6 +475,197 @@ function readSessionConfiguredModel(
   return undefined;
 }
 
+/** Retained record attribution, not a claim about the exact time of consumption. */
+export interface UsageObservation extends CacheAwareTokenComponents {
+  sourceEventId: string;
+  recordedAt?: string;
+  modelId?: string;
+  provider?: string;
+  principal?: PrincipalRef;
+  messages: number;
+  reportedCostUsd?: number;
+  estimatedCostUsd?: number;
+}
+
+export interface SessionUsageObservationProjection {
+  usage: SessionUsageAggregate;
+  observations: UsageObservation[];
+  unmeasuredCostTurns: number;
+}
+
+type AllocatedFigure =
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'reportedCostUsd';
+
+/** Uses the same validated figures and scope decisions as the session fold. */
+class UsageObservationCollector {
+  private modelId?: string;
+  private modelRevision = 0;
+  private figures = new Map<AllocatedFigure, Map<string, UsageObservation>>();
+  private previous = new Map<
+    AllocatedFigure,
+    {
+      value: number;
+      modelRevision: number;
+      modelId?: string;
+      principalId?: string;
+    }
+  >();
+  private committedCosts: UsageObservation[] = [];
+  private activity: UsageObservation[] = [];
+  private turnModels = new Map<string, string>();
+  private turnUsageObservations = new Map<string, number>();
+  private turnPrincipals = new Map<string, PrincipalRef>();
+  private ambiguousPrincipalTurns = new Set<string>();
+  private costTurns = new Set<string>();
+  private completedTurns = new Set<string>();
+
+  constructor(events: readonly CanonicalRuntimeEvent[]) {
+    for (const event of events) {
+      if (event.method === 'token-usage.updated' && event.turnId)
+        this.turnUsageObservations.set(
+          event.turnId,
+          (this.turnUsageObservations.get(event.turnId) ?? 0) + 1,
+        );
+      if (event.method === 'turn.started' && isPrincipalRef(event.principal)) {
+        const previous = this.turnPrincipals.get(event.turnId);
+        if (previous && previous.id !== event.principal.id)
+          this.ambiguousPrincipalTurns.add(event.turnId);
+        this.turnPrincipals.set(event.turnId, event.principal);
+      }
+      if (event.method === 'turn.completed') {
+        const model = event.metadata?.reportedModel;
+        if (typeof model === 'string' && model)
+          this.turnModels.set(event.turnId, model);
+      }
+    }
+  }
+
+  observe(event: CanonicalRuntimeEvent): void {
+    if (event.method === 'session.configured') {
+      const model = readSessionConfiguredModel(event);
+      if (model && model !== this.modelId) {
+        this.modelId = model;
+        this.modelRevision += 1;
+      }
+    }
+    if (event.method === 'session.started') {
+      // Tokens are thread cumulative; only the cost process epoch restarts.
+      const costs = this.figures.get('reportedCostUsd');
+      if (costs)
+        for (const cost of costs.values()) this.committedCosts.push(cost);
+      this.figures.delete('reportedCostUsd');
+      this.previous.delete('reportedCostUsd');
+    }
+    if (event.method === 'turn.completed') {
+      this.completedTurns.add(event.turnId);
+      this.activity.push({ ...this.attribution(event), messages: 1 });
+    }
+  }
+
+  private attribution(event: CanonicalRuntimeEvent): UsageObservation {
+    return {
+      sourceEventId: event.eventId,
+      recordedAt: event.createdAt,
+      provider: event.provider,
+      modelId:
+        (event.turnId &&
+          (event.method !== 'token-usage.updated' ||
+            this.turnUsageObservations.get(event.turnId) === 1) &&
+          this.turnModels.get(event.turnId)) ||
+        this.modelId,
+      principal:
+        event.turnId && this.ambiguousPrincipalTurns.has(event.turnId)
+          ? undefined
+          : isPrincipalRef(event.principal)
+            ? event.principal
+            : event.turnId
+              ? this.turnPrincipals.get(event.turnId)
+              : undefined,
+      messages: 0,
+    };
+  }
+
+  figure(
+    event: CanonicalRuntimeEvent,
+    field: AllocatedFigure,
+    value: number | undefined,
+    cumulative: boolean,
+  ): void {
+    if (value === undefined) return;
+    if (field === 'reportedCostUsd' && event.turnId)
+      this.costTurns.add(event.turnId);
+    let figures = this.figures.get(field);
+    if (!figures) {
+      figures = new Map();
+      this.figures.set(field, figures);
+    }
+    const previous = this.previous.get(field);
+    const row = this.attribution(event);
+    let amount = value;
+    if (cumulative) {
+      if (previous && value < previous.value) {
+        // A corrected cumulative total cannot tell us which earlier records
+        // to subtract from. Replace the distribution with an unallocated fact.
+        figures.clear();
+        delete row.recordedAt;
+        delete row.modelId;
+        delete row.principal;
+      } else {
+        amount = value - (previous?.value ?? 0);
+        if (
+          !previous ||
+          previous.modelRevision !== this.modelRevision ||
+          previous.modelId !== row.modelId
+        ) {
+          // Initial thread/process baselines and intervals crossing a model
+          // change cannot establish a per-model or per-person consumption split.
+          delete row.modelId;
+          delete row.principal;
+        }
+        if (previous?.principalId !== row.principal?.id) delete row.principal;
+      }
+      this.previous.set(field, {
+        value,
+        modelRevision: this.modelRevision,
+        modelId: this.attribution(event).modelId,
+        principalId: this.attribution(event).principal?.id,
+      });
+    }
+    figures.set(event.eventId, { ...row, [field]: amount });
+  }
+
+  finish(usage: SessionUsageAggregate): SessionUsageObservationProjection {
+    return {
+      usage,
+      observations: [
+        ...this.activity,
+        ...this.committedCosts,
+        ...Array.from(this.figures.values()).flatMap((figures) => [
+          ...figures.values(),
+        ]),
+      ],
+      unmeasuredCostTurns: [...this.completedTurns].filter(
+        (turnId) => !this.costTurns.has(turnId),
+      ).length,
+    };
+  }
+}
+
+/** One linear fold supplies canonical totals and their conservative record allocation. */
+export function foldUsageObservationProjection(
+  events: CanonicalRuntimeEvent[],
+  onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
+): SessionUsageObservationProjection {
+  const collector = new UsageObservationCollector(events);
+  const usage = foldUsageEventsInner(events, onDroppedFigure, collector);
+  return collector.finish(usage);
+}
+
 /**
  * Pure, deterministic fold of a durable `CanonicalRuntimeEvent` stream (the
  * orchestration EventStore) into session-level usage/activity totals.
@@ -523,6 +717,14 @@ export function foldUsageEvents(
   events: CanonicalRuntimeEvent[],
   onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
 ): SessionUsageAggregate {
+  return foldUsageEventsInner(events, onDroppedFigure);
+}
+
+function foldUsageEventsInner(
+  events: CanonicalRuntimeEvent[],
+  onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
+  observations?: UsageObservationCollector,
+): SessionUsageAggregate {
   const aggregate = emptyAggregate();
   /** Cost committed by engine processes that have already been superseded. */
   let committedCostUsd: number | undefined;
@@ -531,6 +733,7 @@ export function foldUsageEvents(
 
   for (const event of events) {
     if (event.provider) aggregate.provider = event.provider;
+    observations?.observe(event);
     switch (event.method) {
       case 'token-usage.updated': {
         // Producer boundaries own the malformed-figure signal, and every
@@ -583,6 +786,35 @@ export function foldUsageEvents(
           'cacheWriteTokens',
           event,
           onDroppedFigure,
+        );
+
+        observations?.figure(event, 'inputTokens', promptTokens, cumulative);
+        observations?.figure(
+          event,
+          'outputTokens',
+          completionTokens,
+          cumulative,
+        );
+        observations?.figure(event, 'totalTokens', totalTokens, cumulative);
+        observations?.figure(
+          event,
+          'cacheReadTokens',
+          cacheReadTokens,
+          cumulative,
+        );
+        observations?.figure(
+          event,
+          'cacheWriteTokens',
+          cacheWriteTokens,
+          cumulative,
+        );
+        observations?.figure(
+          event,
+          'reportedCostUsd',
+          isUsableCost(event.reportedCostUsd)
+            ? event.reportedCostUsd
+            : undefined,
+          providerCostScope(event.provider) === 'engine-process-cumulative',
         );
 
         if (promptTokens !== undefined) {

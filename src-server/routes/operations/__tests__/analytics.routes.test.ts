@@ -99,22 +99,29 @@ test.each([
 test.each(['incrementalUpdate', 'applyEnrichmentUsage'] as const)(
   '%s cannot certify cost coverage before the changed message is rescanned',
   async (method) => {
-    const aggregator = new UsageAggregator(
-      makeHome('station-profile-cost-update-'),
-      {
-        get: () => ({
-          listSessionUsage: () => [
-            {
-              threadId: 'engine',
-              conversationId: 'engine',
-              usage: { turns: 60, toolCalls: 0, reportedCostUsd: 0 },
-            },
-          ],
-        }),
-      },
-    );
+    const home = makeHome('station-profile-cost-update-');
+    const aggregator = new UsageAggregator(home, {
+      get: () => ({
+        listSessionUsage: () => [
+          {
+            threadId: 'engine',
+            conversationId: 'engine',
+            usage: { turns: 60, toolCalls: 0, reportedCostUsd: 0 },
+          },
+        ],
+      }),
+    });
     const app = createAnalyticsRoutes(aggregator);
     await app.request('/achievements');
+    const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'one.ndjson'),
+      JSON.stringify({
+        role: 'assistant',
+        metadata: { usage: { inputTokens: 10 } },
+      }),
+    );
     await aggregator[method](
       { role: 'assistant', metadata: { usage: { inputTokens: 10 } } },
       'sample',
@@ -129,7 +136,7 @@ test.each(['incrementalUpdate', 'applyEnrichmentUsage'] as const)(
   },
 );
 
-test('retained token measurements block a cost milestone even when message counts match', async () => {
+test('a corrected current token figure does not retain an obsolete cost-coverage gap', async () => {
   const usage = {
     turns: 60,
     toolCalls: 0,
@@ -155,8 +162,8 @@ test('retained token measurements block a cost milestone even when message count
   const milestone = body.data.find(
     (item: { id: string }) => item.id === 'cost-conscious',
   );
-  expect(milestone.unlocked).toBe(false);
-  expect(milestone.measurementUnavailableReason).toBeTruthy();
+  expect(milestone.unlocked).toBe(true);
+  expect(milestone.measurementUnavailableReason).toBeUndefined();
 });
 
 test.each([undefined, 0])(
@@ -231,12 +238,18 @@ test('usage reads refresh engine totals and achievements after the snapshot expi
   }
 });
 
-test('reset leaves a valid aggregate that can accept the next message', async () => {
-  const aggregator = new UsageAggregator(makeHome('station-profile-reset-'));
-  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'one');
+test('reset leaves a usable projection rebuilt from the next retained message', async () => {
+  const home = makeHome('station-profile-reset-');
+  const aggregator = new UsageAggregator(home);
   await aggregator.reset();
-  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'two');
-  expect((await aggregator.loadStats()).lifetime.totalMessages).toBe(1);
+  const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, 'one.ndjson'),
+    JSON.stringify({ role: 'assistant' }),
+  );
+  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'one');
+  expect((await aggregator.readStats()).lifetime.totalMessages).toBe(1);
 });
 
 function createMockAggregator() {
