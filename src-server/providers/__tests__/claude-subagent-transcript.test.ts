@@ -2,7 +2,8 @@
  * #3163: a Claude subagent's transcript, read through the REAL SDK reader
  * (`getSubagentMessages`) from a transcript laid out as Claude Code writes it.
  */
-import { appendFileSync, mkdirSync, symlinkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, mkdirSync, renameSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -264,5 +265,76 @@ describe('#3163 Claude subagent transcript', () => {
     // The skipped record keeps its place in the message numbering.
     const [big, after] = outcome.page.entries.slice(-2);
     expect(after.message).toBe(big.message + 1);
+  });
+
+  describe('a cached path is re-checked on every read', () => {
+    /** A profile whose transcript sits one workflow level below `subagents`. */
+    function workflowProfile() {
+      const profile = installClaudeSubagentTranscript(makeTempDir, {
+        asProfile: true,
+      });
+      const subagents = join(
+        profile.configDir,
+        'projects',
+        '-workspace-example',
+        TRANSCRIPT_SESSION_ID,
+        'subagents',
+      );
+      const workflow = join(subagents, 'workflows', 'wf_3163');
+      mkdirSync(workflow, { recursive: true });
+      const file = join(workflow, `agent-${TRANSCRIPT_AGENT_ID}.jsonl`);
+      renameSync(join(subagents, `agent-${TRANSCRIPT_AGENT_ID}.jsonl`), file);
+      return { configHome: profile.configDir, subagents, workflow, file };
+    }
+
+    async function read(configHome: string) {
+      return readClaudeSubagentTranscriptPage(
+        { ...ref, configHome },
+        { offset: 0, limit: 30 },
+      );
+    }
+
+    /**
+     * Moves `path` OUT of the config home and leaves a symlink to it in its
+     * place, so the only way to the transcript is through the link.
+     */
+    function swapForLink(path: string) {
+      const real = join(makeTempDir('station-claude-3163-moved-'), 'target');
+      renameSync(path, real);
+      symlinkSync(real, path);
+    }
+
+    test('the file swapped for a symlink', async () => {
+      const tree = workflowProfile();
+      expect((await read(tree.configHome)).status).toBe('found');
+      swapForLink(tree.file);
+      expect(await read(tree.configHome)).toEqual({ status: 'unavailable' });
+    });
+
+    test('the subagents directory swapped for a symlink', async () => {
+      const tree = workflowProfile();
+      expect((await read(tree.configHome)).status).toBe('found');
+      swapForLink(tree.subagents);
+      expect(await read(tree.configHome)).toEqual({ status: 'unavailable' });
+    });
+
+    test('a workflow level swapped for a symlink', async () => {
+      const tree = workflowProfile();
+      expect((await read(tree.configHome)).status).toBe('found');
+      swapForLink(tree.workflow);
+      expect(await read(tree.configHome)).toEqual({ status: 'unavailable' });
+    });
+
+    test.skipIf(process.platform === 'win32')(
+      'the file swapped for a FIFO is refused without blocking',
+      async () => {
+        const tree = workflowProfile();
+        expect((await read(tree.configHome)).status).toBe('found');
+        renameSync(tree.file, `${tree.file}-real`);
+        execFileSync('mkfifo', [tree.file]);
+        expect(await read(tree.configHome)).toEqual({ status: 'unavailable' });
+      },
+      5_000,
+    );
   });
 });

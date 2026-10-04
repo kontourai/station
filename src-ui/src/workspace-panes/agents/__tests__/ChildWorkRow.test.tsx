@@ -440,6 +440,35 @@ test('#3163: a running child’s open transcript re-reads when the child reports
   vi.useRealTimers();
 });
 
+test('#3163: a child reporting every 500 ms for 10 s still gets its transcript re-read, at most every 2 s', () => {
+  vi.useFakeTimers();
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
+  );
+  const mountAt = (progress: string) => (
+    <ul>
+      <ChildWorkRow
+        row={row({ transcript: TRANSCRIPT, progress })}
+        now={100_000}
+        showProvenance={false}
+        onOpenSession={onOpenSession}
+      />
+    </ul>
+  );
+  const view = render(mountAt('step 0'));
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  for (let step = 1; step <= 20; step++) {
+    view.rerender(mountAt(`step ${step}`));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+  }
+  // 10 s of reports every 500 ms: re-read, but throttled to one per 2 s.
+  expect(refetch.mock.calls.length).toBeGreaterThanOrEqual(1);
+  expect(refetch.mock.calls.length).toBeLessThanOrEqual(5);
+  vi.useRealTimers();
+});
+
 test('#3163: a settled child’s transcript offers no Refresh', () => {
   useChildWorkTranscriptQuery.mockReturnValue(
     transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),

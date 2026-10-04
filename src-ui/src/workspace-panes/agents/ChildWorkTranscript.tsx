@@ -13,8 +13,8 @@ import { SkeletonBlock } from '../../components/state';
  * session and the child. Pages load on request, never by polling.
  */
 
-/** How long a reporting child must stay quiet before its transcript re-reads. */
-const TRANSCRIPT_REFRESH_DEBOUNCE_MS = 2_000;
+/** A reporting child's transcript re-reads at most this often. */
+const TRANSCRIPT_REFRESH_THROTTLE_MS = 2_000;
 
 function failureText(error: unknown): string {
   if (error instanceof StationHttpError && error.status === 503)
@@ -113,18 +113,27 @@ export function ChildWorkTranscript({
   const transcript = useChildWorkTranscriptQuery({ threadId, childId });
   const { refetch } = transcript;
   const seenRevision = useRef(revision);
+  const pendingRefresh = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (seenRevision.current === revision) return;
     seenRevision.current = revision;
     // Including the change that settles it: its last messages land then.
-    // Debounced: a chatty child reports progress every few hundred ms, and
-    // each re-read walks the pages loaded so far.
-    const timer = setTimeout(
-      () => void refetch(),
-      TRANSCRIPT_REFRESH_DEBOUNCE_MS,
-    );
-    return () => clearTimeout(timer);
+    // Throttled, not debounced: a chatty child reports progress every few
+    // hundred ms, so one re-read at most every 2 s, and a change that lands
+    // while one is pending rides on it (the read happens after it). A
+    // debounce would reset on every report and never fire.
+    if (pendingRefresh.current !== null) return;
+    pendingRefresh.current = setTimeout(() => {
+      pendingRefresh.current = null;
+      void refetch();
+    }, TRANSCRIPT_REFRESH_THROTTLE_MS);
   }, [revision, refetch]);
+  useEffect(
+    () => () => {
+      if (pendingRefresh.current !== null) clearTimeout(pendingRefresh.current);
+    },
+    [],
+  );
   const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
   return (
     <section

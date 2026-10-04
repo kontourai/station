@@ -26,15 +26,20 @@ import { redactInlineData } from '../model-image-attachments.js';
  *
  * Nothing here builds a path from request input: the session and agent ids
  * are validated by the contract (a UUID and one path-safe segment), and the
- * file name is fixed. Below the config home no symlink is followed: each
- * directory is checked with `lstat` (again on every read of a cached path),
- * and the file is opened with `O_NOFOLLOW` and must be a regular file. The
- * config home itself may be a link (a dotfiles-managed `~/.claude`).
+ * file name is fixed. Symlinks below the config home are refused by checks
+ * made immediately before the open: each directory must be a real one
+ * (`lstat`, repeated on every read of a cached path), the file must be a
+ * regular file by `lstat`, it is opened with `O_NOFOLLOW` (the last
+ * component only) and `O_NONBLOCK` (so a FIFO cannot block the open), and
+ * the open handle must be a regular file. These checks are not atomic
+ * against a concurrent swap by a process running as the same user: a
+ * directory swapped for a link between the check and the open is followed.
+ * The config home itself may be a link (a dotfiles-managed `~/.claude`).
  *
  * The file is read in its own order, so it can show what the engine's own
  * reader hides: a branch abandoned by a retry or edit, and a compaction
  * summary. Each line is read as bytes and never buffered past 4 MiB; a
- * longer record becomes one `too-large` entry.
+ * longer record, of any type, becomes one `too-large` entry.
  *
  * Read-only and bounded: a page is at most `limit` messages, a message adds
  * at most `CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX` entries, inline
@@ -58,7 +63,7 @@ const SUBAGENT_DIR_MAX_DEPTH = 3;
 const TRANSCRIPT_LINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Bytes read per `read()` call. */
 const READ_CHUNK_BYTES = 64 * 1024;
-/** Resolved transcript paths kept per process (oldest evicted first). */
+/** Resolved transcript paths kept per process (a FIFO cache: oldest inserted evicted first). */
 const RESOLVED_PATHS_MAX = 256;
 
 function bounded(text: string): { text: string; truncated?: true } {
@@ -277,9 +282,16 @@ function claudeGlobalConfigHome(): string {
  * `O_NOFOLLOW` (Windows), the handle's own stat still refuses a non-file.
  */
 async function openTranscript(path: string): Promise<FileHandle | undefined> {
+  // A regular file before the open: a FIFO or device is refused unopened.
+  const linkStat = await lstat(path).catch(() => undefined);
+  if (!linkStat?.isFile()) return undefined;
   const handle = await open(
     path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    constants.O_RDONLY |
+      (constants.O_NOFOLLOW ?? 0) |
+      // Reads of a regular file are unaffected; a FIFO swapped in after the
+      // lstat opens at once instead of waiting for a writer.
+      (constants.O_NONBLOCK ?? 0),
   ).catch(() => undefined);
   if (!handle) return undefined;
   const stat = await handle.stat().catch(() => undefined);
