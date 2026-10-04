@@ -7008,6 +7008,22 @@ describe('OrchestrationService', () => {
       usageLimit: true,
       autoResume: false,
     });
+    // An unreadable setting omits the field; it never fails the read.
+    const options = (service as any).options;
+    const original = options.resolveUsageLimitAutoResume;
+    options.resolveUsageLimitAutoResume = async () => {
+      throw new Error('config unreadable');
+    };
+    try {
+      const unreadable = await service.readSession(threadId);
+      expect(unreadable?.recovery).toMatchObject({
+        outcome: 'armed',
+        usageLimit: true,
+      });
+      expect(unreadable?.recovery).not.toHaveProperty('autoResume');
+    } finally {
+      options.resolveUsageLimitAutoResume = original;
+    }
   });
 
   test("RECOVERY TELEMETRY DEFECT: the emitted event carries the classifier's verdict, not a constant", () => {

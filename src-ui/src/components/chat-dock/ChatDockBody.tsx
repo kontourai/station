@@ -1163,6 +1163,7 @@ export function ChatDockBody({
             onSendMessageNow: (messageId: string) =>
               sendPendingMessageNow(apiBase, activeSession.id, messageId),
             failure: activeSession.queuedMessageFailure,
+            heldByUsageLimit: activeSession.usageLimitStopped === true,
             // UX audit T3: the automatic drain only fires on a later
             // `turn.completed`/`runtime.error`. A follow-up refused for a
             // reason the user has since fixed (a workspace binding, a paused

@@ -18,6 +18,7 @@ import type {
   ClientOrigin,
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -4135,11 +4136,7 @@ export class OrchestrationService {
     // it run unattended now; the coordinator applies it only at the reset.
     const recovery =
       latestRecovery?.usageLimit && latestRecovery.outcome === 'armed'
-        ? {
-            ...latestRecovery,
-            autoResume:
-              (await this.options.resolveUsageLimitAutoResume?.()) === true,
-          }
+        ? await this.withUsageLimitAutoResume(latestRecovery)
         : latestRecovery;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
@@ -4172,6 +4169,24 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  /**
+   * #3157: an unreadable setting omits `autoResume` rather than failing the
+   * session read; the coordinator separately treats it as off.
+   */
+  private async withUsageLimitAutoResume(
+    recovery: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    try {
+      return {
+        ...recovery,
+        autoResume:
+          (await this.options.resolveUsageLimitAutoResume?.()) === true,
+      };
+    } catch {
+      return recovery;
+    }
   }
 
   // Conversation lineage/handoff/history forwarders (epic archive#4024,
