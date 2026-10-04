@@ -145,6 +145,11 @@
       "name": "station-autoland",
       "color": "0e8a16",
       "description": "Standing owner intent to arm auto-merge after current-head CI succeeds"
+    },
+    {
+      "name": "advisory-review",
+      "color": "5319e7",
+      "description": "Request one advisory engine review of the current head (spends review credits)"
     }
   ]
 }
