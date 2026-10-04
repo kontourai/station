@@ -820,6 +820,7 @@ export {
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCoreUpdateStatusQuery,
   useCreateACPConnectionMutation,
   useCreateAgentDetailedMutation,

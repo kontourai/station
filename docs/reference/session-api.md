@@ -593,6 +593,34 @@ not proof of completion or failure. Poll with a deadline for the returned
 requests. Accepted/coalesced publication is owned by the orchestration service;
 a timeout or missing terminal event must remain unverified, not inferred success.
 
+### Conversation usage tree (`GET /conversations/:conversationId/usage-tree`)
+
+One conversation's usage with its children, as a
+[`ThreadUsageTree`](../../packages/contracts/src/thread-usage-tree.ts). The
+root holds the conversation's own turns (every session in its lineage). Its
+children are the engine subagents those sessions reported and the tasks
+Station delegated from it (sessions whose launch named this conversation as
+`parentTaskId`), nested recursively. Each child carries its own figures and a
+`relation` for tokens and for cost: `added` (in the total),
+`included-in-parent` (the parent's figure already contains it) or
+`not-reported` (not in the total, which is then partial). `total` lists why it
+is partial in `partialReasons`.
+
+Tokens are input + output as each engine reported them; cache reads and
+writes are listed separately and are not in `totalTokens`. Cost stays in
+buckets: reported cost by currency, Station estimates by currency and price
+snapshot. Buckets are never summed together, and reported cost is never mixed
+with estimates.
+
+The read is authorized like the conversation transcript: every session in a
+conversation's lineage must be readable. A delegated task you can't read is
+counted as missing (the total turns partial) and never described. A delegate
+that ran on a paired Station is shown from this Station's own record, with
+`not-reported` usage, and no peer is contacted. Responses are
+`Cache-Control: private, no-store`. `404` means no conversation you can read;
+`422` means the tree is past its bound (200 nodes, delegates nested 8 deep, or
+5,000 usage observations) and is refused rather than cut.
+
 ### Reading assistant turn content programmatically
 
 For ACP-connected and other streaming-capable providers, assistant text arrives as a

@@ -408,6 +408,10 @@ import {
   type SkillExperienceSource,
   SkillExperienceUnavailableError,
 } from './skill-experience-runtime.js';
+import {
+  readThreadUsageTree,
+  type ThreadUsageTreeReadOutcome,
+} from './thread-usage-tree-read.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -4946,6 +4950,81 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+    );
+  }
+
+  /**
+   * One conversation's usage as a tree: its own sessions' receipts, the
+   * subagents they reported, and the delegated tasks launched from it, with
+   * a roll-up total that says what it leaves out. Each conversation is
+   * authorized whole, by {@link canUserReadConversation}; bounded, and
+   * refused past its bound (`too-large`) rather than cut.
+   */
+  readThreadUsageTree(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ): ThreadUsageTreeReadOutcome {
+    this.initialize();
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return { status: 'not-found' };
+    const sessionFor = (threadId: string) =>
+      this.sessionReadModel.get(threadId) ??
+      eventStore.readSessionByThread(threadId);
+    return readThreadUsageTree(
+      {
+        // Receipts carry a Station id for the cross-Station rollup; the tree
+        // reads only this Station's sessions and never returns the id.
+        stationId: 'local',
+        canReadConversation: (id, scope) =>
+          this.canUserReadConversation(id, scope),
+        conversationThreadIds: (id) =>
+          eventStore.conversationSessions(id).map((entry) => entry.sessionId),
+        listUsageReceiptEventsForThreads: (threadIds, limit) =>
+          eventStore.listUsageReceiptEventsForThreads(threadIds, limit),
+        listChildWorkHistoryForThreads: (threadIds) =>
+          eventStore.listChildWorkHistoryForThreads(threadIds),
+        listDelegatedSessionThreads: (parentTaskIds, limit) =>
+          eventStore.listDelegatedSessionThreads(parentTaskIds, limit),
+        describeDelegate: (threadId) => {
+          const persisted = eventStore.readSessionByThread(threadId);
+          const loaded = this.sessionReadModel.get(threadId);
+          if (!persisted && !loaded) return undefined;
+          const provider = (loaded ?? persisted)?.provider;
+          const summary = buildOrchestrationSessionSummary({
+            persisted,
+            loaded,
+            events: eventStore
+              .listSessionProjectionEvents(threadId)
+              .map((event) => event.payload),
+            // Built only to read the delegate's own child-work projection;
+            // nothing here is emitted to a client.
+            answerability: this.observeAnswerability(
+              threadId,
+              provider,
+              new Date().toISOString(),
+            ),
+          });
+          const item = summary.childWork?.asChild;
+          if (!item) return undefined;
+          return {
+            item,
+            ...(provider ? { provider } : {}),
+            ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
+            pairedStation: summary.delegation?.environmentKind === 'peer',
+          };
+        },
+        describeConversation: (threadIds) => {
+          const latest = threadIds.at(-1);
+          const provider = latest ? sessionFor(latest)?.provider : undefined;
+          const title = eventStore.conversationTitle(threadIds);
+          return {
+            ...(provider ? { provider } : {}),
+            ...(title ? { title } : {}),
+          };
+        },
+      },
+      conversationId,
+      authority,
     );
   }
 

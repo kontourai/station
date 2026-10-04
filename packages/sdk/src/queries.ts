@@ -252,6 +252,7 @@ export {
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCreateCodingFileMutation,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,

@@ -20,7 +20,7 @@ import {
   CatalogUsagePricingSnapshotReader,
   stampUsageReceiptPrice,
 } from '../../analytics/usage-pricing-snapshot-reader.js';
-import type { EventStore } from './event-store.js';
+import type { EventStore, UsageReceiptEventRow } from './event-store.js';
 import { createIsolatedSessionTranscriptSearch } from './isolated-session-transcript-search.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists — and it avoids adding ANOTHER copy of the read-scope
@@ -246,62 +246,10 @@ export class SessionTranscriptReads {
       limit: pageSize,
     });
     const page = rows.slice(0, pageSize);
-    const receipts = page.flatMap(
-      ({ event, conversationId, taskId, model, processEpoch, accountKey }) => {
-        if (event.payload.method !== 'token-usage.updated' || !event.observedAt)
-          return [];
-        const usage = event.payload;
-        const common = {
-          ...(accountKey !== undefined ? { accountKey } : {}),
-          sourceEventId: event.id,
-          stationId,
-          provider: event.provider,
-          threadId: event.threadId,
-          ...(event.turnId ? { turnId: event.turnId } : {}),
-          conversationId,
-          ...(taskId ? { taskId } : {}),
-          ...(model ? { model } : {}),
-          occurredAt: event.createdAt,
-          observedAt: event.observedAt,
-        };
-        const tokenId =
-          providerUsageScope(event.provider) === 'session-cumulative'
-            ? `usage:${event.threadId}:${event.provider}:tokens:${processEpoch}`
-            : `usage:${event.id}:tokens`;
-        const unpricedTokenReceipt: UsageReceipt = {
-          id: tokenId,
-          ...common,
-          inputTokens: usage.promptTokens,
-          outputTokens: usage.completionTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          // Pricing is deliberately stamped onto the receipt. This read path
-          // never asks a catalog or provider for a current price: doing so
-          // would rewrite history when a catalog changes.
-          pricing: { status: 'unpriced' },
-        };
-        const tokenReceipt =
-          usage.pricingSnapshot && model
-            ? stampUsageReceiptPrice(
-                unpricedTokenReceipt,
-                new CatalogUsagePricingSnapshotReader([usage.pricingSnapshot]),
-              )
-            : unpricedTokenReceipt;
-        if (typeof usage.reportedCostUsd !== 'number') return [tokenReceipt];
-        const costId =
-          providerCostScope(event.provider) === 'engine-process-cumulative'
-            ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
-            : `usage:${event.id}:cost`;
-        return [
-          tokenReceipt,
-          {
-            id: costId,
-            ...common,
-            reportedCost: { amount: usage.reportedCostUsd, currency: 'USD' },
-            pricing: { status: 'unpriced' },
-          } satisfies UsageReceipt,
-        ];
-      },
+    // The windowed rollup counts only Station-observed receipts; a legacy row
+    // with no observation time has no place in an observation window.
+    const receipts = page.flatMap((row) =>
+      row.event.observedAt ? usageReceiptsForEventRow(row, stationId) : [],
     );
     const last = page.at(-1)?.event;
     const coverageEvidence = this.deps.listUsageCoverageEvents({
@@ -509,3 +457,76 @@ function decodeUsageCursor(
  * palette label.
  */
 export { messageSearchExcerpt } from './transcript-search-queries.js';
+
+/**
+ * The usage receipts one `token-usage.updated` row stands for: a token
+ * receipt (priced only from the snapshot captured with the event, never a
+ * current catalog), plus a reported-cost receipt when the engine reported a
+ * cost. A cumulative reporter's receipts take an id per engine process, so a
+ * later restatement replaces the earlier one instead of adding to it. Shared
+ * by the windowed rollup and the conversation usage tree.
+ */
+export function usageReceiptsForEventRow(
+  {
+    event,
+    conversationId,
+    taskId,
+    model,
+    processEpoch,
+    accountKey,
+  }: UsageReceiptEventRow,
+  stationId: string,
+): UsageReceipt[] {
+  if (event.payload.method !== 'token-usage.updated') return [];
+  const usage = event.payload;
+  const common = {
+    ...(accountKey !== undefined ? { accountKey } : {}),
+    sourceEventId: event.id,
+    stationId,
+    provider: event.provider,
+    threadId: event.threadId,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
+    conversationId,
+    ...(taskId ? { taskId } : {}),
+    ...(model ? { model } : {}),
+    occurredAt: event.createdAt,
+    ...(event.observedAt ? { observedAt: event.observedAt } : {}),
+  };
+  const tokenId =
+    providerUsageScope(event.provider) === 'session-cumulative'
+      ? `usage:${event.threadId}:${event.provider}:tokens:${processEpoch}`
+      : `usage:${event.id}:tokens`;
+  const unpricedTokenReceipt: UsageReceipt = {
+    id: tokenId,
+    ...common,
+    inputTokens: usage.promptTokens,
+    outputTokens: usage.completionTokens,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
+    // Pricing is deliberately stamped onto the receipt. This read path
+    // never asks a catalog or provider for a current price: doing so
+    // would rewrite history when a catalog changes.
+    pricing: { status: 'unpriced' },
+  };
+  const tokenReceipt =
+    usage.pricingSnapshot && model
+      ? stampUsageReceiptPrice(
+          unpricedTokenReceipt,
+          new CatalogUsagePricingSnapshotReader([usage.pricingSnapshot]),
+        )
+      : unpricedTokenReceipt;
+  if (typeof usage.reportedCostUsd !== 'number') return [tokenReceipt];
+  const costId =
+    providerCostScope(event.provider) === 'engine-process-cumulative'
+      ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
+      : `usage:${event.id}:cost`;
+  return [
+    tokenReceipt,
+    {
+      id: costId,
+      ...common,
+      reportedCost: { amount: usage.reportedCostUsd, currency: 'USD' },
+      pricing: { status: 'unpriced' },
+    } satisfies UsageReceipt,
+  ];
+}

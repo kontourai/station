@@ -87,6 +87,30 @@ live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
 [receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
 The Muse serve fixture replay also exercises per-answer usage visibility.
 
+### Usage with children
+
+The conversation statistics dialog shows **Usage with children**: one total
+for the conversation and everything that ran under it, and a breakdown (own
+turns, then each subagent and delegated task, nested) with tokens, cost, tool
+uses and duration. Each child says in words whether the total counts it. The
+read is the [conversation usage tree](../reference/session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree),
+and the per-engine rules live in
+[the tree fold](../../packages/shared/src/thread-usage-tree.ts):
+
+| Child | Tokens | Cost | Evidence |
+| --- | --- | --- | --- |
+| Station-delegated task (this Station) | Added | Added | A delegate is its own session with its own receipts |
+| Station-delegated task (paired Station) | Not counted | Not counted | Its usage is recorded on the other Station |
+| Claude Code subagent | Not counted | Already in the parent's | The SDK documents `result.usage` as main-loop only and `total_cost_usd` as covering Task subagents. A measured run matched both. A subagent's own `total_tokens` equals its last request's size, not its consumption, in recorded transcripts |
+| Codex subagent | Added | Not counted | Each child is its own thread; in the recorded collab captures the parent's cumulative total is the sum of its own calls only |
+| Muse workflow subagent | Added | Not counted | In the recorded `muse serve` captures the session's cumulative figures exclude the child's usage |
+| Any other engine | Not counted | Not counted | Undeclared; never guessed |
+
+"Not counted" makes the total partial, and the dialog lists why. A subagent's
+own figure is still shown in the breakdown. Costs in different currencies, and
+estimates under different price snapshots, are listed side by side and not
+added together. The tree covers sessions on this Station only.
+
 **People paired with this Station** reads the existing paired-device registry
 through a captured API/authority scope. Only active interactive devices with an
 approved person binding contribute. Account issuer plus subject (or approved

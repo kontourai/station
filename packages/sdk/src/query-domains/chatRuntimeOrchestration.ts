@@ -40,6 +40,7 @@ import {
   isApiRequestScope,
 } from '../client/http';
 import {
+  getConversationUsageTree,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventWindow,
   getSessionBuilderRun,
@@ -164,6 +165,34 @@ export async function fetchOrchestrationConversationEventWindow(
     throw new Error('Conversation history requires a server upgrade');
   }
   return page;
+}
+
+/**
+ * A conversation's usage tree (`getConversationUsageTree`). Off until
+ * `enabled`, so a closed stats dialog reads nothing. A 404 (no orchestration
+ * record for this conversation) and a 422 (tree past its bound) are not
+ * retried.
+ */
+export function useConversationUsageTreeQuery(
+  conversationId: string,
+  apiBase?: string,
+  config?: { enabled?: boolean; refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: [
+      'orchestration-conversation-usage-tree',
+      apiBase ?? 'default',
+      conversationId,
+    ],
+    enabled: Boolean(conversationId) && (config?.enabled ?? true),
+    queryFn: async ({ signal }) =>
+      getConversationUsageTree(await resolveApiBase(apiBase), conversationId, {
+        signal,
+      }),
+    retry: false,
+    staleTime: 2_000,
+    refetchInterval: config?.refetchInterval ?? false,
+  });
 }
 
 /** Reconciles one persisted context-boundary intent after reload or reconnect. */

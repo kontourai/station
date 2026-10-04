@@ -3628,6 +3628,35 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  /**
+   * A conversation's usage tree: its own turns, each child (engine subagent
+   * or delegated task) with how its usage relates to the parent, and a
+   * roll-up total marked partial where it leaves something out. Authorized
+   * like the conversation's other session reads; a tree past its bound is
+   * refused (422), never cut.
+   */
+  app.get('/conversations/:conversationId/usage-tree', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = () =>
+      c.json({ success: false, error: 'Conversation usage unavailable' }, 404);
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return unavailable();
+    const outcome = orchestrationService.readThreadUsageTree(
+      param(c, 'conversationId'),
+      readAuthorityFor(c),
+    );
+    if (outcome.status === 'not-found') return unavailable();
+    if (outcome.status === 'too-large')
+      return c.json(
+        {
+          success: false,
+          error: `This conversation's usage tree is past its ${outcome.limit} limit (${outcome.max}).`,
+        },
+        422,
+      );
+    return c.json({ success: true, data: outcome.tree });
+  });
+
   // Native-SDK chat refresh: the persisted events projected into conversation
   // messages (same shape ACP/internal return), via the shared projection.
   const sessionOutputsUnavailable = (c: Context, status: 404 | 503 = 404) => {

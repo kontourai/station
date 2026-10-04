@@ -1,3 +1,7 @@
+import {
+  StationHttpError,
+  useConversationUsageTreeQuery,
+} from '@kontourai/station-sdk';
 import { useEffect } from 'react';
 import { useStats } from '../../contexts/StatsContext';
 import { LazyBoundary } from '../LazyBoundary';
@@ -48,6 +52,16 @@ export function ConversationStats({
     loading: isLoading,
   } = useStats(agentSlug, conversationId, apiBase, isVisible, STATS_REFRESH_MS);
 
+  // The usage tree is a separate read: a conversation with no orchestration
+  // record (404) simply has no breakdown, which is not a stats failure.
+  const usageTree = useConversationUsageTreeQuery(conversationId, apiBase, {
+    enabled: isVisible,
+    refetchInterval: isVisible ? STATS_REFRESH_MS : false,
+  });
+  const usageTreeMissing =
+    usageTree.error instanceof StationHttpError &&
+    usageTree.error.status === 404;
+
   // The message count is the trigger that reflects the conversation; the poll
   // above is what covers the window in which the server has not written the
   // turn's stats yet. Both are refreshes of one query, not two caches.
@@ -82,6 +96,10 @@ export function ConversationStats({
         error,
         onRetry: () => void refetch(),
         onToggle,
+        usageTree: usageTree.data,
+        usageTreeLoading:
+          usageTree.isPending && usageTree.fetchStatus !== 'idle',
+        usageTreeError: usageTreeMissing ? undefined : usageTree.error,
       }}
       pending={null}
     />
