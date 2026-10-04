@@ -1,4 +1,3 @@
-import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 /**
  * Canonical orchestration fetchers (#165/#173 Wave 1, inside the #167 DRY
  * client layer). One HTTP-call implementation per operation, shared by the
@@ -36,6 +35,8 @@ import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harnes
  * non-2xx `{success:false,error}` body's `error` text is preserved instead
  * of being replaced with a generic status message.
  */
+import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type {
   AdoptedSessionResult,
   SteerInputInspectionResult,
@@ -328,6 +329,31 @@ export async function getSessionFlowRun<T = SessionFlowRunView>(
     return null;
   }
   return unwrapOrchestrationResponse<T>(response);
+}
+
+/**
+ * #3163: one page of an engine subagent's own read-only transcript, by
+ * message offset. The server resolves the transcript from the reporting
+ * session's persisted child-work facts; no path is sent. A 404 (no such
+ * transcript for a session you can read) and a 503 (the engine no longer has
+ * it) both throw `StationHttpError` with that status.
+ */
+export async function getChildWorkTranscript(
+  apiBase: string,
+  threadId: string,
+  childId: string,
+  page: { offset?: number; limit?: number } = {},
+  opts?: ClientRequestOptions,
+): Promise<ChildWorkTranscriptPage> {
+  const query = new URLSearchParams();
+  if (page.offset !== undefined) query.set('offset', String(page.offset));
+  if (page.limit !== undefined) query.set('limit', String(page.limit));
+  const suffix = query.size > 0 ? `?${query}` : '';
+  const response = await getJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/child-work/${encodeURIComponent(childId)}/transcript${suffix}`,
+    opts,
+  );
+  return unwrapOrchestrationResponse<ChildWorkTranscriptPage>(response);
 }
 
 /**
