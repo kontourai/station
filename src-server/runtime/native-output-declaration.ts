@@ -80,6 +80,14 @@ export interface NativeOutputDeclarationOperation {
     turnId: string,
     eventId: string,
   ): NativeOutputTerminalAdmission[];
+  /**
+   * The descriptors still waiting for their turn's durable terminal, so a
+   * caller can refuse a repeat before it reads anything. Read-only.
+   */
+  pendingDescriptors(
+    sessionId: string,
+    turnId: string,
+  ): DeclaredOutputDescriptor[];
   commit(handles: readonly string[]): void;
   rollback(_handles: readonly string[]): void;
 }
@@ -475,6 +483,15 @@ export function createNativeOutputDeclarationOperation(input: {
         });
       }
       return result;
+    },
+    pendingDescriptors(sessionId, turnId) {
+      prune();
+      return [...pending.values()]
+        .filter(
+          (value) =>
+            value.facts.threadId === sessionId && value.facts.turnId === turnId,
+        )
+        .map((value) => structuredClone(value.declaration.descriptor));
     },
     commit(handles) {
       for (const handle of handles) {

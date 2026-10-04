@@ -70,6 +70,32 @@ are `410`, unavailable storage is `503`, and lost current authority is opaque
 `404`. A keep preserves an artifact or reference; it does not establish agent
 attribution, accepted quality or feedback. Exact-version review is described below; it remains a human statement rather than Task acceptance.
 
+An agent on any engine declares a pull request with the Station Control
+`declare_pull_request` tool, which writes the same declared-output record as
+Station's own `declare_output` (see [the tool](../guides/self-configuring-agent.md)).
+Its REST side, `POST /api/orchestration/station-control/declare-pull-request`, is
+for Station's own tool code only: it answers 404 to any request the runtime
+boundary did not accept as Station's internal principal, derives the Session and
+its running turn from the verified caller, takes a body of exactly
+`{provider, host, repository: {owner, name}, ref, label?}` (the conversation link
+identity), and answers `{status}` with `declared`, `already-declared` or
+`no-active-turn`. A pull request in another repository than the Session's, or one
+the provider cannot return at that identity, is `409`. The declaration lands with
+the turn's completion and is dropped if the turn is aborted; the keep above
+applies to it unchanged.
+
+`PUT /api/tasks/:taskId/close-on-merge` accepts `{enabled}` and sets or clears the
+Task's `closeOnMerge` flag. It is a person's opt-in: no Station Control tool
+reaches it, and the authority guard refuses an agent's request to it. A Task with
+the flag moves to `done` when every pull request kept on it reports `MERGED` at its
+provider, if `done` is a transition its status allows and it is still the same Task
+incarnation; a pull request closed without merging does not complete it. The check
+rides the conversation pull request refresh (`GET /api/conversation-pull-requests/:conversationId`):
+a refresh that observes a merged pull request reconciles the Tasks that kept it, in
+the background. There is no timer, so a merge is noticed when a client next
+refreshes that conversation. A store carrying the flag is refused by older Station
+builds.
+
 New snapshots store their Task creation identity and, for admitted Session
 declarations, the declaration's Session/event/turn/tool identities privately.
 Public output records remain schema version 1 and omit those private fields.

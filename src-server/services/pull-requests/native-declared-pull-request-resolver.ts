@@ -70,6 +70,46 @@ export class NativeDeclaredPullRequestResolver {
     nativeId: string;
     workingDirectory: string;
   }): Promise<DeclaredPullRequest | null> {
+    const detail = await this.readDetail(input);
+    return exactDeclaredIdentity(detail, input)
+      ? declaredIdentity(detail)
+      : null;
+  }
+
+  /**
+   * The same exact read for a caller that names a pull request by the link
+   * store's identity (no provider-native id): the provider's answer must
+   * still match the requested provider, host, repository and ref exactly,
+   * and the repository must be the workspace's own. The native id is then
+   * the provider's, to be carried into the declaration that re-reads it.
+   */
+  async readIdentity(input: {
+    provider: string;
+    host: string;
+    owner: string;
+    repository: string;
+    ref: string;
+    workingDirectory: string;
+  }): Promise<DeclaredPullRequest | null> {
+    const detail = await this.readDetail(input);
+    return detail &&
+      detail.provider === input.provider &&
+      detail.host === input.host &&
+      detail.repository.owner === input.owner &&
+      detail.repository.name === input.repository &&
+      detail.ref === input.ref
+      ? declaredIdentity(detail)
+      : null;
+  }
+
+  private async readDetail(input: {
+    provider: string;
+    host: string;
+    owner: string;
+    repository: string;
+    ref: string;
+    workingDirectory: string;
+  }): Promise<PullRequest | undefined> {
     const contexts =
       this.deps.contexts ?? new PullRequestRepositoryContextResolver();
     const resolved = await contexts.readExactIdentity(
@@ -107,19 +147,19 @@ export class NativeDeclaredPullRequestResolver {
         return result.available ? result.data : undefined;
       },
     );
-    if (!resolved.available) return null;
-    const detail = resolved.value;
-    return exactDeclaredIdentity(detail, input)
-      ? {
-          kind: 'pull-request',
-          provider: detail.provider,
-          host: detail.host,
-          repository: { ...detail.repository },
-          ref: detail.ref,
-          nativeId: detail.nativeId,
-        }
-      : null;
+    return resolved.available ? resolved.value : undefined;
   }
+}
+
+function declaredIdentity(detail: PullRequest): DeclaredPullRequest {
+  return {
+    kind: 'pull-request',
+    provider: detail.provider,
+    host: detail.host,
+    repository: { ...detail.repository },
+    ref: detail.ref,
+    nativeId: detail.nativeId,
+  };
 }
 
 function exactDeclaredIdentity(

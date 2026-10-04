@@ -292,6 +292,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
@@ -535,6 +536,7 @@ import type { ProposedChangeService } from '../../services/projects/proposed-cha
 import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
+import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
@@ -2389,6 +2391,17 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createStationControlCallerRoutes({
       resolveRecord: resolveStationControlCallerRecord,
+    }),
+  );
+  // #3161 `declare_pull_request`'s REST side: its own leaf, the verified
+  // caller's own session, the one dispatch scope rule.
+  context.app.route(
+    '/api/orchestration',
+    createDeclarePullRequestRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      declare: (input) =>
+        context.orchestrationService.declareStationControlPullRequest(input),
     }),
   );
   context.app.route(
@@ -5230,6 +5243,17 @@ export function configureRuntimeRoutes(
   const conversationPullRequestLinks = new ConversationPullRequestLinkStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #3161: a Task a person opted in closes when every pull request kept on it
+  // is merged. It rides the conversation refresh below: no timer, no poller.
+  const taskCloseOut = createTaskCloseOut({
+    taskGraph: context.taskGraphService,
+    providers: () =>
+      listProviders('pullRequest').map((entry) => entry.provider),
+    onError: (error) =>
+      context.logger.warn('Task close-out reconciliation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  });
   context.app.route(
     '/api/conversation-pull-requests',
     createConversationPullRequestLinkRoutes(
@@ -5254,6 +5278,25 @@ export function configureRuntimeRoutes(
               conversationId,
             ) ?? []
           ).map((linked) => linked.sessionId),
+        observed: (conversationId, observations) => {
+          const merged = observations.filter(
+            (observation) =>
+              observation.status.state === 'current' &&
+              observation.status.pullRequestState === 'MERGED',
+          );
+          if (merged.length === 0) return;
+          taskCloseOut.afterMergeObserved(
+            [
+              conversationId,
+              ...(
+                context.orchestrationEventStore?.conversationSessions(
+                  conversationId,
+                ) ?? []
+              ).map((linked) => linked.sessionId),
+            ],
+            merged,
+          );
+        },
         declared: async (request, conversationId) => {
           if (
             !context.orchestrationService.canUserReadConversation(

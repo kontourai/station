@@ -31,6 +31,19 @@ example does not grant one implicitly.
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
+  declare a pull request it opened, by `provider`, `host`, `repository`
+  (`owner` and `name`) and `ref`: the identity shape the conversation link
+  routes take. It records the same declared output Station's own engine records
+  with `declare_output`, in the caller's own Session and the turn it is running:
+  the record lands when that turn completes and is dropped if the turn aborts.
+  The tool answers `declared`, `already-declared` or `no-active-turn`. It reads
+  the pull request from the Session's own repository, so a pull request in
+  another repository (`owner/repo-2` is not `owner/repo`) is refused. It does not
+  link or keep anything: a person keeps a declared pull request onto a Task,
+  and a Task a person opted in (`closeOnMerge`) moves to `done` only when every
+  kept pull request is `MERGED` at its provider. No agent tool sets that
+  opt-in.
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,

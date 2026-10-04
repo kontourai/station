@@ -407,6 +407,14 @@ import {
   type SkillExperienceSource,
   SkillExperienceUnavailableError,
 } from './skill-experience-runtime.js';
+import {
+  createStationControlPullRequestDeclarations,
+  type StationControlActiveTurn,
+  type StationControlPullRequestDeclarationOutcome,
+  type StationControlPullRequestDeclarations,
+  type StationControlPullRequestIdentity,
+  StationControlPullRequestUnavailableError,
+} from './station-control-pull-request-declarations.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -856,6 +864,18 @@ interface OrchestrationServiceOptions {
       repository: string;
       ref: string;
       nativeId: string;
+      workingDirectory: string;
+    }): Promise<Extract<
+      DeclaredOutputDescriptor,
+      { kind: 'pull-request' }
+    > | null>;
+    /** #3161: the same read for a caller that has no provider-native id. */
+    readIdentity(input: {
+      provider: string;
+      host: string;
+      owner: string;
+      repository: string;
+      ref: string;
       workingDirectory: string;
     }): Promise<Extract<
       DeclaredOutputDescriptor,
@@ -1582,6 +1602,12 @@ export class OrchestrationService {
   private readonly nativeOutputDeclarations: ReturnType<
     typeof createNativeOutputDeclarationOperation
   >;
+  /**
+   * #3161: the second admission authority, for a pull request an external
+   * engine declares through Station Control. Its pending handles land in the
+   * same terminal savepoint as the native ones.
+   */
+  private readonly stationControlPullRequests?: StationControlPullRequestDeclarations;
   /** Exact active generation until the ordered durable terminal event commits. */
   private readonly nativeTurnGenerations = new Map<string, string>();
   private readonly consumedAdapterEventStreams =
@@ -1934,6 +1960,19 @@ export class OrchestrationService {
           }
         : {}),
     });
+    if (options.nativeDeclaredPullRequestResolver) {
+      const resolver = options.nativeDeclaredPullRequestResolver;
+      this.stationControlPullRequests =
+        createStationControlPullRequestDeclarations({
+          activeTurn: (threadId) => this.activeStationControlTurn(threadId),
+          workspaceRoot: (threadId) =>
+            this.sessionReadModel.get(threadId)?.cwd ??
+            this.options.eventStore?.readSessionByThread(threadId)?.cwd,
+          declaredPullRequests: (threadId) =>
+            this.declaredPullRequestsOfSession(threadId),
+          resolver,
+        });
+    }
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
@@ -3378,6 +3417,7 @@ export class OrchestrationService {
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
+    this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
@@ -7276,6 +7316,7 @@ export class OrchestrationService {
                 nativeTurnId,
               );
             }
+            this.stationControlPullRequests?.retireSession(command.threadId);
           }
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
@@ -9000,6 +9041,7 @@ export class OrchestrationService {
       this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
+    this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
@@ -9539,6 +9581,109 @@ export class OrchestrationService {
         total: unattributedHostStartCount,
       },
     };
+  }
+
+  /**
+   * #3161: an external engine's `declare_pull_request` call. The session is
+   * the verified caller's own and the turn is whichever turn it is running
+   * now; the declaration lands when that turn completes.
+   */
+  declareStationControlPullRequest(input: {
+    sessionId: string;
+    pullRequest: StationControlPullRequestIdentity;
+    label?: string;
+  }): Promise<StationControlPullRequestDeclarationOutcome> {
+    if (!this.stationControlPullRequests)
+      throw new StationControlPullRequestUnavailableError(
+        'Pull request declarations are unavailable on this Station.',
+      );
+    return this.stationControlPullRequests.declare(input);
+  }
+
+  /** The turn the session is running, as the lease for what it declares. */
+  private activeStationControlTurn(
+    threadId: string,
+  ): StationControlActiveTurn | undefined {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.quarantinedThreads.has(threadId)) return undefined;
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (!turnId) return undefined;
+    return {
+      turnId,
+      adapterId: adapter.provider,
+      isCurrent: () =>
+        this.sessionAdapters.get(threadId) === adapter &&
+        this.isAdapterCurrent(adapter) &&
+        !this.quarantinedThreads.has(threadId) &&
+        this.activeTurnIdOfThread(threadId) === turnId,
+    };
+  }
+
+  private activeTurnIdOfThread(threadId: string): string | undefined {
+    return activeTurnIdForEvents(
+      (
+        this.options.eventStore?.listEventsByMethods(
+          threadId,
+          ACTIVE_TURN_FOLD_METHODS,
+        ) ?? []
+      ).map((stored) => stored.payload),
+    );
+  }
+
+  /**
+   * Every pull request the session has declared, durable. `null` past the
+   * bound (never a truncated list): the caller refuses rather than repeat a
+   * declaration it could not see.
+   */
+  private declaredPullRequestsOfSession(
+    threadId: string,
+  ): Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] | null {
+    const store = this.options.eventStore;
+    if (!store) return [];
+    const bound = 500;
+    const found: Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] =
+      [];
+    let seen = 0;
+    let after: { sequence: number; declarationId: string } | undefined;
+    let highWater: number | undefined;
+    for (;;) {
+      const page = store.listDeclaredOutputDescriptors({
+        threadId,
+        limit: 50,
+        ...(after ? { after } : {}),
+        ...(highWater === undefined ? {} : { highWater }),
+      });
+      highWater = page.highWater;
+      for (const row of page.rows) {
+        seen += 1;
+        if (seen > bound) return null;
+        const descriptor = row.descriptor as
+          | Record<string, unknown>
+          | undefined;
+        const repository = descriptor?.repository as
+          | Record<string, unknown>
+          | undefined;
+        if (
+          descriptor?.kind === 'pull-request' &&
+          typeof descriptor.provider === 'string' &&
+          typeof descriptor.host === 'string' &&
+          typeof descriptor.ref === 'string' &&
+          typeof descriptor.nativeId === 'string' &&
+          typeof repository?.owner === 'string' &&
+          typeof repository.name === 'string'
+        )
+          found.push({
+            kind: 'pull-request',
+            provider: descriptor.provider,
+            host: descriptor.host,
+            repository: { owner: repository.owner, name: repository.name },
+            ref: descriptor.ref,
+            nativeId: descriptor.nativeId,
+          });
+        after = { sequence: row.sequence, declarationId: row.declarationId };
+      }
+      if (!page.hasMore) return found;
+    }
   }
 
   /**
@@ -10096,26 +10241,34 @@ export class OrchestrationService {
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' && projectedEvent.turnId
-        ? this.nativeOutputDeclarations.takeTerminalAdmissions(
-            projectedEvent.threadId,
-            projectedEvent.turnId,
-            projectedEvent.eventId,
-          )
+        ? [
+            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ),
+            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ) ?? []),
+          ]
         : [];
     this.recordProviderTurnBoundary(projectedEvent);
     try {
       this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
       if (declaredOutputs.length > 0) {
-        this.nativeOutputDeclarations.commit(
-          declaredOutputs.map((admission) => admission.handle),
-        );
+        const handles = declaredOutputs.map((admission) => admission.handle);
+        // A handle belongs to exactly one operation; the other ignores it.
+        this.nativeOutputDeclarations.commit(handles);
+        this.stationControlPullRequests?.commit(handles);
       }
     } catch (error) {
       // Same-call retry is possible only when SQLite rolled back.  Do not
       // consume a memory handle before its unique durable use index commits.
-      this.nativeOutputDeclarations.rollback(
-        declaredOutputs.map((admission) => admission.handle),
-      );
+      const handles = declaredOutputs.map((admission) => admission.handle);
+      this.nativeOutputDeclarations.rollback(handles);
+      this.stationControlPullRequests?.rollback(handles);
       throw error;
     }
     // The event-store append is the retirement boundary. Do not use an
@@ -10129,6 +10282,10 @@ export class OrchestrationService {
       projectedEvent.turnId
     ) {
       this.nativeOutputGrants.retireTerminal(
+        projectedEvent.threadId,
+        projectedEvent.turnId,
+      );
+      this.stationControlPullRequests?.retireTerminal(
         projectedEvent.threadId,
         projectedEvent.turnId,
       );

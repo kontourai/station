@@ -202,6 +202,12 @@ const ARGS: Record<string, Record<string, unknown>> = {
     scope: { kind: 'whole-session', sessionId: 'session-1' },
   },
   notify_user: { title: 't' },
+  declare_pull_request: {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'o', name: 'r' },
+    ref: '1',
+  },
 };
 
 describe('the authority table routes are the routes the tools call', () => {

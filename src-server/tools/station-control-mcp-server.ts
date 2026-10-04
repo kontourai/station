@@ -13,6 +13,7 @@ import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
+import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
@@ -86,7 +87,7 @@ function stationControlToolMetadata(name: string) {
     ['Agents', /agent/],
     ['Projects', /project|layout|^board_/],
     ['Chats', /conversation|session|message/],
-    ['Tasks', /task|delegat|ssh_environment/],
+    ['Tasks', /task|delegat|ssh_environment|pull_request/],
     ['Scheduling', /job|schedul/],
     ['Skills', /skill/],
     ['Integrations', /integration|provider|plugin/],
@@ -254,6 +255,7 @@ export function createSelectedStationControlMcpServer(
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
   registerNotifyTools(registry);
+  registerDeclarePullRequestTools(registry);
   return server;
 }
 
