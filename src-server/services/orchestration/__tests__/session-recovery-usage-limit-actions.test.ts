@@ -32,10 +32,12 @@ describe('#3157 usage-limit banner actions', () => {
     vi.useRealTimers();
   });
 
-  function setup(autoResume: () => boolean) {
-    const store = new EventStore(
-      join(makeTempDir('usage-limit-actions-'), 'orchestration.sqlite'),
-    );
+  function setup(autoResume: () => boolean, existing?: EventStore) {
+    const store =
+      existing ??
+      new EventStore(
+        join(makeTempDir('usage-limit-actions-'), 'orchestration.sqlite'),
+      );
     const dispatch = vi.fn<RecoveryDispatchAdapter['dispatch']>(
       async ({ replay }) => {
         replay.signal.throwIfAborted();
@@ -398,5 +400,39 @@ describe('#3157 usage-limit banner actions', () => {
     expect(dispatch).toHaveBeenCalledOnce();
     await coordinator.dispose();
     store.close();
+  });
+
+  test('a stop with no known reset survives a graceful restart, still offering Resume now', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const dbPath = join(makeTempDir('usage-limit-restart-'), 'o.sqlite');
+    const first = new EventStore(dbPath);
+    const before = setup(() => true, first);
+    stopOnUsageLimit(before.coordinator, first, {
+      usageLimit: true,
+      scope: 'account',
+    });
+    expect(before.coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'manual',
+      usageLimit: true,
+    });
+    await before.coordinator.dispose();
+    first.close();
+
+    const reopened = new EventStore(dbPath);
+    const after = setup(() => true, reopened);
+    after.coordinator.reconcile();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(after.coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'manual',
+      usageLimit: true,
+    });
+    expect(after.dispatch).not.toHaveBeenCalled();
+    await expect(
+      after.coordinator.resumeUsageLimitNow(THREAD),
+    ).resolves.toEqual({ kind: 'resumed' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(after.dispatch).toHaveBeenCalledOnce();
+    await after.coordinator.dispose();
+    reopened.close();
   });
 });

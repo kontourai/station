@@ -11750,9 +11750,11 @@ export class EventStore {
    * cancel request itself so startup fences it before any timer is rebuilt.
    *
    * #3157: a usage-limit intent that is only waiting for its provider reset,
-   * or that the user was left to resume, holds no dispatch to stop. It is not fenced: a
-   * restart rebuilds its timer (`reconcile`), and the coordinator re-checks
-   * the Session before any dispatch. */
+   * or that the user was left to resume (`manual`, whether the setting was off
+   * or the provider gave no reset), holds no dispatch to stop. It is not
+   * fenced: a restart rebuilds its timer (`reconcile`), a manual one is never
+   * dispatched on its own, and the coordinator re-checks the Session before
+   * any dispatch. */
   private cancelShutdownRecoveries(now: string): RecoveryTransition {
     const result = this.db
       .prepare(
@@ -11764,8 +11766,7 @@ export class EventStore {
              AND COALESCE(usage_limit, 0) = 1
              AND (
                (outcome = 'armed' AND decision = 'wait-until-reset')
-               OR (outcome = 'manual'
-                   AND COALESCE(outcome_reason, '') = 'auto-resume-off')
+               OR outcome = 'manual'
              )
            )`,
       )
