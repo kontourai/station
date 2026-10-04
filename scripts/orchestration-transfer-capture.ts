@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { HttpTransferRecorder } from '../src-server/__test-utils__/http-transfer-recorder.js';
+import { TransferMeasurementFailure } from '../src-server/__test-utils__/orchestration-transfer-scenario.js';
 
 const targetRoot = resolve(process.argv[2] ?? '');
 const outputPath = process.argv[3];
@@ -173,6 +174,19 @@ const budget = JSON.parse(
     'utf8',
   ),
 ).policy;
+const toolDigest = createHash('sha256')
+  .update(
+    [
+      'scripts/orchestration-transfer-capture.ts',
+      'src-server/__test-utils__/orchestration-transfer-scenario.ts',
+      'src-server/__test-utils__/http-transfer-recorder.ts',
+      'src-server/__test-utils__/orchestration-transfer-fixture.ts',
+      'scripts/orchestration-transfer-budget.mjs',
+    ]
+      .map((file) => readFileSync(join(toolRoot, file)))
+      .join('\n'),
+  )
+  .digest('hex');
 try {
   const externalRecorder = new HttpTransferRecorder(baseUrl);
   sdk.setClientCredentialResolver(() => ({
@@ -327,19 +341,6 @@ try {
     sdk,
     budget,
   });
-  const toolDigest = createHash('sha256')
-    .update(
-      [
-        'scripts/orchestration-transfer-capture.ts',
-        'src-server/__test-utils__/orchestration-transfer-scenario.ts',
-        'src-server/__test-utils__/http-transfer-recorder.ts',
-        'src-server/__test-utils__/orchestration-transfer-fixture.ts',
-        'scripts/orchestration-transfer-budget.mjs',
-      ]
-        .map((file) => readFileSync(join(toolRoot, file)))
-        .join('\n'),
-    )
-    .digest('hex');
   const report = {
     schemaVersion: 1,
     subjectSha,
@@ -354,6 +355,20 @@ try {
   };
   writeFileSync(outputPath, `${JSON.stringify(report)}\n`);
   console.log(JSON.stringify(report));
+} catch (error) {
+  if (error instanceof TransferMeasurementFailure) {
+    writeFileSync(
+      `${outputPath}.failure.json`,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        subjectSha,
+        baseSha: baseSha ?? subjectSha,
+        toolDigest,
+        ...error.diagnostic,
+      })}\n`,
+    );
+  }
+  throw error;
 } finally {
   Date.now = realNow;
   sdk.setClientCredentialResolver();
