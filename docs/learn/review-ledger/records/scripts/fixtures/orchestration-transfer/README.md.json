@@ -14,11 +14,11 @@
   "sources": [
     {"path":"scripts/fixtures/orchestration-transfer/budget.json","digest":"47a0ff2379a93d58de745f0fdc26350e448ae31290eb87cdcd22ee0205d47f9b","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
-    {"path":"scripts/orchestration-transfer-capture.ts","digest":"88019bea818c07020f193b2e0cfa3678a0d65e4e69fb7dcd43c1efb91f1421e3","revision":"671be0593127cb01daf7085071ea22003752fe2c"},
+    {"path":"scripts/orchestration-transfer-capture.ts","digest":"adf18ce35d2a25a5212634badd51a44fa1d95b571fa9233a0dc58fe249c9ddf5","revision":"16f724ba91f1608281f6bc758e02a4396d6aeeac"},
 
     {"path":"scripts/orchestration-transfer-gate.mjs","digest":"e651ed214e1059db2cd3e93eee9c4908c18763da6cc5f367346c5930fc8f712e","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
-    {"path":"src-server/__test-utils__/orchestration-transfer-scenario.ts","digest":"9eb0ee83e49fee20d205e076ce8bedd5fc3f759f25a731f5f7eca96fd5bea55a","revision":"671be0593127cb01daf7085071ea22003752fe2c"}
+    {"path":"src-server/__test-utils__/orchestration-transfer-scenario.ts","digest":"60dc57d9467b9a610eeb68e7cc052307303fb2c91924364959facfcdcc43044b","revision":"216c4c8b23280db636d2fb76465639955ddfe3a2"}
   ],
 
   "checks": [
