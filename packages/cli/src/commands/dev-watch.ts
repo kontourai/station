@@ -12,7 +12,7 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-export const DEV_API_PORT_ENV = 'STATION_DEV_API_PORT';
+const DEV_API_PORT_ENV = 'STATION_DEV_API_PORT';
 
 export function isLoopbackHost(host: string): boolean {
   return host === '::1' || host.startsWith('127.');

@@ -104,8 +104,8 @@ function serializeCsp(
  * and tells it which API to front through these variables. Unset, Vite is the
  * plain `npm run dev:ui` server with no proxy.
  */
-export const DEV_API_PORT_ENV = 'STATION_DEV_API_PORT';
-export const DEV_POLL_ENV = 'STATION_DEV_WATCH_POLL';
+const DEV_API_PORT_ENV = 'STATION_DEV_API_PORT';
+const DEV_POLL_ENV = 'STATION_DEV_WATCH_POLL';
 
 // The header contract the production UI listener (`uiRequestHandler` in
 // packages/cli/src/commands/lifecycle.ts) speaks to the server. Mirrored, not
