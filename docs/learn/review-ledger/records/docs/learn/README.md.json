@@ -7,7 +7,7 @@
 
   "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
 
-  "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
+  "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/learn/atlas.json\",\"ours\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770\",\"revision\":\"0ed893868b2be12651928150004d23a11f94837f\"},\"theirs\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"e034e39b2ea44cbe00752aa003f17215502540ce06c7d5bcc5cc29e57f47ef05\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770\",\"revision\":\"0ed893868b2be12651928150004d23a11f94837f\"}}]",
 
   "sources": [
     "docs/learn/atlas.css",

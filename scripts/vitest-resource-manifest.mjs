@@ -1115,6 +1115,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Same shape again: launches a real Chromium to prove a long Dialog body
   // scrolls and keeps the footer's commit action on screen and hittable.
   'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
+  // Same shape again: launch a real Chromium to measure the Coding layout's
+  // rail (scrolling inside the window) and the Chat column's edges (8px
+  // borderless splitters, the folded inbox strip's rule colour) against the
+  // real stylesheet.
+  'src-ui/src/components/coding-layout/__tests__/CodingWorkbenchRail.chrome.geometry.test.tsx',
+  'src-ui/src/components/coding-layout/__tests__/CodingWorkbenchSeparators.chrome.geometry.test.tsx',
   // Exercises the release-cohort CLI through real Node subprocesses so its
   // externally persisted receipt boundary is observable end-to-end.
   'scripts/__tests__/release-cohort.test.ts',
