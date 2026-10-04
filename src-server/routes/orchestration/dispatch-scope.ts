@@ -229,7 +229,7 @@ export interface PostureCarrier {
 }
 
 /** The posture fields a request body carries, by path. */
-export function carriedPostureFields(
+function carriedPostureFields(
   carriers: readonly PostureCarrier[],
 ): string[] {
   const fields: string[] = [];
