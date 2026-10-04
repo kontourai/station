@@ -157,6 +157,20 @@ is server-private, invitation-gated and returns a still-pending real person.
 Unsupported providers fail closed; it neither invents a principal nor changes
 browser cookie flows.
 
+The [relay-management contract](../../packages/contracts/src/relay-management.ts)
+exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
+and `RelayManagementView`. The view contains public route/signing-confirmation
+facts, channel-specific setup links, exact approved surfaces and pending
+account-bound Device candidates; it contains no connector issuer credential.
+`approvedBy` preserves actual human actor attribution. `relay:manage`, declared
+in [environment security](../../packages/contracts/src/environment-security.ts),
+is an explicitly operator-promoted Device scope excluded from presets/defaults.
+It admits closed management leaves and does not replace Project roles or grant
+Agent, terminal, or Task publication authority. Native account-managed POSTs
+use their dedicated host operation, not the generic read signer. Account-bound
+Device gate integration remains pending #3210; contract availability alone
+proves neither route admission nor a released native journey.
+
 ## Scheduler deferral events
 
 The authenticated `/scheduler/events` stream exposes `job.deferred` as a

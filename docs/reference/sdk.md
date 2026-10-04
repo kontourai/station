@@ -1770,6 +1770,27 @@ any refusal instead of retrying stale review data. Older operator integrations
 may still issue the original bodyless PUT; UI management uses the review-bound
 form.
 
+`@kontourai/station-sdk/relay-management` exposes
+`getRelayManagementCapabilities`, `getRelayManagement`, `approveRelaySetup`,
+`revokeRelaySetup`, `createRelayInvitation`, `approveRelayDevice`, and
+`denyRelayDevice`. Pass the selected Station API base and one captured
+`ClientRequestOptions.requestScope` throughout review and mutation. Responses
+are strictly validated and bounded to 256 KiB, with a 35-second timeout. Setup
+links must match their route, approvals must match the Station/enrollment, and
+pending Devices must name that Station. `createRelayInvitation` also takes the
+reviewed route, recipient setup and a `RelayInvitationLifetime`; it validates
+the returned installation binding and requested expiry before returning the
+link. Lifetimes are `5m`, `15m`, `1h`, `24h` and `never`; the UI chooses `24h`.
+Every invitation remains single-use.
+
+These clients require current operator or explicitly promoted `relay:manage`
+authority. Native management POSTs use a dedicated fixed host account operation;
+generic account read preparation remains GET/HEAD only. The closed Project
+access leaves still require Project IAM. This scope adds no terminal, Agent,
+or shared-Task publication authority. The account-bound Device route-gate
+integration remains pending #3210, and source availability is not release or
+physical-device qualification.
+
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project
 slug and explicit `ClientRequestOptions`. Reads return the acting principal,

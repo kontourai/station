@@ -167,6 +167,48 @@ with controlled provider responses. An isolated Claude CLI probe confirmed the
 browser-code prompt on macOS; these checks do not prove a completed live OAuth
 exchange, every provider plan or Windows secure-store behavior.
 
+## Invite a device to a relay Station
+
+Under **Connections → Computers**, **Invite a device** appears when the selected
+Station has a configured connector and the caller can manage relay access. A
+Station operator can explicitly promote a paired Device with **Manage remote
+access** (`relay:manage`). This permission is absent from presets and default
+grants. It permits only the closed relay-management and Project access
+management routes; Project membership and its `manage-members` action remain
+independent requirements. It grants no Agent, terminal, or Task publication
+(share/unshare) authority.
+
+1. Choose the recipient app and copy its setup link. The link supplies routing
+   intent; it does not approve a Device or a Station signing key.
+2. The recipient opens the link, compares the Station confirmation code, and
+   returns their setup info. Paste that info under **Approve recipient** and
+   approve the exact installation.
+3. Create an invitation for that approved installation and send its link.
+   Invitations are single-use. The default lifetime is 24 hours; choices are
+   5 minutes, 15 minutes, 1 hour, 24 hours, or **Never expires**. A non-expiring
+   invitation still permits only one redemption.
+4. Review the pending account-bound Device request and approve or deny it.
+   Project access is a separate invitation and membership decision. Removing
+   an installation approval is also a separate action and requires confirmation.
+
+Native registration and Project invitation acceptance accept a full Project
+invitation link or its code. They extract the token without switching the
+selected Station; the selected Station still validates it. Details about the
+separate approvals are available through the information controls.
+
+The desktop and native views use the same selected-Station authority. Native
+Project access controls require the Project's `manage-members` action, and
+writes are disabled without a current management or operate scope. The server
+rechecks Device authority, the actual human actor and account-provider
+currentness, plus the exact target approval before committing a decision.
+Connector issuer credentials stay in the runtime; these controls expose no
+issuer secret. See [the broker operator path](self-hosted-broker.md#station-invitation-controls)
+and [native verification limits](native-shell-verification.md#relay-management-source-integration).
+
+This is source integration with diagnostic checks, not a released Nightly or
+physical-device delivery receipt. The account-bound route gate still needs the
+closed management leaves integrated after [#3210](https://github.com/kontourai/station/issues/3210).
+
 ## Saved Station addresses
 
 Tap the connection dot on a phone, or the connection name on desktop, to

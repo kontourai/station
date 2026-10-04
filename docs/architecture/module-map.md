@@ -118,6 +118,27 @@ selected native route now composes these owners for separate account sign-in,
 invitation acceptance and bounded member reads. This source integration does not
 establish physical iOS or released Nightly qualification.
 
+The [relay management routes](../../src-server/routes/system/relay-management-routes.ts)
+compose the runtime-owned [connector invitation issuer](../../src-server/services/connections/relay-invitation-owner.ts)
+with exact native-surface approval/revocation and pending Device decisions. The
+[actor currency owner](../../src-server/security/relay-management-actor.ts)
+retains the canonical human actor, account state and Device binding;
+[management authority](../../src-server/security/relay-management-authority.ts)
+rechecks explicit Device scope and provider currentness after asynchronous work.
+Target approval/revision is rechecked before issuance or revocation. Public SDK
+projections expose route/trust facts, never issuer credentials.
+
+The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
+serves desktop and selected native relay views. `relay:manage` (**Manage remote
+access**) requires explicit operator promotion and is excluded from default
+and preset scopes. Only closed relay and Project access management leaves are
+admitted; Project `manage-members` remains independently necessary. A dedicated
+native account host operation prepares the management POSTs without widening
+the generic GET/HEAD signer. Agent, terminal and Task share/unshare authority
+are excluded. The account-bound Device route gate still awaits exact management
+leaf integration after #3210; this source composition has no released Nightly,
+physical-device or two-human qualification receipt.
+
 The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker
