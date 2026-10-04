@@ -417,12 +417,13 @@ describe('HomeView', () => {
       screen.getByRole('status', { name: 'Finding available ways to help' }),
     ).toBeTruthy();
     // Where the cards will stand (Q3), not under the start form: the start
-    // section holds the form alone.
+    // wrapper holds the form alone.
+    const start = container.querySelector<HTMLElement>('.home-view__start');
+    expect(start).toBeTruthy();
     expect(
-      within(screen.getByRole('region', { name: 'Start work' })).queryByRole(
-        'status',
-        { name: 'Finding available ways to help' },
-      ),
+      within(start!).queryByRole('status', {
+        name: 'Finding available ways to help',
+      }),
     ).toBeNull();
     expect(container.querySelector('.home-view__goal textarea')).toBeTruthy();
     expect(screen.queryByText('No agent is ready yet')).toBeNull();
