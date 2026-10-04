@@ -2027,6 +2027,7 @@ export async function planChangedVerificationShards(
  *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
  *   env?: Record<string, string | undefined>;
  *   prepareExecution?: (options: { cwd: string; env: Record<string, string | undefined> }) => { env: Record<string, string | undefined> };
+ *   failedReportDir?: string;
  * }} [options]
  */
 export async function runChangedVerificationShard(

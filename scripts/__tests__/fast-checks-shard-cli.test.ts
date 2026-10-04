@@ -404,24 +404,26 @@ describe('fast-checks shard runner (in process)', () => {
   test('a failing slice annotates each failed test and keeps its reports beside the receipt (#3101 C)', async () => {
     const cwd = inProcessFixture();
     const lines: string[] = [];
-    const runShard = vi.fn(async () => ({
-      status: 'failed',
-      counts: { executed: 2, passed: 0, failed: 2, infrastructureErrors: 0 },
-      executions: [
-        {
-          resourceGroup: 'ordinary',
-          exitCode: 1,
-          failedTests: [
-            {
-              file: 'a/a.test.ts',
-              name: 'row, at 390px: wraps',
-              excerpt: 'AssertionError: 100% wrapped\n    at a.test.ts:4',
-            },
-            { file: 'a/a.test.ts', name: 'second', excerpt: 'Error: two' },
-          ],
-        },
-      ],
-    }));
+    const runShard = vi.fn(
+      async (_plan: unknown, _slice: unknown, _options: unknown) => ({
+        status: 'failed',
+        counts: { executed: 2, passed: 0, failed: 2, infrastructureErrors: 0 },
+        executions: [
+          {
+            resourceGroup: 'ordinary',
+            exitCode: 1,
+            failedTests: [
+              {
+                file: 'a/a.test.ts',
+                name: 'row, at 390px: wraps',
+                excerpt: 'AssertionError: 100% wrapped\n    at a.test.ts:4',
+              },
+              { file: 'a/a.test.ts', name: 'second', excerpt: 'Error: two' },
+            ],
+          },
+        ],
+      }),
+    );
     const status = await runFastChecksShardCli(
       ['run', '--plan=plan.json', '--shard=1/4', '--receipt=out/receipt.json'],
       {
