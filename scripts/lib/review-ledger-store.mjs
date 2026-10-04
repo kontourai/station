@@ -91,7 +91,7 @@ function serializeMembers(members) {
 const binding = (source) =>
   typeof source === 'string' ? { path: source } : source;
 
-/** @param {{ path: string, kind: string, state: string, summary: string, limits: string, document: { digest: string, revision: string }, sources: { path: string, digest: string, revision: string }[], checks: string[] }} record */
+/** @param {{ path: string, kind: string, state: string, summary: string, limits: string, document?: { digest: string, revision: string }, sources: (string | { path: string, digest: string, revision: string })[], checks: string[] }} record */
 export function serializeRecordFile(record) {
   if (!record.document)
     return serializeMembers(
@@ -154,7 +154,7 @@ export function serializeNotesFile(run) {
   ]);
 }
 
-/** @param {{ coverageBaseline?: string }} index */
+/** @param {{ version?: number, coverageBaseline?: string | null }} index */
 export function serializeLedgerIndex(index) {
   return serializeMembers([
     ['version', index.version ?? REVIEW_LEDGER_VERSION],

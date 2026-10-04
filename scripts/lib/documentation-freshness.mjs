@@ -212,13 +212,22 @@ export function resolveDocumentationFreshness({
     const detail = String(error?.stderr || error?.message || error)
       .trim()
       .split('\n')[0];
+    const strictReason = `cannot compute this change's scope against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`;
+    // Only the version 3 layout has notes to protect.
+    const layout = (ledger ?? readReviewState(root, { history: false }).ledger)
+      ?.layoutVersion;
+    if (layout !== 3)
+      return {
+        mode: 'strict',
+        reason: strictReason,
+        appendOnly: 'not-applicable',
+      };
     // Strict cannot see a deleted note, so without a merge base the
     // append-only guard is unverified. A PR must not pass on that.
-    const reason = `cannot compute this change's scope`;
     if (isPullRequestContext(env))
       return {
         mode: 'strict',
-        reason: `${reason} against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`,
+        reason: strictReason,
         appendOnly: 'NOT_VERIFIED',
         sourceDrops: [
           {
@@ -233,8 +242,8 @@ export function resolveDocumentationFreshness({
       };
     return {
       mode: 'strict',
+      reason: strictReason,
       appendOnly: 'NOT_VERIFIED',
-      reason: `cannot compute this change's scope against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`,
     };
   }
   const current = ledger
