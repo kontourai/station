@@ -19,7 +19,6 @@ import type {
   DevicePrincipalBinding,
   PairedDevice,
 } from '@kontourai/station-contracts/environment-security';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { readVerifiedNativeVirtualApplicationRequest } from '../services/connections/virtual-application.js';
 import {
