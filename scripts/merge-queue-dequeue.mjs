@@ -457,13 +457,14 @@ export async function explainDequeue({
   let outcome = 'conflict';
   if (files.length === 0) {
     const head = timeline.commits.nodes.at(-1)?.commit;
+    if (!rearmEligible(pr, repository)) outcome = 'clean';
     // A head the timeline does not show yet is treated as already re-armed.
-    if (
+    else if (
       head?.oid !== pr.head.sha ||
       repeatedConflict(removals, head.committedDate)
     )
       outcome = 'repeated';
-    else if (rearmEligible(pr, repository)) {
+    else {
       // Consent is the station-autoland label; GitHub owns the queue and its
       // checks. Once per head: a second conflict removal stops here.
       execFileSync(
@@ -473,7 +474,7 @@ export async function explainDequeue({
       );
       console.log(`#${number}: merges cleanly with main; re-armed once`);
       return 'rearmed';
-    } else outcome = 'clean';
+    }
   }
   await upsertReport(
     number,
