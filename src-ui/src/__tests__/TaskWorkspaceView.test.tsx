@@ -78,7 +78,7 @@ const appendOutputFeedback = vi.fn();
 const taskWorkspaceAuthorityScope = vi.hoisted(() => ({
   apiBase: 'http://station.test',
   authorityKey: 'task-workspace-fixture',
-  isCurrent: () => true,
+  isCurrent: (): boolean => true,
 }));
 
 // AW-4: the optional Task experiences are now derived from this
