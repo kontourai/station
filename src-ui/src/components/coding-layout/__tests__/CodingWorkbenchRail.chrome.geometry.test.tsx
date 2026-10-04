@@ -87,6 +87,11 @@ describe.skipIf(!chromiumAvailable)(
   </head>
   <body>${railMarkup()}</body>
 </html>`);
+        // The route wrapper enters with a short translate; measure after it
+        // settles, not mid-animation.
+        await page.evaluate(() =>
+          Promise.all(document.getAnimations().map((a) => a.finished)),
+        );
         const rail = page.locator('.coding-workbench__rail');
         const add = page.getByRole('button', { name: 'Add pane' });
         const before = await rail.evaluate((el) => ({
@@ -98,10 +103,8 @@ describe.skipIf(!chromiumAvailable)(
         // The rail scrolls inside the window; the layout does not grow past
         // it (the route's scroller has nothing to scroll).
         const railBox = (await rail.boundingBox())!;
-        // Sub-pixel rounding only: an unbounded rail ends near 1,000px.
-        expect(railBox.y + railBox.height).toBeLessThanOrEqual(
-          VIEWPORT.height + 1,
-        );
+        // An unbounded rail ends near 1,000px.
+        expect(railBox.y + railBox.height).toBeLessThanOrEqual(VIEWPORT.height);
         const outer = await page
           .locator('.content-view')
           .evaluate((el) => el.scrollHeight - el.clientHeight);
