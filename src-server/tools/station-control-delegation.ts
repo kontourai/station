@@ -4392,7 +4392,7 @@ export async function refreshPeerDelegationActivity(
 }
 
 /** Refusal for a bound answer whose request is gone, replaced, or elsewhere. */
-export class DelegatedInputRequestChangedError extends Error {
+class DelegatedInputRequestChangedError extends Error {
   readonly code = 'input_request_changed';
   constructor() {
     super(
@@ -4403,7 +4403,7 @@ export class DelegatedInputRequestChangedError extends Error {
 }
 
 /** Refusal for a bound answer that also asks for a model change. */
-export class DelegatedInputBindingModelChangeError extends Error {
+class DelegatedInputBindingModelChangeError extends Error {
   readonly code = 'input_binding_model_change';
   constructor() {
     super(
@@ -4414,7 +4414,7 @@ export class DelegatedInputBindingModelChangeError extends Error {
 }
 
 /** Refusal for a bound answer to a Station that does not enforce bindings. */
-export class DelegatedInputBindingUnsupportedError extends Error {
+class DelegatedInputBindingUnsupportedError extends Error {
   readonly code = 'input_binding_unsupported';
   constructor() {
     super(

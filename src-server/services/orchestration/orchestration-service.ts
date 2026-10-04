@@ -1010,7 +1010,7 @@ export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
  * A display title past the bound is cut with a visible ellipsis, so a reader
  * can tell it was shortened; the request id carries identity, not the title.
  */
-export function boundedPeerRequestTitle(title: string): string {
+function boundedPeerRequestTitle(title: string): string {
   return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
 }
 

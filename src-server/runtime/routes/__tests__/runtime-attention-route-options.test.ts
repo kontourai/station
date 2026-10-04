@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   AttentionProjection,
@@ -12,6 +10,7 @@ import {
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createAttentionRoutes } from '../../../routes/orchestration/attention.js';
 import {
   type RuntimeAuthenticatedRequestPrincipal,
@@ -76,6 +75,9 @@ function principalFor(
       };
 }
 
+// Created before the cleanup hook below, so it removes the directories
+// after the stores in them have closed (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
@@ -84,8 +86,7 @@ afterEach(() => {
 function projectionWithPeerApproval(
   requestType: 'approval' | 'input' = 'approval',
 ) {
-  const home = mkdtempSync(join(tmpdir(), 'station-attention-options-'));
-  cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('station-attention-options-');
   const store = new EventStore(join(home, 'orchestration.sqlite'));
   cleanups.push(() => {
     store.close();

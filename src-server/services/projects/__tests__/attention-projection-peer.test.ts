@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   NeedsInputAttentionItem,
@@ -7,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/attention';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { afterEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -27,14 +26,16 @@ import { AttentionProjectionService } from '../attention-projection.js';
  * `environmentKind` is derived from what production persists, not from a
  * hand-shaped summary.
  */
+// Created before the cleanup hook below, so it removes the directories
+// after the stores in them have closed (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'station-attention-peer-'));
-  cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('station-attention-peer-');
   const store = new EventStore(join(home, 'orchestration.sqlite'));
   cleanups.push(() => {
     store.close();
