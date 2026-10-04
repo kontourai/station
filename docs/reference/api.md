@@ -3124,7 +3124,9 @@ has adopted v3, including after its feedback records have expired. Legacy
 readers may be unable to read a room once it contains v3 records.
 
 The Task output UI offers review only after authorized downloaded bytes match
-the selected version's length, ETag and SHA-256 digest. Text/JSON previews are
+the selected version's length, ETag and SHA-256 digest. Supported plain-HTTP
+browser connections use the pinned portable SHA-256 implementation when
+SubtleCrypto is absent. Text/JSON previews are
 bounded and safe PNG previews retain the existing download policy. Other media
 remain download-only; loading bytes does not prove a person inspected them.
 Drafts and uncertain retries are guarded when hiding or deleting the output.

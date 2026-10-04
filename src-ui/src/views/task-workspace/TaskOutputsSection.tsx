@@ -546,8 +546,12 @@ function TaskOutputContent({
       .then(async (content) => {
         const copy = new Uint8Array(content.bytes.byteLength);
         copy.set(content.bytes);
-        const hashed = await crypto.subtle.digest('SHA-256', copy.buffer);
-        const digest = `sha256:${Array.from(new Uint8Array(hashed), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+        const hashed = globalThis.crypto?.subtle
+          ? new Uint8Array(
+              await globalThis.crypto.subtle.digest('SHA-256', copy.buffer),
+            )
+          : (await import('@noble/hashes/sha2.js')).sha256(copy);
+        const digest = `sha256:${Array.from(hashed, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
         if (
           digest !== output.materialization.digest ||
           content.etag !== `"${digest}"` ||

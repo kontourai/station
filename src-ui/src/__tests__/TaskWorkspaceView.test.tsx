@@ -2015,4 +2015,51 @@ describe('TaskWorkspaceView', () => {
       }
     },
   );
+
+  test.each([true, false])(
+    'plain HTTP without SubtleCrypto admits matching bytes=%s and retains preview support',
+    async (matching) => {
+      vi.stubGlobal('crypto', {
+        getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+      });
+      taskOutputsResult.data = [taskOutput()];
+      const bytes = new TextEncoder().encode('portable digest preview');
+      const content = {
+        ...bindDownloadedVersion(bytes),
+        mediaType: 'text/plain',
+        fileName: 'local.md',
+        safePreview: null,
+      };
+      roomDiscoveryResult.data = {
+        kind: 'existing',
+        capabilities: { messageWrite: true },
+      };
+      downloadOutputContent.mockResolvedValue(
+        matching
+          ? content
+          : { ...content, bytes: new TextEncoder().encode('wrong digest') },
+      );
+      render(<TaskWorkspaceView taskId="task-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'View output local.md' }),
+      );
+      if (matching) {
+        await waitFor(() =>
+          expect(screen.getByText('portable digest preview')).toBeTruthy(),
+        );
+        expect(
+          screen.getByRole('button', { name: 'Review this version' }),
+        ).toBeTruthy();
+      } else {
+        await waitFor(() =>
+          expect(
+            screen.getByText(/Output content is unavailable:/),
+          ).toBeTruthy(),
+        );
+        expect(
+          screen.queryByRole('button', { name: 'Review this version' }),
+        ).toBeNull();
+      }
+    },
+  );
 });
