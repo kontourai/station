@@ -43,10 +43,13 @@ type ReplayableTurnStart = TurnStartedEvent & { prompt: string };
 /**
  * #3157: what a user action on a waiting usage-limit stop did. `not-waiting`
  * means there was nothing left to act on (settled, claimed, or never armed), and
- * the caller should re-read the projection.
+ * the caller should re-read the projection. `resumed` means the turn was sent
+ * (a provider refusal after that shows in the projection); `failed` means it
+ * could not be sent at all.
  */
 export type UsageLimitRecoveryActionResult =
   | { kind: 'resumed' }
+  | { kind: 'failed' }
   | { kind: 'canceled' }
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
   | { kind: 'not-waiting' };
@@ -561,8 +564,13 @@ export class SessionRecoveryCoordinator {
       });
       if (prepared.kind !== 'owner') return;
       this.clearTimer(current.fingerprint);
-      result = { kind: 'resumed' };
       await this.dispatchPrepared(current.fingerprint, prepared.attempt);
+      // A turn that cannot be sent again (its attachment bytes are gone) is
+      // failed before any dispatch; saying it was resumed would be false.
+      result =
+        this.ledger.find(current.fingerprint)?.outcome === 'failed'
+          ? { kind: 'failed' }
+          : { kind: 'resumed' };
     });
     return result;
   }

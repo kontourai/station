@@ -435,4 +435,137 @@ describe('#3157 usage-limit banner actions', () => {
     await after.coordinator.dispose();
     reopened.close();
   });
+
+  test('Resume now after a newer turn started (persisted, never observed) retires the stop as superseded and sends nothing', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => true);
+    stopOnUsageLimit(coordinator, store);
+    store.appendEvent({
+      eventId: 'newer-start',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'newer-turn',
+      createdAt: new Date(STOPPED_AT.getTime() + 1_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'Something else.',
+    });
+    await expect(coordinator.resumeUsageLimitNow(THREAD)).resolves.toEqual({
+      kind: 'retired',
+      reason: 'superseded',
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'canceled',
+      outcomeReason: 'superseded',
+    });
+    await coordinator.dispose();
+    store.close();
+  });
+
+  describe('with a newer ordinary retry armed beside the usage-limit stop', () => {
+    // Two failures of one turn: the usage limit, then an ordinary provider
+    // 429 armed a moment later, so the ordinary intent is the newest one.
+    async function stoppedBesideOrdinaryRetry() {
+      const harness = setup(() => true);
+      stopOnUsageLimit(harness.coordinator, harness.store);
+      await vi.advanceTimersByTimeAsync(1_000);
+      observe(harness.coordinator, harness.store, {
+        eventId: 'ordinary-error',
+        provider: 'codex',
+        threadId: THREAD,
+        turnId: 'limited-turn',
+        createdAt: new Date(Date.now()).toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'rate_limit',
+        retriable: false,
+        message: '429 too many requests',
+        details: { scope: 'provider', retryAfterMs: 3_600_000 },
+      });
+      const ledger = harness.store.createRecoveryLedger();
+      expect(
+        ledger.find(`${THREAD}:limited-turn:rate-limit:provider`),
+      ).toMatchObject({ outcome: 'armed' });
+      return { ...harness, ledger };
+    }
+
+    test('Resume now acts on the usage-limit stop, not the newest intent', async () => {
+      vi.useFakeTimers({ now: STOPPED_AT });
+      const { store, coordinator, dispatch, ledger } =
+        await stoppedBesideOrdinaryRetry();
+      await expect(coordinator.resumeUsageLimitNow(THREAD)).resolves.toEqual({
+        kind: 'resumed',
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(
+        ledger.find(`${THREAD}:limited-turn:rate-limit:account`),
+      ).toMatchObject({ usageLimit: true, outcome: 'resumed' });
+      await coordinator.dispose();
+      store.close();
+    });
+
+    test('Cancel auto-resume retires the usage-limit stop and leaves the ordinary retry armed', async () => {
+      vi.useFakeTimers({ now: STOPPED_AT });
+      const { store, coordinator, dispatch, ledger } =
+        await stoppedBesideOrdinaryRetry();
+      await expect(
+        coordinator.cancelUsageLimitWaiting(THREAD),
+      ).resolves.toEqual({ kind: 'canceled' });
+      expect(
+        ledger.find(`${THREAD}:limited-turn:rate-limit:account`),
+      ).toMatchObject({ outcome: 'canceled', outcomeReason: 'user-canceled' });
+      expect(
+        ledger.find(`${THREAD}:limited-turn:rate-limit:provider`),
+      ).toMatchObject({ outcome: 'armed' });
+      expect(dispatch).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+    });
+  });
+
+  test('Resume now on a turn that can no longer be sent says it failed, not that it resumed', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => true);
+    store.upsertSession({
+      provider: 'codex',
+      threadId: THREAD,
+      status: 'ready',
+      createdAt: STOPPED_AT.toISOString(),
+      updatedAt: STOPPED_AT.toISOString(),
+    });
+    // An attachment whose bytes were reclaimed: the turn cannot be replayed.
+    observe(coordinator, store, {
+      eventId: 'limited-start',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'limited-turn',
+      createdAt: STOPPED_AT.toISOString(),
+      method: 'turn.started',
+      prompt: 'Describe this screenshot.',
+      attachments: [{ name: 'shot.png', mimeType: 'image/png' }],
+    } as never);
+    observe(coordinator, store, {
+      eventId: 'limited-error',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'limited-turn',
+      createdAt: STOPPED_AT.toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'usageLimitExceeded',
+      retriable: false,
+      message: "You've hit your usage limit.",
+      details: { usageLimit: true, scope: 'account', resetAt: RESET_AT },
+    });
+    await expect(coordinator.resumeUsageLimitNow(THREAD)).resolves.toEqual({
+      kind: 'failed',
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'failed',
+    });
+    await coordinator.dispose();
+    store.close();
+  });
 });

@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 /** What an action did on the server (`UsageLimitRecoveryActionResult`). */
 export type UsageLimitActionResult =
   | { kind: 'resumed' }
+  | { kind: 'failed' }
   | { kind: 'canceled' }
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
   | { kind: 'not-waiting' };
@@ -26,7 +27,13 @@ interface UsageLimitRecoveryAnswer {
   recovery: ConnectionRecoveryProjection | null;
 }
 
-const ACTION_KINDS = ['resumed', 'canceled', 'retired', 'not-waiting'];
+const ACTION_KINDS = [
+  'resumed',
+  'failed',
+  'canceled',
+  'retired',
+  'not-waiting',
+];
 
 function isProjection(value: unknown): value is ConnectionRecoveryProjection {
   return (
