@@ -100,6 +100,7 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
+import type { DispatchCwdAdmission } from '../services/orchestration/dispatch-cwd-admission.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
@@ -381,6 +382,11 @@ export interface DelegateTaskInput {
    * in-process caller) starts it confined to its workspace.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: route-set only: the dispatch route's scope decision for the
+   * folder this task starts in, run again where its engine is spawned.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -1705,6 +1711,9 @@ function dispatchContextForAuthority(
   // #2493: the route's full-access grant for a start this dispatch causes.
   // `prepareStart` reads it (`startConfinement`); absent confines the start.
   fullAccessGrant?: FullAccessGrant | null,
+  // #2873: the route's scope decision for a new session's folder; the
+  // service runs it again beside the adapter start.
+  dispatchCwdAdmission?: DispatchCwdAdmission,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
@@ -1712,6 +1721,7 @@ function dispatchContextForAuthority(
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
   fullAccessGrant?: FullAccessGrant;
+  dispatchCwdAdmission?: DispatchCwdAdmission;
 } {
   return {
     userId: authority.userId,
@@ -1722,6 +1732,7 @@ function dispatchContextForAuthority(
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
     ...(fullAccessGrant ? { fullAccessGrant } : {}),
+    ...(dispatchCwdAdmission ? { dispatchCwdAdmission } : {}),
   };
 }
 
@@ -5403,6 +5414,7 @@ export async function delegateTask(
           input.principal,
           input.ownerAttribution,
           input.fullAccessGrant,
+          input.dispatchCwdAdmission,
         ),
         {
           conversationIdentity: {
@@ -5727,6 +5739,8 @@ export async function executeExecutionTargetMessage(
     const {
       automaticBackground: _automaticBackground,
       fullAccessGrant: _fullAccessGrant,
+      // #2873: this Station's own scope decision; never forwarded.
+      dispatchCwdAdmission: _dispatchCwdAdmission,
       delegation: _claimedDelegation,
       delegationAttestation: _claimedAttestation,
       stationControlToolCall: _stationControlToolCall,
@@ -5937,11 +5951,24 @@ export async function executeExecutionTargetMessage(
       ) {
         return { sessionId: conversationId, startRequired: false };
       }
+      // The service forwards `ConversationLineage`'s result as-is, including
+      // `retirePredecessorSessionId`, which its declared return type omits.
       return await orchestrationService.resolveConversationContinuation(
         conversationId,
         readAuthority,
         requested,
       );
+    },
+    retireSession: async (_access: EnvironmentAccess, sessionId: string) => {
+      // Conditional at execution time inside the service, not here: the
+      // predecessor may have taken a turn since the successor was reserved.
+      const context = dispatchContextForAuthority(readAuthority);
+      await orchestrationService.retireNeverRanSession(sessionId, {
+        userId: context.userId,
+        ...(context.tenantExecutionContext
+          ? { tenantExecutionContext: context.tenantExecutionContext }
+          : {}),
+      });
     },
     prepareConversationHandoff: async (access: EnvironmentAccess, handoff) => {
       // The target was resolved by the foreground seam immediately before
@@ -6084,6 +6111,7 @@ export async function executeExecutionTargetMessage(
           input.principal,
           input.ownerAttribution,
           input.fullAccessGrant,
+          input.dispatchCwdAdmission,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

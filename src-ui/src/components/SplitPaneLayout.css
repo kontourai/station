@@ -822,12 +822,6 @@
     min-height: 44px;
   }
 
-  /* The list's search box is a tap target too; the phone rule in index.css
-     stops at 40px (#3061). */
-  .split-pane .list-filter-input {
-    min-height: 44px;
-  }
-
   .split-pane__group-toggle {
     align-self: stretch;
   }

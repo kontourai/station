@@ -7,6 +7,10 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const expectedDependencies = new Map(
   Object.entries({
     'packages/contracts/src/diff-comment.ts': 'contract',
+    // #3051: the device-settings registry carries the `codingPanels` record
+    // (the Coding layout's panels, per session). A shape and a default; it
+    // renders, grants and executes nothing.
+    'packages/contracts/src/device-settings.ts': 'contract',
     // #2412: the pairing scope vocabulary names `/api/coding/exec` because
     // its `coding:exec` token is the per-device grant that route requires.
     // `route-authorization`, like the route-scope table beside it: it is a
@@ -117,8 +121,27 @@ const expectedDependencies = new Map(
     // The page the URL names (`?pane=` of the Coding host, or none): the
     // stack's own derivation, reading only the navigation store.
     'src-ui/src/components/coding-layout/codingStackPage.ts': 'aggregate-host',
+    // #3040/#3051: the wide fold and the panels beside and below Chat — the
+    // fold query, the panels' bounds and the per-session memory hook. Part
+    // of the built-in host like the stack page: it places, grants and
+    // executes nothing.
+    'src-ui/src/components/coding-layout/codingPanels.ts': 'aggregate-host',
+    // The per-session panels record (`codingPanels` device setting): pure
+    // read/write/evict/parse, the device store's import validation for it.
+    'src-ui/src/lib/coding-panels-record.ts': 'persistence',
+    // The device store validates an imported `codingPanels` value with that
+    // record's parser (its one Coding-specific line); everything else in it
+    // is generic per-device persistence.
+    'src-ui/src/lib/device-settings-store.ts': 'persistence',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
+    // The Diff pane's body: the git rows, then ONE view at full width (the
+    // working tree's changes or the pull requests). `aggregate-host`, like
+    // the workbench: it composes the pane's surfaces and owns none of them.
+    'src-ui/src/components/coding-layout/CodingDiffPaneBody.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/CodingDiffPaneBody.tsx':
+      'aggregate-host',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingTerminalPanel.tsx':
@@ -132,6 +155,9 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/DiffCommentThread.tsx': 'git-review',
     'src-ui/src/components/coding-layout/DiffPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/DiffPanel.tsx': 'git-review',
+    // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
+    // module: drawn pixels, nothing decided.
+    'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -187,7 +213,6 @@ const expectedDependencies = new Map(
     'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',
-    'src-ui/src/workspace-panes/WorkspacePaneHost.css': 'presentation',
     'src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts':
       'pane-contract',
     'src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx':

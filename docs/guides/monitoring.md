@@ -61,7 +61,8 @@ rounding differences.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
-| Claude engine and imported transcripts | Input/output/cache tokens and provider-reported USD cost | Token events are per turn; reported cost is session cumulative |
+| Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is cumulative within each engine process; a restart begins another cost epoch |
+| Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
@@ -69,13 +70,33 @@ rounding differences.
 | ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
 
-One attached-transcript defect remains in the per-turn conversation window:
-[late Claude turn-duration records can split a turn's usage](https://github.com/kontourai/station/issues/581).
-A bounded reproducer against the current importer emitted two usage events for
-one turn (5/7 and 11/13 input/output), while the conversation-window projection
-keeps only the latest usage event for that turn. The full-session fold and raw
-receipt rollup can sum the two events; the per-turn window must not be treated
-as complete until that importer/cursor defect is repaired.
+Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
+persisted cursor. Older aggregation cursors recover identities from a bounded
+look-behind when their active user boundary is still available. A late
+turn-duration record closes its known parent turn
+without clearing a newer turn's usage. Unknown or evicted ancestry does not
+close the current turn; the next user boundary can still flush its usage.
+The bounded per-turn conversation window retains all Claude and Muse usage
+observations, including split observations already persisted before this fix.
+Codex session-cumulative observations still use the latest snapshot. This
+repairs [#581](https://github.com/kontourai/station/issues/581); it does not
+expand the window's event or byte limits.
+
+The receipt panel reads an aggregate separately from its drilldown page. Local
+aggregate reads select at most 500 observations; a page selects at most 100.
+Reaching the aggregate limit produces partial coverage. Paired transfer applies
+replacement and deduplication before its separate 500-receipt limit, preserving
+explicit dropped-material coverage instead of failing the entire peer read.
+
+A context-only ACP observation produces no empty token receipt and does not
+count as a consumed-usage report. Codex token snapshots retain one identity
+across engine-process restarts; Claude cost snapshots keep separate process
+epochs. Durable event sequence resolves equal Station-observation timestamps,
+and sparse cumulative updates preserve previously reported components.
+Combined counter estimates remain unpriced when their model, price snapshot,
+or inherited component evidence does not support one estimate. These receipts
+are observations; their latest cumulative snapshot is not a per-day consumption
+delta or an exact mixed-model allocation.
 
 These are implementation and captured-wire/fixture boundaries, not a new live
 billing reconciliation across every account and model. The scope declarations

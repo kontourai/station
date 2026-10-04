@@ -28,6 +28,7 @@ import {
   sessionRecency,
   sessionTitle,
 } from '../../utils/sessionDisplay';
+import { chatWaitsOnUser } from '../../utils/waiting-approvals';
 
 export interface HomeWorkItem {
   id: string;
@@ -868,12 +869,13 @@ function chatLifecycleLabel(
     return 'Failed';
   }
   if (
-    chat.pendingApprovals?.length ||
+    // A request the user already answered still waits on the engine, not on
+    // them: the same derivation the chat's status pill reads.
+    chatWaitsOnUser(chat) ||
     // archive#1224 (offline): a queued (offline) turn needs an
     // actionable label — it won't resolve on its own without the connection
     // coming back.
-    chat.status === 'queued' ||
-    chat.orchestrationStatus === 'awaiting-approval'
+    chat.status === 'queued'
   )
     return 'Needs attention';
   // #2309: the conversation's server record, when there is one, is THE

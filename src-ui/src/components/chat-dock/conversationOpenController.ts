@@ -174,6 +174,7 @@ export function conversationOpenPatch(
               orchestrationStatus: undefined,
               sessionAutoApprove: [],
               pendingApprovals: [],
+              answeredApprovals: [],
               pendingApprovalTurnIds: {},
               approvalToasts: new Map(),
               unacknowledgedDecisions: [],

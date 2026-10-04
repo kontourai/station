@@ -53,6 +53,11 @@ import {
   settleClaudeResultTarget,
 } from './claude-sdk-turns.js';
 import {
+  type ClaudeUsageLimitState,
+  observeClaudeRateLimit,
+  takeClaudeUsageLimitDetails,
+} from './claude-usage-limit.js';
+import {
   type ParagraphBoundaryState,
   withParagraphBreak,
 } from './paragraph-boundary.js';
@@ -201,7 +206,7 @@ function claudeDeferredToolUse(
   };
 }
 
-export interface ClaudeMessageState {
+export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
@@ -809,7 +814,14 @@ export function mapClaudeSdkMessage({
     return;
   }
 
+  if (message.type === 'rate_limit_event') {
+    // #3157: the reset a usage-limit stop resumes at.
+    observeClaudeRateLimit(record, message.rate_limit_info);
+    return;
+  }
+
   if (message.type === 'result') {
+    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     // #2324: the result closes the turn it names (its user uuids), else the
     // running turn — never "whichever turn Station allocated last". Resolved
     // before anything is published so its usage lands on the same turn.
@@ -900,6 +912,7 @@ export function mapClaudeSdkMessage({
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
+        ...(usageLimit ? { details: { ...usageLimit } } : {}),
         // #2324 review F1: a failed turn the engine opened on its own ends
         // with this error; it carries the trigger its start did.
         ...(resultTurn?.kind === 'provider'
@@ -1038,6 +1051,8 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'assistant') {
+    if (message.parent_tool_use_id === null && message.error === 'rate_limit')
+      record.usageLimitReply = true;
     // #2324: before the model capture below — a frame that starts a turn
     // resets the previous turn's reported model.
     if (message.parent_tool_use_id === null) {

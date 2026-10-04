@@ -194,6 +194,12 @@ export type EphemeralMessage = ChatMessage & {
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
+  /**
+   * This notice says why a SEND did not go (a refused or failed send, a queued
+   * message dropped), as opposed to slash-command output or a status line. The
+   * composer repeats only these, and only until a later send is accepted.
+   */
+  sendFailure?: boolean;
   id?: string;
   timestamp?: number;
   /** archive#1292: the one flag every ephemeral-notice reader checks. Always
@@ -383,6 +389,14 @@ export type ChatUIState = {
    * Session-scoped and not persisted.
    */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * #3157: the conversation's latest turn ended on a provider usage limit.
+   * Automatic queue drains wait (the provider would refuse the follow-up, and
+   * its turn would retire the resume Station holds for the reset); a turn
+   * starting clears it. Set by the live `runtime.error` and by snapshots, from
+   * the server's own verdict. Session-scoped and not persisted.
+   */
+  usageLimitStopped?: boolean;
   /**
    * #2309: the turn the record showed open when the current send window
    * began (a stopped turn not yet aborted, typically). That turn opening
@@ -1599,6 +1613,7 @@ export function createEphemeralMessageState(
     content: string;
     attachments?: any[];
     action?: { label: string; handler: () => void };
+    sendFailure?: boolean;
   },
   now: () => number,
   randomId: () => string,

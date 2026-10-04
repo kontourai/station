@@ -2,6 +2,7 @@ import { spawnSync as defaultSpawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import ts from 'typescript';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 
 /**
  * The full Vitest corpus is intentionally partitioned by resource ownership.
@@ -276,9 +277,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and the stdio tools' own REST helper against an in-process guard, proving
   // a real pooled child reaches reads only; no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
+  // #3159: bounded single-shot Node children act as an external engine
+  // calling `read_conversation` over HTTP MCP against the production route
+  // composition on a loopback listener with a temporary SQLite EventStore;
+  // each child exits after its calls. No real services.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-conversation-read.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
-  // envelopes; every child exits after its one requested operation.
+  // envelopes; every child exits after its one requested operation. #2961
+  // adds six claimant children (three desktops each running one bridge claim,
+  // three service claims) that stay alive only until the test closes stdin.
   'src-server/tools/__tests__/instance-registry-bridge.test.ts',
   // #2888: binds a real loopback HTTP server and two independently
   // authenticated streaming clients against worker-backed SQLite state. The
@@ -305,6 +313,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2923: imports commands/service.ts, whose production command probe
   // uses spawnSync; the direct-import detector cannot see that child seam.
   'packages/cli/src/__tests__/service.test.ts',
+  // Real listener children prove service startup fencing and refusal cleanup.
+  'packages/cli/src/__tests__/service-run.test.ts',
+  // Opt-in Dockerfile command qualification owns real supervisor/server/UI children.
+  'scripts/__tests__/service-container-command.test.ts',
   // station#2689: builds a real git checkout fixture (git init/commit/rev-parse)
   // and drives the real lifecycle stamp check, which runs `git rev-parse HEAD`.
   'packages/cli/src/__tests__/service-build-stamp.test.ts',
@@ -325,6 +337,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through the shared file-mutation lock. Its bound is a count (2N), not a
   // wall-clock constant, so it does not add a contention cliff to this group.
   'src-server/services/agents/__tests__/skill-usage-service.cross-process.test.ts',
+  // #2961: six real claimants race the one host-owner claim, and a real
+  // SIGKILLed process proves stale-sidecar reclamation.
   'packages/shared/src/__tests__/instance-registry.test.ts',
   'packages/shared/src/__tests__/lifecycle-events.test.ts',
   // #2012: a real child runtime races the home maintenance ownership fence.
@@ -526,6 +540,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and its exit status when that ref is missing or malformed. Bounded,
   // single-shot children; the fixture is built with real `git init`/`commit`.
   'scripts/__tests__/nightly-cohort-decide.cli.test.ts',
+  // Runs the qualified-Nightly decide script as a real child process in a
+  // throwaway git repository, because the properties under test are that it
+  // reads the ledger from origin/main, peels real ledger commit-backs with
+  // git, and its exit status. Bounded, single-shot children.
+  'scripts/__tests__/nightly-qualification-decide.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a
@@ -571,6 +590,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // resource classification the manifest gate requires for any direct
   // child_process importer.
   'src-server/services/connections/__tests__/credential-enrolment.integration.test.ts',
+  // #2787: drives the bounded-capture helper against real single-shot
+  // children, one of which writes 64 MiB to prove the rejection path. It
+  // imports no child_process itself; the helper under test does.
+  'scripts/__tests__/bounded-capture.test.ts',
   // station#2822: shells out to the packaging dry-run and the publish
   // boundary script, so it spawns children like its install-script sibling.
   'scripts/__tests__/ecosystem-manifest.test.ts',
@@ -1107,6 +1130,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Same shape again: launches a real Chromium to prove a long Dialog body
   // scrolls and keeps the footer's commit action on screen and hittable.
   'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
+  // Same shape again: launch a real Chromium to measure the Coding layout's
+  // rail (scrolling inside the window) and the Chat column's edges (8px
+  // borderless splitters, the folded inbox strip's rule colour) against the
+  // real stylesheet.
+  'src-ui/src/components/coding-layout/__tests__/CodingWorkbenchRail.chrome.geometry.test.tsx',
+  'src-ui/src/components/coding-layout/__tests__/CodingWorkbenchSeparators.chrome.geometry.test.tsx',
   // Exercises the release-cohort CLI through real Node subprocesses so its
   // externally persisted receipt boundary is observable end-to-end.
   'scripts/__tests__/release-cohort.test.ts',
@@ -1352,7 +1381,7 @@ export function discoverVitestFiles({
       'Vitest discovery excludes must be non-empty one-line strings',
     );
   }
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     process.execPath,
     [
       vitest,
@@ -1365,7 +1394,10 @@ export function discoverVitestFiles({
       encoding: 'utf8',
       windowsHide: true,
       timeout: 60_000,
+      // No maxBuffer here: the listing grows with every test file, so it takes
+      // the bounded capture's 64 MiB default rather than Node's 1 MiB (#2787).
     },
+    { run: spawnSync },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {

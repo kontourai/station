@@ -528,6 +528,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-send-again-failed-turn.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#3112: a Station-native turn against a model server that fails with HTTP 500, sent the way the composer sends one (typed text, ambient context out-of-band), then reopened from its stored record and resent with Send again on its failure card. The resend's turn.started prompt must equal the original: the Station agent's store also holds the framework's ambient-composed copy of the input, and Send again must not resend it. Live because the store and the event window are written by the real server.",
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-multi-turn-context.spec.ts',
     bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
@@ -1691,7 +1701,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock.',
+      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock. Past the wide fold (#3040, #3051): a rail pick opens the tool beside Chat without a history entry, the Terminal in a lower panel under both, keyboard resizing that survives a reload, per-conversation panels, the fold crossed with a draft kept, one bar with Chat’s verbs as named icons (#3046), the inbox folding for a tool and keeping the reader’s own choice, a file opened from Files landing beside Chat by replace, the folded inbox’s edge strip (hover, keyboard, the reader’s choice) and the fold judged again on resize.',
     exceptions: [],
   },
   {

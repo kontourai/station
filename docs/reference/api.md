@@ -19,6 +19,16 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Station MCP endpoints
+
+`/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
+serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
+Both accept only loopback connections with a live, session-scoped credential
+for that exact server. They use MCP authentication rather than a paired Device
+credential. Tokens for one server cannot open the other, and in-process tokens
+cannot be presented over HTTP. Ordinary API and Project authorization still
+apply to each tool operation.
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
@@ -49,6 +59,42 @@ before commit. See the [ownership and failure contract](../design/task-room-agen
 and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
+
+### Keep a declared output
+
+`POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts
+`{operationId}` and resolves the declaration from the authorized Session owner.
+The [route](../../src-server/routes/orchestration/task-outputs.ts) captures the
+Task's Project, creation time and workspace. Its publication witness refuses a
+changed Task incarnation, Project or workspace, including at the pull-request
+commit boundary. Reusing an ID and path does not make a replacement Task the
+original target.
+
+The [Session output owner](../../src-server/services/orchestration/session-outputs-module.ts)
+checks the durable declaration and source workspace. File curation reaches the
+[immutable output store](../../src-server/services/projects/task-output-module.ts),
+which checks declared digest/length against captured bytes and rechecks the
+publication witness under its lock. A successful keep is `201` with a
+`task-declared-output-keep/v1` result; conflicts are `409`, previously deleted kept outputs
+are `410`, unavailable storage is `503`, and lost current authority is opaque
+`404`. A keep preserves an artifact or reference; it does not establish agent
+attribution, accepted quality or feedback. Exact-version review is described below; it remains a human statement rather than Task acceptance.
+
+New snapshots store their Task creation identity and, for admitted Session
+declarations, the declaration's Session/event/turn/tool identities privately.
+Public output records remain schema version 1 and omit those private fields.
+Reads and operation receipts for new outputs do not cross a Task incarnation;
+legacy outputs retain unknown provenance rather than receiving invented values.
+Legacy deletion receipts conservatively continue to block the same declared
+candidate under a fresh operation ID.
+
+The private index becomes schema version 2 on the first new snapshot. The new
+reader accepts existing version 1 rows; older binaries reject the version 2
+index, so downgrade requires an explicit migration. Task deletion clears its
+retained identity reservations only while the Task remains absent under the
+output lock. This module contract has no current mounted cascade caller and
+does not establish a joint transaction with TaskGraph.
+
 
 ## Table of Contents
 
@@ -214,7 +260,7 @@ starts its configuration and connection surfaces; that does not prove the
 Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
-loads `station-control` and `station-docs` on the Station-engine path, installs
+loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
 approval hooks and memory, and processes the configured system prompt. This is
 not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
@@ -471,7 +517,7 @@ service refuses changes that would create a shadow copy.
 ### Delete Integration
 
 `DELETE /integrations/:id` returns `{success: true}` after deletion.
-Runtime-managed built-ins such as `station-control` and `station-docs` return
+Runtime-managed built-ins such as `station-control`, `station-knowledge`, and `station-docs` return
 409 because startup recreates them. Package-supplied definitions must be
 removed through their owning package instead.
 
@@ -1214,6 +1260,31 @@ Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
 
+### Read Usage Receipts and Rollups
+
+`GET /api/analytics/usage-rollup` reads authorized canonical observations, with
+an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
+`from` and `to` can supply the exact window. `groupBy` accepts `provider`,
+`model`, `station`, `conversation`, `task`, or `day`. `pageSize` accepts 1–100;
+`cursor` advances the receipt drilldown without changing the aggregate.
+`localOnly=1` excludes configured peer Stations. The normal response is
+`{success: true, data: {window, rows, coverage, receipts, nextCursor?}}`.
+
+The local aggregate selects at most 500 usage observations independently from
+the page. Source observation limits and the separate global 500-logical-receipt
+limit are disclosed as partial coverage. `localOnly=1&includeAggregate=1`
+adds bounded `aggregateReceipts` for leaf Station transfer, after logical
+replacement/deduplication. Context occupancy alone does not produce a token
+receipt or consumed-usage coverage.
+
+Cumulative token identities survive engine-process restarts; cumulative cost
+identities follow the declared cost-process epochs. `sourceSequence` orders
+same-Station/thread observations when ingestion timestamps tie. Sparse
+cumulative updates retain earlier measured dimensions; unsupported combined
+model/pricing attribution stays unknown or unpriced. The window records
+observations, not a billing statement or precise consumption dates. See
+[Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns
@@ -1427,6 +1498,33 @@ returns unexpected failures as a generic 500 with
 still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
+
+Every JSON response the runtime writes itself, success or refusal, carries the
+response header `x-station-envelope: 1`
+(`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
+exposes it. Because there is no universal envelope, a reverse proxy or gateway
+can answer with JSON in a Station shape; the header is how a client tells
+Station's own answer from one written in between. The header is set by
+[one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
+every handler. The refusals Station writes outside that app set it
+themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
+(its admission refusals, and the 502 that replaces an app answer which tried
+to set a cookie) and the self-hosted broker's
+[gated application](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts)
+(retired trust, forbidden origin). It
+describes one hop: a response relayed from another Station through
+`fetchRemoteStation` leaves without it. Non-JSON bodies (event streams, files,
+plain text) do not carry it. A Station older than the header never sends it,
+so its absence proves nothing about such a Station.
+
+The SDK treats a missing header as "not Station's answer" only for an origin
+that has already sent it, and forgets an origin when its credential changes
+or the client switches Station. One case it cannot tell apart: Stations of
+different versions behind one origin (a rolling deploy, or a downgrade). Until
+the origin is forgotten, the older Station's refusals read as an
+intermediary's, so a queued chat message is retried instead of dropped and may
+be refused again on each retry until a reload. That fails toward retrying,
+never toward dropping a message.
 
 Clients must check HTTP status and the family's body/stream result. Treat 202
 as acceptance with pending work when the response says so, 409 indeterminate
@@ -2672,6 +2770,18 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
+conversation's transcript: `{conversationId, access, notice, messageCount,
+messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
+refused with `conversation_read_limit_out_of_range`, and a page's serialized
+messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
+only after the read is admitted. A station-control caller that is not a bound
+operator is further limited to its own conversation, its scope, or a
+conversation a person referenced in its conversation, and reads as the
+session's owner; a bound operator keeps the operator's reach. An id Station
+has no record of answers `conversation_not_found`; see the
+[read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
 ## Additional System Routes
 
 ### Get Runtime Info
@@ -3060,3 +3170,41 @@ The [pairing panel](../../packages/connect/src/react/DevicePairingPanel.tsx) off
 explicit choice through the [CLI owner](../../packages/cli/src/commands/environment.ts).
 See [Project membership and enrollment](../design/project-membership.md) for the
 separate account-binding and membership paths.
+
+
+### Review an immutable Task output
+
+In personal Station, `POST /api/tasks/:taskId/room/output-feedback` accepts
+`{proposalId, occurredAt, target: {outputId, digest, taskCreatedAt}, review, text}`.
+`digest` is the retained output's `sha256:` value, `taskCreatedAt` identifies the
+Task incarnation, and `review` is `comment`, `changes-requested` or `accepted`.
+The server derives the human principal and requires current room message-write
+authority. Agents cannot append this body. A fresh statement must resolve an
+output in that Task and Project with the exact digest and Task incarnation.
+
+The statement enters the same ordered, attributed room history and stream as
+conversation messages. `accepted` means that reviewer accepted this version;
+it does not change Task status, approve a workflow, or establish quality. Room
+history labels feedback from a different Task creation time as an earlier Task
+version; retained review never establishes acceptance of a replacement Task.
+Use the same proposal ID and unchanged payload after an uncertain response.
+Current authority is rechecked before a duplicate receipt is returned; exact
+retries survive output deletion and room-record retention. Changed content
+under that ID conflicts. Fresh statements about a deleted output are refused.
+
+Rooms retain existing v2 record bytes. The first output review and later writes
+use v3; a durable per-room database trigger rejects v2 inserts after that room
+has adopted v3, including after its feedback records have expired. Legacy
+readers may be unable to read a room once it contains v3 records.
+
+The Task output UI offers review only after authorized downloaded bytes match
+the selected version's length, ETag and SHA-256 digest. Supported plain-HTTP
+browser connections use the pinned portable SHA-256 implementation when
+SubtleCrypto is absent. Text/JSON previews are
+bounded and safe PNG previews retain the existing download policy. Other media
+remain download-only; loading bytes does not prove a person inspected them.
+Drafts and uncertain retries are guarded when hiding or deleting the output.
+Invited/public result reads currently omit output feedback: their human-history
+projection includes conversation messages only. Invited/public participation,
+browser acceptance and installed delivery require separate evidence from these
+source contracts.

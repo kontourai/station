@@ -8,7 +8,6 @@
 //
 // The scan is deterministic; no agent is involved. Validation is importable so
 // a privileged writer can check the report before publishing it.
-import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -17,6 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ISSUE_TITLE = 'Dated TODO sweep';
@@ -133,7 +133,7 @@ export function validateDatedTodoReport(report, { expectedDate }) {
 }
 
 function runGh(args) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
   }).trim();
