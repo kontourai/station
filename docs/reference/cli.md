@@ -290,7 +290,11 @@ platform-v2 archives on macOS/Linux. Those install under
 build. Verification can download a pinned Node.js when neither the host nor
 an installed archive supplies one. See the
 [archive install contract](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
-for prerequisites, retention and service limits.
+for prerequisites, retention and service limits. On Windows, `install.ps1`
+installs the `station-server-win32-x64.zip` archive from a signed public
+manifest the same way, with a `current` junction and a `station.cmd`
+launcher; see
+[Windows archive installs](../guides/release-channel-ports.md#windows-archive-installs).
 
 ```bash
 # Pin a release; rerun the ordinary command later to upgrade.
@@ -2361,7 +2365,10 @@ the installer without a Git checkout or pre-stop action. Installed plugins are p
 From a prebuilt server archive (`station-server-<os>-<arch>`) that `install.sh`
 installed (the version `<install root>/current` names), `upgrade` validates the
 install state, provenance, ownership marker and active link, then re-runs that
-version's installer with the recorded release manifest. Public-manifest
+version's installer with the recorded release manifest. On Windows the
+installer is the version's `install.ps1`, run through the system Windows
+PowerShell, and the install root's ACL (current user only) is checked in place
+of POSIX mode bits; a Windows service is not switched yet (#2675 W3). Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
 the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`

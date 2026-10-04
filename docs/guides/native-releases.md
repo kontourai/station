@@ -291,8 +291,8 @@ the bundled runtime under `versions/<version>`, then promotes the active link.
 When a running Station service's fixed launcher runs that install, the installer only
 stages the version and the launcher trials the switch instead.
 It does not run dependencies or build that archive. The Windows zip is
-`install.ps1`'s, which so far only stages a verified version
-(`STATION_INSTALL_STAGE_ONLY=1`, #2675 slice W). The default authenticated
+`install.ps1`'s, which installs it the same way without a service
+(#2675 slice W2; a Windows service is not switched yet). The default authenticated
 GitHub path and schema-v1 public source manifests still install and build a source
 release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
 and [installation lifecycle](release-channel-ports.md) for prerequisites,
