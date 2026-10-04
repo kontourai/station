@@ -3232,7 +3232,8 @@ unreadable response; it does not expose the helper's exception to the caller.
 
 `ChatHttpError`, thrown by execution fetchers, now extends `StationHttpError`;
 `serverMessage` retains the helper's message. The execution, attachment
-staging, orchestration-command and chat-stream producers set `stationEnvelope`
+staging, orchestration-command, steer-command and chat-stream producers set
+`stationEnvelope`
 to say whether Station itself answered. The body must have Station's shape (a
 boolean `success` field, or an object `error` with a string `code`), and the
 response must carry the `x-station-envelope` header a current Station puts on
