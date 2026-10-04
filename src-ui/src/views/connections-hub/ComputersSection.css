@@ -485,17 +485,17 @@
   gap: var(--k-space-2);
   margin-top: var(--k-space-6);
 }
-.relay-operator__header {
+.relay-operator__title-row {
   display: flex;
   align-items: center;
   gap: var(--k-space-1);
   min-height: 44px;
 }
-.native-relay-setup .relay-operator__header h2 {
+.native-relay-setup .relay-operator__title-row h2 {
   margin: 0;
   font-size: var(--k-text-lg);
 }
-.relay-operator__header-actions {
+.relay-operator__menu {
   margin-left: auto;
 }
 .relay-operator__list {
@@ -522,7 +522,7 @@
   overflow-wrap: anywhere;
 }
 .native-relay-setup .relay-operator__item .button,
-.native-relay-setup .relay-operator__header .button {
+.native-relay-setup .relay-operator__title-row .button {
   flex: 0 0 auto;
 }
 

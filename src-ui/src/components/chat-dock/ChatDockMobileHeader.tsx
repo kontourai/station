@@ -268,7 +268,11 @@ export function ChatDockMobileHeader({
             </>
           )}
         </button>
-        <NewChatAction className="chat-dock__mobile-new" onClick={onNewChat}>
+        <NewChatAction
+          variant="ghost"
+          className="chat-dock__mobile-header-icon chat-dock__mobile-new"
+          onClick={onNewChat}
+        >
           New
         </NewChatAction>
       </div>

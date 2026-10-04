@@ -14,10 +14,18 @@
   justify-content: flex-end;
   gap: var(--k-space-1);
 }
+/* Icon-only in the mobile chat header: the same 44px pill and quiet weight as
+   the Chat actions button beside it, so the pair reads as one control set. */
 .chat-dock__mobile-new {
+  justify-content: center;
   width: 44px;
   min-width: 44px;
-  padding: var(--k-space-2);
+  height: 44px;
+  padding: 0;
+}
+.chat-dock__mobile-new svg {
+  width: 20px;
+  height: 20px;
 }
 .chat-dock__mobile-new span {
   display: none;

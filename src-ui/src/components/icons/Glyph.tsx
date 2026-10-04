@@ -154,6 +154,10 @@ export const MoneyGlyph = /* @__PURE__ */ glyph(
 export const MusicGlyph = /* @__PURE__ */ glyph(
   'M6 12V4l6-1v8M3.5 14A2.5 2.5 0 1 0 6 11.5 2.5 2.5 0 0 0 3.5 14Zm6-1A2.5 2.5 0 1 0 12 10.5 2.5 2.5 0 0 0 9.5 13Z',
 );
+/** A conversation bubble with a plus: start a new chat (not "edit"). */
+export const NewChatGlyph = /* @__PURE__ */ glyph(
+  'M2.5 3h11v8h-6L4 13.5V11H2.5V3ZM8 5v4M6 7h4',
+);
 export const OutboxGlyph = /* @__PURE__ */ glyph(
   'M3 3h10v10H3V3Zm0 6h3l1 1.5h2L10 9h3M8 8V2m-2 2 2-2 2 2',
 );

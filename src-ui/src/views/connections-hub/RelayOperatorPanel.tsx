@@ -170,7 +170,7 @@ function OperatorPanel({ scope }: { scope: Scope }) {
   const view = query.data;
   return (
     <section className="native-relay-setup relay-operator" aria-label="Devices">
-      <div className="relay-operator__header">
+      <div className="relay-operator__title-row">
         <h2 className="relay-route-profiles__heading">Devices</h2>
         <RelaySetupHelp label="About devices">
           <p>
@@ -183,7 +183,7 @@ function OperatorPanel({ scope }: { scope: Scope }) {
           </p>
         </RelaySetupHelp>
         <ActionRow
-          className="relay-operator__header-actions"
+          className="relay-operator__menu"
           overflowLabel="More device actions"
           primary={
             <Button

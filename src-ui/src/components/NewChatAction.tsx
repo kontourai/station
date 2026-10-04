@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { Button } from './Button';
-import { EditGlyph } from './icons/Glyph';
+import { NewChatGlyph } from './icons/Glyph';
 import './NewChatAction.css';
 
 /** The same creation action in dock, inbox, and mobile chrome. */
@@ -16,7 +16,7 @@ export function NewChatAction({
       aria-label="New chat"
       {...props}
     >
-      <EditGlyph />
+      <NewChatGlyph />
       <span>{children}</span>
     </Button>
   );
