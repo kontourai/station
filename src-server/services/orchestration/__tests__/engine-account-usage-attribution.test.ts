@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
 import { expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import {
@@ -191,7 +192,7 @@ test('the real analytics route aggregates beyond its drilldown page without incl
     const query = windowQuery();
     const firstResponse = await app.request(`/usage-rollup?${query}`);
     expect(firstResponse.status).toBe(200);
-    const first: { data: UsageRollup } = await firstResponse.json();
+    const first = await readJson<{ data: UsageRollup }>(firstResponse);
     expect(first.data.rows).toEqual([
       expect.objectContaining({
         provider: 'claude',
@@ -207,7 +208,7 @@ test('the real analytics route aggregates beyond its drilldown page without incl
     query.set('cursor', first.data.nextCursor!);
     const secondResponse = await app.request(`/usage-rollup?${query}`);
     expect(secondResponse.status).toBe(200);
-    const second: { data: UsageRollup } = await secondResponse.json();
+    const second = await readJson<{ data: UsageRollup }>(secondResponse);
     expect(second.data.rows).toEqual(first.data.rows);
     expect(
       second.data.receipts.map((receipt) => receipt.sourceEventId),
@@ -244,7 +245,7 @@ test('context-only ACP observations do not claim consumed-usage coverage or prod
     const app = usageRoute(store, home, 'reader');
     const response = await app.request(`/usage-rollup?${windowQuery()}`);
     expect(response.status).toBe(200);
-    const result: { data: UsageRollup } = await response.json();
+    const result = await readJson<{ data: UsageRollup }>(response);
     expect(result.data.receipts).toEqual([]);
     expect(result.data.rows).toEqual([]);
     expect(result.data.coverage[0].providers).toEqual([
@@ -295,7 +296,7 @@ test('Codex token replacement survives a process restart while Claude cost epoch
       `/usage-rollup?${windowQuery()}`,
     );
     expect(response.status).toBe(200);
-    const result: { data: UsageRollup } = await response.json();
+    const result = await readJson<{ data: UsageRollup }>(response);
     expect(
       result.data.rows.find((row) => row.provider === 'codex'),
     ).toMatchObject({ inputTokens: 250 });
@@ -342,7 +343,7 @@ test.each([500, 501])(
         `/usage-rollup?${windowQuery()}`,
       );
       expect(response.status).toBe(200);
-      const result: { data: UsageRollup } = await response.json();
+      const result = await readJson<{ data: UsageRollup }>(response);
       expect(result.data.rows[0].inputTokens).toBe(500);
       expect(result.data.coverage[0].state).toBe(
         count === 500 ? 'complete' : 'partial',
@@ -399,7 +400,7 @@ test('durable sequence orders tied cumulative snapshots and preserves sparse res
       `/usage-rollup?${windowQuery()}`,
     );
     expect(response.status).toBe(200);
-    const result: { data: UsageRollup } = await response.json();
+    const result = await readJson<{ data: UsageRollup }>(response);
     expect(result.data.rows[0]).toMatchObject({
       inputTokens: 250,
       outputTokens: 60,
@@ -443,7 +444,7 @@ test('paired transfer sends logical bounded receipts instead of expanded raw obs
       `/usage-rollup?${query}`,
     );
     expect(response.status).toBe(200);
-    const result: { data: UsageRollup } = await response.json();
+    const result = await readJson<{ data: UsageRollup }>(response);
     expect(result.data.aggregateReceipts).toHaveLength(252);
     expect(
       result.data.aggregateReceipts?.reduce(
