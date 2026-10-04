@@ -151,7 +151,7 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
 }
 
 /** Scope satisfaction only; credential authority must be checked first. */
-export function isRelayManagementLeaf(request: {
+function isRelayManagementLeaf(request: {
   method: string;
   path: string;
 }): boolean {
@@ -170,7 +170,7 @@ export function isRelayManagementLeaf(request: {
   );
 }
 
-export function isProjectAccessManagementLeaf(request: {
+function isProjectAccessManagementLeaf(request: {
   method: string;
   path: string;
 }): boolean {
