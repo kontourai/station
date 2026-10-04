@@ -36,7 +36,13 @@
 
     "packages/cli/src/commands/service-run.ts",
 
-    "src-server/tools/__tests__/instance-registry-bridge.test.ts"
+    "src-server/tools/__tests__/instance-registry-bridge.test.ts",
+
+    "packages/cli/src/__tests__/service-run.test.ts",
+
+    "scripts/__tests__/service-container-command.test.ts",
+
+    "packages/shared/src/station-home-schema.ts"
   ],
 
   "checks": [
