@@ -41,7 +41,7 @@ type TurnActivityProgressParts = {
   running?: ToolLine;
   /** "Last: bash · failed", only between tools of the open turn. */
   lastTool?: ToolLine;
-  /** "No output for 12m 3s", only while the watchdog holds an observation. */
+  /** "No response from Claude Code for 12m 3s. Still waiting.", only while the watchdog holds an observation. */
   silence?: string;
 };
 
