@@ -1,0 +1,9 @@
+{
+  "revision": "86261a64cb5fc5bddc8a5decf17cbe977d4bd32e",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Fix round on the coding stack: KeyboardShortcutsContext dispatch now lets a handler return false to decline (no preventDefault, next match tried); documented that and the stack chords' use of it. Executed KeyboardShortcuts.declined and CodingWorkbench vitest.","inputs":["docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Delta fix round on the coding stack: the stack chords now decline only in key-owning editors (CodeMirror, xterm, contenteditable) and when there is nowhere to go, and handle Back/Forward in plain fields and the composer; a stale reader-move flag is consumed on any stack change; a cold deep link settles on its drill-in without transition or announcement. Checked against CodingWorkbench.tsx and ProjectLayoutRenderer.tsx; executed CodingWorkbench, ProjectLayoutRenderer and KeyboardShortcuts.declined vitest and coding-stack-navigation e2e. Synthetic keys cannot observe browser accelerators.","inputs":["docs/guides/keyboard-shortcuts.md"]}
+  ]
+}

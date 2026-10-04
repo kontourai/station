@@ -1,0 +1,7 @@
+{
+  "revision": "020eb6a14e05313bb66724ec3504e613717e6ed1",
+
+  "notes": [
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Reviewed full registry catalog delta: adds an independent curated collection and does not change delivery-viewer item, source, dependencies or evidence limits.","inputs":["examples/builder-delivery-viewer/README.md"]}
+  ]
+}

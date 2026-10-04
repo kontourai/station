@@ -9,14 +9,12 @@
 
   "limits": "Build behavior only; no hosted deployment or physical product result.",
 
-  "document": {"digest":"f03ce69035203dff4dbab9ae1259cf9a4482dcc5ada3ed800cec4b65462dddd7","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
-
   "sources": [
-    {"path":"docs/pages/public-docs.json","digest":"f96c9004f8443181d256f3c8c3cadf4e8825485d0327f108f26e468a5b12af99","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "docs/pages/public-docs.json",
 
-    {"path":"scripts/build-github-pages.mjs","digest":"8615899bd794a5bd02e50fd2cd7117de227bc9d150877f3eef157227b94cd082","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "scripts/build-github-pages.mjs",
 
-    {"path":"scripts/check-generated-pages-links.mjs","digest":"4bb25582aa5e5b15b7ceeb1e79af0628679f3b031508a81a266d3efae0750964","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"}
+    "scripts/check-generated-pages-links.mjs"
   ],
 
   "checks": [

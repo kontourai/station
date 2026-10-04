@@ -9,22 +9,20 @@
 
   "limits": "Not a fresh exploit report, comparison of external products, every contribution authority, or live native/browser/provider isolation audit. Entire original body preserved.",
 
-  "document": {"digest":"c93950f30b3f48e8bb9030debab5ccc9838ab3d2ba3edb5257f58db6690543ac","revision":"cf85b5e3b16b0ca2bfbed4c4fd16822026aff744"},
-
   "sources": [
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"525a68ea56ce10d8f66c64e398f16efd90d63b4b5f70208d52d708fd73239b44","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "src-server/routes/plugins/plugin-lifecycle-routes.ts",
 
-    {"path":"src-server/services/plugins/__tests__/plugin-install-consent.test.ts","digest":"3264a198b19d8e61986e10466443046846262569ea64384719a5186f13990282","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/plugins/__tests__/plugin-install-consent.test.ts",
 
-    {"path":"src-server/services/plugins/__tests__/plugin-permissions.test.ts","digest":"a4bf38d311db90edce974642aedd129eaa6baef998356a853d297ff1d9cce958","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/__tests__/plugin-permissions.test.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/plugins/plugin-install-consent.ts",
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/plugin-permissions.ts",
 
-    {"path":"src-ui/src/__tests__/PluginRegistry.csp.test.ts","digest":"f635d4e2688ecf45b48d23d272c27642e95a60db9fc7713b9c541f66c37c655b","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"}
+    "src-ui/src/core/PluginRegistry.ts"
   ],
 
   "checks": [
