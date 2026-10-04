@@ -1,4 +1,13 @@
-import { useMaterializeEngineAgentMutation } from '@kontourai/station-sdk';
+import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
+import {
+  useMaterializeEngineAgentMutation,
+  useSkillExperienceInventoryQuery,
+} from '@kontourai/station-sdk';
+import {
+  sameSkillExperienceIdentity,
+  skillExperienceInputDefaults,
+  skillExperiencesCanExecute,
+} from '@kontourai/station-shared/skill-experience-values';
 import React, {
   useCallback,
   useEffect,
@@ -7,12 +16,14 @@ import React, {
   useState,
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { trackRecentAgent } from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { agentEngineDescriptor } from '../../utils/engine';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { type EffectiveModelSource } from '../../utils/execution';
@@ -47,6 +58,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
+import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
 import {
@@ -98,6 +110,7 @@ interface NewChatModalProps {
     providerOptions?: Record<string, unknown>,
     providerId?: string,
     providerType?: string,
+    experienceDraft?: SkillExperienceDraft,
   ) => void | Promise<void>;
   onClose: () => void;
   draftContext?: CodingChatContextDraft | null;
@@ -120,6 +133,21 @@ export function NewChatModal({
   startWithDefault = false,
   initialPrompt,
 }: NewChatModalProps) {
+  const { namespace, status: authorityStatus } = useAuthorityPersistence();
+  const experienceInventory = useSkillExperienceInventoryQuery({
+    enabled: !mode && !startWithDefault && !initialPrompt,
+    refetchOnMount: 'always',
+  });
+  const [experience, setExperience] =
+    useState<InstalledSkillExperienceV1 | null>(null);
+  const [experienceInputs, setExperienceInputs] = useState<
+    Record<string, string>
+  >({});
+  const currentExperience = experienceInventory.data?.experiences.find(
+    (entry) =>
+      experience &&
+      sameSkillExperienceIdentity(entry.identity, experience.identity),
+  );
   const isMobile = useIsMobile();
   const devicePresentation = useDevicePresentation();
   const requestActive = useRef(true);
@@ -267,7 +295,10 @@ export function NewChatModal({
           : defaultSelection?.agent,
       ),
     onCancel: onClose,
+    allowedPaths: ['/registry', '/connections'],
     revalidate: async () => {
+      if (!mode && !startWithDefault && !initialPrompt)
+        await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
         await Promise.all([
@@ -539,13 +570,50 @@ export function NewChatModal({
     // a throw there (a failed lazy chunk, a broken route) previously vanished,
     // which from the user's seat is identical to the silent fall-through.
     const dispatch = (projectSlug?: string, projectName?: string) => {
+      if (
+        experience &&
+        (experienceInventory.error ||
+          experienceInventory.isFetching ||
+          !currentExperience ||
+          !skillExperiencesCanExecute(experienceInventory.data) ||
+          authorityStatus !== 'verified' ||
+          !namespace ||
+          !requestAuthority?.isCurrent())
+      ) {
+        setSelectFeedback(
+          'This visual skill cannot start on this Station. Refresh its source and check Station support; your input is retained.',
+        );
+        return;
+      }
+      if (
+        experience?.definition.requiredContext.some(
+          (context) => context.kind === 'project' && context.required,
+        ) &&
+        !projectSlug
+      ) {
+        setSelectFeedback('Choose a workspace for this visual skill.');
+        return;
+      }
+      if (
+        experience?.definition.requiredContext.some(
+          (context) => context.kind === 'conversation' && context.required,
+        )
+      ) {
+        setSelectFeedback(
+          'This visual skill requires an existing conversation. Open it there.',
+        );
+        return;
+      }
       try {
         void Promise.resolve(
           onSelect(
             agent,
             projectSlug,
             projectName,
-            initialMessage || undefined,
+            initialMessage ||
+              (experience
+                ? `Start ${experience.definition.title}.`
+                : undefined),
             sessionModel,
             modelSource,
             defaultEffectiveModel.id || undefined,
@@ -553,6 +621,19 @@ export function NewChatModal({
             choice?.providerOptions,
             choice?.providerId,
             choice?.providerType,
+            ...(experience && namespace && requestAuthority
+              ? ([
+                  {
+                    namespace,
+                    apiBase: requestAuthority.apiBase,
+                    definition: experience.definition,
+                    start: {
+                      identity: experience.identity,
+                      inputs: experienceInputs,
+                    },
+                  },
+                ] as const)
+              : ([] as const)),
           ),
         ).catch((error) => {
           console.error(
@@ -996,6 +1077,33 @@ export function NewChatModal({
           <div className="new-chat-modal__compat-warning" role="note">
             <strong>New independent conversation.</strong> {mode.disclosure}
           </div>
+        )}
+
+        {!mode && !startWithDefault && !initialPrompt && (
+          <SkillExperiencePicker
+            query={experienceInventory}
+            selected={experience}
+            current={Boolean(currentExperience)}
+            inputs={experienceInputs}
+            onChange={setExperienceInputs}
+            onSelect={(entry) => {
+              if (
+                experience &&
+                sameSkillExperienceIdentity(experience.identity, entry.identity)
+              )
+                return;
+              setExperience(entry);
+              setExperienceInputs(
+                skillExperienceInputDefaults(entry.definition),
+              );
+            }}
+            onRemove={() => setExperience(null)}
+            onBrowse={() => {
+              preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
+              preserveSetupContext.current = true;
+              setupReturn.begin('/registry');
+            }}
+          />
         )}
 
         {/* Context picker */}

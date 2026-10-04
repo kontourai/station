@@ -21,6 +21,12 @@ type HealthRoute =
       clientOrigin: string;
       credential?: string;
     }
+  | {
+      kind: 'native-relay';
+      transport: typeof fetch;
+      identityTransport?: typeof fetch;
+      isCurrent(): boolean;
+    }
   | { kind: 'reject' }
   | null;
 type BrokerRoute = NonNullable<SavedConnection['brokerRoute']>;
@@ -71,6 +77,10 @@ async function healthFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-relay') {
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+    return route.transport(url, init);
+  }
   if (route?.kind === 'relay') {
     if (!route.isCurrent())
       return Promise.reject(new Error('Station route is retired'));
@@ -105,6 +115,16 @@ async function stationAuthenticatedFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-relay') {
+    if (!route.identityTransport || !route.isCurrent())
+      throw Object.assign(
+        new Error('Native application authority is not ready'),
+        {
+          code: 'station_application_authority_required',
+        },
+      );
+    return route.identityTransport(url, init);
+  }
   if (route?.kind === 'relay') {
     if (!route.identityTransport || !route.isCurrent()) {
       return Promise.reject(

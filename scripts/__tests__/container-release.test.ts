@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
 import { checkContainerHealth } from '../container-healthcheck.mjs';
@@ -587,10 +588,25 @@ describe('container source contract', () => {
   });
 
   test('binds release publication and smoke to immutable provenance and cleanup', () => {
-    expect(release).toContain('needs: [preflight, full-regression]');
-    expect(release).toContain(
-      'needs: [preflight, desktop-macos, desktop-windows, desktop-linux, portable, android, ios-simulator, ios-device, container]',
-    );
+    // Parsed per job: other jobs (host-archives, the native producers) carry
+    // the same `needs:` line, so a substring match proves nothing about the
+    // container job.
+    const jobs = (
+      load(release) as { jobs: Record<string, { needs?: string[] }> }
+    ).jobs;
+    expect(jobs.container.needs).toEqual(['preflight', 'full-regression']);
+    expect(jobs['assemble-draft'].needs).toEqual([
+      'preflight',
+      'desktop-macos',
+      'desktop-windows',
+      'desktop-linux',
+      'portable',
+      'host-manifest',
+      'android',
+      'ios-simulator',
+      'ios-device',
+      'container',
+    ]);
     expect(release).toContain('packages: write');
     expect(release).toContain('linux/amd64,linux/arm64');
     expect(release).toContain('provenance: mode=max');

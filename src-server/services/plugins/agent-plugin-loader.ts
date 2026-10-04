@@ -29,12 +29,18 @@ import {
   type StationAgentPluginExtensionV1,
 } from '@kontourai/station-contracts/agent-plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import type {
+  SkillExperienceDefinitionV1,
+  SkillExperienceIdentityV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
   bindMCPDefinitionAdmission,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { readValidatedSkillExperiences } from '@kontourai/station-shared/skill-experience-author';
 import {
   frontmatterToProperties,
   parseFrontmatter,
@@ -45,13 +51,18 @@ import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
-import { computePluginContentDigest } from './plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  computePluginContentDigestAsync,
+  withPluginContentLock,
+} from './plugin-content-integrity.js';
 import {
   localManagedPluginAliases,
   PluginIncarnationError,
   resolveInstalledPluginRoot,
   resolvePluginMaterialization,
 } from './plugin-incarnation.js';
+import { withPluginPermissionInvocation } from './plugin-permissions.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
 const WINDOWS_RESERVED_ENV = new Set(['plugin_root', 'plugin_data']);
@@ -678,6 +689,317 @@ export class AgentPluginLoader {
     return loaded;
   }
 
+  async listSkillExperiences(): Promise<SkillExperienceInventoryV1> {
+    const inventory: SkillExperienceInventoryV1 = {
+      experiences: [],
+      diagnostics: [],
+    };
+    const candidates = new Map(
+      this.recognizedInstalledPackageRoots().map(({ directoryName, root }) => [
+        directoryName,
+        root,
+      ]),
+    );
+    const selectedInstallations = this.options
+      .journal?.()
+      .selectedInstallations();
+    if (selectedInstallations?.state === 'unavailable')
+      throw new Error('Installed package inventory is unavailable.');
+    if (selectedInstallations?.state === 'observed') {
+      for (const installation of selectedInstallations.installations) {
+        try {
+          const root = this.selectedRoot(
+            installation.pluginId,
+            'legacy-scan-exclusion',
+          );
+          if (root) candidates.set(installation.pluginId, root.packageRoot);
+          else
+            inventory.diagnostics.push({
+              pluginId: installation.pluginId,
+              code: 'unavailable',
+              message: 'The selected installed package source is unavailable.',
+            });
+        } catch (error) {
+          inventory.diagnostics.push({
+            pluginId: installation.pluginId,
+            code: 'unavailable',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    for (const [directoryName, root] of candidates) {
+      await withPluginContentLock(this.pluginsDir, directoryName, async () => {
+        const reports: AgentPluginLoadReport[] = [];
+        let declared = false;
+        try {
+          const raw: unknown = JSON.parse(
+            readBoundedRegularFile(
+              resolveContainedPath(root, join(root, 'plugin.json')),
+            ),
+          );
+          if (isRecord(raw) && typeof raw.$schema !== 'string') {
+            const selected = this.options
+              .journal?.()
+              .currentInstallation(directoryName);
+            if (
+              selected?.state === 'observed' &&
+              (await computePluginContentDigestAsync(
+                dirname(root),
+                basename(root),
+              )) !== selected.installation.contentDigest
+            )
+              inventory.diagnostics.push({
+                pluginId: directoryName,
+                code: 'unavailable',
+                message:
+                  'The selected installed package manifest changed from its admitted revision.',
+              });
+            return;
+          }
+          const parsed = this.parseManifest(root, raw, reports);
+          if (!parsed?.stationExtension) {
+            for (const report of reports.filter(
+              (entry) =>
+                entry.code === 'station-extension-invalid' ||
+                entry.code === 'manifest-invalid',
+            ))
+              inventory.diagnostics.push({
+                pluginId: directoryName,
+                code: 'definition-invalid',
+                message: report.message,
+              });
+            return;
+          }
+          const contributions = parsed.stationExtension.experiences ?? [];
+          if (contributions.length === 0) return;
+          declared = true;
+          const journal = this.options.journal?.();
+          const selected = journal?.currentInstallation(directoryName);
+          const materialization =
+            selected?.state === 'observed'
+              ? selected.installation.materialization
+              : undefined;
+          if (
+            parsed.manifest.name !== directoryName ||
+            !parsed.manifest.version ||
+            selected?.state !== 'observed' ||
+            !materialization ||
+            !selected.installation.dataScope ||
+            !journal?.admissionOpen(selected.installation) ||
+            this.selectedRoot(directoryName)?.packageRoot !== root
+          ) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'The installed package needs current activation before its experiences are available.',
+            });
+            return;
+          }
+          const installation = selected.installation;
+          const contentDigest = await computePluginContentDigestAsync(
+            dirname(root),
+            basename(root),
+          );
+          if (!contentDigest || contentDigest !== installation.contentDigest) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'Installed package bytes differ from the admitted revision; inspect and activate the package again.',
+            });
+            return;
+          }
+          const definitions = readValidatedSkillExperiences(
+            root,
+            parsed.manifest,
+            parsed.stationExtension,
+          );
+          const current = journal.currentInstallation(directoryName);
+          if (
+            current.state !== 'observed' ||
+            current.installation.incarnation !== installation.incarnation ||
+            current.installation.materialization !==
+              installation.materialization ||
+            !journal.admissionOpen(current.installation) ||
+            this.selectedRoot(directoryName)?.packageRoot !== root ||
+            (await computePluginContentDigestAsync(
+              dirname(root),
+              basename(root),
+            )) !== contentDigest
+          ) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'The installed package changed while its experiences were being read.',
+            });
+            return;
+          }
+          for (const definition of definitions) {
+            const definitionDigest = createHash('sha256')
+              .update(JSON.stringify(definition))
+              .digest('hex');
+            inventory.experiences.push({
+              identity: {
+                pluginId: directoryName,
+                pluginVersion: parsed.manifest.version,
+                experienceId: definition.id,
+                incarnation: installation.incarnation,
+                materialization,
+                contentDigest,
+                definitionDigest,
+              },
+              definition,
+            });
+          }
+        } catch (error) {
+          inventory.diagnostics.push({
+            pluginId: directoryName,
+            code: declared ? 'definition-invalid' : 'unavailable',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    }
+    return inventory;
+  }
+
+  async withSkillExperience<T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      entryContent: string,
+    ) => Promise<T>,
+    permission?: 'agents.invoke',
+  ): Promise<T> {
+    return withPluginContentLock(
+      this.pluginsDir,
+      identity.pluginId,
+      async () => {
+        const root = this.selectedRoot(identity.pluginId)?.packageRoot;
+        const journal = this.options.journal?.();
+        const current = journal?.currentInstallation(identity.pluginId);
+        if (
+          !root ||
+          !journal ||
+          current?.state !== 'observed' ||
+          current.installation.incarnation !== identity.incarnation ||
+          current.installation.materialization !== identity.materialization ||
+          current.installation.contentDigest !== identity.contentDigest ||
+          !journal.admissionOpen(current.installation) ||
+          (await computePluginContentDigestAsync(
+            dirname(root),
+            basename(root),
+          )) !== identity.contentDigest
+        )
+          throw new Error(
+            'The selected Skill experience source is no longer available.',
+          );
+        const parsed = this.parseManifest(
+          root,
+          JSON.parse(
+            readBoundedRegularFile(
+              resolveContainedPath(root, join(root, 'plugin.json')),
+            ),
+          ),
+          [],
+        );
+        if (
+          !parsed?.stationExtension ||
+          parsed.manifest.version !== identity.pluginVersion ||
+          parsed.manifest.name !== identity.pluginId
+        )
+          throw new Error('The selected Skill experience package changed.');
+        const definition = readValidatedSkillExperiences(
+          root,
+          parsed.manifest,
+          parsed.stationExtension,
+        ).find((value) => value.id === identity.experienceId);
+        if (
+          !definition ||
+          createHash('sha256')
+            .update(JSON.stringify(definition))
+            .digest('hex') !== identity.definitionDigest
+        )
+          throw new Error('The selected Skill experience definition changed.');
+        const entry =
+          definition.skills.find(
+            (skill) => skill.id === definition.entrySkillId,
+          ) ??
+          (definition.skills.length === 1 ? definition.skills[0] : undefined);
+        if (!entry)
+          throw new Error('This experience needs an explicit entry Skill.');
+        const ordered: typeof definition.skills = [];
+        const visited = new Set<string>();
+        const collect = (skill: typeof entry) => {
+          if (visited.has(skill.id)) return;
+          visited.add(skill.id);
+          for (const dependency of skill.dependsOn ?? []) {
+            const source = definition.skills.find(
+              (value) => value.id === dependency,
+            );
+            if (!source)
+              throw new Error('A bundled dependency is unavailable.');
+            collect(source);
+          }
+          ordered.push(skill);
+        };
+        collect(entry);
+        const content =
+          `Selected entry Skill: ${entry.name}. Package resource root (normal Agent/tool permissions still apply): ${root}.\n\n` +
+          ordered
+            .map(
+              (skill) =>
+                `Bundled Skill ${skill.name}:\n${readBoundedRegularFile(resolveContainedPath(root, join(root, skill.path)))}`,
+            )
+            .join('\n\n');
+        if (Buffer.byteLength(content) > 128 * 1024)
+          throw new Error(
+            'The selected Skill and its bundled dependencies exceed the execution context bound.',
+          );
+        const reserved = journal.reserve(current.installation, 'app');
+        if (reserved.state !== 'reserved')
+          throw new Error('The Skill experience source is retiring.');
+        let entered = false;
+        try {
+          if (
+            !reserved.claim.isCurrent() ||
+            this.selectedRoot(identity.pluginId)?.packageRoot !== root ||
+            (await computePluginContentDigestAsync(
+              dirname(root),
+              basename(root),
+            )) !== identity.contentDigest ||
+            reserved.claim.enterEffectBoundary().state !== 'applied'
+          )
+            throw new Error(
+              'The Skill experience source changed before dispatch.',
+            );
+          entered = true;
+          const invoke = () => effect(definition, content);
+          return await (permission
+            ? withPluginPermissionInvocation(
+                this.projectHomeDir,
+                identity.pluginId,
+                permission,
+                invoke,
+                {
+                  pluginId: identity.pluginId,
+                  generation: identity.incarnation,
+                  digest: identity.contentDigest,
+                  isCurrent: () => reserved.claim.isCurrent(),
+                },
+              )
+            : invoke());
+        } finally {
+          if (entered) reserved.claim.observeLocalSettlement();
+          else reserved.claim.releaseNotStarted();
+        }
+      },
+    );
+  }
+
   skillSources(
     composition?: PluginActivationComposition,
   ): CanonicalSkillSource[] {
@@ -716,6 +1038,17 @@ export class AgentPluginLoader {
               return false;
             }
           },
+          ...(selectedAtCapture?.state === 'observed' &&
+          selectedAtCapture.installation.materialization
+            ? {
+                packageRevision: {
+                  incarnation: selectedAtCapture.installation.incarnation,
+                  materialization:
+                    selectedAtCapture.installation.materialization,
+                  contentDigest: selectedAtCapture.installation.contentDigest,
+                },
+              }
+            : {}),
           label: `agent-plugin:${directoryName}` as const,
           ...(plugin?.manifest.version
             ? { version: plugin.manifest.version }
