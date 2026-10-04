@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { expect, type Page, type Route } from '@playwright/test';
 import { build } from 'esbuild';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
-import { HIT_TARGET_AUDIT, type HitTargetAudit } from './helpers/hit-target-audit';
+import {
+  HIT_TARGET_AUDIT,
+  type HitTargetAudit,
+} from './helpers/hit-target-audit';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let script = '';

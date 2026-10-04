@@ -150,7 +150,10 @@ Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
 is no slot for a third labelled button. `overflowLabel` names the `⋯` trigger
 and its menu. An overflow item marked `tone: 'danger'` is painted as
-destructive and moved last, behind a separator. A disabled item can carry a
+destructive and moved last, behind a separator. An item with `checked` is a
+toggle row (`menuitemcheckbox`); adding `exclusive` makes it one of a set
+(`menuitemradio`), such as a merge method. `separatorBefore` draws a separator
+above an item, for commands that follow a set of choices. A disabled item can carry a
 `disabledReason`, shown under its label; such a row is `aria-disabled` rather
 than `disabled`, so the keyboard can reach it and hear the reason, and it
 refuses activation. A row with neither `primary` nor `secondary` shows the
