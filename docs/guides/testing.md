@@ -430,14 +430,17 @@ The capture still exits nonzero, and this diagnostic cannot satisfy the
 successful matrix or promotion receipt. Preserve it when diagnosing a red gate.
 
 `frames` counts a phase's event frames only. The route flushes a trailing
-`orchestration:activity` frame 100 ms after the last coalesced event of a
-burst, so whether one lands before the harness closes a stream depends on host
-speed, not on the transfer: station-native ends its heavy turn with a coalesced
-`session.state-changed` and measured 45 frames instead of 44 on a slow host.
-The recorder counts those frames apart (`activityFrames`; their bytes still
-count toward the wire and decoded ceilings) and the scenario fails a phase that
-carries more than its source allows: none for the external engine, two for
-station-native (one window per coalesced event around the turn).
+`orchestration:activity` frame 100 ms after a coalesced event that carried no
+activity binding. Station-native ends its heavy turn with one
+(`session.state-changed`) and measured 45 frames instead of 44 when a slow host
+closed the stream after the flush. The scenario now waits for that frame before
+closing the live stream, so the phase always contains it and two baseline
+captures compare equal in bytes as well as frames. The recorder counts these
+frames apart (`activityFrames`; their bytes still count toward the wire and
+decoded ceilings), and the scenario requires exactly
+`ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES` per source (0 for the external
+engine, 1 for station-native) and none in any other phase. The scenario's own
+barriers use the same bound as the capture's (half of the configured timeout).
 
 After resolving the target revision and tool digest, capture also maintains
 `<capture-path>.progress.json`. This bounded snapshot contains only those
