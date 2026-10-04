@@ -8,11 +8,11 @@
 
     "src-ui/src/index.css",
 
+    "src-ui/src/views/page-layout.css",
+
     "src-ui/src/views/ProjectPage.css",
 
     "src-ui/src/views/ProjectPage.tsx",
-
-    "src-ui/src/views/page-layout.css",
 
     "tests/helpers/live-station-task.ts"
   ],

@@ -8,8 +8,8 @@
  * both surfaces read the same field from the same shape.
  */
 import type { FleetRoutingReceiptPage } from '@kontourai/station-contracts/fleet-routing-receipt';
-import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson } from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, readJsonBody } from './http';
 /**
  * `GET /monitoring/fleet-routing-receipts[?limit]` — this Station's own
  * routing receipts, newest first, with the chain verdict for the window
@@ -25,14 +25,15 @@ export async function fetchFleetRoutingReceipts(
     `${apiBase}/monitoring/fleet-routing-receipts${query}`,
     opts,
   );
-  const payload = (await response.json()) as {
-    success?: boolean;
-    data?: FleetRoutingReceiptPage;
-    error?: string;
-  };
-  if (!payload.success || !payload.data) {
-    throw new Error(
-      apiErrorMessage(payload, 'Fleet routing receipts could not be read.'),
+  // A refusal whose body is not JSON keeps its status (#2708).
+  const payload = (await readJsonBody(response)) as
+    | { success?: boolean; data?: FleetRoutingReceiptPage; error?: string }
+    | undefined;
+  if (!payload?.success || !payload.data) {
+    throw envelopeError(
+      response,
+      payload,
+      'Fleet routing receipts could not be read.',
     );
   }
   return payload.data;

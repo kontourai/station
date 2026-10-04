@@ -10,6 +10,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../state';
@@ -99,7 +100,9 @@ export function ConversationPullRequestLinks({
     } catch (error) {
       if (scope.isCurrent())
         setMutationError(
-          error instanceof Error ? error.message : 'Pull request link failed',
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : 'Pull request link failed',
         );
     } finally {
       if (scope.isCurrent()) setPending(null);
@@ -139,7 +142,7 @@ export function ConversationPullRequestLinks({
         <ErrorState
           variant="compact"
           title="Linked pull requests unavailable"
-          description={links.error.message}
+          description={userFacingErrorMessage(links.error)}
         />
       ) : visibleLinks.length === 0 ? (
         <Empty label="Nothing is linked to this conversation yet." />

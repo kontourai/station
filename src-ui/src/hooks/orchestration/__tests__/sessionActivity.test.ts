@@ -926,6 +926,9 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
         .getSnapshot()
         [threadId]?.approvalToasts?.get('req-dead');
       expect(toastId).toBeDefined();
+      activeChatsStore.updateChat(threadId, {
+        answeredApprovals: ['req-dead'],
+      });
 
       handleSessionStateChangedEvent(
         {
@@ -953,6 +956,8 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       expect(chat?.pendingApprovals ?? []).toEqual([]);
       expect(chat?.approvalToasts?.size ?? 0).toBe(0);
       expect(dismissSpy).toHaveBeenCalledWith(toastId);
+      // An "answered here" mark belongs to a request that no longer exists.
+      expect(chat?.answeredApprovals ?? []).toEqual([]);
     } finally {
       dismissSpy.mockRestore();
     }

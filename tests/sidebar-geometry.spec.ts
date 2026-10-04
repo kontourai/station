@@ -55,37 +55,46 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
     await seedOrchestrationRoutes(page);
   });
 
-  test('chips wrap inside the rail instead of widening or overflowing it', async ({
+  test('chips stay on one scrolling line inside the rail instead of widening it', async ({
     page,
   }) => {
     await openDevProject(page);
 
+    // #2150 replaced the wrapping chip row with a single line that scrolls
+    // sideways (`.sidebar__layout-chips`: nowrap + overflow-x). This used to
+    // assert the wrap; the rail's invariant that survives is that the row never
+    // widens the rail, and that the chips the line cannot show stay reachable.
     const row = await page.locator(CHIP_ROW).boundingBox();
-    const boxes = await page.locator(CHIP).evaluateAll((elements) =>
-      elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return { top: rect.top, right: rect.right, left: rect.left };
-      }),
-    );
+    const metrics = await page.locator(CHIP_ROW).evaluate((element) => ({
+      overflowX: getComputedStyle(element).overflowX,
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      tops: Array.from(element.children).map((chip) =>
+        Math.round(chip.getBoundingClientRect().top),
+      ),
+    }));
     if (!row) throw new Error('the chip row did not render a bounding box');
-    expect(boxes.length).toBe(5);
+    expect(metrics.tops.length).toBe(5);
 
-    // Not vacuous as a wrap claim: five chips this wide cannot fit one line,
-    // so more than one distinct top means the row really wrapped.
-    expect(
-      new Set(boxes.map((box) => Math.round(box.top))).size,
-    ).toBeGreaterThan(1);
-    for (const box of boxes) {
-      expect(box.right).toBeLessThanOrEqual(row.x + row.width + 1);
-      expect(box.left).toBeGreaterThanOrEqual(row.x - 1);
-    }
+    // One line: every chip shares a top.
+    expect(new Set(metrics.tops).size).toBe(1);
+    // Not vacuous: five chips this wide cannot fit the ~250px rail, so the row
+    // really overflows into its own scroller rather than fitting by luck.
+    expect(metrics.overflowX).toBe('auto');
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
 
-    // And the rail itself did not grow to accommodate them.
+    // The overflow stays inside the row's scroller: the rail did not grow.
     const sidebar = await page.locator('.sidebar').boundingBox();
     if (!sidebar) throw new Error('the sidebar did not render a bounding box');
     expect(row.x + row.width).toBeLessThanOrEqual(
       sidebar.x + sidebar.width + 1,
     );
+
+    // The chip the line cannot show is still reachable: focusing it scrolls
+    // the row to it.
+    const last = page.locator(CHIP).last();
+    await last.focus();
+    await expect(last).toBeInViewport();
   });
 
   test('the chip row is one tab stop whose arrow keys move focus between chips', async ({
