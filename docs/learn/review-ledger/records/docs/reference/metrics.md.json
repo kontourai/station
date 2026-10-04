@@ -9,20 +9,18 @@
 
   "limits": "Declarations do not prove caller recording, SDK binding or collector receipt. Unsupported owner syntax refuses generation.",
 
-  "document": {"digest":"bee01d187a257fec19f29f7d6f6105b640aa7b8576adfd324d554c9a1ba72372","revision":"2f1c4a004590c12a9a9599c9cdcc76edeb3984b9"},
-
   "sources": [
-    {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "scripts/__tests__/metric-reference.test.ts",
 
-    {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "scripts/generate-metric-reference.mjs",
 
-    {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    "scripts/lib/learning-markdown.mjs",
 
-    {"path":"scripts/lib/learning-source-reader.mjs","digest":"3ed56b00565eb004ecd245ec7b21a3e7969378278332c05b6c9960106a6a036a","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "scripts/lib/learning-source-reader.mjs",
 
-    {"path":"scripts/lib/metric-reference-output.mjs","digest":"1ab2f8c050105b4ddc265f4d16b5c4c5fad6bfe268f198884dfc6e1690259804","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "scripts/lib/metric-reference-output.mjs",
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"311d5115030901edf6315a6cf9bbd6bc9910a34988035db79d863223506bd457","revision":"782a93682304a7de7a3bc5980a9ad85053967502"}
+    "src-server/telemetry/metrics.ts"
   ],
 
   "checks": [

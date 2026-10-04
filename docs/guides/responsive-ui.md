@@ -127,10 +127,11 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
 `--k-text-lg` (18px). Desktop density remains owned by each surface. The task
 picker uses 18px titles with up to two lines, Agent icons, 14px project/status
-metadata, and a pinned circular add action. Project names wrap, and both pickers
-reuse [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
-for the same 52px icon button, accessible name, hover label and footer geometry.
-Creation controls remain outside the scrolling lists. The task picker presents
+metadata, and a pinned New chat action at the lower right. Project names wrap.
+The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
+for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
+across the mobile bar, task picker, and desktop inbox, with a 44px minimum target
+and an accessible name. Creation controls remain outside the scrolling lists. The task picker presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 

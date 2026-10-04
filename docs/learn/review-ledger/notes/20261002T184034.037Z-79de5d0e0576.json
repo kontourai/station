@@ -1,0 +1,17 @@
+{
+  "revision": "245e191835452b08664cb4647195649fd2263d97",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the iOS-only expiry worker and native intake callers after the Duration import guard fix. Production iOS retains its bounded timeout calculations; test code retains Duration, and the invitation custody, cancellation, recovery and public contract claims are unchanged.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the iOS-only expiry worker and native intake callers after the Duration import guard fix. Production iOS retains its bounded timeout calculations; test code retains Duration, and the invitation custody, cancellation, recovery and public contract claims are unchanged.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the iOS-only expiry worker and native intake callers after the Duration import guard fix. Production iOS retains its bounded timeout calculations; test code retains Duration, and the invitation custody, cancellation, recovery and public contract claims are unchanged.","inputs":["docs/design/native-relay-enrollment.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the iOS-only expiry worker and native intake callers after the Duration import guard fix. Production iOS retains its bounded timeout calculations; test code retains Duration, and the invitation custody, cancellation, recovery and public contract claims are unchanged.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the iOS-only expiry worker and native intake callers after the Duration import guard fix. Production iOS retains its bounded timeout calculations; test code retains Duration, and the invitation custody, cancellation, recovery and public contract claims are unchanged.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the iOS-only expiry worker and native intake callers after the Duration import guard fix. Production iOS retains its bounded timeout calculations; test code retains Duration, and the invitation custody, cancellation, recovery and public contract claims are unchanged.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

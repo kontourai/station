@@ -1,0 +1,7 @@
+{
+  "revision": "70e9b50c5329411de0b7b432408f0722407a0208",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed configurable native invitation expiry through operator CLI, connector factory, authenticated broker issuance, numeric wire validation and native intake/redemption. Default 24h, explicit null no time expiry uses safe-integer sentinel. New grants start at redemption; existing persisted positive deadlines remain unchanged. Executed 67 focused broker/key-candidate/link tests; installed Nightly validation remains pending.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

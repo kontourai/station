@@ -1,0 +1,7 @@
+{
+  "revision": "c259630c0b3c332e6808dcc79425ea2eb3f4732c",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"navigation-store.ts gained a same-URL index assignment in handlePopState, two read-only getters, an exported navigationEntryIndex, and navigate() no longer copies main's page stamp to a new entry. Re-read this guide's navigation and history instructions against the change; none describes same-URL entries or the store's index bookkeeping, and no instruction here is contradicted.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

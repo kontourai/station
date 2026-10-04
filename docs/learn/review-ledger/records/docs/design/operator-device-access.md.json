@@ -9,30 +9,28 @@
 
   "limits": "Sections 2-7 describe unbuilt mechanisms (passkeys, sessions, step-up, consent-origin ceremony) and are design claims, not implementation evidence. WebAuthn RP ID statements are reasoned from the specification. No live desktop, paired-browser or tailnet run; the device-session cookie's refusal status is not verified. Line citations drift with later edits.",
 
-  "document": {"digest":"645ec918f4db9d4913fbd707832b9ab5225e998b2984d9981098eb7f5d35cd21","revision":"be7f321108ecaf0cee5e048d84cfabc86a180528"},
-
   "sources": [
-    {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"a30f084b3b93f254337127cb18907d041570f9fc"},
+    "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
 
-    {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"8a5cd786f009ac84be86cbe39fe20f27ec4828a2"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-server/runtime/__tests__/operator-credential-host-locality.test.ts","digest":"5be83359e2e1c69381608ab5d067caf0e555a1e374e2da84ba3ea9d1ed4247e5","revision":"26f0a22a2308c8fed2085428b528026553672610"},
+    "src-server/runtime/__tests__/operator-credential-host-locality.test.ts",
 
-    {"path":"src-server/runtime/consent/consent-listener.ts","digest":"277b028e8716aa85aefe159da4b336052b0c5a4e4433785e44e504753ab4e2e2","revision":"dac129f874d7edf85a1834f2295412bc8f9603e1"},
+    "src-server/runtime/consent/consent-listener.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"16b68c0730416a7a7f193c0f3e229d57201c6719d7024187b905fa116f0eb501","revision":"26f0a22a2308c8fed2085428b528026553672610"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/security/host-operator-credential.ts","digest":"e2a9b9ac500ca4441b9c48b8c14b13596f2073697e68c58efb1f6780fd65b15b","revision":"26f0a22a2308c8fed2085428b528026553672610"},
+    "src-server/security/host-operator-credential.ts",
 
-    {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"01ae5b65e67e7456ed5d777266bb54b3774b4a56"},
+    "src-server/security/runtime-request-security.ts",
 
-    {"path":"src-server/services/consent/consent-transactions.ts","digest":"5a7ab41edbd033de28228b9bbffc0e0b16dc3fb920fb3f5efb91f9f6f855329b","revision":"91ec8af5d451ec5be73d2cfe18dcc7afa2170909"},
+    "src-server/services/consent/consent-transactions.ts",
 
-    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"},
+    "src-server/services/ssh/environment-security-service.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"a617e2d373f27b25ecc264d38fcf5b863f03aafd4acb354c08d7971c7c5dc1af","revision":"26f0a22a2308c8fed2085428b528026553672610"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"src-server/utils/internal-api-token.ts","digest":"61e1e9357c417d9f7cf2f069f439dae1f101dfc718fc50ba3748fe9c493be06d","revision":"26f0a22a2308c8fed2085428b528026553672610"}
+    "src-server/utils/internal-api-token.ts"
   ],
 
   "checks": [
