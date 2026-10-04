@@ -918,8 +918,14 @@ export function ChatDockBody({
         // `terminalSession` keep the New-chat-only treatment. Auth/login
         // failures set `retryable: false` — Send again would hit the same
         // expired session.
+        // #3112: `idx` indexes the list `ChatMessageList` renders — the
+        // transcript projection when it is enabled — so the user turn is read
+        // from that same list. The stored `activeSession.messages` is a
+        // different list; the same index there landed on a Station agent's
+        // stored copy of the model-facing input (ambient context prefix and
+        // all), which Send again then resent as if typed.
         const retryTurn = chatErrorMatch
-          ? findPrecedingUserTurn(activeSession.messages, idx)
+          ? findPrecedingUserTurn(renderedSession.messages, idx)
           : null;
         // A start Station could not confirm may have created the session;
         // a resend then collides with it ("thread … already has an active
@@ -977,7 +983,7 @@ export function ChatDockBody({
       removingMessages,
       activeSession.id,
       activeSession.replay,
-      activeSession.messages,
+      renderedSession.messages,
       chatInput.input,
       clearEphemeralMessages,
       handleDismissEphemeral,
