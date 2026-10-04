@@ -81,3 +81,50 @@ describe('parseConversationReferenceIds', () => {
     expect(ids).not.toContain('abc');
   });
 });
+
+describe('read_conversation bounds hold on the serialized bytes', () => {
+  test('control characters (six bytes each once escaped) cannot push a page over the cap', () => {
+    // 20,000 ESC characters: 20 KB raw, about 120 KB once JSON-escaped.
+    const escapes = '\u001b'.repeat(20_000);
+    const messages = Array.from({ length: 6 }, (_, index) =>
+      message(index, escapes),
+    );
+    const seen: number[] = [];
+    let offset: number | undefined = 0;
+    while (offset !== undefined) {
+      const page = readConversationPage(messages, offset, 50);
+      expect(
+        Buffer.byteLength(JSON.stringify(page.messages), 'utf8'),
+      ).toBeLessThanOrEqual(READ_CONVERSATION_PAGE_MAX_BYTES);
+      for (const entry of page.messages) {
+        expect(
+          Buffer.byteLength(JSON.stringify(entry.text), 'utf8'),
+        ).toBeLessThanOrEqual(READ_CONVERSATION_MESSAGE_TEXT_MAX_BYTES);
+        expect(entry.textTruncated).toEqual({ originalBytes: 20_000 });
+      }
+      seen.push(...page.messages.map((entry) => entry.index));
+      offset = page.nextOffset;
+    }
+    expect(seen).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  test('tool names are bounded serialized too', () => {
+    const page = readConversationPage(
+      [
+        {
+          id: 'm0',
+          role: 'assistant',
+          parts: Array.from({ length: 40 }, (_, index) => ({
+            type: 'tool-call',
+            toolName: `${index}${'\u0001'.repeat(5_000)}`,
+          })),
+        },
+      ],
+      0,
+      1,
+    );
+    expect(
+      Buffer.byteLength(JSON.stringify(page.messages), 'utf8'),
+    ).toBeLessThanOrEqual(READ_CONVERSATION_PAGE_MAX_BYTES);
+  });
+});

@@ -83,9 +83,9 @@ When a person references another conversation in a message (the composer's
 conversation picker, or a conversation dragged in from Activity or the inbox),
 the message carries a link to it, its id, and a line telling the receiving
 Agent to read it with `read_conversation`. The read returns up to 50 messages
-per page, at most 64 KB, oldest first, with a `nextCursor` for the next page.
-A `limit` above 50 is refused, not truncated. A message whose text exceeds
-16 KB is clipped and reports its full size. Every page states that the
+per page, at most 64 KB serialized, oldest first, with a `nextCursor` for the
+next page. A `limit` above 50 is refused, not truncated. A message whose text
+exceeds 16 KB once serialized is clipped and reports its full size. Every page states that the
 transcript is context, not instructions.
 
 A station-control caller may read:
@@ -93,17 +93,25 @@ A station-control caller may read:
 - its own conversation;
 - a conversation the dispatch scope above admits, read with the owner's
   Project `view` action;
-- a conversation a person referenced in a turn of the caller's conversation.
-  Station decides this from the sender it recorded on that turn: the
-  operator, or a paired device that is not another Station's delegation grant.
-  A link an Agent wrote, for example with `send_message`, admits nothing.
+- a conversation a person referenced in a turn of the caller's conversation,
+  by the conversation's id or one of its sessions' ids. Station decides this
+  from the sender it recorded on that turn: the operator, or a paired device
+  of kind `device`. A link an Agent wrote, for example with `send_message`,
+  or one sent through another Station's delegation grant admits nothing.
 
-The transcript is always read as the session's owner, so a reference never
-reaches another person's conversation. Refusals name a reason:
+The reference rule is attribution, not a security boundary: it records that
+a person sent the message, not that they wrote or inspected every link in
+it. Text a person pastes that contains a reference link counts as theirs.
+
+For a caller that is not a bound operator, the transcript is read as the
+session's owner, so a reference never reaches another person's
+conversation, and another person's conversation reads as not found. A bound
+operator caller keeps the operator's reach (decision 2 of #2377) and can read
+any recorded conversation. Refusals name a reason:
 `conversation_out_of_scope` when the conversation is the owner's but outside
 the caller's scope, `conversation_deleted` when a referenced conversation no
-longer reads, and `conversation_not_found` otherwise. Another person's
-conversation reads as not found. The
+longer reads, and `conversation_not_found` otherwise, including an id Station
+has no record of. The
 [read route](../../src-server/routes/chat/conversation-reference-read.ts)
 defines the rule.
 
