@@ -4902,7 +4902,13 @@ export class OrchestrationService {
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: import('@kontourai/station-contracts/usage-rollup').UsageReceipt[];
     nextCursor?: string;
