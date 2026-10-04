@@ -291,9 +291,11 @@ impl PairingCustodyWriter for DesktopPairingCustody {
     }
 }
 
-fn keyring_metadata_entry(account: &str) -> Result<keyring_core::Entry, String> {
+fn keyring_metadata_entry(
+    account: &str,
+) -> Result<crate::native_secure_entry::NativeSecureEntry, String> {
     crate::initialize_credential_store()?;
-    keyring_core::Entry::new(METADATA_SERVICE, account)
+    crate::native_secure_entry::NativeSecureEntry::new(METADATA_SERVICE, account)
         .map_err(|error| format!("create Station custody metadata entry: {error}"))
 }
 

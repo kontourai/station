@@ -35,10 +35,6 @@
       "labelledActions": 3
     },
     {
-      "row": "src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx :: ReviewOwner :: ResponsiveSurfaceActions.pull-request-review__actions",
-      "labelledActions": 3
-    },
-    {
       "row": "src-ui/src/components/live-activity/LiveCollaboratorsSection.tsx :: LiveCollaboratorsSection :: div.live-collaborators__actions",
       "labelledActions": 3
     },

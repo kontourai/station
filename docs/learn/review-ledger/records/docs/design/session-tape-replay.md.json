@@ -24,11 +24,11 @@
 
     {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"b92f3489603fc0ba0faee5bf828ae41d05b08aa65ff00e56fa5686cd06eb35fd","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
+    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"79ca1865beaf2362fa332605fadb3e23574de7a74ebd5601d7b97bb4f8f65dec","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
-    {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"0d810707d3eea729dcff22b90687bd6292a9068bfa6c0db19e710742d93dc399","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
+    {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"ce141146262f533040c74c9a99914eef351b075ce3f0cde1ee190bb5c1afbbf7","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"cf717e781483c79e1100edf268c8df602f0e6561179cca3e824dacde944b78db","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-ui/src/hooks/orchestration/replay/controller.ts","digest":"967105e5dad4144cbe9377c2e66302377ac84a747c34ceffd44e2cb60a44b7be","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

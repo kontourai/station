@@ -9,6 +9,10 @@ export class MultiSourceSkillRegistryProvider
 {
   constructor(private providers: ISkillRegistryProvider[]) {}
 
+  catalogProviders(): ISkillRegistryProvider[] {
+    return this.providers;
+  }
+
   async listAvailable(): Promise<RegistryItem[]> {
     const results = await Promise.all(
       this.providers.map(async (provider) => provider.listAvailable()),

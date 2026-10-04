@@ -296,5 +296,16 @@
   "presentation": {
     "modes": ["guided", "alongside"],
     "defaultMode": "guided"
-  }
+  },
+  "entrySkillId": "to-tickets",
+  "transitions": [
+    {
+      "experienceId": "implement",
+      "label": "Choose tickets to implement",
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "Station offers this optional next stage after the user reviews current work. Selecting it prepares a draft; sending and concrete tool actions remain explicit user decisions."
+      }
+    }
+  ]
 }

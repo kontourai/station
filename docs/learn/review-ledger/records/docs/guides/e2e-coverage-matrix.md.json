@@ -32,7 +32,7 @@
 
     {"path":"src-server/providers/llm/defaults.ts","digest":"5a7c47c56107d89a2d450d11a6931155332c7990e7f1de79d807f9c5c9f038f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"947299aa5edef647730c55a00724a7e0cdcc76617ae5aee66b6c77b96b73deaf","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/services/connections/connection-service.ts","digest":"cf2120e16b0ee9f0e54df18a114b616ef896d84c648a20e4d9e0df5054715f44","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
 

@@ -14,7 +14,7 @@ import {
 } from 'vitest';
 import { describeApiError } from '../commands/core-api.js';
 import {
-  resetProfileCredentialStoreForTests,
+  getProfileCredentialStore,
   setProfileCredentialStore,
 } from '../commands/profile-credentials.js';
 import { upsertProfile } from '../commands/profile-store.js';
@@ -1579,28 +1579,29 @@ describe('CLI core commands over HTTP', () => {
 
   test('attaches a stored host credential to a self-targeted loopback mutation', async () => {
     const { runCli } = await import('../cli.js');
+    const previousCredentialStore = getProfileCredentialStore();
     const previousHome = process.env.STATION_HOME;
     const previousRoot = process.env.STATION_ROOT;
     const profileHome = mkdtempSync(join(tmpdir(), 'station-loopback-auth-'));
     const credential = 'cli-self-target-read-only-credential';
     const credentialRef = { kind: 'station-bearer' as const, id: 'self' };
 
-    process.env.STATION_HOME = profileHome;
-    process.env.STATION_ROOT = profileHome;
-    setProfileCredentialStore({
-      get: (ref) => (ref.id === credentialRef.id ? credential : undefined),
-      set: () => {},
-      delete: () => {},
-      status: () => 'available',
-    });
-    upsertProfile({
-      name: 'self',
-      endpoint: apiBase,
-      credentialRef,
-      makeDefault: true,
-    });
-
     try {
+      process.env.STATION_HOME = profileHome;
+      process.env.STATION_ROOT = profileHome;
+      setProfileCredentialStore({
+        get: (ref) => (ref.id === credentialRef.id ? credential : undefined),
+        set: () => {},
+        delete: () => {},
+        status: () => 'available',
+      });
+      upsertProfile({
+        name: 'self',
+        endpoint: apiBase,
+        credentialRef,
+        makeDefault: true,
+      });
+
       await runCli([
         'projects',
         'create',
@@ -1608,7 +1609,7 @@ describe('CLI core commands over HTTP', () => {
         '--data={"name":"Scoped loopback","slug":"scoped-loopback"}',
       ]);
     } finally {
-      resetProfileCredentialStoreForTests();
+      setProfileCredentialStore(previousCredentialStore);
       rmSync(profileHome, { recursive: true, force: true });
       if (previousHome === undefined) delete process.env.STATION_HOME;
       else process.env.STATION_HOME = previousHome;

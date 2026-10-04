@@ -14,6 +14,10 @@ import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
+import {
+  readSkillExperienceDraft,
+  type SkillExperienceDraft,
+} from '../lib/skill-experience-draft';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
@@ -290,6 +294,10 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  skillExperienceDraft?: SkillExperienceDraft;
+  skillExperienceDraftInvalid?: boolean;
+  skillExperienceActive?: boolean;
+  skillExperienceMode?: 'guided' | 'alongside' | 'chat';
   input: string;
   attachments: FileAttachment[];
   /** Byte-free attachment supervision projection, safe across reload/reconnect. */
@@ -673,6 +681,10 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  skillExperienceDraft?: SkillExperienceDraft;
+  skillExperienceDraftInvalid?: boolean;
+  skillExperienceActive?: boolean;
+  skillExperienceMode?: 'guided' | 'alongside' | 'chat';
   sessionId: string;
   /**
    * Absent for a chat persisted ONLY because it holds unsent records
@@ -888,6 +900,9 @@ export function hydrateActiveChats(
       session.queuedMessageFailure,
     );
     const unsentMessages = readUnsentMessages(session.unsentMessages);
+    const experienceDraft = readSkillExperienceDraft(
+      session.skillExperienceDraft,
+    );
     const dispatch = session.pendingQueueDispatch;
     const pendingDispatch =
       typeof dispatch?.content === 'string' &&
@@ -895,6 +910,19 @@ export function hydrateActiveChats(
         ? dispatch
         : undefined;
     chats[session.sessionId] = {
+      ...(experienceDraft ? { skillExperienceDraft: experienceDraft } : {}),
+      ...(session.skillExperienceDraftInvalid ||
+      (session.skillExperienceDraft !== undefined && !experienceDraft)
+        ? { skillExperienceDraftInvalid: true }
+        : {}),
+      ...(session.skillExperienceActive === true
+        ? { skillExperienceActive: true }
+        : {}),
+      ...(['guided', 'alongside', 'chat'].includes(
+        String(session.skillExperienceMode),
+      )
+        ? { skillExperienceMode: session.skillExperienceMode }
+        : {}),
       input: '',
       attachments: [],
       ...(typeof session.pendingSendNow?.messageId === 'string' &&
@@ -1078,11 +1106,15 @@ export function isDurableActiveChat(chat: {
   queuedMessages?: unknown[];
   pendingQueueDispatch?: { content: string };
   replay?: unknown;
+  skillExperienceDraft?: unknown;
+  skillExperienceDraftInvalid?: boolean;
 }): boolean {
   if (chat.replay) return false;
   return Boolean(
     chat.conversationId ||
       chat.unsentMessages?.length ||
+      chat.skillExperienceDraft ||
+      chat.skillExperienceDraftInvalid ||
       chat.queuedMessages?.length ||
       chat.pendingQueueDispatch,
   );
@@ -1123,6 +1155,16 @@ export function serializeActiveChats(
     .filter(([, chat]) => isDurableActiveChat(chat))
     .map(([sessionId, chat]) => ({
       sessionId,
+      ...(chat.skillExperienceDraft
+        ? { skillExperienceDraft: chat.skillExperienceDraft }
+        : {}),
+      ...(chat.skillExperienceDraftInvalid
+        ? { skillExperienceDraftInvalid: true }
+        : {}),
+      ...(chat.skillExperienceActive ? { skillExperienceActive: true } : {}),
+      ...(chat.skillExperienceMode
+        ? { skillExperienceMode: chat.skillExperienceMode }
+        : {}),
       conversationId: chat.conversationId,
       currentSessionId: chat.currentSessionId,
       agentSlug: chat.agentSlug!,
@@ -1334,6 +1376,10 @@ export function mergeChatUpdates(
     chat.stopSettledTurnId = undefined;
   }
   const shouldPersist =
+    'skillExperienceDraft' in nextUpdates ||
+    'skillExperienceDraftInvalid' in nextUpdates ||
+    'skillExperienceActive' in nextUpdates ||
+    'skillExperienceMode' in nextUpdates ||
     'conversationId' in nextUpdates ||
     'title' in nextUpdates ||
     'executionMode' in nextUpdates ||

@@ -20,6 +20,7 @@ import type {
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { SkillExperienceIdentityV1 } from './skill-experience.js';
 
 export type {
   AttachedSessionSourceMetadata,
@@ -101,6 +102,11 @@ export type OrchestrationCommand =
     }
   | {
       type: 'respondToRequest';
+      /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
+      expectedSkillExperience?: {
+        identity: SkillExperienceIdentityV1;
+        eventId: string;
+      };
       threadId: string;
       requestId: string;
       /** Compare this exact opened event immediately before responding. */
@@ -1279,7 +1285,9 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
     string
   >
 > = Object.freeze({
-  authorizedTranscript: 'Conversation transcript',
+  // #3164: the seed carries recent whole messages under a size budget and
+  // tells the new engine how many earlier ones it left out.
+  authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
   providerNativeCursor: 'Provider-native cursor',

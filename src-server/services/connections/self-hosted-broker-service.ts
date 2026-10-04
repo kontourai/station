@@ -14,9 +14,13 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_TYPE,
+  SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_VERSION,
   SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_TYPE,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVE_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVED_VERSION,
   type SelfHostedBrokerClientGrantV1,
   type SelfHostedBrokerNativeClientGrantV2,
   type SelfHostedBrokerNativeClientSurfaceV2,
@@ -26,6 +30,7 @@ import {
   type SelfHostedBrokerNativeConnectionOpenV2,
   type SelfHostedBrokerNativeGrantRenewedV2,
   type SelfHostedBrokerNativeGrantRenewV2,
+  type SelfHostedBrokerNativeInvitationObservationProofClaimsV1,
   type SelfHostedBrokerNativeKeyCandidateOfferV1,
   type SelfHostedBrokerNativeKeyCandidateProofV1,
   type SelfHostedBrokerNativeKeyCandidateResultV1,
@@ -35,13 +40,16 @@ import {
   type SelfHostedBrokerNativeScopeV2,
   type SelfHostedBrokerRouteInvitationV1,
   type SelfHostedBrokerScopeV1,
+  type SelfHostedBrokerSupersededNativeScopeObservedV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { calculateJwkThumbprint, compactVerify, importJWK } from 'jose';
+import type { BrokerIceAuthority } from './broker-ice-service.js';
 
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const SDP_LIMIT = 128 * 1024;
-const INVITATION_MAX_AGE_MS = 5 * 60_000;
+const INVITATION_DEFAULT_AGE_MS = 24 * 60 * 60_000;
+const INVITATION_MAX_AGE_MS = Number.MAX_SAFE_INTEGER;
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const NATIVE_GRANT_MAX_AGE_MS = 24 * 60 * 60_000;
 const NATIVE_GRANT_RENEWAL_GRACE_MS = 7 * 24 * 60 * 60_000;
@@ -525,7 +533,7 @@ export class SelfHostedBrokerService {
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (![0, 1, 2, 3, 4, 5, 6].includes(version.user_version)) {
+    if (![0, 1, 2, 3, 4, 5, 6, 7].includes(version.user_version)) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -554,6 +562,9 @@ export class SelfHostedBrokerService {
                 : []),
               ...(version.user_version >= 5
                 ? ['broker_native_request_proofs']
+                : []),
+              ...(version.user_version >= 7
+                ? ['broker_native_invitation_request_proofs']
                 : []),
               ...(version.user_version >= 6
                 ? ['broker_native_grant_renewals']
@@ -665,7 +676,12 @@ export class SelfHostedBrokerService {
       CREATE INDEX IF NOT EXISTS broker_native_grant_renewal_expiry
         ON broker_native_grant_renewals(receipt_expires_at);
       PRAGMA application_id=1398030930;
-      PRAGMA user_version=6;
+      CREATE TABLE IF NOT EXISTS broker_native_invitation_request_proofs(
+        invitation_id TEXT NOT NULL, jti TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY(invitation_id,jti));
+      CREATE INDEX IF NOT EXISTS broker_native_invitation_request_proofs_expiry
+        ON broker_native_invitation_request_proofs(expires_at);
+      PRAGMA user_version=7;
       COMMIT;`);
     } catch (error) {
       try {
@@ -731,6 +747,68 @@ export class SelfHostedBrokerService {
     } finally {
       this.transactionDepth--;
     }
+  }
+  /** Captures existing routing authority only; TURN grants no Station access. */
+  captureNativeIceAuthority(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+  ): BrokerIceAuthority {
+    const ownedScope = Object.freeze(
+      structuredClone(validateNativeScope(scope)),
+    );
+    const ownedSurface = Object.freeze(
+      structuredClone(validateNativeSurface(surface)),
+    );
+    const ownedCredential = Object.freeze({ ...credential });
+    const { grant } = this.nativeRoutingOwner(
+      ownedScope,
+      ownedCredential,
+      ownedSurface,
+    );
+    const publicKey = grant.proof_public_key;
+    const signingKeyId = grant.signing_key_id;
+    const signingGeneration = grant.signing_generation;
+    return Object.freeze({
+      scope: ownedScope,
+      surface: ownedSurface,
+      subject: `native:${grant.grant_id}:${grant.key_thumbprint}`,
+      grantExpiresAt: grant.expires_at,
+      assertCurrent: () => {
+        const fresh = this.nativeRoutingOwner(
+          ownedScope,
+          ownedCredential,
+          ownedSurface,
+        ).grant;
+        if (
+          fresh.proof_public_key !== publicKey ||
+          fresh.signing_key_id !== signingKeyId ||
+          fresh.signing_generation !== signingGeneration
+        )
+          throw new Error('broker_credential_refused');
+      },
+    });
+  }
+  captureConnectorIceAuthority(
+    scope: BrokerScope,
+    credential: BrokerCredential,
+  ): BrokerIceAuthority {
+    const ownedScope = Object.freeze(
+      structuredClone(validateBrokerScope(scope)),
+    );
+    const ownedCredential = Object.freeze({ ...credential });
+    this.lease(ownedScope, ownedCredential, 'connector');
+    return Object.freeze({
+      scope: Object.freeze({
+        stationId: ownedScope.stationId,
+        enrollmentId: ownedScope.enrollmentId,
+        routingGeneration: ownedScope.routingGeneration,
+      }),
+      subject: `connector:${ownedScope.stationId}:${ownedScope.enrollmentId}:${ownedScope.routingGeneration}:${ownedCredential.id}`,
+      assertCurrent: () => {
+        this.lease(ownedScope, ownedCredential, 'connector');
+      },
+    });
   }
   /** Verifies one exact native request and atomically consumes its JTI with the operation. */
   async withNativeRequestProof<T>(input: {
@@ -925,6 +1003,234 @@ export class SelfHostedBrokerService {
       );
     });
   }
+  async observeSupersededNativeScope(input: {
+    request: unknown;
+    credential: BrokerCredential;
+    compactProof: string;
+    exactBody: Uint8Array;
+    brokerOrigin: string;
+  }): Promise<SelfHostedBrokerSupersededNativeScopeObservedV1> {
+    if (
+      !input.request ||
+      typeof input.request !== 'object' ||
+      Array.isArray(input.request)
+    )
+      throw new Error('invalid_request');
+    const request = input.request as Record<string, unknown>;
+    if (
+      Object.keys(request).sort().join(',') !==
+        'proofPublicKey,requestNonce,scope,supersededScope,surface,version' ||
+      request.version !==
+        SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVE_VERSION ||
+      typeof request.requestNonce !== 'string' ||
+      !SECRET.test(request.requestNonce) ||
+      Buffer.from(request.requestNonce, 'base64url').toString('base64url') !==
+        request.requestNonce ||
+      typeof input.compactProof !== 'string' ||
+      input.compactProof.length > 8192 ||
+      input.exactBody.byteLength > 16384
+    )
+      throw new Error('invalid_request');
+    const requestNonce = request.requestNonce;
+    const scope = validateNativeScope(request.scope);
+    const surface = validateNativeSurface(request.surface);
+    const oldScope = validateNativeScope(request.supersededScope);
+    if (
+      oldScope.stationId !== scope.stationId ||
+      oldScope.enrollmentId !== scope.enrollmentId ||
+      oldScope.routingGeneration >= scope.routingGeneration
+    )
+      throw new Error('invalid_native_scope');
+    const brokerOrigin = canonicalBrokerOrigin(input.brokerOrigin);
+    if (
+      !input.credential ||
+      typeof input.credential.id !== 'string' ||
+      !ID.test(input.credential.id) ||
+      typeof input.credential.secret !== 'string' ||
+      !SECRET.test(input.credential.secret)
+    )
+      throw new Error('native_invitation_refused');
+    const invitationOwner = () => {
+      const row = this.db
+        .prepare(
+          'SELECT * FROM broker_native_route_invitations WHERE invitation_id=?',
+        )
+        .get(input.credential.id) as NativeInvitationRow | undefined;
+      if (
+        !row ||
+        row.station_id !== scope.stationId ||
+        row.enrollment_id !== scope.enrollmentId ||
+        row.generation !== scope.routingGeneration ||
+        row.broker_origin !== brokerOrigin ||
+        row.app_identifier !== surface.appIdentifier ||
+        row.channel !== surface.channel ||
+        row.client_instance_id !== surface.clientInstanceId ||
+        row.key_thumbprint !== surface.keyThumbprint ||
+        row.consumed_at !== null ||
+        row.expires_at <= this.now() ||
+        (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
+        !timingSafeEqual(
+          Buffer.from(row.secret_hash),
+          nativeInvitationDigest(input.credential.secret),
+        )
+      )
+        throw new Error('native_invitation_refused');
+      const lease = this.db
+        .prepare('SELECT * FROM broker_leases WHERE station_id=?')
+        .get(scope.stationId) as LeaseRow | undefined;
+      if (
+        !lease ||
+        lease.enrollment_id !== scope.enrollmentId ||
+        lease.generation !== scope.routingGeneration ||
+        lease.withdrawn_at !== null ||
+        lease.expires_at <= this.now() ||
+        !Number.isSafeInteger(lease.lease_revision) ||
+        lease.lease_revision < 0
+      )
+        throw new Error('native_invitation_refused');
+      return { row, lease };
+    };
+    const { row } = invitationOwner();
+    const publicKey = validateNativePublicKey(request.proofPublicKey).jwk;
+    if ((await calculateJwkThumbprint(publicKey)) !== row.key_thumbprint)
+      throw new Error('invalid_native_proof');
+    const imported = await importJWK(publicKey, 'ES256');
+    let payload: Record<string, unknown>;
+    try {
+      const verified = await compactVerify(input.compactProof, imported, {
+        algorithms: ['ES256'],
+      });
+      if (
+        Object.keys(verified.protectedHeader).sort().join(',') !== 'alg,typ' ||
+        verified.protectedHeader.typ !==
+          SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_TYPE ||
+        verified.protectedHeader.alg !== 'ES256'
+      )
+        throw new Error('invalid_native_proof');
+      const parsed: unknown = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(verified.payload),
+      );
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('invalid_native_proof');
+      payload = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error('invalid_native_proof');
+    }
+    const claims =
+      payload as Partial<SelfHostedBrokerNativeInvitationObservationProofClaimsV1>;
+    const expectedKeys = [
+      'ath',
+      'aud',
+      'bodySha256',
+      'brokerOrigin',
+      'exp',
+      'iat',
+      'invitationId',
+      'jti',
+      'method',
+      'path',
+      'purpose',
+      'scope',
+      'stationSigningGeneration',
+      'stationSigningKeyId',
+      'surface',
+      'version',
+    ];
+    const nowSeconds = Math.floor(this.now() / 1000);
+    if (
+      Object.keys(payload).sort().join(',') !== expectedKeys.join(',') ||
+      claims.version !==
+        SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_VERSION ||
+      claims.aud !== brokerOrigin ||
+      claims.purpose !== 'station-native-superseded-scope-observe-v1' ||
+      claims.brokerOrigin !== brokerOrigin ||
+      claims.method !== 'POST' ||
+      claims.path !== '/broker/v1/native/grants/observe-superseded-scope' ||
+      claims.invitationId !== row.invitation_id ||
+      Object.keys(claims.scope ?? {})
+        .sort()
+        .join(',') !== 'enrollmentId,routingGeneration,stationId' ||
+      claims.scope?.stationId !== scope.stationId ||
+      claims.scope?.enrollmentId !== scope.enrollmentId ||
+      claims.scope?.routingGeneration !== scope.routingGeneration ||
+      Object.keys(claims.surface ?? {})
+        .sort()
+        .join(',') !==
+        'appIdentifier,channel,clientInstanceId,keyThumbprint,kind' ||
+      claims.surface?.kind !== surface.kind ||
+      claims.surface?.appIdentifier !== surface.appIdentifier ||
+      claims.surface?.channel !== surface.channel ||
+      claims.surface?.clientInstanceId !== surface.clientInstanceId ||
+      claims.surface?.keyThumbprint !== surface.keyThumbprint ||
+      claims.stationSigningKeyId !== row.signing_key_id ||
+      claims.stationSigningGeneration !== row.signing_generation ||
+      claims.bodySha256 !==
+        createHash('sha256').update(input.exactBody).digest('base64url') ||
+      claims.ath !== digest(input.credential.secret).toString('base64url') ||
+      typeof claims.jti !== 'string' ||
+      !SECRET.test(claims.jti) ||
+      claims.jti !== requestNonce ||
+      !Number.isSafeInteger(claims.iat) ||
+      !Number.isSafeInteger(claims.exp) ||
+      (claims.iat as number) > nowSeconds + 5 ||
+      (claims.iat as number) < nowSeconds - NATIVE_PROOF_MAX_AGE_SECONDS ||
+      (claims.exp as number) <= nowSeconds ||
+      (claims.exp as number) <= (claims.iat as number) ||
+      (claims.exp as number) - (claims.iat as number) >
+        NATIVE_PROOF_MAX_AGE_SECONDS
+    )
+      throw new Error('invalid_native_proof');
+    return this.transaction(() => {
+      const { row: current, lease } = invitationOwner();
+      if ((claims.exp as number) <= Math.floor(this.now() / 1000))
+        throw new Error('invalid_native_proof');
+      if (
+        current.signing_key_id !== claims.stationSigningKeyId ||
+        current.signing_generation !== claims.stationSigningGeneration
+      )
+        throw new Error('native_invitation_refused');
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_invitation_request_proofs WHERE expires_at<=?',
+        )
+        .run(this.now());
+      const counts = this.db
+        .prepare(`SELECT count(*) AS total,
+        sum(CASE WHEN invitation_id=? THEN 1 ELSE 0 END) AS per_invitation
+        FROM broker_native_invitation_request_proofs`)
+        .get(current.invitation_id) as {
+        total: number;
+        per_invitation: number | null;
+      };
+      if (counts.total >= 100_000 || (counts.per_invitation ?? 0) >= 4096)
+        throw new Error('native_proof_limit');
+      if (
+        this.db
+          .prepare(
+            'SELECT 1 FROM broker_native_invitation_request_proofs WHERE invitation_id=? AND jti=?',
+          )
+          .get(current.invitation_id, claims.jti as string)
+      )
+        throw new Error('native_proof_replayed');
+      this.db
+        .prepare(
+          'INSERT INTO broker_native_invitation_request_proofs(invitation_id,jti,expires_at) VALUES(?,?,?)',
+        )
+        .run(
+          current.invitation_id,
+          claims.jti as string,
+          this.now() + NATIVE_PROOF_RETENTION_MS,
+        );
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVED_VERSION,
+        requestNonce,
+        scope: oldScope,
+        disposition: 'superseded-generation-not-admitted',
+        leaseRevision: lease.lease_revision,
+      };
+    });
+  }
+
   /** A connector must never receive or finish work after its client grant retires. */
   private retireUnavailableClientConnections() {
     const now = this.now();
@@ -1083,7 +1389,7 @@ export class SelfHostedBrokerService {
     clientOrigin: string;
     stationSigningKeyId: string;
     stationSigningGeneration: number;
-    invitationTtlMs?: number;
+    invitationTtlMs?: number | null;
     grantTtlMs?: number;
   }): SelfHostedBrokerRouteInvitationV1 {
     const scope = validateBrokerScope(input.scope);
@@ -1099,12 +1405,16 @@ export class SelfHostedBrokerService {
       input.stationSigningGeneration < 1
     )
       throw new Error('invalid_signing_generation');
-    const invitationTtlMs = input.invitationTtlMs ?? INVITATION_MAX_AGE_MS;
+    const invitationTtlMs =
+      input.invitationTtlMs === null
+        ? null
+        : (input.invitationTtlMs ?? INVITATION_DEFAULT_AGE_MS);
     const grantTtlMs = input.grantTtlMs ?? GRANT_MAX_AGE_MS;
     if (
-      !Number.isSafeInteger(invitationTtlMs) ||
-      invitationTtlMs < 1 ||
-      invitationTtlMs > INVITATION_MAX_AGE_MS ||
+      (invitationTtlMs !== null &&
+        (!Number.isSafeInteger(invitationTtlMs) ||
+          invitationTtlMs < 1 ||
+          invitationTtlMs > INVITATION_MAX_AGE_MS - this.now())) ||
       !Number.isSafeInteger(grantTtlMs) ||
       grantTtlMs < 1 ||
       grantTtlMs > GRANT_MAX_AGE_MS
@@ -1134,7 +1444,11 @@ export class SelfHostedBrokerService {
       ).n;
       if (stationCount >= 64 || totalCount >= 1024)
         throw new Error('invitation_limit');
-      const expiresAt = now + invitationTtlMs;
+      // The wire contract uses a safe-integer sentinel for no time expiry.
+      const expiresAt =
+        invitationTtlMs === null
+          ? Number.MAX_SAFE_INTEGER
+          : now + invitationTtlMs;
       this.db
         .prepare(
           'INSERT INTO broker_route_invitations VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)',
@@ -1150,7 +1464,7 @@ export class SelfHostedBrokerService {
           input.stationSigningGeneration,
           invitationDigest(invitationSecret),
           expiresAt,
-          now + grantTtlMs,
+          -grantTtlMs,
         );
       return {
         version: SELF_HOSTED_BROKER_INVITATION_VERSION,
@@ -1172,7 +1486,7 @@ export class SelfHostedBrokerService {
     surface: SelfHostedBrokerNativeClientSurfaceV2;
     stationSigningKeyId: string;
     stationSigningGeneration: number;
-    invitationTtlMs?: number;
+    invitationTtlMs?: number | null;
     grantTtlMs?: number;
   }): SelfHostedBrokerNativeRouteInvitationV2 {
     const scope = validateBrokerScope(input.scope);
@@ -1190,12 +1504,16 @@ export class SelfHostedBrokerService {
       input.stationSigningGeneration < 1
     )
       throw new Error('invalid_signing_generation');
-    const invitationTtlMs = input.invitationTtlMs ?? INVITATION_MAX_AGE_MS;
+    const invitationTtlMs =
+      input.invitationTtlMs === null
+        ? null
+        : (input.invitationTtlMs ?? INVITATION_DEFAULT_AGE_MS);
     const grantTtlMs = input.grantTtlMs ?? NATIVE_GRANT_MAX_AGE_MS;
     if (
-      !Number.isSafeInteger(invitationTtlMs) ||
-      invitationTtlMs < 1 ||
-      invitationTtlMs > INVITATION_MAX_AGE_MS ||
+      (invitationTtlMs !== null &&
+        (!Number.isSafeInteger(invitationTtlMs) ||
+          invitationTtlMs < 1 ||
+          invitationTtlMs > INVITATION_MAX_AGE_MS - this.now())) ||
       !Number.isSafeInteger(grantTtlMs) ||
       grantTtlMs < 1 ||
       grantTtlMs > NATIVE_GRANT_MAX_AGE_MS
@@ -1225,7 +1543,11 @@ export class SelfHostedBrokerService {
       ).n;
       if (stationCount >= 64 || totalCount >= 1024)
         throw new Error('invitation_limit');
-      const expiresAt = now + invitationTtlMs;
+      // The wire contract uses a safe-integer sentinel for no time expiry.
+      const expiresAt =
+        invitationTtlMs === null
+          ? Number.MAX_SAFE_INTEGER
+          : now + invitationTtlMs;
       this.db
         .prepare(
           'INSERT INTO broker_native_route_invitations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)',
@@ -1244,7 +1566,7 @@ export class SelfHostedBrokerService {
           surface.keyThumbprint,
           nativeInvitationDigest(invitationSecret),
           expiresAt,
-          now + grantTtlMs,
+          -grantTtlMs,
         );
       return {
         version: SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
@@ -1314,7 +1636,7 @@ export class SelfHostedBrokerService {
       row.expires_at !== invitation.expiresAt ||
       row.consumed_at !== null ||
       row.expires_at <= this.now() ||
-      row.grant_expires_at <= this.now() ||
+      (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
       !timingSafeEqual(
         Buffer.from(row.secret_hash),
         nativeInvitationDigest(invitation.invitationSecret),
@@ -1563,7 +1885,7 @@ export class SelfHostedBrokerService {
         row.expires_at !== invitation.expiresAt ||
         row.consumed_at !== null ||
         row.expires_at <= this.now() ||
-        row.grant_expires_at <= this.now() ||
+        (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
         !timingSafeEqual(
           Buffer.from(row.secret_hash),
           nativeInvitationDigest(invitation.invitationSecret),
@@ -1618,6 +1940,12 @@ export class SelfHostedBrokerService {
         retainedTotalCount >= NATIVE_GRANTS_TOTAL_RETAINED
       )
         throw new Error('grant_limit');
+      // Negative stored values are redemption-relative durations; positive values
+      // retain the deadlines of invitations issued by earlier broker versions.
+      const grantExpiresAt =
+        row.grant_expires_at < 0
+          ? this.now() - row.grant_expires_at
+          : row.grant_expires_at;
       const credential = {
         id: randomBytes(16).toString('base64url'),
         secret: randomBytes(32).toString('base64url'),
@@ -1648,7 +1976,7 @@ export class SelfHostedBrokerService {
           publicKeyJson,
           nativeGrantDigest(credential.secret),
           this.now(),
-          row.grant_expires_at,
+          grantExpiresAt,
         );
       return {
         version: SELF_HOSTED_BROKER_NATIVE_CLIENT_GRANT_VERSION,
@@ -1659,7 +1987,7 @@ export class SelfHostedBrokerService {
         surface,
         proofPublicKey,
         credential,
-        expiresAt: row.grant_expires_at,
+        expiresAt: grantExpiresAt,
       };
     });
   }
@@ -1701,7 +2029,7 @@ export class SelfHostedBrokerService {
         row.expires_at !== invitation.expiresAt ||
         row.consumed_at !== null ||
         row.expires_at <= this.now() ||
-        row.grant_expires_at <= this.now() ||
+        (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
         !timingSafeEqual(
           Buffer.from(row.secret_hash),
           invitationDigest(invitation.invitationSecret),
@@ -1740,6 +2068,12 @@ export class SelfHostedBrokerService {
       ).n;
       if (stationCount >= 256 || totalCount >= 4096)
         throw new Error('grant_limit');
+      // Negative stored values are redemption-relative durations; positive values
+      // retain the deadlines of invitations issued by earlier broker versions.
+      const grantExpiresAt =
+        row.grant_expires_at < 0
+          ? this.now() - row.grant_expires_at
+          : row.grant_expires_at;
       const credential = {
         id: randomBytes(16).toString('base64url'),
         secret: randomBytes(32).toString('base64url'),
@@ -1765,7 +2099,7 @@ export class SelfHostedBrokerService {
           invitation.stationSigningGeneration,
           grantDigest(credential.secret),
           this.now(),
-          row.grant_expires_at,
+          grantExpiresAt,
         );
       return {
         version: SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION,
@@ -1774,7 +2108,7 @@ export class SelfHostedBrokerService {
         stationSigningKeyId: invitation.stationSigningKeyId,
         stationSigningGeneration: invitation.stationSigningGeneration,
         credential,
-        expiresAt: row.grant_expires_at,
+        expiresAt: grantExpiresAt,
       };
     });
   }
@@ -2377,6 +2711,16 @@ export class SelfHostedBrokerService {
     credential: BrokerCredential,
     kind: 'connector' | 'routing',
   ) {
+    const row = this.leaseOwner(scope, credential, kind);
+    if (row.expires_at <= this.now())
+      throw new Error('broker_credential_refused');
+    return row;
+  }
+  private leaseOwner(
+    scope: BrokerScope,
+    credential: BrokerCredential,
+    kind: 'connector' | 'routing',
+  ) {
     scope = validateBrokerScope(scope);
     assertText(credential.id, 'credential_id');
     const row = this.db
@@ -2390,7 +2734,6 @@ export class SelfHostedBrokerService {
       row.browser_origin !== scope.browserOrigin ||
       row[`${kind}_id`] !== credential.id ||
       row.withdrawn_at !== null ||
-      row.expires_at <= this.now() ||
       !hash ||
       !timingSafeEqual(Buffer.from(hash), digest(credential.secret))
     )
@@ -2547,7 +2890,8 @@ export class SelfHostedBrokerService {
   }
   withdraw(scope: BrokerScope, credential: BrokerCredential) {
     this.transaction(() => {
-      this.lease(scope, credential, 'connector');
+      // Expiry ends admission, but the exact current owner can still retire it.
+      this.leaseOwner(scope, credential, 'connector');
       const result = this.db
         .prepare(
           'UPDATE broker_leases SET withdrawn_at=? WHERE station_id=? AND generation=?',
