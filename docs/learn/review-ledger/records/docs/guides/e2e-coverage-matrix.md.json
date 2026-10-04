@@ -78,9 +78,9 @@
 
     {"path":"tests/project-architecture.spec.ts","digest":"a02aded42efd999f49a482e0b3be6984e418ccfada537726484f203cb9505f7c","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
 
-    {"path":"tests/project-forms.spec.ts","digest":"e0552e47070e8c34c69077c8061cbf9fbe00f50911d9baf20f14f5b9eb4b6635","revision":"8140f4ec0627c22a4f5e72c4b253c1236580240c"},
+    {"path":"tests/project-forms.spec.ts","digest":"2c50e171142476ab042da44c908ee896218bc214eb15ab5d86f7b7b163dd3fe0","revision":"159c7bbdbb5acd05354da3e6b437bb347017e2ac"},
 
-    {"path":"tests/project-lifecycle.spec.ts","digest":"ee20ad928e01c437068d3ea0cec848bf5b57191e23857230fdf9b73399582b16","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/project-lifecycle.spec.ts","digest":"bc3e5f951cb62aa45ffcb6c0c5f60d2204f645e93b53f7da8fed07853f1924e8","revision":"159c7bbdbb5acd05354da3e6b437bb347017e2ac"},
 
     {"path":"tests/registry.spec.ts","digest":"7161a9fabd41940c69d064540dca0db2cfac5b1b40145899f8a75d109937f715","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
 

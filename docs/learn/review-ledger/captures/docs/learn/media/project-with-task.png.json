@@ -10,7 +10,7 @@
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
 
-    {"path":"src-ui/src/views/ProjectPage.css","digest":"3b19a44ef92bd5634e6efb932527f8073f15e830fcf2134042c9977b3ca655fd","revision":"57a7bc0fa70093c92a7488316263a87ecc2c35da"},
+    {"path":"src-ui/src/views/ProjectPage.css","digest":"6ffb412a4ee1e26e20acd4f4199c4d6cfbc6943e0d91ba1fe15b7bc1ea9e45de","revision":"159c7bbdbb5acd05354da3e6b437bb347017e2ac"},
 
     {"path":"src-ui/src/views/ProjectPage.tsx","digest":"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0","revision":"3a63c64679a92f30544c2b84905fdb2874ebfebb"},
 
