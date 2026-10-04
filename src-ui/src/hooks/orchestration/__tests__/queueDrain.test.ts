@@ -461,6 +461,23 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     ).toHaveLength(1);
   });
 
+  test('a user-initiated send that cannot start says why, as a send-failure notice', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['held message'],
+      isEditingQueue: true,
+    });
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId, true, true);
+
+    const notice =
+      activeChatsStore.getSnapshot()[threadId].ephemeralMessages?.[0];
+    expect(notice?.content).toBe(
+      'Finish editing the queued message first, then send it.',
+    );
+    expect(notice?.sendFailure).toBe(true);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+  });
+
   // archive#3027: a permanent 400-class refusal (e.g. the
   // authored-spec alias rejection) used to be requeued at the head on every
   // failure — an infinite refusal loop the user could never escape.
@@ -491,6 +508,8 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(afterFailure.ephemeralMessages?.[0]?.content).toMatch(
       /refused and removed from the queue/i,
     );
+    // The short-dock composer repeats it: it is a send that did not go.
+    expect(afterFailure.ephemeralMessages?.[0]?.sendFailure).toBe(true);
     // The notice echoes the text for immediate visibility…
     expect(afterFailure.ephemeralMessages?.[0]?.content).toContain(
       'refused message',
@@ -582,6 +601,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(afterFailure.status).toBe('idle');
     expect(afterFailure.error).toBeUndefined();
     expect(afterFailure.queuedMessages).toEqual([]);
+    expect(afterFailure.ephemeralMessages?.[0]?.sendFailure).toBe(true);
     const notice = afterFailure.ephemeralMessages?.[0]?.content ?? '';
     expect(notice).toMatch(/already ended/i);
     // The notice echoes the text for immediate visibility.
