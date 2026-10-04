@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","digest":"0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/architecture/module-map.md","digest":"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    {"path":"docs/architecture/module-map.md","digest":"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
 
     {"path":"docs/design/orchestration-decomposition-map.md","digest":"862b155a3e78daace7b97c0fd5d1005d47c892b99328349d6a8b583378f857d6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -34,7 +34,7 @@
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
+    {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
@@ -128,6 +128,8 @@
 
     "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
 
-    "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+    "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+
+    "Structural reconciliation of plugin-command branch and origin/main 84fb656cf0. Both prior bindings preserved here; this is not semantic approval of merged bytes. Conflicting historical anchors: [{\"field\":\"source\",\"path\":\"docs/architecture/module-map.md\",\"branch\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"d0be6b1c2c72aca9f8d17ea3a3796568b3a1cb9d2eb66fa391a68eaa445f451b\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0\",\"revision\":\"d73d9f64333504f027a200482e978cc4445338da\"}},{\"field\":\"source\",\"path\":\"docs/guides/keyboard-shortcuts.md\",\"branch\":{\"path\":\"docs/guides/keyboard-shortcuts.md\",\"digest\":\"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540\",\"revision\":\"89765352964045a079d13a17bee54ab2de7b83e0\"},\"main\":{\"path\":\"docs/guides/keyboard-shortcuts.md\",\"digest\":\"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540\",\"revision\":\"306ebf4317397e0b06c543c69b4f770184f50654\"}},{\"field\":\"source\",\"path\":\"docs/reference/cli.md\",\"branch\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd\",\"revision\":\"19aff2a08b9739ad9ffbda39ff8cb19b026fda82\"}},{\"field\":\"source\",\"path\":\"docs/reference/config.md\",\"branch\":{\"path\":\"docs/reference/config.md\",\"digest\":\"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6\",\"revision\":\"45c71d38091f91e917006dacdc7e2a0bb3cd58a4\"},\"main\":{\"path\":\"docs/reference/config.md\",\"digest\":\"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"}}]"
   ]
 }
