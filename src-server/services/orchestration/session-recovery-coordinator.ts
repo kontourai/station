@@ -43,7 +43,7 @@ type ReplayableTurnStart = TurnStartedEvent & { prompt: string };
 /**
  * #3157: what a user action on a waiting usage-limit stop did. `not-waiting`
  * means there was nothing left to act on (settled, claimed, or never armed), and
- * the caller should re-read the projection. `resumed` means the turn was sent
+ * the caller should re-read the projection. `resumed` means the dispatch started
  * (a provider refusal after that shows in the projection); `failed` means it
  * could not be sent at all.
  */

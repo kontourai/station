@@ -461,4 +461,25 @@ describe('UsageLimitBanner (#3157)', () => {
     expect(element.textContent).toContain('Resets 6:00 PM');
     expect(element.textContent).not.toContain('11:00 PM');
   });
+
+  test('a resumed stop is read once after the hold clears, not on every summary update', async () => {
+    const { rerenderWith } = renderBanner();
+    await banner();
+    expect(calls.filter((call) => call.method === 'GET')).toHaveLength(1);
+    // The resume went out; the replayed turn starts, so the hold clears. A
+    // resumed turn never moves past `resumed`, however many updates follow.
+    answers.read = () => ({
+      recovery: projection({ outcome: 'resumed', attempts: 1 }),
+    });
+    rerenderWith({ active: false, eventCount: 2 });
+    await waitFor(() =>
+      expect(calls.filter((call) => call.method === 'GET')).toHaveLength(2),
+    );
+    for (let count = 3; count <= 33; count += 1)
+      rerenderWith({ active: false, eventCount: count });
+    // real-time: negative assertion; no further read may start
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls.filter((call) => call.method === 'GET')).toHaveLength(2);
+    expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+  });
 });

@@ -645,20 +645,23 @@ in [contracts](contracts.md)). Three routes serve the chat banner:
   latest recovery projection when it came from a usage limit, with `autoResume`
   (the current `usageLimitAutoResume` setting) while the stop waits, or `null`.
   It carries no event list and sits at the Session read tier.
-- `POST /sessions/:threadId/usage-limit/resume` ("Resume now") sends the
-  stopped turn again at once, whatever the setting and before the reset. It
+- `POST /sessions/:threadId/usage-limit/resume` ("Resume now") starts sending
+  the stopped turn again at once, whatever the setting and before the reset. It
   runs the same pre-dispatch checks as the timer: a newer turn, an open request
   or a closed Session retires the stop with that `outcomeReason` instead. If
   the provider refuses the replay with the same limit, the replay arms its own
-  wait for the reset, so an early click does not end the wait.
+  wait for the reset, so an early click does not end the wait. That re-arm
+  needs a reset at least a minute away; a past or sooner reset ends the stop as
+  `failed` instead, so a refusing provider cannot loop the resume.
 - `POST /sessions/:threadId/usage-limit/cancel` ("Cancel auto-resume") retires
   a waiting stop unsent with `outcomeReason: "user-canceled"`. That retires the
   whole stop, so Resume now is no longer offered for it either; the user sends
   a message to continue.
 
-Both POSTs answer `{ result, recovery }`: `result.kind` is `resumed` (the turn
-was sent; a later provider refusal shows in `recovery`), `failed` (it could not
-be sent, for example its attachment bytes are gone), `canceled`, `retired`
+Both POSTs answer `{ result, recovery }`: `result.kind` is `resumed` (the
+dispatch started; whether the provider accepts it shows later in `recovery`,
+which can still read `failed` if the dispatch is rejected), `failed` (it could
+not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
 (with `reason`) or `not-waiting` (nothing was left to act on), and `recovery`
 is the projection afterward.
 

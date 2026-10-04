@@ -166,16 +166,16 @@ function UsageLimitBannerFor({
     return () => clearTimeout(timer);
   }, [enabled, dueMs, refetch]);
 
-  // A stop this view watched go from waiting (or resuming) to settled says how,
-  // briefly. A settlement already in the past when the view opened is not news.
+  // A stop this view watched wait, and that a read then shows no longer
+  // waiting, says how it settled, briefly: that one read is the last. Engaging
+  // only while the stop waits keeps a resumed stop (which a Claude or Codex
+  // turn never moves past `resumed`) from re-reading on every summary update.
+  // A settlement already in the past when the view opened is not news.
   useEffect(() => {
-    const live =
-      recovery?.usageLimit === true &&
-      (isWaiting(recovery) || recovery.outcome === 'resumed');
-    if (live) {
+    if (recovery?.usageLimit === true && isWaiting(recovery)) {
       wasEngaged.current = true;
       setEngaged(true);
-      if (isWaiting(recovery)) setNotice(null);
+      setNotice(null);
       return;
     }
     if (!wasEngaged.current || recovery?.usageLimit !== true) return;
