@@ -108,12 +108,7 @@ vi.mock('../hooks/useStreamingMessage', () => ({
 const sendExecutionMessage = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
-  sendExecutionMessageWithInventory: (
-    apiBase: string,
-    input: unknown,
-    _readInventory: unknown,
-    opts?: unknown,
-  ) => sendExecutionMessage(apiBase, input, opts),
+  sendExecutionMessage,
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({

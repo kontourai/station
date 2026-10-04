@@ -38,12 +38,8 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       ...(await vi.importActual<typeof import('@kontourai/station-sdk/client')>(
         '@kontourai/station-sdk/client',
       )),
-      sendExecutionMessageWithInventory: (
-        apiBase: string,
-        input: unknown,
-        _readInventory: unknown,
-        opts?: unknown,
-      ) => sendExecutionMessageMock(apiBase, input, opts),
+      sendExecutionMessage: (...args: unknown[]) =>
+        sendExecutionMessageMock(...args),
     }));
 
     vi.doMock('@kontourai/station-sdk', () => ({

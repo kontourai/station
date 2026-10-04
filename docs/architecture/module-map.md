@@ -3299,9 +3299,7 @@ cycles or growing a second lifecycle authority.
   those limits and the separate frame boundary.
 - **Foreground message dispatch.** [dispatchForeground](../../src-ui/src/lib/foregroundMessageDispatch.ts)
   maps target/model, staged attachments and the approval pick's compare-and-set
-  basis into the SDK `sendExecutionMessageWithInventory` call. It supplies a
-  [lazy inventory reader](../../src-ui/src/lib/lazySkillExperienceInventory.ts),
-  so the skill-experience validator loads only for a visual skill start. Both direct chat and
+  basis into the SDK `sendExecutionMessage` call. Both direct chat and
   [queue drain](../../src-ui/src/hooks/orchestration/queueDrain.ts) load it.
   Queue completion does not import the React send hook and initialize the SSE
   graph again. A queued item does not bypass attachment readiness or approval

@@ -12,7 +12,7 @@ import {
 import { isProvablyNotSent } from '@kontourai/station-sdk';
 import {
   type ForegroundMessageInput,
-  sendExecutionMessageWithInventory,
+  sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
 import { getInputReplyContext } from '@kontourai/station-sdk/input-reply';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -22,7 +22,6 @@ import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext
 import { useModelImageSupport } from '../../contexts/ModelCapabilitiesContext';
 import { useComposerAttachments } from '../../hooks/useComposerAttachments';
 import { inlineComposerAttachments } from '../../lib/attachment-staging-queue';
-import { readSkillExperienceInventoryLazily } from '../../lib/lazySkillExperienceInventory';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
@@ -121,12 +120,9 @@ export function NeedsInputReply({
         throw new Error(
           'The request or Station access changed. Open the current session before answering.',
         );
-      return sendExecutionMessageWithInventory(
-        scope.apiBase,
-        input,
-        readSkillExperienceInventoryLazily,
-        { requestScope: scope },
-      );
+      return sendExecutionMessage(scope.apiBase, input, {
+        requestScope: scope,
+      });
     },
     onError: (error) => {
       if (isProvablyNotSent(error)) setAttempt(null);

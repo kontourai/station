@@ -2317,9 +2317,7 @@ from `@kontourai/station-sdk/client`. Both validate the returned inventory or
 session projection before exposing it and preserve HTTP failure details. The
 canonical reader is a static import of the client entry, so it adds the shared
 validator to that bundle, and it runs only after a successful feature response;
-a reader failure remains an error. Both fetchers are also exported from the
-`@kontourai/station-sdk/client/skill-experiences` subpath, so a bundled app can
-load them, and the validator, in a separate chunk with a dynamic `import()`.
+a reader failure remains an error.
 `useSkillExperienceInventoryQuery(config?)` and
 `useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
 the SDK root. The session hook remains disabled until a canonical thread exists.
@@ -2331,10 +2329,10 @@ and an exact current source identity. `sendExecutionMessage` accepts the optiona
 `skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
 field and refetches the installed inventory before its foreground POST.
 `sendExecutionMessageWithInventory(apiBase, input, readInventory, options?)`
-performs the same preflight with a caller-supplied inventory reader. Station's UI
-passes a reader that loads the subpath above only when a send carries a visual
-skill start, which keeps the validator out of its first-paint chunk. The
-preflight checks are unchanged; the reader decides only when that code loads.
+performs the same preflight with a caller-supplied inventory reader;
+`sendExecutionMessage` passes `fetchSkillExperienceInventory`. The two live in
+separate modules, so a bundle that imports only the rest of the execution
+client does not also carry the validator.
 `inputs` holds scalar text/choice values; attachment role arrays contain indices
 into the canonical chat attachments, after supervised staging. Native role choices use
 composer client IDs until the sender maps them against the actual outgoing
