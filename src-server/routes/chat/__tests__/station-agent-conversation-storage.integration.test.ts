@@ -472,5 +472,20 @@ describe('Station-agent conversation storage (#3112)', () => {
       outputTokens?: number;
     }>(agentRoutes(), `/${SLUG}/conversations/conv-stats/stats`);
     expect(stats).toMatchObject({ turns: 2, inputTokens: 2, outputTokens: 2 });
+
+    // An engine with no store record has its stats folded from runtime
+    // events; that fold covers the lineage the same way.
+    const perSession = [
+      service.readSessionUsage('conv-stats', INTERNAL_SESSION_READ_SCOPE),
+      service.readSessionUsage(
+        continuation.sessionId,
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ];
+    expect(perSession[1]!.turns).toBeGreaterThan(0);
+    expect(
+      service.readConversationUsage('conv-stats', INTERNAL_SESSION_READ_SCOPE)
+        .turns,
+    ).toBe(perSession[0]!.turns + perSession[1]!.turns);
   });
 });
