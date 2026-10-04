@@ -438,7 +438,7 @@ async function seedDefaultAgentRoutes(
   return { executionRequests };
 }
 
-async function openDefaultAgentSession(page: import('@playwright/test').Page) {
+async function openDefaultAgentDraft(page: import('@playwright/test').Page) {
   await page.addInitScript(() => {
     localStorage.setItem(
       'station-connect-connections',
@@ -461,22 +461,41 @@ async function openDefaultAgentSession(page: import('@playwright/test').Page) {
     page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
   ).toBeVisible({ timeout: 15_000 });
   await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
-  // archive#3309 (`components/agent-selection-policy.ts:129-141`,
-  // `ChatDock.tsx:1005-1016`): with exactly one chat-ready agent — which is
-  // all this fixture seeds — the dock's New button opens that chat DIRECTLY
-  // and no picker ever mounts. The picker was incidental setup here; the
-  // outcome it was implicitly guaranteeing, that the right agent opened, is
-  // asserted instead. Picker coverage lives in
-  // `tests/new-chat-provider-managed.spec.ts`.
+  // #3201: the dock's New opens a draft and starts no engine; a chat begins
+  // with its first message. The draft names the Agent and Model the chat
+  // will start with, so the seeded default agent and its model are pinned
+  // here, before anything is sent.
+  const draft = page.getByRole('form', { name: 'New chat draft' });
   await expect(
-    page.getByRole('button', { name: /^Model: Station — llama3\.2/ }),
+    draft.getByRole('button', { name: 'Agent: Station', exact: true }),
   ).toBeVisible({ timeout: 10_000 });
   await expect(
-    page.locator('textarea[placeholder*="Type a message"]'),
-  ).toBeVisible({
-    timeout: 10_000,
-  });
+    draft.getByRole('button', { name: 'Model: llama3.2', exact: true }),
+  ).toBeVisible();
   await waitForMockOrchestrationSse(page);
+  return draft;
+}
+
+/** Starts the default agent's chat from the draft with its first message. */
+async function startDefaultAgentChat(
+  page: import('@playwright/test').Page,
+  firstMessage: string,
+) {
+  const draft = await openDefaultAgentDraft(page);
+  await draft
+    .getByRole('textbox', { name: 'Message', exact: true })
+    .fill(firstMessage);
+  await draft.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('form', { name: 'New chat draft' })).toHaveCount(
+    0,
+  );
+  // The chat opens on its first turn; the composer stays in queue mode until
+  // that turn completes.
+  await expect(
+    page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .getByText(firstMessage, { exact: true }),
+  ).toBeVisible({ timeout: 10_000 });
 }
 
 async function emitDefaultReply(
@@ -510,10 +529,26 @@ test.describe('Default agent workflow', () => {
     page,
   }) => {
     const { executionRequests } = await seedDefaultAgentRoutes(page);
-    await openDefaultAgentSession(page);
+    // #3201: a chat starts with its first message, sent from the draft.
+    await startDefaultAgentChat(page, 'say hi in 3 words');
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     const sendButton = page.getByRole('button', { name: 'Send', exact: true });
+
+    await expect
+      .poll(() =>
+        executionRequests.some(
+          (request) => request.message === 'say hi in 3 words',
+        ),
+      )
+      .toBe(true);
+    const threadId = executionRequests.find(
+      (request) => request.message === 'say hi in 3 words',
+    )?.conversationId;
+    expect(threadId).toBeTruthy();
+    await emitDefaultReply(page, threadId!);
+    await expect(page.locator('body')).toContainText('Hi from Station!');
+    const turnsBeforeCommands = executionRequests.length;
 
     for (const [command, matcher] of [
       [
@@ -530,34 +565,15 @@ test.describe('Default agent workflow', () => {
       // (`src-ui/src/slashCommands/builtins.ts:70-115`), and with no custom
       // commands and no command skills seeded it says so.
       ['/commands', /No commands defined/],
-      ['/stats', /Messages: 0\. No usage recorded yet\./],
+      ['/stats', /Conversation Statistics/],
     ] as const) {
       await textarea.fill(command);
       await sendButton.click();
       await expect(page.locator('body')).toContainText(matcher);
     }
 
-    expect(executionRequests).toHaveLength(0);
-
-    await textarea.fill('say hi in 3 words');
-    await sendButton.click();
-    await expect
-      .poll(() =>
-        executionRequests.some(
-          (request) => request.message === 'say hi in 3 words',
-        ),
-      )
-      .toBe(true);
-    const threadId = executionRequests.find(
-      (request) => request.message === 'say hi in 3 words',
-    )?.conversationId;
-    expect(threadId).toBeTruthy();
-    await emitDefaultReply(page, threadId!);
-    await expect(page.locator('body')).toContainText('Hi from Station!');
-
-    await textarea.fill('/stats');
-    await sendButton.click();
-    await expect(page.locator('body')).toContainText('Conversation Statistics');
+    // Slash commands are answered by the composer, never sent to the engine.
+    expect(executionRequests).toHaveLength(turnsBeforeCommands);
 
     // /clear and /new announce themselves with the same notice, so /new is
     // only observable as a second one: the first alone would satisfy a
@@ -572,6 +588,8 @@ test.describe('Default agent workflow', () => {
     await textarea.fill('/new');
     await sendButton.click();
     await expect(clearedNotices).toHaveCount(2);
+
+    expect(executionRequests).toHaveLength(turnsBeforeCommands);
 
     await page.getByRole('button', { name: 'Conversation history' }).click();
     await expect(page.locator('.conversation-history')).toContainText(
@@ -730,7 +748,14 @@ test.describe('Default agent workflow', () => {
         ),
     );
 
-    await openDefaultAgentSession(page);
+    await openDefaultAgentDraft(page);
+    // Reopening a recorded conversation needs no new chat: leave the draft.
+    await page
+      .getByRole('dialog', { name: 'New chat', exact: true })
+      .press('Escape');
+    await expect(
+      page.getByRole('form', { name: 'New chat draft' }),
+    ).toHaveCount(0);
     await page.locator('.chat-dock__tab-actions .chat-dock__open').click();
     const picker = page.getByRole('dialog', { name: 'Open Conversation' });
     await expect(picker).toBeVisible();
@@ -763,11 +788,11 @@ test.describe('Default agent workflow', () => {
     page,
   }) => {
     await seedDefaultAgentRoutes(page, { chatFailure: true });
-    await openDefaultAgentSession(page);
-
-    const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    await textarea.fill('trigger failure');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const draft = await openDefaultAgentDraft(page);
+    await draft
+      .getByRole('textbox', { name: 'Message', exact: true })
+      .fill('trigger failure');
+    await draft.getByRole('button', { name: 'Send', exact: true }).click();
 
     // archive#191 R1: the SDK client parses the server's JSON error body
     // instead of discarding it behind a bare 'HTTP ${status}' string, so the

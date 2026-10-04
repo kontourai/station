@@ -253,14 +253,14 @@ test.describe('Structured UI blocks', () => {
     });
 
     await expect(
-      page.getByRole('heading', { name: 'Approve gate' }),
+      page.getByRole('heading', { name: 'Approve gate', exact: true }),
     ).toBeVisible();
     // Scope controls to the rendered form block: the composer's approval-mode
     // chip also has an accessible name starting "Approv…", so a page-wide
     // button lookup is ambiguous and breaks whenever composer labels move.
-    const gateForm = page
-      .locator('form')
-      .filter({ has: page.getByRole('heading', { name: 'Approve gate' }) });
+    const gateForm = page.locator('form').filter({
+      has: page.getByRole('heading', { name: 'Approve gate', exact: true }),
+    });
     const approveButton = gateForm.getByRole('button', {
       name: 'Approve',
       exact: true,
@@ -268,12 +268,18 @@ test.describe('Structured UI blocks', () => {
 
     // Required-field guard fires before any send.
     await approveButton.click();
-    await expect(page.getByText('"Reviewer" is required.')).toBeVisible();
+    await expect(gateForm.getByText('"Reviewer" is required.')).toBeVisible();
     expect(sentBody).toBeNull();
 
     // Fill and submit.
-    await page.getByLabel('Reviewer').fill('casey');
-    await page.getByText('Sign off').click();
+    await gateForm.getByLabel('Reviewer').fill('casey');
+    await gateForm.getByText('Sign off').click();
+    // The values must still be in the form when it is submitted. If the block
+    // re-mounted after the fill (seen once under heavy load while the stream
+    // was catching up), this fails here, naming the lost input, instead of
+    // later as a missing "Submitted" button.
+    await expect(gateForm.getByLabel('Reviewer')).toHaveValue('casey');
+    await expect(gateForm.getByLabel('Sign off')).toBeChecked();
     await approveButton.click();
 
     // Form locks after submit, and the tagged structured turn was sent.
