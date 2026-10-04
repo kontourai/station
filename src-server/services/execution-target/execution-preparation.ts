@@ -68,7 +68,7 @@ interface ExecutionPreparationAdapter {
  * repository's config and refuses repository-defined programs (filters,
  * fsmonitor) instead of running them.
  */
-export const gitCommitAdapter: ExecutionPreparationAdapter = {
+const gitCommitAdapter: ExecutionPreparationAdapter = {
   scheme: 'git-commit',
   // Full object ids only (SHA-1 or SHA-256). An abbreviation is never
   // resolved: it could name a different commit on the receiver.

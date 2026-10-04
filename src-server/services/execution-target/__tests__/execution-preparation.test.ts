@@ -4,10 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
-import {
-  gitCommitAdapter,
-  verifyPreparedCheckout,
-} from '../execution-preparation.js';
+import { verifyPreparedCheckout } from '../execution-preparation.js';
 
 /**
  * The `git-commit` adapter against real repositories. The delegation suite
@@ -109,23 +106,48 @@ describe('git-commit adapter', () => {
   test('a directory that is not a repository is unavailable, not a mismatch', async () => {
     const plain = join(dir, 'plain');
     mkdirSync(plain);
-    const outcome = await gitCommitAdapter.observe({ root: plain, cwd: plain });
-    expect(outcome).toEqual({ state: 'unavailable' });
+    const code = await refusalCode(
+      verifyPreparedCheckout({
+        requirement: {
+          protocol: 'station.execution-preparation/v1',
+          mode: 'existing-realization',
+          version: { scheme: 'git-commit', value: head },
+          guarantees: ['version-matched-when-checked'],
+        },
+        resourceId: 'git.example/acme/repo',
+        resourceKind: 'git',
+        checkoutRoot: plain,
+        cwd: plain,
+      }),
+    );
+    expect(code).toBe('execution_preparation_unavailable');
   });
 
   test('a missing checkout is unavailable', async () => {
-    const outcome = await gitCommitAdapter.observe({
-      root: join(dir, 'missing'),
-      cwd: join(dir, 'missing'),
-    });
-    expect(outcome).toEqual({ state: 'unavailable' });
+    const missing = join(dir, 'missing');
+    const code = await refusalCode(
+      verifyPreparedCheckout({
+        requirement: {
+          protocol: 'station.execution-preparation/v1',
+          mode: 'existing-realization',
+          version: { scheme: 'git-commit', value: head },
+          guarantees: ['version-matched-when-checked'],
+        },
+        resourceId: 'git.example/acme/repo',
+        resourceKind: 'git',
+        checkoutRoot: missing,
+        cwd: missing,
+      }),
+    );
+    expect(code).toBe('execution_preparation_unavailable');
   });
 
-  test('only a full object id is well formed', () => {
-    expect(gitCommitAdapter.isWellFormed(head)).toBe(true);
-    expect(gitCommitAdapter.isWellFormed(head.slice(0, 7))).toBe(false);
-    expect(gitCommitAdapter.isWellFormed(head.toUpperCase())).toBe(false);
-    expect(gitCommitAdapter.isWellFormed('a'.repeat(64))).toBe(true);
+  test('only the exact full object id matches', async () => {
+    expect((await verify(checkout, head)).observed.value).toBe(head);
+    for (const value of [head.slice(0, 7), head.toUpperCase(), 'a'.repeat(64)])
+      expect(await refusalCode(verify(checkout, value))).toBe(
+        'execution_preparation_version_mismatch',
+      );
   });
 
   test('an admission without a resource kind refuses as an unsupported kind', async () => {
