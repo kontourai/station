@@ -61,6 +61,50 @@ describe('station-control-mcp-token', () => {
     });
   });
 
+  test('keeps Control and Knowledge credentials isolated across replacement and revocation', () => {
+    const control = mintStationControlMcpToken('shared', 'url-token').token;
+    const knowledge = mintStationControlMcpToken(
+      'shared',
+      'http-header-token',
+      undefined,
+      undefined,
+      [],
+      'station-knowledge',
+    ).token;
+    expect(
+      verifyStationControlMcpToken(control, { serverId: 'station-control' }),
+    ).toMatchObject({ sessionId: 'shared' });
+    expect(
+      verifyStationControlMcpToken(knowledge, { serverId: 'station-control' }),
+    ).toBeUndefined();
+    expect(
+      verifyStationControlMcpToken(control, { serverId: 'station-knowledge' }),
+    ).toBeUndefined();
+    const replacement = mintStationControlMcpToken(
+      'shared',
+      'url-token',
+      undefined,
+      undefined,
+      ['get_knowledge_record'],
+      'station-knowledge',
+    ).token;
+    expect(verifyStationControlMcpToken(knowledge)).toBeUndefined();
+    expect(verifyStationControlMcpToken(control)).toBeDefined();
+    revokeStationControlMcpToken('shared', 'station-knowledge');
+    expect(verifyStationControlMcpToken(replacement)).toBeUndefined();
+    expect(verifyStationControlMcpToken(control)).toBeDefined();
+    mintStationControlMcpToken(
+      'shared',
+      'url-token',
+      undefined,
+      undefined,
+      undefined,
+      'station-knowledge',
+    );
+    revokeStationControlMcpToken('shared');
+    expect(verifyStationControlMcpToken(control)).toBeUndefined();
+  });
+
   test('mints a token that verifies back to its session id', () => {
     const { token } = mintStationControlMcpToken('thread-1', 'url-token');
     expect(verifyStationControlMcpToken(token)).toEqual({

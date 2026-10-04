@@ -30,6 +30,7 @@ import {
   getStationControlCaller,
   jsonToolResult,
 } from './station-control-shared.js';
+import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
 
 /**
  * #2377 slice A: the tool-side half of the station-control authority table.
@@ -114,7 +115,11 @@ function stationControlToolMetadata(name: string) {
 export class StationControlToolRegistry {
   constructor(
     private readonly server: McpServer,
-    private readonly catalog?: (name: string, description: string) => void,
+    private readonly catalog?: (
+      name: string,
+      description: string,
+      shape?: z.ZodRawShape,
+    ) => void,
     private readonly allowedTools?: readonly string[],
   ) {}
 
@@ -125,7 +130,7 @@ export class StationControlToolRegistry {
     callback: ToolCallback<z.ZodObject<Shape>>,
   ) {
     if (this.allowedTools && !this.allowedTools.includes(name)) return;
-    this.catalog?.(name, description);
+    this.catalog?.(name, description, shape);
     return this.server.registerTool(
       name,
       {
@@ -227,11 +232,12 @@ export function createStationControlMcpServer(): McpServer {
 
 export function createSelectedStationControlMcpServer(
   allowedTools?: readonly string[],
-  catalog?: (name: string, description: string) => void,
+  catalog?: (name: string, description: string, shape?: z.ZodRawShape) => void,
+  profile: 'station-control' | 'station-knowledge' = 'station-control',
 ): McpServer {
   const server = new McpServer(
     {
-      name: 'station-control',
+      name: profile,
       version: '2.0.0',
     },
     {
@@ -247,6 +253,10 @@ export function createSelectedStationControlMcpServer(
     catalog,
     allowedTools,
   );
+  if (profile === 'station-knowledge') {
+    registerKnowledgeDataTools(registry);
+    return server;
+  }
   registerAgentTools(registry);
   registerBoardTools(registry);
   registerCatalogTools(registry);

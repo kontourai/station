@@ -19,6 +19,16 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Station MCP endpoints
+
+`/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
+serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
+Both accept only loopback connections with a live, session-scoped credential
+for that exact server. They use MCP authentication rather than a paired Device
+credential. Tokens for one server cannot open the other, and in-process tokens
+cannot be presented over HTTP. Ordinary API and Project authorization still
+apply to each tool operation.
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
@@ -276,7 +286,7 @@ starts its configuration and connection surfaces; that does not prove the
 Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
-loads `station-control` and `station-docs` on the Station-engine path, installs
+loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
 approval hooks and memory, and processes the configured system prompt. This is
 not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
@@ -533,7 +543,7 @@ service refuses changes that would create a shadow copy.
 ### Delete Integration
 
 `DELETE /integrations/:id` returns `{success: true}` after deletion.
-Runtime-managed built-ins such as `station-control` and `station-docs` return
+Runtime-managed built-ins such as `station-control`, `station-knowledge`, and `station-docs` return
 409 because startup recreates them. Package-supplied definitions must be
 removed through their owning package instead.
 
