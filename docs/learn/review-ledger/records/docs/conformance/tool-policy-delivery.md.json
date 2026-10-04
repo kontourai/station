@@ -46,7 +46,7 @@
 
     {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"880debd075f915ac8e746d359528fc6b1f3da03873c657b168930c57884268e0","revision":"aba169ab98b0546fc88ea07509450efe838e90b6"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"e8cbcd707df4354784c56d0c5de5a25e2d9218b421f090bed050c76c799b25a6","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"src-server/services/approvals/approval-inbox.ts","digest":"eb684e2f8d926fc7b6e307a543e004a660ad1f4a09e78fce46e2d73116647d0c","revision":"ef15303ade3f3a2ac68967376f15be29273b58cd"},
 

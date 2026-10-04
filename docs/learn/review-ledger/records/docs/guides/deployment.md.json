@@ -80,11 +80,11 @@
 
     {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"6d3fa66613225aace5ba2d883bc6dbf53c395e10c04c5c30c98d7d9c76c37aa4","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"e8cbcd707df4354784c56d0c5de5a25e2d9218b421f090bed050c76c799b25a6","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"ae47957678b93b3b6b1e930522ab619c8473dfc3fe90830251914a27ef2fa849","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a03ecc9fe25c6cafb3156e76a80a7ecadcf5a71da453a7ac189c3417be011e88","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

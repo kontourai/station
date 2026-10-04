@@ -12,7 +12,7 @@
   "document": {"digest":"ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e","revision":"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1"},
+    {"path":"docs/architecture/module-map.md","digest":"471bc4fd32dfce57109be1aa0ceaafabba659765de4b87ef430df4a38b0fec8d","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"docs/contexts/agent-runtime/CONTEXT.md","digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

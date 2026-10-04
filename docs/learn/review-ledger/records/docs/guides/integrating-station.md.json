@@ -26,7 +26,7 @@
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"docs/reference/api.md","digest":"18ae0efdc608de952f21cc04874792cd5932b3d0a7b08ef391de1a8f67061c08","revision":"a22aa03f5b6a1031fd138ed551cde0e370a025ff"},
+    {"path":"docs/reference/api.md","digest":"79c4933d92200d8b417be84f8c08d33c68230dfe94aef76e173022362cfc557c","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"}
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"e8cbcd707df4354784c56d0c5de5a25e2d9218b421f090bed050c76c799b25a6","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"}
   ],
 
   "checks": [

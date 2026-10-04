@@ -22,7 +22,7 @@
 
     {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"525a68ea56ce10d8f66c64e398f16efd90d63b4b5f70208d52d708fd73239b44","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"e8cbcd707df4354784c56d0c5de5a25e2d9218b421f090bed050c76c799b25a6","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"src-server/services/plugins/__tests__/plugin-installation-restart.test.ts","digest":"ed0fc210b18f6103c455af7cbd5e65e838f44f3aaf9f74350f8217960bdb373f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

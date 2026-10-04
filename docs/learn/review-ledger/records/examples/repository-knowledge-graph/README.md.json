@@ -12,9 +12,9 @@
   "document": {"digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e","revision":"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1"},
+    {"path":"docs/architecture/module-map.md","digest":"471bc4fd32dfce57109be1aa0ceaafabba659765de4b87ef430df4a38b0fec8d","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
-    {"path":"docs/learn/atlas.json","digest":"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770","revision":"0ed893868b2be12651928150004d23a11f94837f"},
+    {"path":"docs/learn/atlas.json","digest":"26f5cb5336416f9361c677687d0503fb6c73c7323fdf467a357beb57e7716a1c","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs","digest":"b518e97133720b6aa0b2349b04bfeb9fe236e1ecf51d64025dc25dc279988bf8","revision":"87180ea445a46d047d16b89b35ff1f3b92778f4f"},
 

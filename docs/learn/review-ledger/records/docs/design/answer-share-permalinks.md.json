@@ -24,9 +24,9 @@
 
     {"path":"src-server/routes/share/answer-share-routes.ts","digest":"de74fa89e8f9aa5d0770dc33fd1c0d9e95185c61c8a4bd23e94ab6070824a216","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a03ecc9fe25c6cafb3156e76a80a7ecadcf5a71da453a7ac189c3417be011e88","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"9fbb30f033dd9829017631c78a4584d637d8aac85dc00e43394ac374e6200901","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"d887547bd9533b49bffc1dba3eb06c66836077e510d4c5512941d3562fe63aa2","revision":"8187dca2517c9b1e854ba9c0dd6e4cf4da5314bc"},
 
     {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
