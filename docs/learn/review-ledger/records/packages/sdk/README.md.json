@@ -9,7 +9,7 @@
 
   "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.",
 
-  "document": {"digest":"f2cdd9967e14fdbb21b97804ca6bac56ac8fac214d8da1f7a1f6678b6da37e91","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
+  "document": {"digest":"51e5f8daa3aa73177a35bc625ab02b513647ad55f2fa7ab3b39e18e13b482fff","revision":"ce9c623c034f83ec7590f8fae3f6b427da26d921"},
 
   "sources": [
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},

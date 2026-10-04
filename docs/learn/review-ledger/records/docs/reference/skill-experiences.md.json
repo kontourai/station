@@ -9,7 +9,7 @@
 
   "limits": "Controlled local Node/macOS author-file tests and CLI build only. No installed runtime, model/provider, native/device, hosted schema URI or released-package proof. FIFO controls are POSIX-only and skip Windows; this is not hostile concurrent filesystem isolation or complete transitive Skill dependency discovery.",
 
-  "document": {"digest":"1c88d7156a8696a1f724a023ba76d81dced8229ca164ae59495d4c1c040dabac","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
+  "document": {"digest":"8e351bc61bf2cadb1fd0848c74822d7c5ad1271a3752ad5d0e993a75d40684bd","revision":"ce9c623c034f83ec7590f8fae3f6b427da26d921"},
 
   "sources": [
     {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
