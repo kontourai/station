@@ -9,8 +9,6 @@
 
   "limits": "Prompt wording does not enforce tool authority, prove available data/tools or establish a successful Agent response.",
 
-  "document": {"digest":"deb631a4e94cae8771235b2aa37deb79874cab7675ce7ef99fa78fcbd7366092","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
-
   "sources": [],
 
   "checks": []

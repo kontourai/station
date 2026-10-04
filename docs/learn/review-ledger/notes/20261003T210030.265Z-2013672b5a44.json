@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Independent source-delta review: content.ts adds optional nullable defaultAgent only to Project create/update schemas. Agent prompts rejection and retained migration behavior are unchanged. Historical and supersession prose remains accurate. Source review only; no new migration execution.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md"]}
+  ]
+}

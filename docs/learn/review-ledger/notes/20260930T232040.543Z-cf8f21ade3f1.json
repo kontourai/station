@@ -1,0 +1,7 @@
+{
+  "revision": "f0f20e6125e5e41bbb691d806ea3cf866ac15769",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed latest SettingsView scope-caption correction against the section picker and unchanged URL/highlight behavior. Existing deep-link and unsaved-navigation explanation remains accurate; focused settings tests pass.","inputs":["docs/reference/settings-deep-links.md"]}
+  ]
+}

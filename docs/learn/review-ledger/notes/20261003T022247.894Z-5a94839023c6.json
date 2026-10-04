@@ -1,0 +1,15 @@
+{
+  "revision": "508065f5e3732043063471fc4080cb22d8439a09",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed Station milestone scope and cost availability against the final producer, eligibility rule and UI. Real route tests failed before the missing-cost guard and now distinguish unreported cost from reported zero; the UI test proves unavailable measurements render no budget amount or progress bar. Snapshot retainedUsage uses message-count comparison, avoiding floating-point cost differences as evidence of missing records. Updated first-daily-record wording and retained the separately reproduced #581 limit. No live billing, hosted or native proof is claimed.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed refreshed usage/achievement getters, optional retained-message metadata and measurementUnavailableReason. Unknown engine cost, unavailable reads and retained usage cannot qualify the cost milestone; numeric progress is omitted while reported zero remains eligible. Executed route tests and UI/server typechecks passed. The existing raw-receipt authority contract and retained-history limits remain unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the final monitoring-guide delta. Cost milestones now expose known measurement gaps and keep reported zero distinct; this does not close the documented collector/Insights omissions or the attached-Claude per-turn importer gap.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the API/monitoring contract delta against the integration reading routes. Station-wide milestones and measured-cost availability do not establish personal billing, hosted tenancy, Marketplace or deployed-version acceptance. Existing limits and routes remain accurate.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"examples/shared-providers/README.md","note":"Reviewed final Profile wording and milestone consumer: pluginRegistry achievement links still flow to AchievementsBadge. Approved paired-person profiles do not use the example directory alias fallback; the example remains a placeholder integration.","inputs":["examples/shared-providers/README.md"]}
+  ]
+}

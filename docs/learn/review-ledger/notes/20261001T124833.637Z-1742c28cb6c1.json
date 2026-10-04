@@ -1,0 +1,7 @@
+{
+  "revision": "d3eb1da665d22aa5f894d13e93b23346bf15819e",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed historical Models capture metadata: fixture Ready and navigation remain separate from real model/provider smoke. The newer pre-Create disclosure is explicitly absent in the capture; no smoke or readiness authority changed.","inputs":["docs/reference/agent-smoke-confidence.md"]}
+  ]
+}
