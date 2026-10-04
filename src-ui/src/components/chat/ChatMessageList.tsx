@@ -259,7 +259,7 @@ function ChatMessageListComponent({
   const olderCommitPendingRef = useRef(false);
   const olderRestoringRef = useRef(false);
   const olderRestoreAnchorRef = useRef<ChatScrollAnchor | null>(null);
-  const olderRestoreFrameRef = useRef<number>();
+  const olderRestoreFrameRef = useRef<number | undefined>(undefined);
   const [olderCommitEpoch, setOlderCommitEpoch] = useState(0);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
