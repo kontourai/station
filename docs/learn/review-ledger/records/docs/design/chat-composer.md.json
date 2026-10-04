@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"a964b5bbb027b57d2a2f7326bbdb8418a13f4ee93be663aacd9d40891b7bdc63","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
-    {"path":"src-ui/src/components/chat/QueuedMessages.tsx","digest":"1d0938dd073df3ecd07aff6bd97128182a629530c425af7f8e622eede164d7bd","revision":"8f54568ace0014007eee673a58f3d26d3588e282"},
+    {"path":"src-ui/src/components/chat/QueuedMessages.tsx","digest":"c11bbecabec929f10dbbc291d9ecd3d86451e5dead15b1bf3d40515f6468b189","revision":"8cdb58b5fdabe32fed85261b544f867e7d4fa1d0"},
 
     {"path":"src-ui/src/components/chat/ComposerIconAction.tsx","digest":"ec75533d5cc10aaed540da2063fb547b9b5a9118dd53d33e642e0297f51d41cb","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 

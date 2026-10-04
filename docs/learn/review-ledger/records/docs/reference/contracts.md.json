@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"ca2a0e06b0feda8d4ae82b8acd8810a8261c834b0c5850c008fc478f1e087f67","revision":"487bd978d1599eaf52ad405d36bbe20d5bd638a7"},
+  "document": {"digest":"c451af98d2103b0e97e2904f8308345bb4e4028a27c47dcf6b0e10b2cb3d16c1","revision":"8cdb58b5fdabe32fed85261b544f867e7d4fa1d0"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -102,7 +102,7 @@
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cc732ac0998cab454269b662968aa2d5a34b28a41b1f47c0d1df78488a43336f","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cbd74f5e6344344d6e3309c2d7d4dd13262b1920881c3389ec04f3dd85ccaf81","revision":"8cdb58b5fdabe32fed85261b544f867e7d4fa1d0"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c9da7f23566fc89b3d951f83f61d322180fcf7f72b4f67c32a5c531b631df5bd","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 

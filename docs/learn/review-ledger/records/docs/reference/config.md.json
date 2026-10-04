@@ -112,7 +112,7 @@
 
     {"path":"src-server/services/orchestration/event-store.ts","digest":"f7982eb1240ec91e3d7d42d8f77bfd2fe2761599d24f4b2b81522da78ac39b05","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cc732ac0998cab454269b662968aa2d5a34b28a41b1f47c0d1df78488a43336f","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cbd74f5e6344344d6e3309c2d7d4dd13262b1920881c3389ec04f3dd85ccaf81","revision":"8cdb58b5fdabe32fed85261b544f867e7d4fa1d0"},
 
     {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -132,7 +132,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"e9d72a345f839a5ef48fa695e88991c40051b0046002396c14d809a253d75d90","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"9d0e3c6641698a589645614c2291f329ca2ad7c7bfb3cddf4d95fb15941ad2e7","revision":"8cdb58b5fdabe32fed85261b544f867e7d4fa1d0"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
