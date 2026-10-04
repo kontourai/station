@@ -461,13 +461,13 @@ async function openDefaultAgentSession(page: import('@playwright/test').Page) {
     page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
   ).toBeVisible({ timeout: 15_000 });
   await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
-  // archive#3309 (`components/agent-selection-policy.ts:129-141`,
-  // `ChatDock.tsx:1005-1016`): with exactly one chat-ready agent — which is
-  // all this fixture seeds — the dock's New button opens that chat DIRECTLY
-  // and no picker ever mounts. The picker was incidental setup here; the
-  // outcome it was implicitly guaranteeing, that the right agent opened, is
-  // asserted instead. Picker coverage lives in
-  // `tests/new-chat-provider-managed.spec.ts`.
+  // #3170: New always opens the New Chat picker (installed Skills are offered
+  // there), even with the one chat-ready agent this fixture seeds.
+  const stationCard = page.locator(
+    '.new-chat-modal__agent[data-agent-slug="station"]',
+  );
+  await expect(stationCard).toBeVisible({ timeout: 10_000 });
+  await stationCard.click();
   await expect(
     page.getByRole('button', { name: /^Model: Station — llama3\.2/ }),
   ).toBeVisible({ timeout: 10_000 });
