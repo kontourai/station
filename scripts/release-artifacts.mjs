@@ -57,7 +57,9 @@ try {
       containerDescriptor: resolve(option('--container-descriptor')),
       updaterPublicKey: updaterPublicKey(),
     });
-    assertOnlyExpectedAssets(resolve(option('--assets-dir')), inventory.tag);
+    assertOnlyExpectedAssets(resolve(option('--assets-dir')), inventory.tag, {
+      allowSignedHostManifest: true,
+    });
   } else {
     throw new Error('Usage: release-artifacts.mjs <assemble|validate> ...');
   }

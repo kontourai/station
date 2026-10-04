@@ -52,6 +52,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'pullRequests',
   'reviewEvidence',
   'scheduler',
+  'skillExperiences',
   'skills',
   'sshEnvironments',
   'systemRuntime',

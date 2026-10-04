@@ -14,11 +14,11 @@
   "sources": [
     {"path":"examples/meeting-transcription/plugin.json","digest":"aa804e2b368ed0b54993478a6a83e5780e4146063b967bd19faaee79fd8970b3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"examples/meeting-transcription/src/index.ts","digest":"d0f5cf93772b18dc06617947af7c1e3822828b35901d9f0e8bfa46388a23400b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"examples/meeting-transcription/src/MeetingTranscriptionModal.tsx","digest":"a00e284e0e81c976cbbf077116d7ec2cde67a49b6cbe1edf916f81f522e37677","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"examples/meeting-transcription/src/MeetingTranscriptionPane.tsx","digest":"4624cbab6d47b6b4610f5ad0134f62cf14c2f34cb63cb47238a139fb6d382829","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/meeting-transcription/src/index.ts","digest":"d0f5cf93772b18dc06617947af7c1e3822828b35901d9f0e8bfa46388a23400b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"examples/meeting-transcription/src/useRegisteredSTT.ts","digest":"a4f2e81f606513b245bf9dad512a92e07bf12c88fbdceed935b57f0c96050e0a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -26,17 +26,17 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
+    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"packages/sdk/src/voice/types.ts","digest":"dfd4391d896aab895738f531a6fb50be606e4ea4e27751806c9e90a3c83d3b41","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
-
-    {"path":"src-ui/src/hooks/useServerCapabilities.ts","digest":"31bb78d7241677e1d91ddf23b848f9dd9e43f6dd412bbf7537721faf8173a04c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"src-ui/src/hooks/useSTT.ts","digest":"07ef559ed6484e750a1d3be22e9f88e80ade4d2335b38f658d82461f6ce4208a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/useServerCapabilities.ts","digest":"31bb78d7241677e1d91ddf23b848f9dd9e43f6dd412bbf7537721faf8173a04c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/providers/voice/index.ts","digest":"4efdf7a405dbb2efdacbd3321169c86a63c97e6895a2466cf36ca5dc2cb47db2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

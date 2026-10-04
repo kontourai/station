@@ -12,7 +12,7 @@
   "document": {"digest":"10b9cf8be6ec35f93ddf769f4271e97e4fa31ba77a592da8348f6ff90d41724e","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
   "sources": [
-    {"path":"package.json","digest":"4b367a2c40a0613ebe8d9c35e26ff7c2a454ca84abd543856d84b88bd3201019","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
@@ -24,7 +24,7 @@
 
     {"path":"packages/shared/src/tool-request-preview.ts","digest":"b97e5705a45c2299f4661cc70ea845473b37765cd5405d0028a4d9d29c25685f","revision":"d28597b948558f03decf72957db69fa4510b5d93"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"1db553a9692fefb8cfaa1cf8f090235bae08bdf6d32e13fd8955b82a0d41bce7","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
@@ -46,7 +46,7 @@
 
     {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"880debd075f915ac8e746d359528fc6b1f3da03873c657b168930c57884268e0","revision":"aba169ab98b0546fc88ea07509450efe838e90b6"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/services/approvals/approval-inbox.ts","digest":"eb684e2f8d926fc7b6e307a543e004a660ad1f4a09e78fce46e2d73116647d0c","revision":"ef15303ade3f3a2ac68967376f15be29273b58cd"},
 
