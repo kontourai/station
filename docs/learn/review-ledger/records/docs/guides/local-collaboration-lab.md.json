@@ -126,7 +126,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"70ff7d48537ce8caae62b57449d990dbce05fe151c6eb8127f567f0b289ac98d","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -162,7 +162,7 @@
 
     {"path":"src-server/services/projects/project-response-guard.ts","digest":"80bcc89434852cce3ae5d309fd71e73fe01d955298f3fe5f7ca6f25fee6421ac","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"7c655627f32e3048e82228592a1b81542e86acd44167e8d4b625cd64ebc10af2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"4e8b9312c0cffe2b2c4ffb16887f8da250ba812fc3a3582067375cf1c9484cc5","revision":"5080022185abdbe347ee33ece20d0a38dcef64d1"},
 
     {"path":"src-server/services/ssh/connection-signing-key-store.ts","digest":"24a900a4f2502159384498f81814a9bfcf07e9c19096fff616c3ca7d7c5d6115","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 

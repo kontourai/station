@@ -1751,6 +1751,12 @@ fields. The current server reports an incomplete history page as `unavailable`.
 Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
 unavailable and too-large results retain their named states. None is an empty
 complete history, and none permits inferring private records.
+`getProjectSharedTaskPublication(...)` gives a member
+`{ kind: 'shared', publication }`, where `publication` is the same summary the
+list returns for that Task. An unshared, stale, unknown or other-scope Task
+refuses with the same not-found error, so a member cannot tell those cases
+apart. Member pages read history and document only after that publication
+matches the listed item.
 
 These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
@@ -1760,7 +1766,8 @@ does not publish every Task. Project owner/admin publication remains pending;
 the initial management surface requires current Station operator authority.
 
 Operators can use `getProjectSharedTaskPublication`, `shareProjectTask`, and
-`unshareProjectTask` from the same SDK subpath. Capture one `ApiRequestScope`
+`unshareProjectTask` from the same SDK subpath. Only an operator's publication
+review also reports `unshared`; sharing and unsharing stay operator-only. Capture one `ApiRequestScope`
 before review and pass it to the read and mutation. The review returns the full
 Station/local/portable Project scope plus the exact Task id and creation time.
 Send that identity back unchanged when publishing or revoking; revocation also
@@ -3546,6 +3553,18 @@ but do not load their bundles or enable their actions. The server sets
 uses `installation-pending` or `installation-unavailable` diagnostics, separate
 from distribution-policy disablement. Readiness notifications refresh the
 Project Pane and host-action catalogs as well as the installed-plugin list.
+
+For a `ready` row, `listPlugins` also reports the plugin's validated palette
+`commands` (an empty array when it declares none), an opaque
+`installationGeneration` that a command request echoes back, and
+`commandsRejected: { reason }` when Station dropped invalid declarations.
+Pending and unavailable rows omit all three. The generation is not authority:
+Station admits each command effect against the installed declaration (see
+[Plugin Command Effects](api.md#plugin-command-effects)). `listPlugins` rejects
+a response whose `installationGeneration` is not bounded text or whose
+`commands` is not an array. Station's palette admits and settles effects
+through `@kontourai/station-sdk/client/plugin-command-effects`
+(`admitPluginCommandEffect`, `settlePluginCommandEffects`).
 
 `listPlugins` includes optional `retainedOnRemoval` metadata for packages using
 retained code generations. Normal package updates keep their stable data
