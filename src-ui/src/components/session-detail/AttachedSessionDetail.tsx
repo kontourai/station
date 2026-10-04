@@ -16,6 +16,7 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { useMutation } from '@tanstack/react-query';
 import { useId, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import {
@@ -60,6 +61,22 @@ function reservationFailure(
  * adopt it into a real Station-owned continuation — plus the imported
  * transcript. Split out of `SessionsView` per archive#1204.
  */
+type TranscriptPart = ReturnType<typeof conversationPartToContentParts>[number];
+
+/** A part as a read-only transcript shows it: never answerable from here. */
+function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
+  const {
+    needsApproval: _needsApproval,
+    approvalId: _approvalId,
+    approvalThreadId: _approvalThreadId,
+    approvalEventId: _approvalEventId,
+    approvalToolName: _approvalToolName,
+    approvalSessionGrant: _approvalSessionGrant,
+    ...rest
+  } = part as TranscriptPart & Record<string, unknown>;
+  return rest as TranscriptPart;
+}
+
 export function AttachedSessionDetail({
   apiBase,
   chatFontSize = 14,
@@ -519,17 +536,14 @@ export function AttachedSessionDetail({
             </p>
           ) : (
             messages.map((message, index) => {
-              const contentParts = message.parts.map((part) => ({
-                type: part.type,
-                content: part.text,
-                toolCallId: part.toolCallId,
-                toolName: part.toolName,
-                toolKind: part.toolKind,
-                args: part.args,
-                result: part.result,
-                state: part.state,
-                isError: part.isError,
-              }));
+              // Chat's own mapping, so a runtime error's code (its
+              // translated copy), a file's reference and a cancelled call
+              // render here as they do in the dock — minus the approval
+              // binding: this view is read-only, and a bound part would
+              // offer Approve/Deny that nothing here can answer.
+              const contentParts = message.parts
+                .flatMap(conversationPartToContentParts)
+                .map(withoutApprovalBinding);
               if (presentation === 'chat')
                 return (
                   <MessageBubble

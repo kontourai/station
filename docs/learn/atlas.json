@@ -158,6 +158,7 @@
         "examples/meeting-notes/README.md"
       ],
       "modules": [
+        "StationKnowledgeMcpServer",
         "KnowledgeStoreProvider",
         "SqliteVecIndexProvider",
         "KnowledgeFileTransactions",

@@ -102,6 +102,7 @@ import { guardProjectResponse } from '../../services/projects/project-response-g
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
+import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import {
   currentRequestReadAuthority,
   runAsStationKnowledgeIndexer,
@@ -1759,6 +1760,7 @@ export function configureRuntimeRoutes(
         // ingress.
         bypass: (request) =>
           new URL(request.url).pathname === STATION_CONTROL_MCP_PATH ||
+          new URL(request.url).pathname === STATION_KNOWLEDGE_MCP_PATH ||
           isAttachmentStageGrantUploadRequest(request),
       }),
     );
@@ -2384,6 +2386,15 @@ export function configureRuntimeRoutes(
       port: context.port,
       hostedTenantRegistry,
       resolveCallerRecord: resolveStationControlCallerRecord,
+    }),
+  );
+  context.app.route(
+    '',
+    createStationControlMcpRoutes({
+      port: context.port,
+      hostedTenantRegistry,
+      resolveCallerRecord: resolveStationControlCallerRecord,
+      serverId: 'station-knowledge',
     }),
   );
   context.app.route(
@@ -5792,6 +5803,20 @@ export function configureRuntimeRoutes(
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
+  const mayUseKnowledgeRoot = (
+    request: Request,
+    root: Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>,
+    action: 'view' | 'edit',
+  ): boolean => {
+    const ownerId = agentOwnerIdForRequest(request);
+    if (ownerId === undefined) return true;
+    if (ownerId === null || !root) return false;
+    if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
+      return action === 'view';
+    if (root.scope.kind === 'project')
+      return agentOwnerMayUseProject(request, root.scope.projectSlug, action);
+    return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+  };
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
   // internal scope); every read path re-reads each session-backed record as
@@ -5829,21 +5854,8 @@ export function configureRuntimeRoutes(
       mayBuildSessionBackedRoot,
       // #2377 slice B: a station-control agent's hits follow its session
       // owner's access to each root. Every other caller is unchanged.
-      mayReadHitRoot: (request, root) => {
-        const ownerId = agentOwnerIdForRequest(request);
-        if (ownerId === undefined) return true;
-        if (ownerId === null) return false;
-        // Re-read record by record as the owner (`bindRequestReadAuthority`).
-        if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) return true;
-        if (root.scope.kind === 'project')
-          return agentOwnerMayUseProject(
-            request,
-            root.scope.projectSlug,
-            'view',
-          );
-        // The personal store is the operator's own.
-        return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
-      },
+      mayReadHitRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),
@@ -5857,6 +5869,8 @@ export function configureRuntimeRoutes(
     createKnowledgeStoreRoutes({
       store: context.knowledgeStoreProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
+      mayReadRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same
@@ -5870,6 +5884,12 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeRecordRoutes({
       store: context.knowledgeStoreProvider,
+      mayUseRoot: async (request, rootId, action) =>
+        mayUseKnowledgeRoot(
+          request,
+          await context.knowledgeStoreProvider.getRoot(rootId),
+          action,
+        ),
     }),
   );
   const personalSourceRequest = createPersonalRuntimeRequestGuard();

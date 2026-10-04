@@ -527,6 +527,7 @@
       {
         "id": "documentation-truth",
         "command": "npm run docs:truth:gate",
+        "timeoutMs": 1200000,
         "method": "validation",
         "summary": "Run the existing documentation contracts, including strict recorded document/source freshness. Passing does not establish semantic review of unrecorded claims or dependencies."
       }
