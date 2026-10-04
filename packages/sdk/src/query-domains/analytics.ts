@@ -1,9 +1,12 @@
 import { _getApiBase } from '../api';
 import {
+  fetchStationUsage as fetchStationUsageAt,
   fetchUsageRollup as fetchUsageRollupAt,
+  type StationUsageOverview,
   type UsageRollupQuery,
   type UsageRollupResponse,
 } from '../client/analytics';
+import { type ClientRequestOptions, StationHttpError } from '../client/http';
 
 export type {
   UsageRollupQuery,
@@ -23,6 +26,38 @@ const liveAnalyticsConfig = {
   refetchOnMount: true,
   refetchOnWindowFocus: true,
 } as const;
+
+export function useStationUsageQuery(
+  scope: ClientRequestOptions['requestScope'],
+  config?: QueryConfig<StationUsageOverview>,
+) {
+  return useApiQuery(
+    [
+      'analytics',
+      'station-usage',
+      scope?.apiBase ?? 'scope-unavailable',
+      scope?.authorityKey ?? 'scope-unavailable',
+    ],
+    (signal) => {
+      if (!scope) throw new Error('Station request authority unavailable');
+      return fetchStationUsageAt(scope.apiBase, {
+        requestScope: scope,
+        signal,
+      });
+    },
+    {
+      ...liveAnalyticsConfig,
+      refetchIntervalForError: (error) =>
+        error instanceof StationHttpError && [401, 403].includes(error.status)
+          ? false
+          : undefined,
+      retry: false,
+      ...config,
+      enabled: !!scope && (config?.enabled ?? true),
+      keepPreviousData: false,
+    },
+  );
+}
 
 export interface FeedbackRatingInput {
   agentSlug: string;

@@ -18,6 +18,7 @@ import {
   buildTrendDays,
   describeDailyHistoryGap,
 } from '../components/usage-stats/period';
+import { StationUsagePanel } from '../components/usage-stats/StationUsagePanel';
 import { UsageRollupPanel } from '../components/usage-stats/UsageRollupPanel';
 import { UsageStatsPanel } from '../components/usage-stats/UsageStatsPanel';
 import { describeCostCoverage } from '../components/usage-stats/UsageSummaryCards';
@@ -320,6 +321,10 @@ export function ProfilePage() {
 
         <div className="profile-card">
           <UsageRollupPanel />
+        </div>
+
+        <div className="profile-card">
+          <StationUsagePanel />
         </div>
 
         <div className="profile-card">

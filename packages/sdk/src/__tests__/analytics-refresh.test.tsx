@@ -3,7 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { expect, test, vi } from 'vitest';
-import { useUsageQuery } from '../query-domains/analytics';
+import {
+  useStationUsageQuery,
+  useUsageQuery,
+} from '../query-domains/analytics';
 import { usePairedDevicesQuery } from '../query-domains/devicePairingRequests';
 
 const fetch = vi.hoisted(() => vi.fn());
@@ -21,6 +24,68 @@ function wrapperFor(client: QueryClient) {
     );
   };
 }
+
+test('operator overview cache follows authority and pauses refused polling until retry', async () => {
+  vi.useFakeTimers();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  let denied = false;
+  fetch.mockImplementation(async () =>
+    denied
+      ? Response.json({}, { status: 403 })
+      : Response.json({
+          success: true,
+          scope: { kind: 'station', stationId: 'instance' },
+          data: { byProvider: { codex: {} } },
+        }),
+  );
+  let scope = {
+    apiBase: 'http://station.test',
+    authorityKey: 'operator',
+    isCurrent: () => true,
+  };
+  const view = renderHook(
+    () => {
+      const query = useStationUsageQuery(scope);
+      return {
+        data: query.data,
+        isError: query.isError,
+        refetch: query.refetch,
+      };
+    },
+    { wrapper: wrapperFor(client) },
+  );
+  try {
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.data?.stationId).toBe('instance');
+    denied = true;
+    scope = { ...scope, authorityKey: 'paired-device' };
+    view.rerender();
+    expect(view.result.current.data).toBeUndefined();
+    await act(async () => {
+      const result = await view.result.current.refetch();
+      expect(result.error?.message).toBe('Station overview unavailable');
+    });
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.isError).toBe(true);
+    const refusedCount = fetch.mock.calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(60_010));
+    expect(fetch).toHaveBeenCalledTimes(refusedCount);
+    denied = false;
+    await act(async () => {
+      await view.result.current.refetch();
+    });
+    await act(() => vi.advanceTimersByTimeAsync(30_010));
+    expect(view.result.current.data?.stationId).toBe('instance');
+    expect(fetch).toHaveBeenCalledTimes(refusedCount + 2);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+    fetch.mockReset();
+  }
+});
 
 test('mounted usage observers refetch newer totals without a local mutation', async () => {
   vi.useFakeTimers();

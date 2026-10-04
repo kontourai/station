@@ -25,8 +25,36 @@ export function createAnalyticsRoutes(
   readAuthorityForRequest?: (request: Request) => UsageRollupReadAuthority,
   configuredPeers?: () => readonly (PeerCredential & { credential: string })[],
   localStationId = 'local',
+  canReadStationUsage?: (request: Request) => boolean,
 ) {
   const app = new Hono();
+
+  app.get('/station-usage', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (canReadStationUsage?.(c.req.raw) !== true) {
+      return c.json(
+        { success: false, error: 'Station operator access required' },
+        403,
+      );
+    }
+    if (!usageAggregator) {
+      return c.json(
+        { success: false, error: 'Analytics not initialized' },
+        500,
+      );
+    }
+    try {
+      const stats = await usageAggregator.readStats();
+      analyticsOps.add(1, { op: 'get_station_usage' });
+      return c.json({
+        success: true,
+        data: stats,
+        scope: { kind: 'station', stationId: localStationId },
+      });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
 
   app.get('/usage', async (c) => {
     try {

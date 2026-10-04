@@ -49,6 +49,10 @@ vi.mock('../components/profile/StationPeoplePanel', () => ({
   StationPeoplePanel: () => <div>Paired profiles</div>,
 }));
 
+vi.mock('../components/usage-stats/StationUsagePanel', () => ({
+  StationUsagePanel: () => <div>Station operator overview</div>,
+}));
+
 vi.mock('../components/badges/AchievementsBadge', () => ({
   AchievementsBadge: () => <div>Achievements</div>,
 }));

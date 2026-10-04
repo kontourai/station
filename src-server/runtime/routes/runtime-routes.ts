@@ -2500,6 +2500,8 @@ export function configureRuntimeRoutes(
           .map((peer) => peerCredentialStore.get(peer.environmentId))
           .filter((peer): peer is NonNullable<typeof peer> => peer !== null),
       context.environmentSecurityService.devicePairing.environmentId(),
+      (request) =>
+        !hostedTenantRegistry && isBoundRuntimeLocalOperator(request),
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
