@@ -59,6 +59,7 @@ import {
 import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardShortcuts';
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -131,7 +132,6 @@ import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import { MobileSheetPending } from './MobileSheetPending';
-import { needsYouCount } from './mobile-activity-groups';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
 import { NewChatUnavailableError } from './newChatErrors';
 import {
@@ -145,6 +145,7 @@ import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
+import { useInboxNeedsYouCount } from './useInboxGroups';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -1104,15 +1105,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     onPresentationTitleChange?.(presentationTitle);
   }, [onPresentationTitleChange, presentationTitle]);
-  // The inbox's "Needs you" count, from the same partition the inbox panel
-  // renders: named on the inbox toggle while the inbox is hidden, and handed
-  // to a host that folds the inbox (the Coding edge's tooltip). Read with
-  // the item list, as the panel's own grouping is.
+  // The inbox's "Needs you" count, from the same live groups the inbox
+  // panel renders (`useInboxGroups`: held lifecycles, live snoozes, one
+  // coarse clock): named on the inbox toggle while the inbox is hidden, and
+  // handed to a host that folds the inbox (the Coding edge's tooltip).
   const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
-  const inboxNeedsYou = useMemo(
-    () => needsYouCount(taskItems, Date.now()),
-    [taskItems],
-  );
+  const inboxClock = useCoarseNow();
+  const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock);
   useEffect(() => {
     onInboxNeedsYouChange?.(inboxNeedsYou);
   }, [inboxNeedsYou, onInboxNeedsYouChange]);
@@ -1213,7 +1212,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * #1536 F: rows whose subject is the active CONVERSATION rather than the
    * dock's chrome, so the header takes them as data instead of deriving them.
    *
-   * "Open code layout" is here because the project-context row lost the
+   * "Open in Coding" is here because the project-context row lost the
    * start-truncated path it used to hang that link off — the path was eating
    * the conversation title, and deleting the link with it would have removed
    * the dock's only route to a session's coding layout when the shell is not

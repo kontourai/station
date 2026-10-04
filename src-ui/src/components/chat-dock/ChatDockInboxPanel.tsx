@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -22,13 +22,10 @@ import {
 } from './ChatDockInboxRows';
 import {
   clearSnooze,
-  groupMobileActivity,
-  readSnoozes,
-  type SnoozeMap,
   snoozeKeyFor,
   writeSnooze,
 } from './mobile-activity-groups';
-import { useHeldLifecycles } from './useHeldLifecycles';
+import { useInboxGroups } from './useInboxGroups';
 
 export interface ChatDockInboxPanelProps {
   items: HomeWorkItem[];
@@ -125,19 +122,15 @@ function ChatDockInboxPanelImpl({
     const panel = panelRef.current;
     if (panel) panel.inert = exiting;
   }, [exiting]);
-  const [snoozed, setSnoozed] = useState<SnoozeMap>(() => readSnoozes(now));
   const { inboxSections: sections } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const openChatIds = useMemo(
     () => new Set(openChatSessionIds),
     [openChatSessionIds],
   );
-  // Status churn must not move rows between groups (see useHeldLifecycles).
-  const heldItems = useHeldLifecycles(items);
-  const groups = useMemo(
-    () => groupMobileActivity(heldItems, now, snoozed),
-    [heldItems, now, snoozed],
-  );
+  // The live groups (held lifecycles, live snoozes): the same hook the
+  // inbox toggle's Needs-you count reads, so the two cannot disagree.
+  const groups = useInboxGroups(items, now);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
@@ -195,11 +188,9 @@ function ChatDockInboxPanelImpl({
             onSnoozeWake={(item, wakeAt, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               const key = snoozeKeyFor(item);
-              setSnoozed(
-                wakeAt === null
-                  ? clearSnooze(key, now)
-                  : writeSnooze(key, wakeAt, now),
-              );
+              // The write notifies every reader of the snooze map.
+              if (wakeAt === null) clearSnooze(key, now);
+              else writeSnooze(key, wakeAt, now);
             }}
             onCloseChat={(sessionId, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);

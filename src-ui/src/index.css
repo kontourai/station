@@ -2363,7 +2363,7 @@ button:hover {
    row. It was the widest thing in the dock header and it left the conversation
    title beside it about one character on a 110-character worktree path. The
    path is the project badge's `title` and the More menu's "Copy project path";
-   the coding-layout link the leaf carried is that menu's "Open code layout".
+   the coding-layout link the leaf carried is that menu's "Open in Coding".
    `.new-chat-modal__context-dir--fallback` still names the retired
    `--fallback` rule in a comment: that surface keeps its own visible path. */
 .chat-dock__project-context > .git-tooltip-anchor {

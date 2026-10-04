@@ -138,7 +138,7 @@ interface ChatDockHeaderProps {
   /**
    * Extra rows for the More menu, supplied by the caller because their subject
    * is the active conversation rather than the dock's chrome — Copy thread ID,
-   * Copy project path, Open code layout (#1536 F). Appended after the header's
+   * Copy project path, Open in Coding (#1536 F). Appended after the header's
    * own rows.
    */
   moreActions?: readonly DockMoreAction[];
