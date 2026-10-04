@@ -1155,29 +1155,22 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await expect(page.getByText('Default Model')).toHaveCount(0);
 
+    // A desktop continuation of project work opens the chat where it lives,
+    // the project's Coding layout, with that chat active (design round
+    // 2026-10, U1); only project-less work stays in the dock.
     await continuation.click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/projects/station/layouts/coding');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBe('task-first-home');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
-    await expect(
-      page.locator('.chat-dock__active-identity').getByText('New chat'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Hide Chat', exact: true }),
-    ).toBeVisible();
-    await page.locator('.chat-dock__header').hover();
-    await page.getByRole('button', { name: 'Close chat' }).click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+
+    // Back on Home with the dock open and no chat in it.
+    await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
     await expect(page.getByText('No chat open')).toBeVisible();
 
     // The default identity is the one the New chat draft opens with, as its
@@ -1196,7 +1189,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page
+      .getByRole('button', { name: 'Close new project', exact: true })
+      .click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
