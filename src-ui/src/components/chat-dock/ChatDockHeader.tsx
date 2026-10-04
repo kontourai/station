@@ -89,7 +89,7 @@ export interface ChatDockWorkspaceControls {
     fullscreen: boolean;
   };
   onOpenConversation: () => void;
-  /** New-chat with the single-ready-agent shortcut (opens directly). */
+  /** Opens the New Chat picker, where installed Skills appear too (#3170). */
   onNewChat: () => void;
 }
 

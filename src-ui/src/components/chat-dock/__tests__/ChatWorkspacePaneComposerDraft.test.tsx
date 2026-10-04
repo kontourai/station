@@ -528,22 +528,17 @@ test('switching Project rebinds the dock and opens no New Chat picker (archive#4
   expect(createChatSession).not.toHaveBeenCalled();
 });
 
-test('the docked New button starts a lone ready Agent’s chat in the dock’s bound Project', async () => {
+test('the docked New button opens the picker even with one ready Agent', async () => {
+  // #3170: New always opens the New Chat picker, because installed Skills are
+  // chosen there. It used to start a lone ready Agent's chat directly.
   deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
 
   fireEvent.click(screen.getByRole('button', { name: 'New' }));
-  expect(createChatSession).toHaveBeenCalledWith(
-    'assistant',
-    'Assistant',
-    undefined,
-    'pulse',
-    'Pulse',
-    expect.anything(),
-  );
-  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  expect(createChatSession).not.toHaveBeenCalled();
 });
 
 test('the docked New Chat picker defaults to the dock’s bound Project', async () => {
