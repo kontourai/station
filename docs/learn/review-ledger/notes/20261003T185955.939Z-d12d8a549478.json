@@ -1,7 +1,0 @@
-{
-  "revision": "4904df5100d0a152cfb988955866be3c0e4d1f2b",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Re-recorded after RegionPaneHost.project.test.tsx moved the stale-binding test's chatDockProjectSlug write after the navigation, because #3144 makes opening a project's workspace the default for new chats. I read the persistence and compatibility sections: this document says a dock region binds { project, source, workspace } from the dock's active project; it does not describe the fallback for a binding that names a deleted project, which the test pins. No text in this document changes."}
-  ]
-}
