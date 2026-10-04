@@ -1,0 +1,7 @@
+{
+  "revision": "0371f7dc7c6adc213a577809267f86740b64a676",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Reviewed common HTTP protocol denial composition and audit callback against runtime-http, runtime-routes and RuntimeAuthFailureLimiter. Protocol denials share direct-peer failure counts (default 10/60 seconds); suppress audits after exhaustion without replacing 400/426. Route regression fails with 100 audits when guard removed, then passes after restoration."}
+  ]
+}
