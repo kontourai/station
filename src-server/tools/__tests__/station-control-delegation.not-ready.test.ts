@@ -112,17 +112,22 @@ describe('#3304: not-ready engine connection names the missing prerequisite', ()
     expect(error?.message).not.toContain('Optional thing');
   });
 
-  test('without recorded prerequisites it falls back to the readiness action', async () => {
+  test('readiness evidence free text is never surfaced to the delegator', async () => {
     stubStation({
       ...base,
       status: 'error',
       prerequisites: [],
-      readinessEvidence: { action: 'Reconnect the engine in Connections.' },
+      readinessEvidence: {
+        summary: 'smoke failed: 401 for key sk-secret at /Users/brian/.claude',
+        action: 'Reconnect at /Users/brian/.claude using sk-secret.',
+      },
     });
     const error = await delegate().then(
       () => undefined,
       (e: Error) => e,
     );
-    expect(error?.message).toContain('Reconnect the engine in Connections.');
+    expect(error?.message).toContain('not ready for delegated work (error)');
+    expect(error?.message).not.toContain('sk-secret');
+    expect(error?.message).not.toContain('/Users/brian');
   });
 });

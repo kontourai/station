@@ -218,7 +218,9 @@ What it does, in order:
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
 2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
-   browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+   browser at `http://<host>:<ui-port>#station-ui-bootstrap=<token>`, where
+   `<host>` is the host the instance recorded at start, or `localhost` for a
+   wildcard bind or an entry with no recorded host.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
    [local-bootstrap-token.md](../design/local-bootstrap-token.md). The token

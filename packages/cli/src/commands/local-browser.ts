@@ -54,8 +54,20 @@ export async function mintLocalBrowserToken(
  * person is using. A wildcard bind, or an entry with no recorded host (older
  * entries, the Desktop sidecar), keeps `localhost`.
  */
-function browserHostFor(host: string | undefined): string {
-  if (!host || host === '0.0.0.0' || host === '::') return 'localhost';
+/** 0.0.0.0 and every spelling of :: (`::0`, `0:0:0:0:0:0:0:0`, ...). */
+function isUnspecifiedAddress(host: string): boolean {
+  const family = isIP(host);
+  if (family === 4) return host === '0.0.0.0';
+  if (family !== 6) return false;
+  try {
+    return new URL(`http://[${host}]/`).hostname === '[::]';
+  } catch {
+    return false;
+  }
+}
+
+export function browserHostFor(host: string | undefined): string {
+  if (!host || isUnspecifiedAddress(host)) return 'localhost';
   return isIP(host) === 6 ? `[${host}]` : host;
 }
 

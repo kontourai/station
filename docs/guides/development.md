@@ -135,8 +135,8 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   address the instance bound (`127.0.0.1` here), not `localhost`; the two are
   different origins, so a sign-in link only signs in the origin it names.
 - **Cold start.** The first load after `start --watch` waits on a cold Vite
-  server compiling and optimizing the UI dependency graph, typically 25 to 40
-  seconds on a laptop before Home renders. The page is blank or loading until
+  server compiling and optimizing the UI dependency graph, which can take tens
+  of seconds before Home renders. The page is blank or loading until
   then; later loads and hot updates are fast. Station does not warm the server
   up, so open the instance's `station open --print` link once and wait.
 - **Distinct home.** A dev instance must use its own Station home

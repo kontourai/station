@@ -490,12 +490,14 @@ export interface ConnectionConfig {
 
 /**
  * Names what blocks a connection that is not ready: each missing or errored
- * required prerequisite with its first fix step and command, else the
- * readiness evidence's own action/summary. Empty when nothing is recorded, so
- * a caller appends it only when present.
+ * required prerequisite with its first fix step and command. Only the
+ * prerequisite's name, id and catalog install guide are used. Readiness
+ * evidence text (a failed smoke's reason) can carry remote error text, so it
+ * is deliberately not surfaced to a delegating agent. Empty when no
+ * prerequisite is recorded, so a caller appends it only when present.
  */
 export function describeConnectionBlockers(
-  connection: Pick<ConnectionConfig, 'prerequisites' | 'readinessEvidence'>,
+  connection: Pick<ConnectionConfig, 'prerequisites'>,
 ): string {
   const blocked = (connection.prerequisites ?? []).filter(
     (p) => p.category === 'required' && p.status !== 'installed',
@@ -514,8 +516,7 @@ export function describeConnectionBlockers(
       })
       .join('. ');
   }
-  const evidence = connection.readinessEvidence;
-  return evidence?.action ?? evidence?.summary ?? '';
+  return '';
 }
 
 export interface ModelConnectionConfig extends ConnectionConfig {

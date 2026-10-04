@@ -347,7 +347,8 @@ export function browserViewportProblem(value: unknown): string | undefined {
     (key) => !['width', 'height', 'deviceScaleFactor', 'mobile'].includes(key),
   );
   if (unknown !== undefined)
-    return `viewport.${unknown} is not a viewport field`;
+    // The key is caller-supplied; cap what is echoed back.
+    return `viewport.${unknown.length > 64 ? `${unknown.slice(0, 64)}...` : unknown} is not a viewport field`;
   return undefined;
 }
 

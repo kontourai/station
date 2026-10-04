@@ -58,6 +58,8 @@ describe('packaged local browser open', () => {
     ['192.168.1.20', '192.168.1.20'],
     ['0.0.0.0', 'localhost'],
     ['::', 'localhost'],
+    ['::0', 'localhost'],
+    ['0:0:0:0:0:0:0:0', 'localhost'],
     [undefined, 'localhost'],
   ])(
     '--print links to the host the instance bound (%s) (#3304)',

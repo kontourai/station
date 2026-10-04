@@ -282,23 +282,65 @@ export function orchestrationStreamFailureMessage(status: number): string {
   return `${base}: Station rejected this CLI's credential or none was sent. Set STATION_API_CREDENTIAL in this shell, pass --credential=<token>, or target a saved Station with --station=<name> (see station setup existing <name> <endpoint> --pair).`;
 }
 
+const MAX_CONVERSATION_PAGES = 20;
+
+function parseConversationPage(value: unknown): {
+  items: Array<Record<string, unknown>>;
+  hasMore: boolean;
+  nextCursor?: string;
+} {
+  const page = value as {
+    items?: unknown;
+    hasMore?: unknown;
+    nextCursor?: unknown;
+  } | null;
+  if (!page || typeof page !== 'object' || !Array.isArray(page.items)) {
+    throw new Error(
+      'Unexpected conversations response: expected { items: [...] } from Station.',
+    );
+  }
+  return {
+    items: page.items as Array<Record<string, unknown>>,
+    hasMore: page.hasMore === true,
+    ...(typeof page.nextCursor === 'string'
+      ? { nextCursor: page.nextCursor }
+      : {}),
+  };
+}
+
 function createManagedSessionClient(
   apiBase: string,
   agentSlug: AgentId,
 ): CliSessionClient {
   return {
     async listSessions() {
-      // The route answers a page, `{ items, hasMore }`; a bare array is what
-      // older Stations returned.
-      const listed = await requestJson<
-        | Array<Record<string, unknown>>
-        | { items?: Array<Record<string, unknown>> }
-      >(apiBase, `/agents/${encodeURIComponent(agentSlug)}/conversations`);
-      const conversations = Array.isArray(listed)
-        ? listed
-        : Array.isArray((listed as { items?: unknown }).items)
-          ? (listed as { items: Array<Record<string, unknown>> }).items
-          : [];
+      // The route answers a page, `{ items, hasMore, nextCursor? }`. A hosted
+      // Station hands back a cursor, followed up to a bound; a personal
+      // Station has one page of at most 100 and no cursor, so a truncated
+      // listing is said so on stderr rather than passed off as complete.
+      const conversations: Array<Record<string, unknown>> = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < MAX_CONVERSATION_PAGES; page += 1) {
+        const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+        const listed = await requestJson<unknown>(
+          apiBase,
+          `/agents/${encodeURIComponent(agentSlug)}/conversations${query}`,
+        );
+        const parsed = parseConversationPage(listed);
+        conversations.push(...parsed.items);
+        cursor = parsed.nextCursor;
+        if (!parsed.hasMore) break;
+        if (!cursor || page === MAX_CONVERSATION_PAGES - 1) {
+          process.stderr.write(
+            `Warning: more conversations exist than this listing shows (${conversations.length} listed); ${
+              cursor
+                ? `stopped after ${MAX_CONVERSATION_PAGES} pages`
+                : 'this Station returns one page and no cursor'
+            }.\n`,
+          );
+          break;
+        }
+      }
 
       return conversations.map((conversation) => ({
         id: String(conversation.id),
