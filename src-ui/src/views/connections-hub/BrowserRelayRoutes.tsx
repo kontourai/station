@@ -21,6 +21,7 @@ import {
 } from '../../lib/browserRelayTurnCustody';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
+import { RelaySetupHelp } from './RelaySetupHelp';
 import '../page-layout.css';
 import './ComputersSection.css';
 
@@ -407,11 +408,17 @@ export function BrowserRelayRoutes({
       className="relay-route-profiles"
       aria-label="Browser broker routes"
     >
-      <h2 className="relay-route-profiles__heading">Broker routes</h2>
-      <p className="connections-computers__note">
-        A broker can find a Station. The Station still checks your account,
-        approved Device and Project access separately.
-      </p>
+      {routes.length > 0 && (
+        <div className="native-relay-setup__heading">
+          <h2 className="relay-route-profiles__heading">Broker routes</h2>
+          <RelaySetupHelp label="About broker routes">
+            <p>
+              A broker can find a Station. The Station still checks your
+              account, approved Device and Project access separately.
+            </p>
+          </RelaySetupHelp>
+        </div>
+      )}
       {routes.map((connection) => (
         <PageRow
           key={connection.id}

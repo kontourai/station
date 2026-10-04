@@ -729,10 +729,10 @@ describe('RelayRouteProfiles', () => {
     });
     renderRoutes();
     expect(writeText).not.toHaveBeenCalled();
-    openDetails('Connection settings');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Copy public iOS setup link' }),
+      screen.getByRole('button', { name: 'More actions for Home Station' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy setup link' }));
     // iOS requires the clipboard write in the original tap activation.
     expect(writeText).toHaveBeenCalledOnce();
     const link = String(writeText.mock.calls[0]?.[0]);
@@ -759,7 +759,7 @@ describe('RelayRouteProfiles', () => {
   test('lists an unconfigured route, offers edit, and removes it without revoking trust', async () => {
     renderRoutes();
     expect(screen.getByText('Your Stations')).toBeTruthy();
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByText('Station needs confirmation')).toBeTruthy(),
     );
@@ -787,12 +787,14 @@ describe('RelayRouteProfiles', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    openDetails('Connection settings');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove this route' }));
-    expect(
-      screen.getByRole('heading', { name: 'Remove broker route?' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove route' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More actions for Home Station' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+    const confirm = within(
+      screen.getByRole('dialog', { name: 'Remove Home Station?' }),
+    );
+    fireEvent.click(confirm.getByRole('button', { name: 'Remove' }));
     await waitFor(() =>
       expect(mocks.remove).toHaveBeenCalledWith(
         'station-profile:home station',
@@ -801,7 +803,7 @@ describe('RelayRouteProfiles', () => {
     );
     expect(
       screen.getByText(
-        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+        'No Stations yet. Open a setup link from the Station owner, or add one.',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add a Station' })).toBeTruthy();
@@ -830,9 +832,9 @@ describe('RelayRouteProfiles', () => {
     });
     renderRoutes();
 
-    expect(screen.getByText('Device configured · not selected')).toBeTruthy();
+    expect(screen.getByText('Not in use')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Use this Station' }));
-    await screen.findByText('Station selected · account sign-in required');
+    await screen.findByText('In use · sign in needed');
     expect(mocks.setActiveConnection).toHaveBeenCalledWith(
       'station-profile:home station',
     );
@@ -914,7 +916,7 @@ describe('RelayRouteProfiles', () => {
 
     const { queryClient } = renderRoutes();
     await screen.findByText('Connection invitation needed.');
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     expect(mocks.grantInvoke).toHaveBeenCalledTimes(1);
 
     const routingInvitationField = screen.getByLabelText(
@@ -957,7 +959,7 @@ describe('RelayRouteProfiles', () => {
     expect(mocks.grantInvoke).toHaveBeenCalledWith(
       'station_profile_store_read',
     );
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(
       queryClient.getQueryData([
@@ -1149,8 +1151,8 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Finish device setup' }),
     );
-    await screen.findByText('Device configured · not selected');
-    expect(screen.queryByText('Device setup required')).toBeNull();
+    await screen.findByText('Not in use');
+    expect(screen.queryByText('Setup needed')).toBeNull();
     expect(repository.getRelayRouteProfiles()[0]?.configurationState).toBe(
       'configured',
     );
@@ -2143,7 +2145,7 @@ describe('RelayRouteProfiles', () => {
     renderRoutes();
     expect(
       screen.getByText(
-        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+        'No Stations yet. Open a setup link from the Station owner, or add one.',
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Add a Station' }));
@@ -2166,7 +2168,7 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save route' }));
 
     await screen.findByText('Zach Station');
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     expect(repository.getRelayRouteProfiles()).toHaveLength(1);
     expect(persisted.store.profiles[0]).toMatchObject({
       name: 'Zach Station',
@@ -2217,6 +2219,9 @@ describe('RelayRouteProfiles', () => {
       name: `Saved route ${index}`,
     }));
     renderRoutes();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'About your Stations' }),
+    );
     expect(
       screen.getByText(
         /approved routing grants renew while this app is awake/i,

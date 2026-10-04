@@ -4,6 +4,7 @@ import type {
   RelayManagementView,
   RelaySetupApproval,
 } from '@kontourai/station-contracts/relay-management';
+import { NATIVE_DEVICE_BINDING_CANDIDATE_VERSION } from '@kontourai/station-contracts/native-device-proof';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -12,6 +13,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { RelayOperatorPanel } from '../RelayOperatorPanel';
@@ -115,73 +117,165 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
 });
 
+const setupInfo = {
+  profileName: 'Home',
+  brokerOrigin: view.route.brokerOrigin,
+  stationId: view.route.stationId,
+  enrollmentId: view.route.enrollmentId,
+  appIdentifier: 'io.kontourai.station.nightly',
+  channel: 'nightly',
+  clientInstanceId: approval.surface.clientInstanceId,
+  keyThumbprint: approval.surface.keyThumbprint,
+  publicKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+};
+
+async function openInvite() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Invite device' }));
+  return within(await screen.findByRole('dialog'));
+}
+
 test('a caller without the server-reported IAM permission sees no operator controls and never loads invitation data', async () => {
   state.capabilities.mockResolvedValue({ canManage: false, configured: true });
   mount();
   await waitFor(() => expect(state.capabilities).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole('region', { name: 'Invite a device' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Devices' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Invite device' })).toBeNull();
   expect(state.view).not.toHaveBeenCalled();
   expect(state.approve).not.toHaveBeenCalled();
 });
 
-test('the actual setup actions require approval before creating and copying a one-time invitation with the selected expiry', async () => {
+test('the invite dialog copies the chosen app link, then approves pasted setup info before creating the one-time invitation with the chosen expiry', async () => {
   mount();
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Copy setup link' }),
-  );
+  const dialog = await openInvite();
+  fireEvent.click(dialog.getByRole('button', { name: 'Beta' }));
+  fireEvent.click(dialog.getByRole('button', { name: 'Copy link' }));
   await waitFor(() =>
-    expect(state.copy).toHaveBeenCalledWith(view.setupLinks.nightly),
+    expect(state.copy).toHaveBeenCalledWith(view.setupLinks.beta),
   );
-  fireEvent.click(screen.getByText('Approve recipient'));
-  fireEvent.change(screen.getByLabelText('Setup info from recipient'), {
-    target: { value: '{"publicKey":"recipient-info"}' },
+  fireEvent.click(dialog.getByRole('button', { name: 'Next' }));
+  const approve = dialog.getByRole('button', { name: 'Approve and invite' });
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  // Messaging apps wrap what the share sheet sent; the JSON inside is used.
+  fireEvent.change(dialog.getByLabelText('Their setup info'), {
+    target: {
+      value: `Here is my setup info:\n${JSON.stringify(setupInfo)}\nthanks`,
+    },
   });
-  const create = screen.getByRole('button', { name: 'Create invitation' });
-  expect(create.hasAttribute('disabled')).toBe(true);
-  fireEvent.change(
-    screen.getByRole('combobox', { name: 'Invitation expires' }),
-    { target: { value: 'never' } },
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Approve device' }));
-  await waitFor(() => expect(create.hasAttribute('disabled')).toBe(false));
-  expect(state.approve.mock.calls[0]?.[1]).toEqual({
-    publicKey: 'recipient-info',
-  });
-  fireEvent.click(create);
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Copy invitation' }),
-  );
+  expect(dialog.getByText('Nightly app for this Station.')).toBeTruthy();
+  const expiry = dialog.getByRole('combobox', { name: 'Invitation expires' });
+  expect((expiry as HTMLSelectElement).value).toBe('24h');
+  fireEvent.change(expiry, { target: { value: 'never' } });
+  fireEvent.click(approve);
+  await dialog.findByRole('heading', { name: 'Send the invitation' });
+  expect(state.approve.mock.calls[0]?.[1]).toEqual(setupInfo);
+  expect(state.invite.mock.calls[0]?.[2]).toEqual(setupInfo);
   expect(state.invite.mock.calls[0]?.[3]).toBe('never');
+  expect(state.approve.mock.invocationCallOrder[0]).toBeLessThan(
+    state.invite.mock.invocationCallOrder[0]!,
+  );
+  expect(dialog.getByText(view.confirmationCode)).toBeTruthy();
+  fireEvent.click(dialog.getByRole('button', { name: 'Copy invitation' }));
   await waitFor(() =>
     expect(state.copy).toHaveBeenLastCalledWith(
       'station-relay-nightly://bound-invitation',
     ),
   );
+  fireEvent.click(dialog.getByRole('button', { name: 'Copy key ID' }));
+  await waitFor(() => expect(state.copy).toHaveBeenLastCalledWith(view.keyId));
+});
+
+test('setup info for another Station is refused before any approval write', async () => {
+  mount();
+  const dialog = await openInvite();
+  fireEvent.click(dialog.getByRole('button', { name: 'Next' }));
+  fireEvent.change(dialog.getByLabelText('Their setup info'), {
+    target: {
+      value: JSON.stringify({
+        ...setupInfo,
+        stationId: 'c39e4ea7-1a94-4cfb-9583-70ff9e971e21',
+      }),
+    },
+  });
+  expect(dialog.getByRole('alert').textContent).toBe(
+    'This setup info is for a different Station.',
+  );
+  const approve = dialog.getByRole('button', { name: 'Approve and invite' });
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(approve);
+  expect(state.approve).not.toHaveBeenCalled();
 });
 
 test('an uncertain issuance does not offer automatic retry, and retired authority removes the controls', async () => {
   state.invite.mockRejectedValue(new Error('The write outcome is uncertain'));
   const mounted = mount();
-  await screen.findByRole('button', { name: 'Copy setup link' });
-  fireEvent.click(screen.getByText('Approve recipient'));
-  fireEvent.change(screen.getByLabelText('Setup info from recipient'), {
-    target: { value: '{}' },
+  const dialog = await openInvite();
+  fireEvent.click(dialog.getByRole('button', { name: 'Next' }));
+  fireEvent.change(dialog.getByLabelText('Their setup info'), {
+    target: { value: JSON.stringify(setupInfo) },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Approve device' }));
-  const create = screen.getByRole('button', { name: 'Create invitation' });
-  await waitFor(() => expect(create.hasAttribute('disabled')).toBe(false));
-  fireEvent.click(create);
-  await screen.findByRole('alert');
-  expect(create.hasAttribute('disabled')).toBe(true);
+  const approve = dialog.getByRole('button', { name: 'Approve and invite' });
+  fireEvent.click(approve);
+  await dialog.findByText(/the invitation couldn’t be confirmed/);
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(approve);
+  expect(state.approve).toHaveBeenCalledTimes(1);
   expect(state.invite).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole('button', { name: 'Copy invitation' })).toBeNull();
+  expect(dialog.queryByRole('button', { name: 'Copy invitation' })).toBeNull();
   state.current = false;
   mounted.rerender(
     <QueryClientProvider client={clients[0]!}>
       <RelayOperatorPanel />
     </QueryClientProvider>,
   );
-  expect(screen.queryByRole('region', { name: 'Invite a device' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Devices' })).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('a waiting device is approved from its own row, and removal of an approved device needs confirmation', async () => {
+  const pending: RelayManagementView['pendingDevices'][number] = {
+    enrollmentId: 'E'.repeat(43),
+    requestId: '0d3d7e2c-35a4-4a4a-9d55-5f8d5a1f0b11',
+    candidate: {
+      version: NATIVE_DEVICE_BINDING_CANDIDATE_VERSION,
+      stationId: view.route.stationId,
+      deviceId: '4f3d7e2c-35a4-4a4a-9d55-5f8d5a1f0b12',
+      bindingId: '5f3d7e2c-35a4-4a4a-9d55-5f8d5a1f0b13',
+      surface: approval.surface,
+      deviceProofJwk: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'X'.repeat(43),
+        y: 'Y'.repeat(43),
+      },
+      deviceProofKeyThumbprint: 'D'.repeat(43),
+    },
+    account: { issuer: 'local', subject: 'zach', displayName: 'Zach' },
+    requestedScope: 'orchestration:read',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+  };
+  state.view.mockResolvedValue({
+    ...view,
+    pendingDevices: [pending],
+    approvals: [approval],
+  });
+  state.approveDevice.mockResolvedValue(undefined);
+  mount();
+  const waiting = within(
+    await screen.findByRole('list', { name: 'Waiting for approval' }),
+  );
+  fireEvent.click(waiting.getByRole('button', { name: 'Approve' }));
+  await waitFor(() =>
+    expect(state.approveDevice.mock.calls[0]?.[1]).toBe(pending),
+  );
+  const approved = within(
+    screen.getByRole('list', { name: 'Approved devices' }),
+  );
+  fireEvent.click(approved.getByRole('button', { name: 'Remove' }));
+  expect(state.revoke).not.toHaveBeenCalled();
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }),
+  );
+  await waitFor(() => expect(state.revoke.mock.calls[0]?.[1]).toBe(approval));
 });
 
 test('cookie-authenticated operator controls reach the real SDK while enrolled-only requests remain closed', async () => {
@@ -210,7 +304,7 @@ test('cookie-authenticated operator controls reach the real SDK while enrolled-o
     });
   state.requiresEnrolledCredential = false;
   mount();
-  await screen.findByRole('region', { name: 'Invite a device' });
+  await screen.findByRole('region', { name: 'Devices' });
   expect(wire).toHaveBeenCalledTimes(1);
   cleanup();
   for (const client of clients.splice(0)) client.clear();
@@ -223,5 +317,5 @@ test('cookie-authenticated operator controls reach the real SDK while enrolled-o
     'An enrolled Station credential for this target is required',
   );
   expect(wire).not.toHaveBeenCalled();
-  expect(screen.queryByRole('region', { name: 'Invite a device' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Devices' })).toBeNull();
 });

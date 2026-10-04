@@ -41,6 +41,7 @@ import {
 import { NativeRelayEnrollmentWizard } from './NativeRelayEnrollmentWizard';
 import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
+import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
 
 const NO_RELAY_PROFILES: readonly StationProfile[] = [];
@@ -824,14 +825,14 @@ export function RelayRouteProfiles({
   const routeStatus = (profile: StationProfile) => {
     if (isSelected(profile)) {
       return accountIsCurrent(profile)
-        ? 'Station selected · account session active'
+        ? 'In use'
         : profile.configurationState === 'configured'
-          ? 'Station selected · account sign-in required'
-          : 'Station selected · Device setup required';
+          ? 'In use · sign in needed'
+          : 'In use · setup needed';
     }
     return profile.configurationState === 'configured'
-      ? 'Device configured · not selected'
-      : 'Device setup required';
+      ? 'Not in use'
+      : 'Setup needed';
   };
 
   async function selectStation(profile: StationProfile) {
@@ -897,7 +898,7 @@ export function RelayRouteProfiles({
       );
       await navigator.clipboard.writeText(link);
     } catch {
-      setError('Station could not copy the public iOS setup link.');
+      setError('Station could not copy the setup link.');
     }
   }
 
@@ -923,15 +924,26 @@ export function RelayRouteProfiles({
       aria-label="Saved broker routes"
     >
       <NativeRelaySetupQueryRefresh />
-      <h2 className="relay-route-profiles__heading">Your Stations</h2>
-      <p className="connections-computers__note">
-        Choose a Station, then finish the steps to access its shared projects.
-      </p>
-      <Button onClick={() => setCreating(true)}>Add a Station</Button>
+      <div className="native-relay-setup__heading">
+        <h2 className="relay-route-profiles__heading">Your Stations</h2>
+        <RelaySetupHelp label="About your Stations">
+          <p>
+            Choose a Station, then finish its steps to see shared Projects.
+            Approved routing grants renew while this app is awake. Remove a
+            Station to stop maintaining its connection.
+          </p>
+        </RelaySetupHelp>
+        <Button
+          size="sm"
+          className="relay-route-profiles__add"
+          onClick={() => setCreating(true)}
+        >
+          Add a Station
+        </Button>
+      </div>
       {profiles.length === 0 && (
         <p className="connections-computers__note">
-          No broker routes are saved on this device yet. Save the Station and
-          broker details provided by the Station operator to begin setup.
+          No Stations yet. Open a setup link from the Station owner, or add one.
         </p>
       )}
       {profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
@@ -941,13 +953,6 @@ export function RelayRouteProfiles({
           resume renewal.
         </p>
       )}
-      <details>
-        <summary>Connection upkeep</summary>
-        <p>
-          Approved routing grants renew while this app is awake. Remove a
-          Station to stop maintaining its connection.
-        </p>
-      </details>
       {profiles.map((profile) => (
         <PageRow
           key={profile.name.toLowerCase()}
@@ -984,6 +989,19 @@ export function RelayRouteProfiles({
                 </Button>
               }
               overflowLabel={`More actions for ${profile.name}`}
+              overflow={[
+                {
+                  key: 'copy-setup-link',
+                  label: 'Copy setup link',
+                  onSelect: () => void copyPublicSetupLink(profile),
+                },
+                {
+                  key: 'remove',
+                  label: 'Remove',
+                  tone: 'danger',
+                  onSelect: () => setRemoveTarget(profile),
+                },
+              ]}
             />
           }
         >
@@ -999,21 +1017,6 @@ export function RelayRouteProfiles({
             profile={profile}
             onInvitationAccepted={onInvitationAccepted}
           />
-          <details>
-            <summary>Connection settings</summary>
-
-            <Button onClick={() => void copyPublicSetupLink(profile)}>
-              Copy public iOS setup link
-            </Button>
-            <p>This setup link shares connection details, not access.</p>
-            <button
-              type="button"
-              className="connections-computers__remove tap-target"
-              onClick={() => setRemoveTarget(profile)}
-            >
-              Remove this route
-            </button>
-          </details>
         </PageRow>
       ))}
       {error && (
@@ -1037,13 +1040,9 @@ export function RelayRouteProfiles({
       )}
       <ConfirmModal
         isOpen={removeTarget !== null}
-        title="Remove broker route?"
-        message={
-          removeTarget
-            ? `Remove the saved route to ${removeTarget.name}? This does not change the Station or revoke its separately stored trust.`
-            : ''
-        }
-        confirmLabel="Remove route"
+        title={`Remove ${removeTarget?.name ?? 'this Station'}?`}
+        message="It’s removed from this device only. The Station and its confirmation are unchanged."
+        confirmLabel="Remove"
         onConfirm={() => void removeRoute()}
         onCancel={() => setRemoveTarget(null)}
         variant="danger"

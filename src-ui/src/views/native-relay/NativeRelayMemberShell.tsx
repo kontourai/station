@@ -1,6 +1,5 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
-import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
   getProjectView,
@@ -15,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ThemeToggle } from '../../components/header/ThemeToggle';
+import { Dialog } from '../../components/Dialog';
 import { PageFrame, PageFrameActions } from '../../components/page-frame';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -41,61 +41,57 @@ const options = {
   },
 } as const;
 
-type InvitationAccepted = (
-  accepted: ProjectInvitationAcceptance,
-  capturedScope: Scope,
-) => void;
-function NativeSavedStations({
-  onInvitationAccepted,
-}: {
-  onInvitationAccepted: InvitationAccepted;
-}) {
+/**
+ * Switches to a saved connection the Station list cannot reach: a direct or
+ * paired connection has no relay row of its own. Relay Stations are chosen
+ * from Your Stations, so this only renders when such a connection exists.
+ */
+function OtherConnectionChooser() {
   const { connections, activeConnection, setActiveConnection } =
     useConnections();
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
+  if (!connections.some((connection) => !connection.nativeBrokerRoute))
+    return null;
   return (
-    <section aria-label="Saved Stations">
-      <label>
-        Station{' '}
-        <select
-          className="choice-trigger"
-          aria-label="Station"
-          value={activeConnection?.id ?? ''}
-          disabled={selecting}
-          onChange={(event) => {
-            const selected = event.target.value;
-            setSelecting(true);
-            setSelectionError(null);
-            void setActiveConnection(selected)
-              .catch(() =>
-                setSelectionError(
-                  'This Station could not be selected. Try again.',
-                ),
-              )
-              .finally(() => setSelecting(false));
-          }}
-        >
-          {connections.map((connection) => (
-            <option key={connection.id} value={connection.id}>
-              {connection.name}
-            </option>
-          ))}
-        </select>
-      </label>
+    <>
+      <select
+        className="choice-trigger"
+        aria-label="Station"
+        value={activeConnection?.id ?? ''}
+        disabled={selecting}
+        onChange={(event) => {
+          const selected = event.target.value;
+          setSelecting(true);
+          setSelectionError(null);
+          void setActiveConnection(selected)
+            .catch(() =>
+              setSelectionError(
+                'This Station could not be selected. Try again.',
+              ),
+            )
+            .finally(() => setSelecting(false));
+        }}
+      >
+        {connections.map((connection) => (
+          <option key={connection.id} value={connection.id}>
+            {connection.name}
+          </option>
+        ))}
+      </select>
       {selectionError && <p role="alert">{selectionError}</p>}
-      <RelayOperatorPanel />
-      <RelayRouteProfiles onInvitationAccepted={onInvitationAccepted} />
-    </section>
+    </>
   );
 }
 
 function NativeMemberProjects({
   scope,
   stationId,
+  onJoinProject,
 }: {
   scope: Scope;
   stationId: string;
+  onJoinProject: () => void;
 }) {
   const { selectedProject, setProject } = useNavigation();
   const observation = useQuery({
@@ -216,7 +212,12 @@ function NativeMemberProjects({
         </p>
       )}
       {!selected ? (
-        <Empty label="Nothing is shared with this account yet." />
+        <Empty
+          label="Nothing is shared with this account yet."
+          action={
+            <Button onClick={onJoinProject}>Use a Project invitation</Button>
+          }
+        />
       ) : (
         <>
           <nav aria-label="Shared Projects">
@@ -268,14 +269,20 @@ function NativeMemberEpoch({
   scope,
   stationId,
   client,
+  onJoinProject,
 }: {
   scope: Scope;
   stationId: string;
   client: QueryClient;
+  onJoinProject: () => void;
 }) {
   return (
     <QueryClientProvider client={client}>
-      <NativeMemberProjects scope={scope} stationId={stationId} />
+      <NativeMemberProjects
+        scope={scope}
+        stationId={stationId}
+        onJoinProject={onJoinProject}
+      />
     </QueryClientProvider>
   );
 }
@@ -316,8 +323,33 @@ function NativeRelayMemberContent() {
     },
     [recoveryClient],
   );
+  const [stationsOpen, setStationsOpen] = useState(false);
   const route = activeConnection?.nativeBrokerRoute;
   if (!route) return null;
+  const currentScope = scope?.isCurrent() ? scope : null;
+  const stations = (
+    <RelayRouteProfiles
+      onInvitationAccepted={(accepted, capturedScope) => {
+        if (
+          !memberClient ||
+          !scope?.isCurrent() ||
+          !capturedScope.isCurrent() ||
+          capturedScope.authorityKey !== scope.authorityKey ||
+          capturedScope.apiBase !== scope.apiBase ||
+          accepted.scope.stationId !== route.stationId
+        )
+          return;
+        void memberClient.invalidateQueries({
+          queryKey: [
+            'native-member-projects',
+            scope.apiBase,
+            scope.authorityKey,
+          ],
+          exact: true,
+        });
+      }}
+    />
+  );
   return (
     <PageFrame
       spec={{
@@ -327,46 +359,42 @@ function NativeRelayMemberContent() {
       routeIdentity={`native-relay:${activeConnection.id}`}
     >
       <PageFrameActions>
+        <OtherConnectionChooser />
+        {currentScope && (
+          <Button size="sm" onClick={() => setStationsOpen(true)}>
+            Stations
+          </Button>
+        )}
         <ThemeToggle />
       </PageFrameActions>
       <main className="project-page">
         <div className="project-page__inner">
-          <QueryClientProvider client={recoveryClient}>
-            <details open={!scope?.isCurrent()} className="native-relay-setup">
-              <summary>Your Station connection</summary>
-              <NativeSavedStations
-                onInvitationAccepted={(accepted, capturedScope) => {
-                  if (
-                    !memberClient ||
-                    !scope?.isCurrent() ||
-                    !capturedScope.isCurrent() ||
-                    capturedScope.authorityKey !== scope.authorityKey ||
-                    capturedScope.apiBase !== scope.apiBase ||
-                    accepted.scope.stationId !== route.stationId
-                  )
-                    return;
-                  void memberClient.invalidateQueries({
-                    queryKey: [
-                      'native-member-projects',
-                      scope.apiBase,
-                      scope.authorityKey,
-                    ],
-                    exact: true,
-                  });
-                }}
-              />
-            </details>
-          </QueryClientProvider>
-          {scope?.isCurrent() && memberClient ? (
+          {currentScope && memberClient ? (
             <NativeMemberEpoch
-              key={scope.authorityKey}
-              scope={scope}
+              key={currentScope.authorityKey}
+              scope={currentScope}
               stationId={route.stationId}
               client={memberClient}
+              onJoinProject={() => setStationsOpen(true)}
             />
-          ) : (
-            <p>Finish the steps above to see your shared projects.</p>
-          )}
+          ) : null}
+          <QueryClientProvider client={recoveryClient}>
+            {currentScope ? (
+              <RelayOperatorPanel />
+            ) : (
+              <div className="native-relay-setup">{stations}</div>
+            )}
+            {currentScope && stationsOpen && (
+              <Dialog
+                title="Your Stations"
+                closeLabel="Close Your Stations"
+                onClose={() => setStationsOpen(false)}
+                size="md"
+              >
+                <div className="native-relay-setup">{stations}</div>
+              </Dialog>
+            )}
+          </QueryClientProvider>
         </div>
       </main>
     </PageFrame>

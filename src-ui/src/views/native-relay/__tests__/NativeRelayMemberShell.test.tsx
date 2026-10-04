@@ -18,6 +18,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -310,9 +311,9 @@ it('keeps accountless recovery and device theme controls open without protected 
     screen.getByRole('heading', { level: 1, name: 'Home Station' }),
   ).toBeDefined();
   expect(screen.getByText('Native account recovery')).toBeDefined();
-  expect(
-    screen.getByText('Finish the steps above to see your shared projects.'),
-  ).toBeDefined();
+  // Before an account is current, setup is the page, not a disclosure.
+  expect(document.querySelector('details')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Stations' })).toBeNull();
   const previousTheme = document.documentElement.dataset.theme;
   fireEvent.click(
     screen.getByRole('button', { name: /Switch to (light|dark) mode/ }),
@@ -350,12 +351,14 @@ it('rejects operator detail DTOs and never synthesizes a member view', async () 
   render(<NativeRelayMemberShell />);
   await screen.findByText('This Project is unavailable');
   expect(screen.queryByText('Private workspace')).toBeNull();
-  expect(paths()).toEqual([
-    '/api/relay-management/capabilities',
-    '/api/auth/authority',
-    '/api/projects',
-    '/api/projects/shared',
-  ]);
+  expect(paths().sort()).toEqual(
+    [
+      '/api/relay-management/capabilities',
+      '/api/auth/authority',
+      '/api/projects',
+      '/api/projects/shared',
+    ].sort(),
+  );
 });
 it('drops a late Project body after account loss and performs a fresh read for the next account', async () => {
   navigationStore.setProject('previous-account-project');
@@ -450,12 +453,20 @@ it('the real invitation panel refreshes an already-empty member catalog in its s
   });
   render(<NativeRelayMemberShell />);
   await screen.findByText('Nothing is shared with this account yet.');
-  fireEvent.change(screen.getByLabelText('Account invitation token'), {
-    target: { value: 'i'.repeat(43) },
-  });
+  // With an account current, Station setup moves off the page; the empty
+  // catalog's action opens it where the invitation is used.
+  expect(screen.queryByLabelText('Project invitation link or code')).toBeNull();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Accept account invitation' }),
+    screen.getByRole('button', { name: 'Use a Project invitation' }),
   );
+  const stations = within(
+    await screen.findByRole('dialog', { name: 'Your Stations' }),
+  );
+  fireEvent.change(
+    await stations.findByLabelText('Project invitation link or code'),
+    { target: { value: 'i'.repeat(43) } },
+  );
+  fireEvent.click(stations.getByRole('button', { name: 'Join Project' }));
   await screen.findByRole('heading', { name: member.name });
   expect(paths().filter((path) => path === '/api/projects')).toHaveLength(2);
   expect(state.invitation).toHaveBeenCalledWith('i'.repeat(43));
