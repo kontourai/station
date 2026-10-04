@@ -1,0 +1,7 @@
+{
+  "revision": "1a91c5d3bffa9bff7857c4dde0a69b2dd6d88a02",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed formatter-only wrapping of module-scoped browser listener type declarations; implementation and serialized function body remain unchanged, so prior16 emitted transport tests/scripts typecheck apply to the same behavior. Full lint now passes. This is source-format review only; prior runtime/provider/native/release limits retained.","inputs":["docs/reference/skill-experiences.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f79265eb4c5cd5ac62bfbb4640ebe97cecffd929",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed NewChatModal presentational delta: Send is in its own shared action row and recent-work state rendering uses canonical primitives. Setup, authorization, readiness, installation guidance and draft-return behavior are unchanged; no new connection or provider execution was added.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

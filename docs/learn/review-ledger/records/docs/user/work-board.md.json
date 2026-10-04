@@ -9,30 +9,28 @@
 
   "limits": "Source and mounted-fixture evidence. No physical touch, real multi-device conflict, visual geometry/contrast, or production performance qualification.",
 
-  "document": {"digest":"bc2aca88d170022d9dbce1f604dcd9d6d7e52e3fa635b4e701bf49bc59efffb5","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
-
   "sources": [
-    {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
+    "packages/sdk/src/query-core.ts",
 
-    {"path":"packages/sdk/src/spatial-board.ts","digest":"0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "packages/sdk/src/spatial-board.ts",
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-server/routes/spatial-board.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-owner-resolver.ts","digest":"723670ffd464128f489e17cb62bee951f5c8277c8363ce1ba415e7647f7af028","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-server/services/spatial-board/spatial-board-owner-resolver.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-server/services/spatial-board/spatial-board-store.ts",
 
-    {"path":"src-ui/src/lib/queryDefaults.ts","digest":"ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-ui/src/lib/queryDefaults.ts",
 
-    {"path":"src-ui/src/workspace-panes/SpatialBoardCanvas.tsx","digest":"1b34106fecbfc00b92f16f85cd6ee819df48bef9c6027f5d83bd0d2e18263659","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-ui/src/workspace-panes/SpatialBoardCanvas.tsx",
 
-    {"path":"src-ui/src/workspace-panes/SpatialBoardControls.tsx","digest":"c5d46d84bc00b03882898586246cb139685cd3f5b6f69e4851f9688fc6ec908f","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-ui/src/workspace-panes/SpatialBoardControls.tsx",
 
-    {"path":"src-ui/src/workspace-panes/SpatialBoardPins.tsx","digest":"07f6649834d863ebf7b6d65d01f265a5f72e410f4b61c437fb2e72dde07f35df","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-ui/src/workspace-panes/SpatialBoardPins.tsx",
 
-    {"path":"src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css","digest":"01517ae1d3bdc5538db800fd8727f7a386912eb74208f4ffc3c1eb036b4b7d58","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css",
 
-    {"path":"src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx","digest":"7865c6849c64ca4882b6ccea899b225c3751f8a233400d4ab0f2035a072627eb","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"}
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx"
   ],
 
   "checks": [

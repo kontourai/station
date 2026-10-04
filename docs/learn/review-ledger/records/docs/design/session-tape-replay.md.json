@@ -9,50 +9,48 @@
 
   "limits": "Browser-matrix descriptions name source coverage, not a newly executed full Playwright matrix. No live engine steering or physical native-device result; redaction preserves protocol fields and is not arbitrary sensitive-text detection.",
 
-  "document": {"digest":"c366c01ec474c37be5567d00408b454a13809e08cecde62fb73368c9389dcbcd","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
-
   "sources": [
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    "packages/contracts/src/engine-capability-matrix.ts",
 
-    {"path":"src-server/providers/adapters/acp-steer.ts","digest":"df5aea2d6a0c2d6f8aace66a72bb8b748511b0221d8ee00cb6cc9a5ed98461dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/providers/adapters/acp-steer.ts",
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    "src-server/providers/adapters/codex-adapter.ts",
 
-    {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/chat/ChatSettingsPanel.tsx",
 
-    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"49032d0e229840abde143440d3c444f5164b241243cd081c53b5ab1f93538d3a","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    "src-ui/src/contexts/active-chats-state.ts",
 
-    {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/eventHandlers.ts",
 
-    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"8763124d882834ecab93870b42076972b168b76faee2b5fcf7890413982ee6ac","revision":"e8f2611660d3167942c6e5707419149546bc8023"},
+    "src-ui/src/hooks/orchestration/queueDrain.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"ce141146262f533040c74c9a99914eef351b075ce3f0cde1ee190bb5c1afbbf7","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    "src-ui/src/hooks/orchestration/replay/controller.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    "src-ui/src/hooks/orchestration/replay/limits.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/controller.ts","digest":"967105e5dad4144cbe9377c2e66302377ac84a747c34ceffd44e2cb60a44b7be","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/player.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/limits.ts","digest":"a3b52e42ccb19c27e5c5d55a5d9556d08e6db5d50d7f9eca03465b04d25fb309","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/recorder.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/player.ts","digest":"d2eaa4b44ef50425e027220d2ddd61e6911a8d50165e869e3284dfcd448abec5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/render-observation.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/recorder.ts","digest":"01535f396f8cbe6da540f6b1a90f204ed1e4df9761ac695261d8552f428953af","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/replay-registry.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/render-observation.ts","digest":"5d2e9be191b57e0fe116ad7ffd5a2cbe3094af043044d753650e748add86f2f1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/scroll-observation.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/replay-registry.ts","digest":"20dfdc2906451ec51422bac0e2fcd67c6d67037e4f2f42750b8b1b7b10f8c84f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/tape-file.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/scroll-observation.ts","digest":"547bef3e5c4b1bff5b27d472cec12b3b60f5dab04c778550418d45f67d9376b8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/orchestration/replay/tape-validation.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/tape-file.ts","digest":"4d194fb74aea404db9f8b4e10b1e35252d6f60e6d4e15ad4053e328fb07eb931","revision":"3776fa57d13e3e8510939221d17e2745ad5dfa49"},
+    "src-ui/src/hooks/orchestration/replay/timeline.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/tape-validation.ts","digest":"9ebdba0019e4643b14ef3bd496c878297eec075251beb9a806c5ba7aa6c787d7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/chat-replay.spec.ts",
 
-    {"path":"src-ui/src/hooks/orchestration/replay/timeline.ts","digest":"e4ef9cf2e00be49810869092c67c0f9b6358a31429fcee394d313b8eaf9baabb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/chat/ReasoningSection.tsx",
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    "src-ui/src/index.css",
 
-    {"path":"tests/chat-replay.spec.ts","digest":"22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "543ec6c18fac08d9cd88ed6dff81b940e7776f86",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"The contract change (PullRequestReviewComment.subject) is explicit in the changeset and the contracts reference; the scope note needs no change.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}
