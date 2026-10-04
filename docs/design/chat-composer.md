@@ -284,13 +284,18 @@ simple per-device preference rather than claiming to detect an attached keyboard
   as one line: a refused or failed send or steer, a dropped queued message or a
   blocked send; slash-command output and status notices are not repeated, and
   a later accepted send clears it. A message queued to retry automatically is
-  not a failure, so its notice is not repeated; its **Discard** is, because the
-  notice that carries it lives in the transcript this state shrinks to nothing.
-  The controls row shows **Discard** itself while the chat is still queued: a
-  44px touch target that adds no height (the row is already a touch row), whose
-  accessible description is the notice's words, and which does what the
-  transcript's Discard does (that one, like every transcript notice action, is
-  also 44px on a phone or touch screen). The queued turn and its Retry stay in
+  not a failure, so its notice is not repeated. The queue panel in the dock
+  body already lists the queued turn with a "×" (**Delete message**) that
+  discards it, so discarding was never impossible; but that control is an
+  unlabelled icon, and the notice it explained stayed in the transcript. The
+  notice's own **Discard** sits in that hidden transcript, so while the chat is
+  still queued and the dock gives the composer priority, the controls row
+  repeats a labelled **Discard**: a 44px touch target that adds no height (the
+  row is already a touch row), described by the notice's words, doing what the
+  transcript's Discard does. Both controls leave the same state: the turn is
+  discarded and, when none remains, the stale notice is dropped. The
+  transcript's Discard, like every transcript notice action, is also 44px on a
+  phone or touch screen. The queued turn and its Retry stay in
   the dock body), the chip strip drops to one scrolling row, and only then does
   the draft shrink below two lines — scrolling, never overlapped, with Send
   always on screen. The transcript is never taken out of the layout, and the

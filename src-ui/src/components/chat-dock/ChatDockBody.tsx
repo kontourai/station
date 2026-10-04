@@ -1551,6 +1551,17 @@ export function ChatDockBody({
             turns: activeSession.outboundQueuedTurns,
             messages: renderedSession.messages,
             onError: (error: string) => surfaceRecoveryFailure(error),
+            // The "x" discards the same queued turn as the notice's Discard;
+            // once none is left, the notice has nothing to explain.
+            onDiscarded: (remaining: number) => {
+              if (
+                remaining === 0 &&
+                activeSession.messages.some(
+                  (m: any) => m.ephemeral && m.queuedRetry,
+                )
+              )
+                clearEphemeralMessages(activeSession.id);
+            },
             onRetry: async (clientTurnId: string) => {
               try {
                 const { outboundDispatch } = await import(
