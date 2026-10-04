@@ -1,0 +1,7 @@
+{
+  "revision": "2e726775cc0f4541162b8c079dc7ddabf3f7f236",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the reflection terminal-fill declaration in chat.css. Browser emulation of the global reduced-motion rule confirmed one 0.01ms iteration resting beyond the clipped row, with no pill resize animation. This motion-only declaration changes no placement or region chrome contract.","inputs":["docs/design/placement.md"]}
+  ]
+}

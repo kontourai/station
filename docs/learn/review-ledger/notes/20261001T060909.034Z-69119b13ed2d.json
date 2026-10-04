@@ -1,0 +1,7 @@
+{
+  "revision": "1a588585de1f0495239eed5f4f9c563c66f3224b",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#3071 input delta: contracts.md gained two sentences on openRequestIds/pendingReview leaving out a request whose turn was aborted. Searched the glossary for openRequestIds, pendingReview and contracts.md: it defines none of them and does not cite the changed passage. No prose change.","inputs":["docs/glossary.md"]}
+  ]
+}

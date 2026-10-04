@@ -1,0 +1,7 @@
+{
+  "revision": "ef187b40765a057741211ced57967dcd46d2011c",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Read the complete UI instructions and checked the narrow canonical navigation clarification against NavigationStore.setProject and the executed native member entry. Real Layout navigation retains setLayout; member Projects without supported layouts use existing setProject, with canonical unsaved-change ownership. No transport grant, local route bypass or new physical-device evidence is inferred.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

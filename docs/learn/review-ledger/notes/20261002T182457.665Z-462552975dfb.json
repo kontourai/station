@@ -1,0 +1,7 @@
+{
+  "revision": "09b2e75f682fa23752fa3f5d8205c34306534a2e",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed consolidation of equivalent chat.css conditions and relocation of the unchanged 44px toolbar region-button floor. No intervening competitor exists for that selector; region chrome, placement and persistence remain unchanged. Mobile CSS ratchet remains at its original ceiling.","inputs":["docs/design/placement.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a7a494d17e3f0ab6a711587f67ba174f9f6aacf3",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the one-line settled-wrapper change against the fail-closed process ownership policy: forced termination uses the existing owned ChildProcess handle only after Job settlement, and real wrapper closure remains required. The delayed-wrapper keeper catches the original timeout; 42 focused cases pass including negative controls, and the clean-commit owner mutation fails as intended. Hosted Windows execution is still pending.","inputs":["scripts/AGENTS.md"]}
+  ]
+}
