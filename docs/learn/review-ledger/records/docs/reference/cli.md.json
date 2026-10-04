@@ -88,7 +88,7 @@
 
     {"path":"packages/cli/src/commands/project-identity.ts","digest":"233fce00c3c785c456346db765fa7679c03fe0795a05fe3d8a55ff10b7ef030e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/service.ts","digest":"cfa767eb2695c44157497c406bd4108de882c9466bbb5a31d0b835db29b91970","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
 
     {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

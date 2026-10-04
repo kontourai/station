@@ -26,7 +26,7 @@
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/cli/src/commands/service.ts","digest":"cfa767eb2695c44157497c406bd4108de882c9466bbb5a31d0b835db29b91970","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
 
     {"path":"packages/cli/src/commands/station-instance-reconciler.ts","digest":"845e7d0147d219e66d4b79e6a6846765ccf55c56ab8f776572888d8222fd6954","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -156,7 +156,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
+    {"path":"src-desktop/src/lib.rs","digest":"fa6f47aa8ae3a576f043738709f000a2137dd8397da607f5fb80c58160087932","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
