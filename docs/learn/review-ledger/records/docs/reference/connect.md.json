@@ -126,7 +126,19 @@
 
     "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
 
-    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx"
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "packages/sdk/src/client/client-protocol.ts",
+
+    "src-ui/src/__tests__/serverHealth.test.ts",
+
+    "src-ui/src/__tests__/compatibility.test.ts"
   ],
 
   "checks": [

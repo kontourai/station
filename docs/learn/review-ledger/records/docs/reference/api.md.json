@@ -392,7 +392,13 @@
 
     "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
 
-    "src-server/services/agents/skill-service.ts"
+    "src-server/services/agents/skill-service.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
   ],
 
   "checks": [

@@ -82,7 +82,17 @@
 
     "src-ui/src/tokens.css",
 
-    "src-ui/src/utils/logger.ts"
+    "src-ui/src/utils/logger.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "src-ui/src/__tests__/serverHealth.test.ts",
+
+    "src-ui/src/__tests__/compatibility.test.ts"
   ],
 
   "checks": [

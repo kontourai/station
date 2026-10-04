@@ -112,7 +112,13 @@
 
     "src-ui/src/views/account/account-entry-continuation.ts",
 
-    "src-ui/src/views/account/guest-account-authority.ts"
+    "src-ui/src/views/account/guest-account-authority.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
   ],
 
   "checks": [

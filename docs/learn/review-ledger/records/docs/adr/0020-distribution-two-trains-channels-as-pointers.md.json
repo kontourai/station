@@ -50,7 +50,13 @@
 
     "packages/shared/src/prebuilt-archive.ts",
 
-    "scripts/lib/portable-publication.mjs"
+    "scripts/lib/portable-publication.mjs",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
   ],
 
   "checks": [
