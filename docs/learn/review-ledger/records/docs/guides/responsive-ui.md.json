@@ -118,7 +118,9 @@
 
     "packages/shared/package.json",
 
-    "src-ui/src/components/NewChatAction.tsx"
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
   ],
 
   "checks": [
