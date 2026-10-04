@@ -23,7 +23,7 @@ import {
   within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import { RegionShells } from '../../app-shell/RegionShells';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
@@ -38,6 +38,7 @@ import {
   writeBrowserPreviewPaneState,
 } from '../browserPreviewPaneStateStorage';
 import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
+import { warmRegionHostImports } from './warmRegionHostImports';
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
@@ -138,6 +139,9 @@ function currentModel(): ReturnType<typeof useRegionModel> {
   return model;
 }
 
+// First-mount import cost is paid here, once, not inside the first test's waits.
+beforeAll(warmRegionHostImports);
+
 beforeEach(() => {
   model = null;
   projectRead.pending = false;
@@ -226,11 +230,10 @@ function tabs(region: string): [string, string | null][] {
 }
 
 /**
- * The region host, its chrome bar and its built-in pane all arrive through
- * dynamic imports, and the FIRST mount in a file pays their transform cost in
- * this runner — measurably more than the 1s `waitFor` default once #2049 put
- * the file-preview state modules on that chain. Waiting longer here is a
- * runner fact, not a product one: every later assertion is immediate.
+ * The region host, its chrome bar and its built-in pane arrive through staged
+ * dynamic imports. `beforeAll` warms them (`warmRegionHostImports`), so this
+ * wait normally measures rendering only. The 5s bound stays as the hang guard
+ * for a mount that never produces the chat pane; it is not the import budget.
  */
 async function awaitChatPane() {
   await act(async () => {
