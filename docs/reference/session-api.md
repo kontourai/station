@@ -84,6 +84,11 @@ owner and Project scope constrain local work, and remote reach requires a bound
 operator caller. These checks also cover input replies and follow-ups. They do
 not replace the operator UI or paired Device's own request authorization.
 
+An Agent that messages, interrupts, or waits on an existing Session uses
+station-control's [Session control](../guides/self-configuring-agent.md#session-control)
+tools, which call their own agent-only routes under
+`/api/orchestration/session-control` rather than the routes above.
+
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,

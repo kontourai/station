@@ -31,6 +31,9 @@ example does not grant one implicitly.
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `send_to_session`, `interrupt_session`, and `wait_session` to message,
+  interrupt, and wait on another Session in the caller's Project
+  ([Session control](#session-control))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -74,6 +77,43 @@ and Station's own server code retain their separate authorization boundaries.
 The [scope owner](../../src-server/runtime/mcp/station-control-dispatch-scope.ts)
 and [policy](../../src-server/tools/station-control-policy.ts) define the checks;
 tool approval does not bypass them.
+
+### Session control
+
+`send_to_session`, `interrupt_session`, and `wait_session` act on an existing
+Session by its `sessionId`, without creating a task.
+
+- `send_to_session` takes `mode`: `auto` (default) steers a running Session or
+  starts a turn on an idle one; `start` only starts, answering `session_busy`
+  while a turn runs; `steer` only adds to a running turn, answering
+  `no_active_turn` when idle. Steering is delivered once, through the engine's
+  mid-turn input, and an engine without it answers `session_busy`. The result
+  carries the Session's `sessionId`, the `turnId`, and an `eventCursor`.
+- `interrupt_session` stops the running turn of the Session (optionally a named
+  `turnId`) and answers `no-active-turn` when nothing runs.
+- `wait_session` observes for at most 50 seconds until `turn-settled` (a turn
+  finished after `afterEventCursor`, or the turn running now) or `idle`. It
+  never interrupts: a timeout leaves the Session running, and the caller calls
+  again. Wait with the `sessionId` and `eventCursor` that `send_to_session`
+  returned. A calling Session may hold at most 4 waits at once, and Station 256.
+- Send and interrupt carry a `requestKey`. Repeating a call with the same key
+  and arguments returns the first answer (`replayed: true`) without acting
+  again; the same key with different arguments is `request_key_conflict`. Keys
+  belong to the verified calling Session and expire after seven days.
+  An `indeterminate` answer means the message may have been delivered, so repeat
+  the same call to re-check rather than sending under a new key.
+
+Send and interrupt use the dispatch scope above for their target Session: the
+same owner, in the caller's Project (or both global), never a conversation that
+runs unconfined and never on another Station, unless the caller is a bound
+operator, with the owner's Project `execute` action. `wait_session` is an
+owner-scoped read of any Session the owner can read. The tool inputs are strict
+and carry no approval mode, model, or Environment: the receiving Session runs
+under its own Agent's saved settings, so a call cannot widen what the Session may
+do. A request without a verified station-control caller is refused. The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) and the
+[delivery seam](../../src-server/services/orchestration/session-message-delivery.ts)
+own these rules.
 
 ## Recommended setup pattern
 
