@@ -120,13 +120,9 @@
 
     "src-ui/src/live-surface/useLiveSurface.ts",
 
-    "src-ui/src/views/TaskWorkspaceView.tsx",
-
     "src-ui/src/views/task-experiences.ts",
 
-    "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
-
-    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+    "src-ui/src/views/TaskWorkspaceView.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
@@ -134,9 +130,13 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
+    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts"
+    "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx"
   ],
 
   "checks": [

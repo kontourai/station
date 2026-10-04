@@ -194,7 +194,9 @@
 
     "src-server/services/projects/project-service.ts",
 
-    "packages/contracts/src/project.ts"
+    "packages/contracts/src/project.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
   ],
 
   "checks": [
