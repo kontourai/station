@@ -113,6 +113,35 @@ describe('ChatMessageList', () => {
     };
   }
 
+  test('a transcript shrunk to nothing is not a reader scrolling up', () => {
+    render(
+      <ChatMessageList
+        activeSession={resizeSession()}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+      />,
+    );
+    const log = screen.getByRole('log');
+    const geometry = installScrollGeometry(log);
+    // A short dock gives the composer priority and the transcript no height;
+    // the scroll event that collapse dispatches is layout, not the reader.
+    geometry.resize(0, 0);
+    log.scrollTop = 200;
+    fireEvent.scroll(log);
+    expect(
+      screen.queryByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeNull();
+    // With height again, the same position IS the reader having scrolled up.
+    geometry.resize(400, 0);
+    fireEvent.scroll(log); // the resize's own event is re-anchored, not read
+    log.scrollTop = 200;
+    fireEvent.scroll(log);
+    expect(
+      screen.getByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeTruthy();
+  });
+
   test('loads older messages only on reader scroll near the top and coalesces pending requests', async () => {
     let finish!: () => void;
     const loadOlder = vi.fn(

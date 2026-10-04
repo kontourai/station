@@ -1,0 +1,7 @@
+{
+  "revision": "bdad5fec6fe6fa7f1c13645e485340d1e9b952ac",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the #3163 ChildWorkRow delta against this document: an engine subagent row shows its own model or 'model not reported', and its one open action reads View transcript (a delegate's still reads Open session), keeping the row at two actions. Placement claims about the Agents pane are unchanged.","inputs":["docs/design/placement.md"]}
+  ]
+}

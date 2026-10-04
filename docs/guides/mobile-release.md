@@ -426,6 +426,11 @@ still be established by the operator.
    `https://token.actions.githubusercontent.com`. Restrict its attribute
    condition to repository `kontourai/station` and only the trusted
    `nightly.yml@refs/heads/main` and `release.yml@refs/tags/v*` workflow refs.
+   A Nightly started by Main qualification runs as a called workflow, so its
+   top-level `workflow_ref` claim is `main-qualification.yml@refs/heads/main`.
+   A condition on `workflow_ref` must admit that ref too, or that entry
+   point's Play and Secret Manager steps fail authentication. The live
+   condition is `NOT_VERIFIED` by this source review.
 3. Grant that provider's repository principal only
    `roles/iam.workloadIdentityUser` on the service account. Do not create a
    user-managed service-account key.

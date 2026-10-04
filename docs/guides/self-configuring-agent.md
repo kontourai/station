@@ -33,6 +33,8 @@ example does not grant one implicitly.
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `search_sessions` and `rename_session` for finding and naming conversations
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -47,6 +49,39 @@ For reading and capturing records, add `station-knowledge`. Its five data tools
 follow the calling Session owner’s store access; capture also needs Project
 edit access. Index rebuild and migration remain Station Control operations.
 See [Knowledge agent tools](knowledge.md#agent-tools).
+
+### Searching and renaming conversations
+
+`search_sessions` takes a `query` of 2 to 256 characters (anything outside that
+is refused, not truncated) and returns message hits from the calling Session
+owner's own transcripts, each with the `sessionId`, a snippet and the ids that
+open it, through the same search service as the workspace search. It never
+returns another person's transcript, a Task or a file. Hits are mostly from
+native Claude and Codex Session transcripts, whose titles `rename_session`
+cannot change, so a search result is not a conversation to rename. A bound
+operator caller's search sees only the operator's own transcripts, like any
+other caller's. A result with
+`incompleteSources` is partial rather than empty; `continuation`, when a result
+carries one, is passed back to read more.
+
+`rename_session` renames a Station-stored conversation; it takes a
+`conversationId` and a one-line `title` of at most 80 characters. A title is
+refused rather than truncated when it is longer, empty, or
+contains a control character, a line or paragraph separator, a bidirectional
+embedding, override or isolate control, a zero-width space or a byte-order
+mark; the zero-width joiner and non-joiner are allowed because emoji sequences
+and some scripts need them. Leading and trailing spaces are trimmed. The tool stamps the title `titleSource: 'agent'`,
+which a later agent rename or any person's rename replaces. A title a person set
+(`titleSource: 'user'`) is never replaced: the tool answers `person_title`, and
+the check is made in the same step as the write, so a person's rename racing
+the agent's still wins. A native Claude or Codex conversation answers
+`runtime_title_unsupported`: the runtime owns that title, and the person's own
+rename refuses it too. Unless the caller is a bound operator, it reaches only a
+conversation its Session's owner owns (another person's reads as not found); a
+bound operator caller is not limited to one owner's conversations, as with
+`delete_conversation`, and the `person_title` guard still applies to it. A
+caller that is not bound also stays in its own Session's Project or the global
+space, as dispatch does.
 
 ### Dispatch authority
 

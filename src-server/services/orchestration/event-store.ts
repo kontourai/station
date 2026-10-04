@@ -4988,6 +4988,19 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /** Whether the thread has ever recorded any `turn.*` event. */
+  hasTurnFacts(threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_events
+           WHERE thread_id = ? AND method LIKE 'turn.%'
+           LIMIT 1`,
+        )
+        .get(threadId) !== undefined
+    );
+  }
+
   firstEventByMethod(
     threadId: string,
     method: string,
