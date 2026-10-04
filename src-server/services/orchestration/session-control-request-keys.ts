@@ -102,7 +102,7 @@ export function createSqliteSessionControlRequestKeys(
   db: SqliteDatabase,
   options: { now?: () => number } = {},
 ): SessionControlRequestKeys {
-  const now = options.now ?? Date.now;
+  const now = options.now ?? (() => Date.now());
   // Attempts running in THIS process. A stored claim with no result and no
   // entry here is an attempt a crash or an indeterminate outcome left behind.
   const running = new Set<string>();
@@ -124,6 +124,10 @@ export function createSqliteSessionControlRequestKeys(
 
   return {
     claim(id, digest) {
+      // A row past the TTL is forgotten before it can answer.
+      db.prepare(
+        'DELETE FROM session_control_request_keys WHERE created_at < ?',
+      ).run(now() - SESSION_CONTROL_REQUEST_KEY_TTL_MS);
       const existing = read(id);
       if (existing) {
         if (existing.digest !== digest) return { kind: 'conflict' };
@@ -142,9 +146,6 @@ export function createSqliteSessionControlRequestKeys(
             : {}),
         };
       }
-      db.prepare(
-        'DELETE FROM session_control_request_keys WHERE created_at < ?',
-      ).run(now() - SESSION_CONTROL_REQUEST_KEY_TTL_MS);
       const count = db
         .prepare('SELECT COUNT(*) AS total FROM session_control_request_keys')
         .get() as { total: number };
