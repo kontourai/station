@@ -70,14 +70,24 @@ describe('bounded capture phase diagnostics', () => {
   });
 
   test('retains the latest phase with monotonic elapsed time', () => {
-    const { output, progress } = fixture();
-    progress('native-measurement');
-    const first = JSON.parse(readFileSync(`${output}.progress.json`, 'utf8'));
-    progress('service-shutdown');
-    const last = JSON.parse(readFileSync(`${output}.progress.json`, 'utf8'));
-    expect(last.phase).toBe('service-shutdown');
-    expect(last.elapsedMs).toBeGreaterThanOrEqual(first.elapsedMs);
-    expect(existsSync(`${output}.progress.json.tmp`)).toBe(false);
+    const clock = vi
+      .spyOn(performance, 'now')
+      .mockReturnValueOnce(100)
+      .mockReturnValueOnce(110)
+      .mockReturnValueOnce(125);
+    try {
+      const { output, progress } = fixture();
+      progress('native-measurement');
+      const first = JSON.parse(readFileSync(`${output}.progress.json`, 'utf8'));
+      progress('service-shutdown');
+      const last = JSON.parse(readFileSync(`${output}.progress.json`, 'utf8'));
+      expect(first.elapsedMs).toBe(10);
+      expect(last.phase).toBe('service-shutdown');
+      expect(last.elapsedMs).toBe(25);
+      expect(existsSync(`${output}.progress.json.tmp`)).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test('refuses an unknown phase without overwriting the retained diagnostic', () => {
