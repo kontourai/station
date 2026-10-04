@@ -88,15 +88,15 @@
 
     "src-server/tools/station-control-delegation.ts",
 
+    "src-ui/src/views/home/HomeRolePane.tsx",
+
     "src-ui/src/views/HomeView.tsx",
 
-    "src-ui/src/views/home/HomeRolePane.tsx",
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
     "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
 
     "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
-
-    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
     "tests/container-self-host.spec.ts"
   ],

@@ -1,6 +1,6 @@
 # Shared work delivery ledger
 
-Status: active, refreshed 2026-10-03. Owner request: drive the full discussed program to
+Status: active, refreshed 2026-10-04. Owner request: drive the full discussed program to
 completion. This ledger is not completion evidence. The product target is
 [Shared Task channels](../design/shared-task-channels.md).
 GitHub program: [#3034](https://github.com/kontourai/station/issues/3034).
@@ -82,14 +82,23 @@ recorded no completed Vitest counts. Captured runtime errors are not an identifi
 failing assertion. A subsequent retry was stopped pending coordinated capacity
 recovery; neither run is passing CI evidence. Only generated dependencies in
 this thread's inactive verifier were reclaimed; source, commits and receipts
-remain preserved. Heavy validation is held until stable host capacity is
-established.
+remain preserved. The capacity owner subsequently authorized one bounded CI run.
+At `678c6e415b`, related-test discovery exhausted its 117887ms selection budget
+before running tests (receipt `36bcc35f7e20f603be80ff8eeeaf67a193d3dd4b176604bbb12510af3b780cac`).
+This is not passing CI evidence. Required pre-push gates passed at `a496c4a733`,
+including all twelve typecheck lanes, transfer, static, governance and readiness
+checks. GitHub REST confirms #3106 merged into main on 2026-10-04 at 06:29:27Z,
+including its child provenance layer. Hosted promotion remains separate.
 
 This thread owns the remaining sixteen-track ledger. Next active slice is
 exact-output-version feedback and review through immutable Task outputs and
-attributed room history in its isolated sibling lane. Its incomplete source
-is under review; route, SDK, UI, migration and browser acceptance are still
-required before publication. Current blockers are delivery work and unexecuted
+attributed room history in its isolated sibling lane. Its committed source has independent review and focused evidence. Seven suites
+passed 269 tests across runs after repairing a UI assertion about the existing
+unsaved-changes dialog. Removing unconditional fresh-target validation failed
+the history owner test; restored history passed 68. At `112bc0a603`, independent
+late-requester-revocation mutation proof passed 60 baseline, failed one intended
+assertion when checks were removed, then passed 60 restored. These are bounded
+local proofs; browser, broad CI, publication and release remain pending. Current blockers are delivery work and unexecuted
 acceptance journeys, not a claim that available foundations complete them:
 
 - Results: private provenance landing, version-bound feedback, disagreement and
@@ -111,3 +120,43 @@ knowledge/tools, profile and chat-start sessions. Open #3197, #3213 and #3188
 cover adjacent relay, bundled marketplace and usage-limit recovery work;
 coordinate those owners before changing their surfaces or arming their PRs.
 These lanes are not this programme's acceptance evidence.
+
+## Adjacent owner handoff: 2026-10-04
+
+Relay owner reports #3114, #3190 and #3199 merged. Enrollment, activation trust
+and recovery source/simulator evidence do not prove physical iPhone delivery.
+Their operator-control lane retains ownership and awaits account-gate #3210,
+docs/UI/CI/publication. This thread does not edit or arm that lane. Nightly has
+a separate sole owner; no competing dispatch is authorized here. The accepted
+two-human work journey and physical no-Tailscale journey remain distinct.
+
+The read-only B10 SSH reachability probe failed; no installed-package or phone
+journey proof was obtained. Provider pickup/writeback is not implemented by the
+existing read-only WorkItemProvider. Published Flow Agents contracts expose a
+GitHub mutation renderer, which is not an applied tracker receipt. Managed Agents
+and plan access still require eligible configured accounts and real-job proof.
+
+## Personal feedback browser receipt: 2026-10-04
+
+Isolated built revision `70fecefef9` (later commits only add documentation review
+notes) ran on server 42731/UI 42741 in a throwaway Station home. Bootstrap pairing,
+Project/Task/output setup used the actual authenticated routes. The collaborative
+browser inspected a 63-byte retained text snapshot, recorded a comment and an
+accepted-version statement, and displayed both attributed statements against
+output `f69a3f5b-bf70-43a2-852a-44547c187013`, digest
+`sha256:8e441ba14bb2c59b5e1716e6f4d07291d16c82a0deb51b5c888f7d5c83200c8a`.
+Task status remained `todo` on the actual GET; reload retained both statements.
+At 390x844, document width remained 390, with review select/button heights 44px
+and textarea 96px. Tab moved from comment to Record review; Enter submitted.
+Native select keyboard automation did not change the selection; acceptance
+selection used the DOM change event before the keyboard submission. Hide opened
+the existing unsaved-changes dialog; Cancel preserved the draft. Dark and light
+token rendering were visually inspected, with light selected through the DOM
+theme attribute rather than a Settings journey.
+
+Screenshots: `browser-screenshot-localhost-mutgk25e-d7add16b.png` (dark) and
+`browser-screenshot-localhost-mutgkl3v-df30473e.png` (light), retained in the T3
+browser-artifacts directory. A post-reload connection-health timeout banner
+appeared while Task history still loaded; this receipt does not certify overall
+connection reliability. No provider invocation, two-human invitation, public
+publication, physical-phone or hosted release journey was executed.

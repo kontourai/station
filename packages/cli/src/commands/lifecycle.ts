@@ -1249,11 +1249,15 @@ export interface StartOptions extends InstanceSelector {
   readinessFile?: string;
   /** Present only for `station service run`, never ordinary `station start`. */
   supervisorPid?: number;
+  /** Captures cleanup authority before readiness, without reloading shared state. */
+  onSpawned?: (generation: InstanceStateRecord) => void;
 }
 
 export interface BuildOptions extends InstanceSelector {}
 
 export interface StopOptions extends InstanceSelector {
+  /** Supervisor-owned spawn identity; null means this supervisor spawned nothing. */
+  generation?: InstanceStateRecord | null;
   intent?: StopIntent;
   /**
    * The home whose lifecycle state to search when `baseDir` does not narrow
@@ -1388,7 +1392,10 @@ function notifyBuildUpdated(serverPort: number): void {
   } catch {}
 }
 
-function removeStateRecord(record: InstanceStateRecord): void {
+function removeStateRecord(
+  record: InstanceStateRecord,
+  preserveReplacement = false,
+): void {
   if (record.priorPidFile) {
     rmSync(record.statePath, { force: true });
     return;
@@ -1411,6 +1418,7 @@ function removeStateRecord(record: InstanceStateRecord): void {
       currentIdentity.ino !== record.stateIdentity.ino ||
       currentRecord.stateContent !== record.stateContent
     ) {
+      if (preserveReplacement) return;
       throw new Error(
         `Instance state changed before removal: ${record.statePath}`,
       );
@@ -1814,21 +1822,27 @@ export function isInstanceFullyStopped(record: InstanceStateRecord): boolean {
 function waitForInstanceShutdown(
   record: InstanceStateRecord,
   timeoutMs = 15_000,
+  generationOnly = false,
 ): boolean {
+  const stopped = () =>
+    generationOnly
+      ? !isProcessAlive(record.serverPid) && !isProcessAlive(record.uiPid)
+      : isInstanceFullyStopped(record);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (isInstanceFullyStopped(record)) {
+    if (stopped()) {
       return true;
     }
     sleepSync(200);
   }
-  return isInstanceFullyStopped(record);
+  return stopped();
 }
 
 function stopRecord(
   record: InstanceStateRecord,
   announce = true,
   intent: StopIntent = 'operator_stop',
+  generationOnly = false,
 ): void {
   const operationId = randomUUID();
   const operationStartedAt = new Date();
@@ -1878,7 +1892,7 @@ function stopRecord(
       (value): value is number => value != null,
     ),
   );
-  const managed = Boolean(record.lifecycleJournal);
+  const managed = generationOnly || Boolean(record.lifecycleJournal);
   if (managed) {
     const identities = [
       [record.serverPid, record.serverFingerprint, 'server'],
@@ -1932,7 +1946,7 @@ function stopRecord(
           );
         }
       }
-      removeStateRecord(record);
+      removeStateRecord(record, generationOnly);
       // The process is already gone, but its registry entry may not be — a
       // crash or kill -9 never runs the success-path unregister, and nothing
       // else reaps these entries. The pid identity + ownership checks inside
@@ -1994,7 +2008,9 @@ function stopRecord(
       }
     }
   }
-  if (!waitForInstanceShutdown(record, managed ? 15_000 : 5_000)) {
+  if (
+    !waitForInstanceShutdown(record, managed ? 15_000 : 5_000, generationOnly)
+  ) {
     appendStopResult('failed');
     // Report what is actually still holding the instance open, not the full
     // configured port list — the old message named every port on every failed
@@ -2033,7 +2049,7 @@ function stopRecord(
       );
     }
   }
-  removeStateRecord(record);
+  removeStateRecord(record, generationOnly);
   unregisterStopFromHomeRegistry(
     record.instanceId,
     record.baseDir,
@@ -2041,7 +2057,7 @@ function stopRecord(
   );
   // A --temp-home instance is ephemeral; drop its per-instance build dirs too
   // so they don't accumulate. Persistent instances keep theirs for fast restarts.
-  if (record.homeSource === '--temp-home') {
+  if (!generationOnly && record.homeSource === '--temp-home') {
     removeOwnedBuildOutputs(resolveBuildPaths(record.instanceId));
   }
   if (announce) {
@@ -2150,6 +2166,8 @@ function writeInstanceState(record: InstanceStateRecord): void {
     rmSync(backup, { force: true });
     syncInstanceStateDirectory(instanceStateDir);
     publishedTemporary = false;
+    record.stateIdentity = temporaryIdentity;
+    record.stateContent = serialized;
   } catch (error) {
     if (publishedTemporary && temporaryIdentity) {
       try {
@@ -4458,6 +4476,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     if (logDescriptor !== null) closeSync(logDescriptor);
   }
   let uiProc: ReturnType<typeof spawn> | undefined;
+  let generation: InstanceStateRecord;
   try {
     serverProc.unref();
     if (opts.lifecycleJournal && serverProc.pid) {
@@ -4532,7 +4551,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       );
     }
 
-    writeInstanceState({
+    generation = {
       instanceId,
       bootId,
       serverPid: serverProc.pid ?? null,
@@ -4553,7 +4572,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       logFile,
       readinessFile: opts.readinessFile,
       hostedProbeAuthority,
-    });
+    };
+    writeInstanceState(generation);
+    opts.onSpawned?.(generation);
   } catch (error) {
     for (const child of [uiProc, serverProc]) {
       try {
@@ -4703,7 +4724,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {
-      stop({ instanceId, stateHome: projectHome });
+      stop({ generation });
     } catch (cleanupError) {
       const cleanupMessage =
         cleanupError instanceof Error
@@ -4750,6 +4771,11 @@ function loadHostedTenantRegistryForLifecycle():
 }
 
 export function stop(opts: StopOptions = {}): void {
+  if (opts.generation !== undefined) {
+    if (opts.generation)
+      stopRecord(opts.generation, true, opts.intent ?? 'operator_stop', true);
+    return;
+  }
   const normalizedSelector = normalizeSelector(opts);
   const matches = listRunningInstances({
     projectHome: opts.stateHome ?? normalizedSelector.baseDir,

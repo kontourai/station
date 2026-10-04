@@ -20,6 +20,8 @@
 
     ".github/workflows/nightly.yml",
 
+    ".github/workflows/portable-nightly-publish.yml",
+
     ".github/workflows/publish-release.yml",
 
     ".github/workflows/release.yml",
@@ -46,6 +48,12 @@
 
     "ops/release/macos-notarized-artifacts.test.mjs",
 
+    "package.json#/engines",
+
+    "package.json#/scripts/build:desktop",
+
+    "package.json#/scripts/dependencies:ci",
+
     "packages/cli/src/commands/desktop-companion.ts",
 
     "packages/cli/src/commands/lifecycle.ts",
@@ -57,6 +65,8 @@
     "packages/shared/src/windows-system-utility.mjs",
 
     "schemas/release-artifact-manifest.schema.json",
+
+    "scripts/__tests__/portable-nightly-publish-workflow.test.ts",
 
     "scripts/__tests__/release-artifacts.test.ts",
 
@@ -102,6 +112,8 @@
 
     "scripts/lib/windows-nightly.mjs",
 
+    "scripts/portable-nightly-publication.mjs",
+
     "scripts/release-artifacts.mjs",
 
     "scripts/release-cohort-workflow.mjs",
@@ -128,19 +140,7 @@
 
     "src-server/security/local-grant-file.ts",
 
-    "src-server/services/notifications/agent-activity-publisher.ts",
-
-    ".github/workflows/portable-nightly-publish.yml",
-
-    "scripts/portable-nightly-publication.mjs",
-
-    "scripts/__tests__/portable-nightly-publish-workflow.test.ts",
-
-    "package.json#/scripts/build:desktop",
-
-    "package.json#/scripts/dependencies:ci",
-
-    "package.json#/engines"
+    "src-server/services/notifications/agent-activity-publisher.ts"
   ],
 
   "checks": [

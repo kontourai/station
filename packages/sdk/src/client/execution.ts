@@ -28,10 +28,11 @@ import {
   readEnvelopeFailure,
   StationHttpError,
 } from './api-error-message';
-import { ChatHttpError, isStationEnvelope } from './chatHttpError';
+import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
 import { fetchSkillExperienceInventory } from './skill-experiences';
+import { isStationAnswer } from './station-envelope';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
  * chat had a session, or while offline), and its compare-and-set basis: the
@@ -158,7 +159,7 @@ function chatRefusal(
 ): ChatHttpError {
   return new ChatHttpError(
     envelopeError(response, body, fallback),
-    isStationEnvelope(body),
+    isStationAnswer(response, body),
   );
 }
 

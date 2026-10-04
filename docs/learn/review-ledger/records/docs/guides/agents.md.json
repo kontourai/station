@@ -126,35 +126,17 @@
 
     "src-server/tools/station-control-delegation.ts",
 
-    "src-server/tools/station-control-mcp-server.ts",
-
     "src-server/tools/station-control-operations-tools.ts",
 
     "src-server/tools/station-control-policy.ts",
 
-    "src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx",
-
-    "src-ui/src/__tests__/InfoTip.test.tsx",
-
     "src-ui/src/app-shell/routing.ts",
-
-    "src-ui/src/components/InfoTip.css",
-
-    "src-ui/src/components/InfoTip.tsx",
 
     "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx",
 
     "src-ui/src/components/attention/AttentionCard.tsx",
 
     "src-ui/src/components/chat-dock/DelegationLauncher.tsx",
-
-    "src-ui/src/components/chat/HarnessQuestionCard.tsx",
-
-    "src-ui/src/components/chat/HarnessQuestionRequest.tsx",
-
-    "src-ui/src/components/chat/harnessQuestionDrafts.ts",
-
-    "src-ui/src/components/kontour/station-tones.ts",
 
     "src-ui/src/components/session/SessionModelPicker.tsx",
 
@@ -166,24 +148,6 @@
 
     "src-ui/src/views/ConnectionsHub.tsx",
 
-    "src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorCredentialProfile.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorEngineSelection.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorModelOptionsSection.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorModelSection.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorProjectOwnership.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx",
-
-    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx",
-
-    "src-ui/src/views/agent-editor/utils.ts",
-
     "src-ui/src/views/connections-hub/AddMachineModal.tsx",
 
     "src-ui/src/views/connections-hub/ComputersSection.tsx",
@@ -194,7 +158,43 @@
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "src-ui/src/components/kontour/station-tones.ts",
+
+    "src-ui/src/components/chat/HarnessQuestionCard.tsx",
+
+    "src-ui/src/components/chat/HarnessQuestionRequest.tsx",
+
+    "src-ui/src/components/chat/harnessQuestionDrafts.ts",
+
+    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx",
+
+    "src-ui/src/views/agent-editor/utils.ts",
+
+    "src-server/tools/station-control-mcp-server.ts",
+
+    "src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx",
+
+    "src-ui/src/components/InfoTip.tsx",
+
+    "src-ui/src/components/InfoTip.css",
+
+    "src-ui/src/__tests__/InfoTip.test.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorEngineSelection.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorCredentialProfile.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorProjectOwnership.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorModelSection.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorModelOptionsSection.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx"
   ],
 
   "checks": [
