@@ -212,7 +212,8 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, strict).status).toBe(0);
     expect(compiled(f.root, 'docs/map.md').state).toBe('source-reviewed');
     expect(compiled(f.root, 'docs/c.md').historyChanges).toEqual([]);
-  });
+    // Seven CLI children by design: four records and three checks.
+  }, 90_000);
 
   it('keeps branch review valid when another PR lands on main, including another edit of the shared source', () => {
     const f = pathOnlyFixture();
