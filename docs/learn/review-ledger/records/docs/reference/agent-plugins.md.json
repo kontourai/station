@@ -18,7 +18,7 @@
 
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
     {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
@@ -28,7 +28,7 @@
 
     {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"344d01f927c8bb3b0c9268c84308e15598078d6bf9a80f31d6c5685003b65112","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
@@ -54,7 +54,7 @@
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
@@ -66,13 +66,13 @@
 
     {"path":"src-server/services/plugins/plugin-incarnation.ts","digest":"01f16d8ae5b0bba70ed14fa906f312ec5281a4ae6f8b4380f929493ad414b626","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/services/plugins/plugin-installation-local.ts","digest":"5becd37c9b513ca607765046ee7314e7adbeddd4c1955905c85e8254963455d6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"b7c57142730844cad311c6fd5894500615695a3182d145a7fe793ba38a0f899e","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
-    {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"d852c2c072b6d34d2d73572b011c06ebb9e5ea3626679eda66e9e59c0a431ad1","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"5f3220681f70c9725d0fd799bc70030aaf9b241b0ea95c471db51f3324e903c2","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
     {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],

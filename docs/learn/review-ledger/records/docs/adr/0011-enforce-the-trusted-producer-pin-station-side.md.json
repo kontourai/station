@@ -14,7 +14,7 @@
   "sources": [
     {"path":".flow/config.json","digest":"5cb4aedb42cb258e03eb68c3174c5a5da3d45f53864fccd25b865b7585942c03","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/contracts/src/runtime-events.ts","digest":"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 

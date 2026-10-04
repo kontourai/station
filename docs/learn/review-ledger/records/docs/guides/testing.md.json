@@ -44,7 +44,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
@@ -112,7 +112,7 @@
 
     {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"d25c88cd9667f30bc257707381330fda1c23c41490287bf8e5edbc5eca27186d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
+    {"path":"scripts/test-impact-manifest.mjs","digest":"87015ac4e8a59981bf0d600886c0a3e6538a1b3e7a0b105d0129218f1870e476","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
