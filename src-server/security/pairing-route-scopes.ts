@@ -2345,6 +2345,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
+    // #3160 Station Control's Session tools: agent-only at the route (each
+    // answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the
+    // family's tier reaches nothing. Send and interrupt mutate (the family's
+    // operate tier); the wait only reads.
+    { method: 'POST', path: '/api/orchestration/session-control/send' },
+    { method: 'POST', path: '/api/orchestration/session-control/interrupt' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-control/:sessionId/wait',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
