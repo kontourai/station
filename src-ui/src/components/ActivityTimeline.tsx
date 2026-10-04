@@ -87,13 +87,20 @@ export function ActivityTimeline() {
     ...dates.map((d) => data.byDate[d]?.messages || 0),
   );
   const hoverDay = hoverDate ? data.byDate[hoverDate] : null;
+  const historyGap = describeDailyHistoryGap(
+    data.lifetime?.engineUsageCoverage,
+    data.snapshot,
+    data.unallocated?.date,
+  );
 
   return (
     <div>
-      <p>UTC daily history · Station-recorded messages only.</p>
-      {describeDailyHistoryGap(data.lifetime?.engineUsageCoverage) && (
-        <p>{describeDailyHistoryGap(data.lifetime?.engineUsageCoverage)}</p>
-      )}
+      <p>
+        {data.snapshot?.projection === 'retained-source-v1'
+          ? 'UTC daily history · Dated retained observations.'
+          : 'UTC daily history · Station-recorded messages only.'}
+      </p>
+      {historyGap && <p>{historyGap}</p>}
       {/* Date range picker */}
       <div className="timeline-date-picker">
         <label className="timeline-label" htmlFor="timeline-from-date">

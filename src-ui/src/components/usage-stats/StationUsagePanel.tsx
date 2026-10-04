@@ -8,6 +8,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
+import './StationUsagePanel.css';
 
 type Group = 'provider' | 'model' | 'principal' | 'date';
 interface Row {
@@ -59,7 +60,10 @@ export function StationUsagePanel() {
   const overview = scope?.isCurrent() && !query.error ? query.data : undefined;
   const rows = overview ? rowsFor(overview.stats, group) : [];
   return (
-    <section className="usage-rollup" aria-labelledby="station-usage-title">
+    <section
+      className="usage-rollup station-usage"
+      aria-labelledby="station-usage-title"
+    >
       <div className="usage-rollup__header">
         <div>
           <h3 id="station-usage-title">This Station · operator overview</h3>

@@ -1,0 +1,12 @@
+.station-usage.usage-rollup button,
+.station-usage.usage-rollup select {
+  min-height: 44px;
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  border-color: var(--k-line-strong);
+}
+
+.station-usage summary {
+  min-height: 44px;
+  line-height: 44px;
+}
