@@ -950,7 +950,17 @@
 
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "src-server/routes/orchestration/session-agent-control.ts",
+
+    "src-server/services/orchestration/session-control-request-keys.ts",
+
+    "src-server/services/orchestration/session-message-delivery.ts",
+
+    "src-server/services/orchestration/session-turn-wait.ts",
+
+    "src-server/tools/station-control-session-tools.ts"
   ],
 
   "checks": [
