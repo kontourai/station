@@ -19,47 +19,44 @@
   list-style: none;
 }
 .pull-request-stacks li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: var(--space-3);
   min-width: 0;
 }
 .pull-request-stacks li[role="alert"] {
-  display: block;
   padding: var(--space-2) 0;
   font-size: var(--text-sm);
   color: var(--warning-text);
 }
-.pull-request-stacks__position {
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-tertiary);
-}
+/* One row is one button: the title over its branches line, padded and
+   pulled into the gutter as a linked pull request row is, so its text sits
+   on the label's left edge and its hover fills the row. */
 .pull-request-stacks__open {
-  /* 44px tall, with a one-line title set at the bottom so it sits as close
-     to its branches line as a wrapped title does. */
-  display: flex;
-  align-items: flex-end;
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
-  padding: 0;
+  padding: var(--space-2) var(--space-3);
+  margin: 0 calc(-1 * var(--space-3));
   border: none;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: var(--text-md);
   text-align: left;
-  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .pull-request-stacks__open:hover {
-  background: transparent;
-  text-decoration: underline;
+  background: var(--bg-hover);
+}
+.pull-request-stacks__title {
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .pull-request-stacks__branches {
-  grid-column: 2;
-  padding-bottom: var(--space-2);
   font-size: var(--text-sm);
+  line-height: 1.35;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }

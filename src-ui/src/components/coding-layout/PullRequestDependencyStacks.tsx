@@ -29,22 +29,23 @@ export function PullRequestDependencyStacks({
       {stacks.map((stack) => (
         <ol key={stack.id} data-stack-state={stack.state}>
           {stack.state !== 'ordered' && <li role="alert">{stack.reason}</li>}
-          {stack.layers.map(({ pullRequest, position }) => (
+          {stack.layers.map(({ pullRequest }) => (
             <li key={pullRequest.ref}>
-              <span className="pull-request-stacks__position">
-                {position + 1}
-              </span>
+              {/* The list order and the branch arrows already give the merge
+                  order, so the row carries the pull request number alone. */}
               <button
                 type="button"
                 className="pull-request-stacks__open"
                 onClick={() => onOpen(pullRequest)}
               >
-                #{pullRequest.ref} {pullRequest.title}
+                <span className="pull-request-stacks__title">
+                  #{pullRequest.ref} {pullRequest.title}
+                </span>
+                <span className="pull-request-stacks__branches">
+                  <code>{pullRequest.sourceBranch}</code> →{' '}
+                  <code>{pullRequest.targetBranch}</code>
+                </span>
               </button>
-              <span className="pull-request-stacks__branches">
-                <code>{pullRequest.sourceBranch}</code> →{' '}
-                <code>{pullRequest.targetBranch}</code>
-              </span>
             </li>
           ))}
         </ol>

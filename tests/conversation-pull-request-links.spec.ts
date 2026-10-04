@@ -111,7 +111,7 @@ window.scope={apiBase:'http://station.test',authorityKey:'link-owner',isCurrent:
 setClientCredentialResolver(()=>({origin:window.scope.apiBase,requestAuthority:window.scope}));
 const request=(ref,sourceBranch,targetBranch)=>({provider:'github',host:'forge.test',repository:{owner:'team',name:'repo'},ref,nativeId:ref,url:'https://forge.test/team/repo/pull/'+ref,title:'Change '+ref,body:null,state:ref==='3'?'DRAFT':'OPEN',author:{login:'author'},sourceBranch,targetBranch,headSha:ref.repeat(40),commits:1,reviewStatus:'NONE',comments:0,mergeability:'unknown'});
 const derived=[{...request('2','layer-2','layer-1'),source:'branch-derived',observedAt:'2026-09-12T00:00:00Z',status:{state:'current',title:'Change 2',pullRequestState:'OPEN',head:'2'.repeat(40)}},{provider:'github',host:'two.test',repository:{owner:'another',name:'repo'},ref:'17',source:'task-declared',observedAt:'2026-09-12T00:00:00Z',status:{state:'unavailable',reason:'Provider permission expired'}}];
-function App(){return <main><ConversationPullRequestLinks conversationId="conversation-1" suggested={{provider:'github',host:'forge.test',repository:{owner:'team',name:'repo'}}} derived={derived}/><PullRequestDependencyStacks pullRequests={[request('3','layer-3','layer-2'),request('1','layer-1','main'),request('2','layer-2','layer-1')]} observedAt="2026-09-12T00:00:00Z" refreshing={false} onRefresh={()=>{window.refreshed=true;}} onOpen={pr=>{window.opened=pr.ref;}}/></main>}
+function App(){return <main><ConversationPullRequestLinks conversationId="conversation-1" suggested={{provider:'github',host:'forge.test',repository:{owner:'team',name:'repo'}}} derived={derived}/><PullRequestDependencyStacks pullRequests={[request('3','layer-3','layer-2'),request('1','layer-1','main'),request('2','layer-2','layer-1')]} observedAt="2026-09-12T00:00:00Z" onOpen={pr=>{window.opened=pr.ref;}}/></main>}
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><App/></QueryClientProvider>);
 `,
     },
@@ -313,8 +313,48 @@ test('orders a provider branch stack in a narrow pane without changing checkout'
   await expect(
     stack.getByRole('button', { name: /#1 Change 1/ }),
   ).toBeVisible();
-  const labels = await stack.locator('ol li button').allTextContents();
-  expect(labels).toEqual(['#1 Change 1', '#2 Change 2', '#3 Change 3']);
+  const titles = await stack
+    .locator('.pull-request-stacks__title')
+    .allTextContents();
+  // The number is the identity; no separate ordinal repeats the list order.
+  expect(titles).toEqual(['#1 Change 1', '#2 Change 2', '#3 Change 3']);
+  await expect(stack.locator('ol li').first()).toHaveText(
+    '#1 Change 1layer-1 → main',
+  );
+  // A compact two-line row: its branches tight under the title, every row
+  // on one left edge, and the first row close under the Stacked label.
+  const geometry = await stack.evaluate((section) => {
+    const box = (element: Element | null) => {
+      if (!element) throw new Error('missing stack element');
+      return element.getBoundingClientRect();
+    };
+    const rows = [...section.querySelectorAll('ol li')].map((row) => ({
+      left: box(row.querySelector('.pull-request-stacks__title')).left,
+      titleBottom: box(row.querySelector('.pull-request-stacks__title')).bottom,
+      branchesTop: box(row.querySelector('.pull-request-stacks__branches')).top,
+      branchesLeft: box(row.querySelector('.pull-request-stacks__branches'))
+        .left,
+    }));
+    return {
+      label: box(section.querySelector('.pull-request-stacks__label')),
+      firstTitleTop: box(section.querySelector('.pull-request-stacks__title'))
+        .top,
+      rows,
+    };
+  });
+  expect(geometry.rows).toHaveLength(3);
+  for (const row of geometry.rows) {
+    expect(row.branchesTop - row.titleBottom).toBeGreaterThanOrEqual(0);
+    expect(row.branchesTop - row.titleBottom).toBeLessThanOrEqual(4.5);
+    expect(Math.abs(row.left - geometry.label.left)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(row.branchesLeft - row.left)).toBeLessThanOrEqual(0.5);
+  }
+  expect(geometry.firstTitleTop - geometry.label.bottom).toBeGreaterThanOrEqual(
+    0,
+  );
+  expect(geometry.firstTitleTop - geometry.label.bottom).toBeLessThanOrEqual(
+    12,
+  );
   await stack.getByRole('button', { name: /#2 Change 2/ }).click();
   expect(await page.evaluate(() => Reflect.get(window, 'opened'))).toBe('2');
   expect(
