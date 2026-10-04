@@ -35,6 +35,8 @@ const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LINE_BYTES = 128 * 1024;
 const DEFAULT_MAX_EVENTS = 512;
+const MAX_RECORD_TURNS = 128;
+const MAX_RECORD_TURN_STATE_BYTES = 16 * 1024;
 /**
  * station#2210: transcript records are engine-written data of unbounded
  * size, and every mapped event must survive EventStore's 64 KiB ingress
@@ -253,6 +255,18 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       typeof previousCursor === 'number' ? undefined : previousCursor.turnId;
     let usage =
       typeof previousCursor === 'number' ? undefined : previousCursor.usage;
+    const recordTurns = decodeRecordTurns(
+      typeof previousCursor === 'number'
+        ? undefined
+        : previousCursor.sourceState,
+    );
+    if (!recordTurns) {
+      return {
+        outcome: 'rejected_candidate',
+        events: [],
+        cursor: previousCursor,
+      };
+    }
     // A persisted numeric cursor, or an unmarked nonzero object cursor,
     // predates turn aggregation. It may be in the middle of a turn whose
     // earlier calls we cannot honestly reconstruct. Missing `usage` is not a
@@ -338,6 +352,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         session,
         windowStart + lineStart,
         activeTurnId,
+        recordTurns,
       );
       // `turn_duration` is only an optional early close signal. A string user
       // message definitively starts the next turn, so flush the prior complete
@@ -361,7 +376,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       const usageEventAtTurnDuration =
         mapped.completesTurn &&
         hasClaudeUsage(nextUsage) &&
-        nextUsage.turnId === mapped.nextTurnId
+        nextUsage.turnId === mapped.completesTurn.turnId
           ? usageEventForTurn(
               nextUsage,
               mapped.completesTurn,
@@ -392,15 +407,28 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
             offset: absoluteLineStart,
             usageAggregationVersion: 1,
             eventIndex: alreadyEmitted + capacity,
-            ...(mapped.nextTurnId ? { turnId: mapped.nextTurnId } : {}),
+            ...(activeTurnId ? { turnId: activeTurnId } : {}),
             ...(usage ? { usage } : {}),
             ...(usageDeferred ? { usageDeferred } : {}),
+            sourceState: encodeRecordTurns(recordTurns),
           },
         };
       }
       events.push(...remaining);
+      const recordId = isRecord(record) ? text(record.uuid) : undefined;
+      const recordTurn = mapped.completesTurn?.turnId ?? mapped.nextTurnId;
+      if (
+        recordId &&
+        recordTurn &&
+        (mapped.events.length > 0 || mapped.usage || mapped.startsTurn)
+      ) {
+        retainRecordTurn(recordTurns, recordId, recordTurn);
+      }
       activeTurnId = mapped.nextTurnId;
-      usage = mapped.completesTurn ? undefined : nextUsage;
+      usage =
+        mapped.completesTurn?.turnId === nextUsage?.turnId
+          ? undefined
+          : nextUsage;
       usageDeferred = nextUsageDeferred;
     }
 
@@ -413,6 +441,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         ...(activeTurnId ? { turnId: activeTurnId } : {}),
         ...(usage ? { usage } : {}),
         ...(usageDeferred ? { usageDeferred } : {}),
+        sourceState: encodeRecordTurns(recordTurns),
       },
     };
   }
@@ -501,13 +530,19 @@ function mapClaudeRecord(
   raw: unknown,
   session: AttachedSessionDescriptor,
   lineOffset: number,
-  activeTurnId?: string,
+  activeTurnId: string | undefined,
+  recordTurns: ReadonlyMap<string, string>,
 ): {
   events: CanonicalRuntimeEvent[];
   nextTurnId?: string;
   startsTurn?: { createdAt: string; recordId: string; threadId: string };
   usage?: ClaudeUsage;
-  completesTurn?: { createdAt: string; recordId: string; threadId: string };
+  completesTurn?: {
+    createdAt: string;
+    recordId: string;
+    threadId: string;
+    turnId: string;
+  };
 } {
   if (!isRecord(raw)) return { events: [], nextTurnId: activeTurnId };
   const type = text(raw.type);
@@ -587,7 +622,13 @@ function mapClaudeRecord(
   }
 
   if (type === 'system' && text(raw.subtype) === 'turn_duration') {
-    const turnId = activeTurnId ?? parentId ?? recordId;
+    // A late completion's parent can belong to an earlier turn; unknown
+    // ancestry cannot close or clear the current turn's accumulator.
+    const turnId = parentId
+      ? (recordTurns.get(recordKey(parentId)) ??
+        (parentId === activeTurnId ? activeTurnId : undefined))
+      : activeTurnId;
+    if (!turnId) return { events: [], nextTurnId: activeTurnId };
     return {
       events: [
         {
@@ -598,11 +639,75 @@ function mapClaudeRecord(
           finishReason: 'stop',
         },
       ],
-      nextTurnId: turnId,
-      completesTurn: { createdAt, recordId, threadId: session.threadId },
+      nextTurnId: activeTurnId,
+      completesTurn: {
+        createdAt,
+        recordId,
+        threadId: session.threadId,
+        turnId,
+      },
     };
   }
   return { events: [], nextTurnId: activeTurnId };
+}
+
+function recordKey(recordId: string): string {
+  return createHash('sha256').update(recordId).digest('hex');
+}
+
+function encodeRecordTurns(
+  recordTurns: ReadonlyMap<string, string>,
+): Record<string, unknown> {
+  return { version: 1, recordTurns: [...recordTurns] };
+}
+
+function decodeRecordTurns(
+  raw: Record<string, unknown> | undefined,
+): Map<string, string> | null {
+  if (raw === undefined) return new Map();
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    !Array.isArray(raw.recordTurns) ||
+    raw.recordTurns.length > MAX_RECORD_TURNS ||
+    Buffer.byteLength(JSON.stringify(raw), 'utf8') > MAX_RECORD_TURN_STATE_BYTES
+  )
+    return null;
+  const result = new Map<string, string>();
+  for (const entry of raw.recordTurns) {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      typeof entry[0] !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(entry[0]) ||
+      typeof entry[1] !== 'string' ||
+      entry[1].length === 0 ||
+      entry[1].length > 512
+    )
+      return null;
+    result.set(entry[0], entry[1]);
+  }
+  return result;
+}
+
+function retainRecordTurn(
+  recordTurns: Map<string, string>,
+  recordId: string,
+  turnId: string,
+): void {
+  if (turnId.length > 512) return;
+  const key = recordKey(recordId);
+  recordTurns.delete(key);
+  recordTurns.set(key, turnId);
+  while (
+    recordTurns.size > MAX_RECORD_TURNS ||
+    Buffer.byteLength(JSON.stringify(encodeRecordTurns(recordTurns)), 'utf8') >
+      MAX_RECORD_TURN_STATE_BYTES
+  ) {
+    const oldest = recordTurns.keys().next().value;
+    if (oldest === undefined) break;
+    recordTurns.delete(oldest);
+  }
 }
 
 interface ClaudeUsage {
