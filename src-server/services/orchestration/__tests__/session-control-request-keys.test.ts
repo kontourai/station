@@ -221,6 +221,32 @@ describe('session control request keys (real SQLite table)', () => {
     expect(sawResume).toBe(true);
   });
 
+  test('a release on a RESUMED claim keeps the claim and the branch it pinned', async () => {
+    const keys = open().store.sessionControlRequestKeys();
+    const digest = sessionControlRequestDigest(['x']);
+    await runWithSessionControlKey(keys, id(), digest, async (resume) => {
+      resume.recordDecision('steer:thread-1');
+      return { settle: 'pending' as const, result: 'indeterminate' };
+    });
+    // The re-drive is refused and asks to release: the claim must survive.
+    const refused = await runWithSessionControlKey(
+      keys,
+      id(),
+      digest,
+      async () => ({
+        settle: 'release' as const,
+        result: 'refused',
+      }),
+    );
+    expect(refused).toEqual({ kind: 'executed', result: 'refused' });
+    const seen: Array<string | undefined> = [];
+    await runWithSessionControlKey(keys, id(), digest, async (resume) => {
+      seen.push(resume.decision);
+      return { settle: 'final' as const, result: 'ok' };
+    });
+    expect(seen).toEqual(['steer:thread-1']);
+  });
+
   test('rows expire after the TTL', async () => {
     const { store } = open();
     const keys = store.sessionControlRequestKeys();

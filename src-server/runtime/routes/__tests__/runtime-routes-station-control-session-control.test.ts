@@ -760,6 +760,37 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       expect(again.body.data.replayed).toBeUndefined();
     });
 
+    test('a re-driven steer that is refused keeps its pinned branch: the next call never starts a turn', async () => {
+      const { base } = await setup();
+      const caller = as('bearer-exposed', 'op-caller-a');
+      support.busy.add('op-thread-a');
+      appendFold('op-thread-a', 'turn.started', 'live-turn');
+      support.steerOutcome = 'indeterminate';
+      const body = sendReq('op-thread-a');
+      expect((await post(base, 'send', caller(), body)).body.code).toBe(
+        'delivery_indeterminate',
+      );
+      // The turn ends. The re-drive is pinned to steer and the engine now
+      // answers that there is no turn: a refusal, with nothing delivered.
+      support.busy.clear();
+      appendFold('op-thread-a', 'turn.completed', 'live-turn');
+      support.steerOutcome = 'no-active-turn';
+      const refused = await post(base, 'send', caller(), body);
+      expect([refused.status, refused.body.code]).toEqual([
+        409,
+        'no_active_turn',
+      ]);
+      // The same call again: still pinned to steer, so it must NOT start a
+      // turn (the start's clientTurnId is not linked to the steer's input id).
+      support.steerOutcome = 'steered';
+      const third = await post(base, 'send', caller(), body);
+      expect(third.body.data).toMatchObject({ outcome: 'steered' });
+      expect(support.continued).toHaveLength(0);
+      const ids = support.commands.map((command) => command.clientInputId);
+      expect(new Set(ids).size).toBe(1);
+      expect(support.commands).toHaveLength(3);
+    });
+
     test('an interrupt with nothing running frees its key too', async () => {
       const { base } = await setup();
       const caller = as('bearer-exposed', 'op-caller-a');

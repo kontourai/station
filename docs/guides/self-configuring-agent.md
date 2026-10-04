@@ -138,7 +138,14 @@ Session by its `sessionId`, without creating a task.
   (`request_key_caller_capacity`) only while every one of its keys is an
   unresolved `indeterminate` request. An `indeterminate` answer means the
   message may have been delivered, so repeat the same call to re-check rather
-  than sending under a new key.
+  than sending under a new key. A re-driven request keeps the branch (steer or
+  start) and Session its first attempt chose, even if the re-drive is refused.
+  Two limits are accepted: once a completed key has been dropped (more than 300
+  later sends from that session) a retry under it is not guaranteed to be
+  deduplicated downstream, because the chat-turn claim table holds 2,000 entries
+  Station-wide and a retry from another branch of the work is not caught at all;
+  and unresolved claims are never dropped, so 300 permanently stuck ones lock
+  that session out of these two tools until the seven-day expiry.
 - `wait_session` watches exactly the Session it is given. When a newer Session
   now serves that Session's conversation the answer carries `superseded: true`
   and `currentSessionId`, so the caller can wait on the current one.

@@ -247,7 +247,10 @@ export function createSqliteSessionControlRequestKeys(
 export type SessionControlAttempt<Result> =
   /** The request is answered; store the result for replays. */
   | { readonly settle: 'final'; readonly result: Result }
-  /** It provably had no effect (a clean failure): free the key. */
+  /**
+   * It provably had no effect (a clean failure): free the key. Honoured only
+   * for a fresh claim; a re-driven (resumed) claim is kept instead.
+   */
   | { readonly settle: 'release'; readonly result: Result }
   /** It may have had its effect: keep the claim, store nothing. */
   | { readonly settle: 'pending'; readonly result: Result };
@@ -299,7 +302,13 @@ export async function runWithSessionControlKey<Result>(
     throw error;
   }
   if (outcome.settle === 'final') keys.complete(id, outcome.result);
-  else if (outcome.settle === 'release') keys.release(id);
+  // Only a FRESH claim can be freed: no earlier attempt of it existed that
+  // could have had its effect. A resumed claim is an earlier attempt that may
+  // have delivered; deleting it would also delete the branch it pinned, and a
+  // later call would claim afresh and could deliver the same text again by the
+  // other branch. Whatever a re-drive reports, a resumed claim stays.
+  else if (outcome.settle === 'release' && claim.kind === 'claimed')
+    keys.release(id);
   else keys.settle(id);
   return { kind: 'executed', result: outcome.result };
 }
