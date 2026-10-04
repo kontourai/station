@@ -30,7 +30,11 @@
 
     "packages/shared/src/skill-experience-values.ts",
 
-    "packages/shared/src/skill-experience-reader.ts"
+    "packages/shared/src/skill-experience-reader.ts",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link"
   ],
 
   "checks": [

@@ -46,7 +46,11 @@
 
     "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
 
-    "src-ui/src/views/native-relay/NativeRelayMemberShell.tsx"
+    "src-ui/src/views/native-relay/NativeRelayMemberShell.tsx",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link"
   ],
 
   "checks": [

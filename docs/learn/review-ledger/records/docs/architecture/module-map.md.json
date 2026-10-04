@@ -958,7 +958,11 @@
 
     "src-server/security/relay-management-authority.ts",
 
-    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link"
   ],
 
   "checks": [

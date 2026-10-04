@@ -110,7 +110,11 @@
 
     "src-ui/src/core/pluginSharedRuntime.ts",
 
-    "packages/shared/src/skill-experience-author.ts"
+    "packages/shared/src/skill-experience-author.ts",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link"
   ],
 
   "checks": [

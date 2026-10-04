@@ -148,7 +148,11 @@
 
     "packages/contracts/src/relay-management.ts",
 
-    "packages/contracts/src/environment-security.ts"
+    "packages/contracts/src/environment-security.ts",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link"
   ],
 
   "checks": [

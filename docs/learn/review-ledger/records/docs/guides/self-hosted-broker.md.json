@@ -184,7 +184,11 @@
 
     "src-server/security/relay-management-actor.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link"
   ],
 
   "checks": [
