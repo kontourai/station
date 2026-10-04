@@ -2818,6 +2818,12 @@ for (const viewport of [
     // #3126 shortened the label; the paused-updates sentence is now the
     // pill's disclosed detail rather than its text.
     await expect(reconnectStatus).toContainText('Reconnecting');
+    // Compare boxes once the pill has finished entering; its entrance scales it.
+    await reconnectStatus.evaluate(async (pill) => {
+      await Promise.allSettled(
+        pill.getAnimations().map((animation) => animation.finished),
+      );
+    });
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
     const railControlBox = await page
