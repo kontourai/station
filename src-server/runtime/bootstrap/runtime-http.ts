@@ -693,6 +693,7 @@ function configureRuntimeSecurity(
 ): void {
   const allowedOrigins = new Set(security.allowedOrigins ?? []);
   const limiter = new RuntimeAuthFailureLimiter(security);
+  const protocolAuditLimiter = new RuntimeAuthFailureLimiter(security);
   const budget = new RuntimeMutationBudget(security);
   const clientProtocolPolicy =
     security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
@@ -772,10 +773,10 @@ function configureRuntimeSecurity(
         clientProtocolPolicy,
       );
       if (refusal) {
-        // Share the direct-peer denial budget with authentication failures.
+        // Bound audit emission without consuming the authentication budget.
         // Keep answering protocol refusals after the audit budget is exhausted.
-        if (limiter.retryAfterSeconds(limiterKey) === undefined) {
-          limiter.recordFailure(limiterKey);
+        if (protocolAuditLimiter.retryAfterSeconds(limiterKey) === undefined) {
+          protocolAuditLimiter.recordFailure(limiterKey);
           emitSecurityAudit(security, c, routeLabeler, {
             event: 'station.auth.failure',
             outcome: 'denied',

@@ -2,6 +2,10 @@ import { request as nodeRequest } from 'node:http';
 import { type HttpBindings, serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import {
+  DEPLOYMENT_AUTHENTICATION_VERSION,
+  type DeploymentAuthenticationProvider,
+} from '@kontourai/station-contracts/deployment-authentication';
+import {
   CLIENT_PROTOCOL_HEADER,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
@@ -17,6 +21,7 @@ import {
   type ClientProtocolPolicy,
 } from '../../security/client-protocol-admission.js';
 import type { RuntimeSecurityAuditRecord } from '../../security/runtime-request-security.js';
+import { DeploymentAuthenticationService } from '../../services/identity/deployment-authentication-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
@@ -42,7 +47,10 @@ type TestBindings = HttpBindings & {
  * public discovery and pairing routes, then protected routes behind it.
  * `policy` is the test seam; omitting it enforces what the host advertises.
  */
-function createHarness(policy?: ClientProtocolPolicy) {
+function createHarness(
+  policy?: ClientProtocolPolicy,
+  deploymentAuthentication?: DeploymentAuthenticationService,
+) {
   const logger = {
     info: vi.fn(),
     warn: vi.fn(),
@@ -62,6 +70,7 @@ function createHarness(policy?: ClientProtocolPolicy) {
     logger,
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
+      deploymentAuthentication,
       verifyCredential: (candidate: string) => candidate === CREDENTIAL,
       resolveGrantedScope: (candidate: string) =>
         candidate === CREDENTIAL ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
@@ -438,7 +447,7 @@ describe('client API protocol admission (#2962)', () => {
     expect((await request('/api/projects', noHeader)).status).toBe(426);
   });
 
-  it('bounds unauthenticated protocol refusal audits by the shared peer denial budget', async () => {
+  it('bounds unauthenticated protocol refusal audits by a separate peer audit budget', async () => {
     const { request, audits, reached } = createHarness(RAISED);
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const protocol = attempt % 2 === 0 ? 'invalid' : '1';
@@ -452,14 +461,6 @@ describe('client API protocol admission (#2962)', () => {
       '100 refusals from one peer must emit only 10 audits',
     ).toHaveLength(10);
     expect(reached).toEqual([]);
-    // Protocol refusals spend the existing authentication failure budget too.
-    expect(
-      (
-        await request('/api/projects', {
-          headers: { [CLIENT_PROTOCOL_HEADER]: '2' },
-        })
-      ).status,
-    ).toBe(429);
     expect(
       (
         await request(
@@ -472,6 +473,52 @@ describe('client API protocol admission (#2962)', () => {
     expect(
       audits.filter((record) => record.reason === 'client_protocol_invalid'),
     ).toHaveLength(6);
+  });
+
+  it('admits a valid deployment-account client after malformed protocol refusals', async () => {
+    const now = Date.parse('2026-10-03T12:00:00Z');
+    const authenticate = vi.fn<
+      DeploymentAuthenticationProvider['authenticate']
+    >(async () => ({
+      kind: 'authenticated',
+      session: {
+        subject: 'opaque-person',
+        displayName: 'Example Person',
+        sessionId: 'session-record',
+        authenticatedAt: '2026-10-03T11:00:00Z',
+        expiresAt: '2026-10-03T13:00:00Z',
+        contacts: [],
+      },
+    }));
+    const authentication = new DeploymentAuthenticationService(
+      {
+        version: DEPLOYMENT_AUTHENTICATION_VERSION,
+        issuer: 'https://identity.example.test',
+        displayName: 'Example login',
+        sessionCookies: ['fixture_account'],
+        endpoints: [
+          { path: '/logout', methods: ['POST'], operation: 'logout' },
+        ],
+        authenticate,
+        handle: async () => new Response(null, { status: 204 }),
+      },
+      () => now,
+    );
+    const { request, reached } = createHarness(RAISED, authentication);
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      expect((await request('/api/projects', api('invalid'))).status).toBe(400);
+    }
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(
+      (
+        await request(
+          '/api/projects',
+          api('2', { Cookie: 'fixture_account=valid' }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(authenticate).toHaveBeenCalled();
+    expect(reached).toEqual(['projects']);
   });
 
   it('audits refusals within the budget without recording the raw header', async () => {

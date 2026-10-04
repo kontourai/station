@@ -153,15 +153,16 @@ and image elements cannot attach a custom request header. The exemption is
 these declared route IDs, not every route an element might load; attachment,
 MCP UI resource and preview reads through the SDK remain covered.
 
-Both protocol refusals emit `station.auth.failure` within the shared direct-peer
-authentication failure budget (default: 10 failures per 60-second window), with outcome `denied` and
-the refusal code as reason. An unsupported protocol records its parsed integer;
-a malformed value is never copied into the audit. The owner is
+Both protocol refusals emit `station.auth.failure` within a separate direct-peer
+protocol audit budget (default: 10 audits per 60-second window), with outcome
+`denied` and the refusal code as reason. An unsupported protocol records its
+parsed integer; a malformed value is never copied into the audit. The owner is
 [`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
-Protocol refusals count toward that budget because they are unauthenticated
-denials. Once exhausted, their audits are suppressed while responses remain
-400/426; a subsequent authentication attempt shares the exhausted budget.
-Successful authentication or window expiry clears it.
+The audit limiter reuses `RuntimeAuthFailureLimiter` with its 1,024-peer cap,
+keyed by the direct socket address. Exhaustion suppresses only audits: every
+refusal still receives 400/426. Protocol refusals neither consult nor consume
+the authentication budget, so clients sharing a proxy or NAT can correct their
+header and authenticate without being locked out by protocol refusals.
 
 Terminal and voice WebSockets are not covered yet, deliberately. Their
 upgrades never pass the HTTP boundary that runs this check (each socket
@@ -180,10 +181,12 @@ Cross-origin browser requests send it only after the host's public handshake
 advertises `compatibility.capabilities.clientProtocolHeader >= 1`. The
 [shared policy](../../packages/shared/src/client-protocol.ts) remembers this
 per origin in process memory and removes the observation when the capability
-is no longer advertised. The UI clears the prior observation before each
-re-handshake; non-OK responses, invalid JSON and transport errors leave it
-cleared. Only a valid handshake restores acceptance. Older or unobserved hosts receive no header and read
-the request as protocol 1.
+is no longer advertised. The UI clears the prior observation when a handshake
+starts. Across both UI
+callers, only the latest-started handshake per origin may restore acceptance;
+its non-OK response, invalid JSON or transport error leaves acceptance cleared.
+An older overlapping success cannot restore it. Older or unobserved hosts
+receive no header and read the request as protocol 1.
 
 The native pairing exchange, which Rust builds itself, remains undeclared.
 Direct `fetch` callers that bypass the SDK seam also remain undeclared, including

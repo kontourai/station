@@ -10,6 +10,7 @@ import {
  * never persisted, and a fresh page load observes the handshake again.
  */
 const hostsAllowingClientProtocol = new Set<string>();
+const handshakeGenerations = new Map<string, symbol>();
 
 function originOf(url: string | URL): string | undefined {
   try {
@@ -47,9 +48,25 @@ export function observeClientProtocolSupport(
   }
 }
 
+/** Only the latest-started handshake at an origin may restore acceptance. */
+export function beginClientProtocolObservation(
+  url: string | URL,
+): (compatibility: unknown) => void {
+  const origin = originOf(url);
+  const generation = Symbol();
+  if (origin) handshakeGenerations.set(origin, generation);
+  observeClientProtocolSupport(url, undefined);
+  return (compatibility) => {
+    if (origin && handshakeGenerations.get(origin) === generation) {
+      observeClientProtocolSupport(url, compatibility);
+    }
+  };
+}
+
 /** Test seam: forget every observed host. */
 export function resetClientProtocolObservations(): void {
   hostsAllowingClientProtocol.clear();
+  handshakeGenerations.clear();
 }
 
 /**

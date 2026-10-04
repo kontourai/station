@@ -67,10 +67,12 @@ reads an absent header as protocol 1, returns `400 client_protocol_invalid`
 for malformed declarations and `426 client_protocol_unsupported` below the
 handshake's minimum. Runtime composition sets CORS first and emits a denial
 audit containing the refusal reason and parsed protocol, never the raw header.
-Protocol refusals spend the existing direct-peer authentication failure budget
-(default: 10 per 60 seconds). When it is exhausted, suppress the protocol audit
-but retain the 400/426 response; do not create a separate unbounded log path.
-The handshake and explicitly declared navigation routes remain exempt;
+Protocol refusals use a separate direct-socket-peer audit limiter (default: 10
+per 60 seconds), reusing `RuntimeAuthFailureLimiter` with its 1,024-peer cap.
+Exhaustion suppresses only protocol audits; every refusal still returns 400/426.
+They neither consult nor consume the authentication budget, so corrected
+clients sharing a proxy or NAT can authenticate. The handshake and declared
+navigation routes remain exempt;
 passing protocol admission grants no scope or object authority. Follow the
 [threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962)
 for the exact coverage and remaining caller gaps before raising the minimum.

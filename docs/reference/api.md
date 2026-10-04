@@ -2684,10 +2684,12 @@ minClientProtocol, protocolVersion, serverVersion}}` before credential checks.
 Both refusals emit `station.auth.failure` with the refusal code as reason;
 only the parsed protocol is recorded, never the raw header. This compatibility
 signal grants no authority, and passing it does not skip authentication.
-Protocol refusals count toward that budget because they are unauthenticated
-denials. Once exhausted, their audits are suppressed while responses remain
-400/426; a subsequent authentication attempt shares the exhausted budget.
-Successful authentication or window expiry clears it.
+A separate direct-socket-peer audit limiter bounds emission to 10 audits per
+60-second window by default, using `RuntimeAuthFailureLimiter` and its
+1,024-peer cap. Exhaustion suppresses only audits; every refusal still receives
+400/426. Protocol refusals neither consult nor consume the authentication
+budget, so correcting the header permits account verification even after many
+refusals from the same proxy or NAT.
 
 The public handshake and proof remain reachable. The landing page, `/doc`,
 `/ui`, and integration icons are exempt because navigation and image requests

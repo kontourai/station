@@ -14,6 +14,7 @@ import {
   evaluateCompatibility,
 } from '../lib/compatibility';
 import { isBlockingCompatibility } from '../lib/compatibilityLoader';
+import { probeServerConnection } from '../lib/serverHealth';
 
 /**
  * The client this repo ships. Every "too old" case below has to be constructed
@@ -176,6 +177,66 @@ describe('checkHostCompatibility', () => {
       new URL('/.well-known/station/v1', 'https://station.example.test'),
     );
   });
+
+  it.each([
+    ['compatibility', true],
+    ['compatibility', false],
+    ['health', true],
+    ['health', false],
+  ] as const)(
+    'keeps the latest-started handshake authoritative across callers: first %s, first succeeds %s',
+    async (firstCaller, firstSucceeds) => {
+      const url = 'https://station.example.test';
+      vi.stubGlobal('location', {
+        href: 'https://client.example.test/',
+        origin: 'https://client.example.test',
+      });
+      const pending: Array<(response: Response) => void> = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        if (String(input).endsWith('/api/system/identity')) {
+          return Response.json({
+            environmentId: 'environment-1',
+            bootId: 'boot-1',
+          });
+        }
+        return new Promise<Response>((resolve) => pending.push(resolve));
+      });
+      const start = (caller: 'compatibility' | 'health') =>
+        caller === 'compatibility'
+          ? checkHostCompatibility(url)
+          : probeServerConnection(
+              url,
+              'fixture-credential',
+              'environment-1',
+              new AbortController().signal,
+            );
+      const first = start(firstCaller);
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      const second = start(
+        firstCaller === 'health' ? 'compatibility' : 'health',
+      );
+      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      const success = () =>
+        Response.json({
+          schemaVersion: 1,
+          environmentId: 'environment-1',
+          authentication: { scheme: 'bearer', protocolVersion: 1 },
+          transports: { http: 1, sse: 1, websocket: 1 },
+          compatibility: serverBlock({
+            protocolVersion: 1,
+            minClientProtocol: 1,
+            capabilities: { clientProtocolHeader: 1 },
+          }),
+        });
+      pending[0](firstSucceeds ? success() : new Response('', { status: 503 }));
+      await first;
+      pending[1](firstSucceeds ? new Response('', { status: 503 }) : success());
+      await second;
+      const headers = clientProtocolHeaders(`${url}/api/projects`);
+      if (firstSucceeds) expect(headers).toEqual({});
+      else expect(headers).toHaveProperty('X-Station-Client-Protocol');
+    },
+  );
 
   it('uses the supplied native-shell transport for the public handshake', async () => {
     const transport = vi
