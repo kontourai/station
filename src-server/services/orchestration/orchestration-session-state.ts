@@ -639,6 +639,10 @@ export function buildOrchestrationSessionSummary(options: {
     ...(lastRuntimeError
       ? { lastRuntimeErrorMessage: lastRuntimeError.message }
       : {}),
+    ...((lastRuntimeError?.details as { usageLimit?: unknown } | undefined)
+      ?.usageLimit === true
+      ? { lastRuntimeErrorUsageLimit: true as const }
+      : {}),
     ...(lastEvent?.method === 'turn.aborted' &&
     lastEvent.recoveryTerminal !== true
       ? { lastTurnAbortReason: lastEvent.reason }
