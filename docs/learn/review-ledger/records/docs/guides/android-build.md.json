@@ -52,11 +52,11 @@
 
     {"path":"packages/cli/src/commands/dev-ports.ts","digest":"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/service-run.ts","digest":"bcea01a437a5d797fe33f37814fbce62cab1c11998e6ec55325442b14df5e903","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"packages/cli/src/commands/service-run.ts","digest":"6187f458e87a96df9417b4b7c14c35587a1dc3faeaac7b0b63a999860b044fa4","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"packages/cli/src/commands/service-windows.ts","digest":"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581","revision":"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"},
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"cfa767eb2695c44157497c406bd4108de882c9466bbb5a31d0b835db29b91970","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"packages/cli/src/commands/service.ts","digest":"0fe08080085c621d204b5c8c5831359e2dceb20e46e172b64b0d834d70042acb","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -108,7 +108,7 @@
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"fa6f47aa8ae3a576f043738709f000a2137dd8397da607f5fb80c58160087932","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"src-desktop/src/lib.rs","digest":"f84cafee082b4a5eaee281e0aff832a05de2a18e6314d3514e946627ee594502","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

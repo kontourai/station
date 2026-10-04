@@ -20,7 +20,7 @@
 
     {"path":"docs/guides/commands.md","digest":"83622cba5c9fb980797a0b5d57fea1fcf25eb41ab5c72cbefee14d8c3814155e","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/guides/deployment.md","digest":"e63826ca5d7bd4e776abf2c32e63551a2553ecdb79440536587b0f9673b22192","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
@@ -34,7 +34,7 @@
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"docs/reference/cli.md","digest":"6d996a4b967c6416c20a8e28e08f94f39056b578510fe5c3d7c881cfe423da24","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 

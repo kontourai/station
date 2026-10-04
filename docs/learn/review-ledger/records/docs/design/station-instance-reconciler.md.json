@@ -16,7 +16,7 @@
 
     {"path":"packages/cli/src/commands/service-scheduling.ts","digest":"316af24cd658e4c86c83c3de58151954d6fbe13fe4e892f2a3e189d93892751b","revision":"a74a3b807e9547c31045a174d4aa015ae8445f84"},
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"cfa767eb2695c44157497c406bd4108de882c9466bbb5a31d0b835db29b91970","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"packages/cli/src/commands/service.ts","digest":"0fe08080085c621d204b5c8c5831359e2dceb20e46e172b64b0d834d70042acb","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"packages/cli/src/commands/station-instance-reconciler.ts","digest":"845e7d0147d219e66d4b79e6a6846765ccf55c56ab8f776572888d8222fd6954","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

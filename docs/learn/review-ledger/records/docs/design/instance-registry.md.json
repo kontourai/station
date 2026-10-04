@@ -9,12 +9,12 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"f514e836a81cbbe6b54f2bb01333304eedd78aad8c735858db84db206bcbf884","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+  "document": {"digest":"b3aa7db98a977060fef657092417ceff1be0e9cd51e482bb3049f1511df2c58c","revision":"5b2205dffc18aa4aefaf6d84528e8c89d3744156"},
 
   "sources": [
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"cfa767eb2695c44157497c406bd4108de882c9466bbb5a31d0b835db29b91970","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"packages/cli/src/commands/service.ts","digest":"0fe08080085c621d204b5c8c5831359e2dceb20e46e172b64b0d834d70042acb","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"packages/shared/src/__tests__/instance-registry-claim.test.ts","digest":"500f4255dc0b854c95cda7bce07659fc270dbbe814c7146687445744ed9ae567","revision":"798719a427d66ba88ef7d61f79dd9f24564b6dd2"},
 
@@ -30,15 +30,15 @@
 
     {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"fa6f47aa8ae3a576f043738709f000a2137dd8397da607f5fb80c58160087932","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"src-desktop/src/lib.rs","digest":"f84cafee082b4a5eaee281e0aff832a05de2a18e6314d3514e946627ee594502","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
     {"path":"src-server/tools/instance-registry-bridge.ts","digest":"58c197ac5141ad04b40f75f19f05a1235bfa9b5cb968cbfd91728f97b3d25cbc","revision":"798719a427d66ba88ef7d61f79dd9f24564b6dd2"},
 
-    {"path":"packages/cli/src/commands/service-liveness.ts","digest":"f15d46b5388ec0eb1c19d9af5d37803c0e500d198b6bd31a83d103189810434e","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"packages/cli/src/commands/service-liveness.ts","digest":"10ecfed3a94d25dbb6cf0fbe03e454517f71223101d669420ea06e72e2802ce2","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
-    {"path":"packages/cli/src/commands/service-run.ts","digest":"bcea01a437a5d797fe33f37814fbce62cab1c11998e6ec55325442b14df5e903","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"},
+    {"path":"packages/cli/src/commands/service-run.ts","digest":"6187f458e87a96df9417b4b7c14c35587a1dc3faeaac7b0b63a999860b044fa4","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
 
-    {"path":"src-server/tools/__tests__/instance-registry-bridge.test.ts","digest":"4cee5ae0a58eb91c599c6eb20afc341c1cc5d4d3a7fe7467ecaf9b4ce1646d21","revision":"8d69bac357383f01bb5af80dbbbea853ecf538d2"}
+    {"path":"src-server/tools/__tests__/instance-registry-bridge.test.ts","digest":"4c909464aad675ce7c7de7b341d44ecd93ff821da4b261f8f15af052afcf6405","revision":"6121edc82abb9f804fb64b5220f7e63308289521"}
   ],
 
   "checks": [
