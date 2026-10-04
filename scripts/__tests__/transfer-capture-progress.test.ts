@@ -1,17 +1,13 @@
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { createTransferCaptureProgress } from '../lib/transfer-capture-progress.js';
 
-if (!process.env.STATION_ROOT)
-  throw new Error('Capture progress fixtures require the managed Vitest root.');
-const fixtureParent = process.env.STATION_ROOT;
+const makeTempDir = trackTempDirs();
 
 function fixture() {
-  const output = join(
-    mkdtempSync(join(fixtureParent, 'transfer-progress-')),
-    'capture.json',
-  );
+  const output = join(makeTempDir('transfer-progress-'), 'capture.json');
   const source = {
     subjectSha: 'a'.repeat(40),
     baseSha: 'b'.repeat(40),
