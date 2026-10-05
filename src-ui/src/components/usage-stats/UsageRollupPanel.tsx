@@ -70,7 +70,11 @@ export function UsageRollupPanel() {
       cursor,
       pageSize: 25,
     },
-    { requestScope: scope ?? undefined, requireRequestScope: true },
+    {
+      requestScope: scope ?? undefined,
+      requireRequestScope: true,
+      keepPreviousData: false,
+    },
   );
   const data = scope?.isCurrent() && !error ? response : undefined;
   const coverage = error ? [] : (data?.coverage ?? []);

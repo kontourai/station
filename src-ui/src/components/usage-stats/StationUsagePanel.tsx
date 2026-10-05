@@ -59,7 +59,10 @@ export function StationUsagePanel() {
   const scope = useHostRequestAuthorityScope();
   const [expanded, setExpanded] = useState(false);
   const [group, setGroup] = useState<Group>('provider');
-  const query = useStationUsageQuery(scope ?? undefined, { enabled: expanded });
+  const query = useStationUsageQuery(scope ?? undefined, {
+    enabled: expanded,
+    keepPreviousData: false,
+  });
   const overview = scope?.isCurrent() && !query.error ? query.data : undefined;
   const rows = overview ? rowsFor(overview.stats, group) : [];
   const peak = rows.reduce((max, row) => Math.max(max, row.messages), 1);
