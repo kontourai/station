@@ -1,0 +1,7 @@
+{
+  "revision": "06e9b1fb8bb361f979fadb6ac279ff97680fa289",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3312: traced HomeChatStartForm (compact note beside Start; full form keeps the Using caption) to useHomeViewModel.startIdentity, which reads the useNewChatSelectionModel default selection the startWithDefault path opens on; added one sentence that Home shows the Agent and Model Start a chat will use. work-status.ts gained attentionWord (a read of the existing ladder word table); no other claim in this guide changed.","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeChatStartForm.tsx","src-ui/src/views/home/work-status.ts"]}
+  ]
+}

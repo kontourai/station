@@ -4,7 +4,13 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -180,6 +186,266 @@ describe('ChatMessageList', () => {
     fireEvent.wheel(log);
     fireEvent.scroll(log);
     expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  // Drives the press -> page commit -> restoration sequence by hand. The
+  // transcript's scrollHeight is a getter the test controls, so "the page
+  // prepended" and "the layout is still moving" are explicit.
+  function pressAndCommit(options: {
+    layoutSettles: boolean;
+    sessionId?: string;
+    onLoadOlder: () => Promise<void>;
+  }) {
+    const view = render(
+      <ChatMessageList
+        activeSession={{
+          ...resizeSession(),
+          ...(options.sessionId ? { id: options.sessionId } : {}),
+        }}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={options.onLoadOlder}
+      />,
+    );
+    const log = screen.getByRole('log');
+    installScrollGeometry(log);
+    let height = 1_000;
+    let reads = 0;
+    Object.defineProperty(log, 'scrollHeight', {
+      configurable: true,
+      // A layout that never settles grows on every read.
+      get: () => (options.layoutSettles ? height : height + reads++),
+    });
+    return {
+      view,
+      log,
+      press: screen.getByRole('button', { name: 'Earlier messages' }),
+      prependPage() {
+        height = 3_000;
+      },
+    };
+  }
+  // Waits for `count` animation frames, so the test's clock is the frame loop
+  // under test rather than a guessed number of milliseconds.
+  const framesElapsed = (count: number) =>
+    act(async () => {
+      await new Promise<void>((resolve) => {
+        let frames = 0;
+        const tick = () =>
+          ++frames >= count ? resolve() : requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
+      });
+    });
+
+  test("one press loads one page: the stretch from the request settling to the reader's row coming back is still in flight", async () => {
+    const releaseLoads: Array<() => void> = [];
+    const loadOlder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLoads.push(resolve);
+        }),
+    );
+    const { log, press, prependPage } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // The request settles, but React has not committed the page it carries
+    // (nothing here flushes it): the DOM still shows the old top and the
+    // button enabled. A press landing here is not a second request.
+    releaseLoads[0]();
+    for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    fireEvent.click(press);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // The page commits, and the browser reports scrollTop inside the band
+    // against the grown content before the virtualizer has walked the reader's
+    // row back. That unmarked scroll event is the press's own restoration, not
+    // the reader.
+    prependPage();
+    log.scrollTop = 0;
+    await act(async () => {});
+    fireEvent.scroll(log);
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // Restored and still for real: the suppression ends by itself, and the
+    // reader reaching the top again loads the next page by design (#2706).
+    log.scrollTop = 300;
+    await framesElapsed(12);
+    log.scrollTop = 20;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ['wheel', (log: HTMLElement) => fireEvent.wheel(log)],
+    ['touchstart', (log: HTMLElement) => fireEvent.touchStart(log)],
+    ['pointerdown', (log: HTMLElement) => fireEvent.pointerDown(log)],
+    ['keydown', (log: HTMLElement) => fireEvent.keyDown(log, { key: 'Home' })],
+  ])(
+    'reader %s ends the restoration suppression even when the layout never settles',
+    async (_name, input) => {
+      const loadOlder = vi.fn(async () => {});
+      const { log, press, prependPage } = pressAndCommit({
+        layoutSettles: false,
+        onLoadOlder: loadOlder,
+      });
+      log.scrollTop = 300;
+      fireEvent.click(press);
+      await act(async () => {});
+      prependPage();
+      log.scrollTop = 0;
+      fireEvent.scroll(log);
+      await act(async () => {});
+      // Restoration is still moving the layout, so the band is still ours...
+      fireEvent.scroll(log);
+      expect(loadOlder).toHaveBeenCalledTimes(1);
+      // ...until the reader acts: their scroll to the top loads one page now,
+      // not after the suppression's frame cap.
+      input(log);
+      log.scrollTop = 40;
+      fireEvent.scroll(log);
+      expect(loadOlder).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  test('a chat switch mid-restoration does not carry the suppression or the request into the new chat', async () => {
+    const releaseLoads: Array<() => void> = [];
+    const loadOlder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLoads.push(resolve);
+        }),
+    );
+    const { view, log, press } = pressAndCommit({
+      layoutSettles: false,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // Switch chats while the first chat's request is still in flight.
+    view.rerender(
+      <ChatMessageList
+        activeSession={{ ...resizeSession(), id: 'other-session' }}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    // The new chat's reader reaching the top loads at once.
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+    // The old chat's request settling late must not release or hold the new
+    // chat's request.
+    releaseLoads[0]();
+    for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+    releaseLoads[1]();
+    await act(async () => {});
+  });
+
+  test('a page that grew the content leaves the suppression on while the reader still sits in the band, however still the layout is', async () => {
+    const loadOlder = vi.fn(async () => {});
+    const { log, press, prependPage } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    await act(async () => {});
+    // The page prepended and the browser left the reader at the top of the
+    // grown content: not restored yet. Nothing moves for many frames, which on
+    // its own would count as settled.
+    prependPage();
+    log.scrollTop = 0;
+    await framesElapsed(12);
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  test('a layout that has held still for only a couple of frames is not settled yet', async () => {
+    const loadOlder = vi.fn(async () => {});
+    const { log, press, prependPage } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    await act(async () => {});
+    prependPage();
+    // Restored position, held for only a couple of frames: a reader scroll
+    // into the band inside that stretch is still the restoration's. This
+    // rules out a threshold of 1; it does not tell 3 from 4.
+    await framesElapsed(3);
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  test('a request still in flight for the previous chat neither loads nor releases anything in the new chat', async () => {
+    const releaseLoads: Array<() => void> = [];
+    const loadOlder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLoads.push(resolve);
+        }),
+    );
+    const { view, log, press } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    view.rerender(
+      <ChatMessageList
+        activeSession={{ ...resizeSession(), id: 'other-session' }}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    // The new chat has its own request in flight.
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier messages' }));
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+    // The old chat's request settles late. It must not release the new chat's
+    // request, so a further press is still coalesced into it.
+    releaseLoads[0]();
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier messages' }));
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+  });
+
+  test('a load that settles with nothing to commit still releases the in-flight request', async () => {
+    const loadOlder = vi.fn(async () => {});
+    render(
+      <ChatMessageList
+        activeSession={resizeSession()}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    installScrollGeometry(screen.getByRole('log'));
+    const press = screen.getByRole('button', { name: 'Earlier messages' });
+    fireEvent.click(press);
+    await waitFor(() => {
+      fireEvent.click(press);
+      expect(loadOlder).toHaveBeenCalledTimes(2);
+    });
   });
 
   test('layoutHeight preserves pinned-bottom and scrolled-up reader intent before ResizeObserver delivery', () => {
@@ -498,7 +764,7 @@ describe('ChatMessageList', () => {
     );
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
-    expect(screen.queryByText('Start a conversation')).toBeNull();
+    expect(screen.queryByText('Start a chat')).toBeNull();
   });
 
   test('the device setting selects the smooth streaming consumer', () => {

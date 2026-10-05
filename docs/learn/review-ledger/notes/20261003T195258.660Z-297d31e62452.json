@@ -1,0 +1,13 @@
+{
+  "revision": "c834403ed0024f506335ddc01af6d09e1a4d813a",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Checked the behavior-neutral cleanup: Knowledge metadata and search registration helpers are private because their production callers are in the same modules. Tool registrations, default integration identity, caller access and delivery behavior are unchanged. The changeset records the additive public default; no new runtime qualification.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the behavior-neutral cleanup: Knowledge metadata and search registration helpers are private because their production callers are in the same modules. Tool registrations, default integration identity, caller access and delivery behavior are unchanged. The changeset records the additive public default; no new runtime qualification.","inputs":["docs/guides/knowledge.md"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the behavior-neutral cleanup: Knowledge metadata and search registration helpers are private because their production callers are in the same modules. Tool registrations, default integration identity, caller access and delivery behavior are unchanged. The changeset records the additive public default; no new runtime qualification.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the behavior-neutral cleanup: Knowledge metadata and search registration helpers are private because their production callers are in the same modules. Tool registrations, default integration identity, caller access and delivery behavior are unchanged. The changeset records the additive public default; no new runtime qualification.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

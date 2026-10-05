@@ -419,10 +419,15 @@ async function openRuntimeSession(
   });
   await page.goto('/?dock=open');
   await expect(
-    page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
+    page
+      .locator('.chat-dock__tab-actions')
+      .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   await dismissSetupLauncher(page);
-  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
+  await page
+    .locator('.chat-dock__tab-actions')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
   await expect(
     page.locator('.new-chat-modal__agent', { hasText: runtimeName }),
   ).toBeVisible({ timeout: 10_000 });
@@ -462,11 +467,11 @@ test.describe('Built-in runtime chat workflows', () => {
     });
     await page.goto('/?dock=open');
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Claude history',
     );
@@ -493,11 +498,11 @@ test.describe('Built-in runtime chat workflows', () => {
     });
     await page.goto('/?dock=open');
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Codex history',
     );

@@ -74,23 +74,6 @@ export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   Completed: 0,
 };
 
-/**
- * The user's wording for a lifecycle label, for surfaces that render the
- * label as text.
- *
- * Every other member of this union is already the user's word — "Running",
- * "Needs attention", "Ready". `'Unanswerable'` is not: it is this system's
- * term for "no path exists in the serving process", and archive#1783 leaked
- * it verbatim to two surfaces (the chat-dock inbox chip, the mobile task
- * switcher's `Current · …` line) purely because the label set is shared.
- * The inbox row's status ladder (`work-status.ts`) says "Can't answer here"
- * for it; this is the same translation for the surfaces that print the
- * label itself, so one term cannot appear two ways.
- */
-export function lifecycleLabelText(label: HomeLifecycleLabel): string {
-  return label === 'Unanswerable' ? "Can't answer here" : label;
-}
-
 export function moreImportantLifecycle(
   left: HomeLifecycleLabel,
   right: HomeLifecycleLabel,

@@ -43,6 +43,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
+import type { ThreadUsageTree } from '@kontourai/station-contracts/thread-usage-tree';
 import { envelopeError } from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import {
@@ -235,6 +236,25 @@ export async function getOrchestrationConversationEventWindow<T>(
     opts,
   );
   return unwrapOrchestrationResponse<T>(response);
+}
+
+/**
+ * A conversation's usage tree: its own turns, each child (engine subagent or
+ * delegated task) with how its usage relates to the parent, and a roll-up
+ * total marked partial where it leaves something out. A conversation the
+ * caller cannot read is a 404; a tree past its bound is a 422. Both throw
+ * `StationHttpError` with that status.
+ */
+export async function getConversationUsageTree(
+  apiBase: string,
+  conversationId: string,
+  opts?: ClientRequestOptions,
+): Promise<ThreadUsageTree> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/usage-tree`,
+    opts,
+  );
+  return unwrapOrchestrationResponse<ThreadUsageTree>(response);
 }
 
 /** `GET /api/orchestration/sessions/read-model` — the session read-model list. */

@@ -1,0 +1,11 @@
+{
+  "revision": "8cdc45d34c0ad7e8cfb2a4ade2e270f469d9a8e2",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-checked against the #3157 banner round 4: the coordinator now also caps consecutive re-arms of a refused replay at three per conversation (a user turn resets it), and the banner keeps watching through a resumed read-back. session-api.md's usage-limit section gained the cap sentence; the ADR's routing decision and session API statements are unaffected.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-checked against the #3157 banner round 4: the coordinator now also caps consecutive re-arms of a refused replay at three per conversation (a user turn resets it), and the banner keeps watching through a resumed read-back. The RecoveryLedger paragraph describes claims, fencing and projection, not the re-arm policy, so it stays accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Added the three-in-a-row cap to the usage-limit resume description; checked against MAX_CONSECUTIVE_REARMS and its reset in observeTurnStarted in session-recovery-coordinator.ts. The rest is unchanged.","inputs":["docs/reference/session-api.md"]}
+  ]
+}
