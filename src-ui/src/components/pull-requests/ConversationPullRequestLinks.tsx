@@ -2,121 +2,54 @@ import type {
   ConversationPullRequestLinkObservation,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
-import {
-  getConversationPullRequestLinks,
-  linkConversationPullRequest,
-  unlinkConversationPullRequest,
-} from '@kontourai/station-sdk/conversation-pull-request-links';
-import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
-import { Button } from '../Button';
-import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { IconButton } from '../IconButton';
+import { PlusGlyph, RefreshGlyph } from '../icons/Glyph';
+import { SkeletonList } from '../state';
+import { LinkPullRequestField } from './LinkPullRequestField';
+import { PullRequestRow } from './PullRequestRow';
+import { pullRequestStateChip } from './pull-request-chips';
+import {
+  linkKey,
+  useConversationPullRequestLinks,
+} from './useConversationPullRequestLinks';
 import './ConversationPullRequestLinks.css';
 
-const EMPTY: PullRequestLinkIdentity = {
-  provider: '',
-  host: '',
-  repository: { owner: '', name: '' },
-  ref: '',
+const PROVENANCE: Record<
+  ConversationPullRequestLinkObservation['source'],
+  string
+> = {
+  explicit: 'linked',
+  'branch-derived': 'from branch',
+  'task-declared': 'from a Task',
 };
-const key = (link: PullRequestLinkIdentity) =>
-  JSON.stringify([
-    link.provider,
-    link.host,
-    link.repository.owner,
-    link.repository.name,
-    link.ref,
-  ]);
 
+/**
+ * A chat's pull request links in a session's Details: quiet rows, a `+` that
+ * reveals one field to link another, and a refresh. The pull requests pane
+ * reads the same hook and shows the same rows; this is the list on its own.
+ */
 export function ConversationPullRequestLinks({
   conversationId,
   suggested,
   derived = [],
   onOpen,
-  linkFormCollapsed = false,
+  linkFormCollapsed = true,
 }: {
   conversationId: string;
   /**
-   * Start the manual link form closed behind its "Link a pull request"
-   * disclosure. The pull requests panel keeps it open (linking is that
-   * panel's job); a session's Details, where it is a rare action, collapses it.
+   * Start with the link field shown. Off by default: in a session's Details
+   * linking is a rare action, so the section leads with what IS linked.
    */
   linkFormCollapsed?: boolean;
   suggested?: Partial<PullRequestLinkIdentity>;
   derived?: ConversationPullRequestLinkObservation[];
   onOpen?: (link: ConversationPullRequestLinkObservation) => void;
 }) {
-  const scope = useHostRequestAuthorityScope();
-  const [draft, setDraft] = useState<PullRequestLinkIdentity>(() => ({
-    ...EMPTY,
-    ...suggested,
-    repository: { ...EMPTY.repository, ...suggested?.repository },
-  }));
-  const [pending, setPending] = useState<string | null>(null);
-  const [mutationError, setMutationError] = useState<string | null>(null);
-  const links = useQuery({
-    queryKey: [
-      'conversation-pull-request-links',
-      scope?.apiBase,
-      scope?.authorityKey,
-      conversationId,
-    ],
-    queryFn: ({ signal }) =>
-      getConversationPullRequestLinks(scope!.apiBase, conversationId, {
-        signal,
-        requestScope: scope!,
-      }),
-    enabled: !!scope?.isCurrent() && !!conversationId,
-    retry: false,
-    staleTime: 0,
-    refetchOnMount: 'always',
-  });
-  const mutate = async (
-    action: 'link' | 'unlink',
-    identity: PullRequestLinkIdentity,
-  ) => {
-    if (!scope?.isCurrent() || pending) return;
-    setPending(`${action}:${key(identity)}`);
-    setMutationError(null);
-    try {
-      if (action === 'link')
-        await linkConversationPullRequest(
-          scope.apiBase,
-          conversationId,
-          identity,
-          { requestScope: scope },
-        );
-      else
-        await unlinkConversationPullRequest(
-          scope.apiBase,
-          conversationId,
-          identity,
-          { requestScope: scope },
-        );
-      if (scope.isCurrent()) await links.refetch();
-    } catch (error) {
-      if (scope.isCurrent())
-        setMutationError(
-          error instanceof Error
-            ? userFacingErrorMessage(error)
-            : 'Pull request link failed',
-        );
-    } finally {
-      if (scope.isCurrent()) setPending(null);
-    }
-  };
-  const canLink =
-    !pending &&
-    Object.values({
-      provider: draft.provider,
-      host: draft.host,
-      owner: draft.repository.owner,
-      repository: draft.repository.name,
-      ref: draft.ref,
-    }).every((value) => value.trim().length > 0);
+  const { links, mutate, pending, mutationError, canWrite } =
+    useConversationPullRequestLinks(conversationId);
+  const [linking, setLinking] = useState(!linkFormCollapsed);
   // One exact PR may have several owners. Keep each provenance visible so
   // explicit unlink cannot erase a branch-derived or Task-kept association.
   const visibleLinks = [...(links.data?.links ?? []), ...derived];
@@ -126,158 +59,104 @@ export function ConversationPullRequestLinks({
       className="conversation-pr-links"
       aria-label="Linked pull requests"
     >
-      <header>
+      <header className="conversation-pr-links__bar">
         <h3>Linked pull requests</h3>
-        <Button
-          size="sm"
-          disabled={links.isFetching || !scope?.isCurrent()}
-          onClick={() => void links.refetch()}
-        >
-          Refresh
-        </Button>
+        <div className="conversation-pr-links__tools">
+          <IconButton
+            className="conversation-pr-links__icon"
+            aria-label="Link a pull request"
+            title="Link a pull request"
+            aria-expanded={linking}
+            active={linking}
+            disabled={!canWrite}
+            onClick={() => setLinking((value) => !value)}
+          >
+            <PlusGlyph />
+          </IconButton>
+          <IconButton
+            className="conversation-pr-links__icon"
+            aria-label="Refresh"
+            title="Refresh"
+            disabled={links.isFetching || !canWrite}
+            onClick={() => void links.refetch()}
+          >
+            <RefreshGlyph />
+          </IconButton>
+        </div>
       </header>
+      {linking && (
+        <LinkPullRequestField
+          scope={suggested ?? {}}
+          pending={pending?.startsWith('link:') ?? false}
+          onLink={(link) => {
+            void mutate('link', link).then((ok) => {
+              if (ok) setLinking(false);
+            });
+          }}
+        />
+      )}
       {links.isPending ? (
         <SkeletonList count={1} label="Reading linked pull requests" />
       ) : links.error ? (
-        <ErrorState
-          variant="compact"
-          title="Linked pull requests unavailable"
-          description={userFacingErrorMessage(links.error)}
-        />
+        <p className="conversation-pr-links__note" role="alert">
+          {userFacingErrorMessage(links.error)}{' '}
+          <button
+            type="button"
+            className="button button--link"
+            onClick={() => void links.refetch()}
+          >
+            Retry
+          </button>
+        </p>
       ) : visibleLinks.length === 0 ? (
-        <Empty label="Nothing is linked to this conversation yet." />
+        <p className="conversation-pr-links__note">Nothing linked</p>
       ) : (
-        <ul>
-          {visibleLinks.map((link) => (
-            <li key={`${link.source}:${key(link)}`}>
-              <div>
-                <strong>
-                  {link.host}/{link.repository.owner}/{link.repository.name} #
-                  {link.ref}
-                </strong>
-                <span>
-                  {link.source === 'explicit'
-                    ? 'Explicit'
-                    : link.source === 'branch-derived'
-                      ? 'Derived from the current branch'
-                      : 'Declared by a Task'}{' '}
-                  · observed {new Date(link.observedAt).toLocaleString()}
-                  {Date.now() - Date.parse(link.observedAt) > 5 * 60_000
-                    ? ' · stale'
-                    : ''}
-                </span>
-                <span>
-                  {link.status.state === 'current'
-                    ? `${link.status.title} · ${link.status.pullRequestState}${link.status.head ? ` · ${link.status.head}` : ' · head unavailable'}`
-                    : `${link.status.state}: ${link.status.reason}`}
-                </span>
-              </div>
-              <ResponsiveSurfaceActions className="conversation-pr-links__actions">
-                {onOpen && link.status.state === 'current' && (
-                  <Button size="sm" onClick={() => onOpen(link)}>
-                    Review
-                  </Button>
-                )}
-                {link.source === 'explicit' && (
-                  <Button
-                    size="sm"
-                    pending={pending === `unlink:${key(link)}`}
-                    pendingLabel="Unlinking"
-                    onClick={() => void mutate('unlink', link)}
-                  >
-                    Unlink
-                  </Button>
-                )}
-              </ResponsiveSurfaceActions>
-            </li>
-          ))}
+        <ul className="conversation-pr-links__list">
+          {visibleLinks.map((link) => {
+            const status = link.status;
+            // The host is part of the identity: the same number on two
+            // hosts is two pull requests.
+            const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
+            return (
+              <PullRequestRow
+                key={`${link.source}:${linkKey(link)}`}
+                title={status.state === 'current' ? status.title : reference}
+                reference={reference}
+                chips={
+                  status.state === 'current'
+                    ? [pullRequestStateChip(status.pullRequestState)]
+                    : []
+                }
+                meta={[PROVENANCE[link.source]]}
+                note={status.state === 'current' ? undefined : status.reason}
+                onOpen={
+                  onOpen && status.state === 'current'
+                    ? () => onOpen(link)
+                    : undefined
+                }
+                overflow={
+                  link.source === 'explicit'
+                    ? [
+                        {
+                          key: 'unlink',
+                          label: 'Unlink',
+                          disabled: pending !== null,
+                          onSelect: () => void mutate('unlink', link),
+                        },
+                      ]
+                    : []
+                }
+                overflowLabel={`More actions for ${reference}`}
+              />
+            );
+          })}
         </ul>
       )}
-      {/* The manual link form sits in its own disclosure: open where linking
-          is the surface's job, collapsed where it is a rare action so the
-          section leads with what IS linked, not with five empty fields. */}
-      <details
-        className="conversation-pr-links__add"
-        open={!linkFormCollapsed || undefined}
-      >
-        <summary>Link a pull request</summary>
-        <p>
-          A link you add here is for navigating this conversation. Matches
-          derived from the current branch and outputs a Task declared keep their
-          own provenance and are not changed here.
+      {mutationError && (
+        <p className="conversation-pr-links__note" role="alert">
+          {mutationError}
         </p>
-        <div className="conversation-pr-links__form">
-          <label>
-            Provider
-            <input
-              className="editor-input"
-              value={draft.provider}
-              onChange={(event) =>
-                setDraft({ ...draft, provider: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Host
-            <input
-              className="editor-input"
-              value={draft.host}
-              onChange={(event) =>
-                setDraft({ ...draft, host: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Owner
-            <input
-              className="editor-input"
-              value={draft.repository.owner}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  repository: {
-                    ...draft.repository,
-                    owner: event.target.value,
-                  },
-                })
-              }
-            />
-          </label>
-          <label>
-            Repository
-            <input
-              className="editor-input"
-              value={draft.repository.name}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  repository: { ...draft.repository, name: event.target.value },
-                })
-              }
-            />
-          </label>
-          <label>
-            Pull request number
-            <input
-              className="editor-input"
-              inputMode="numeric"
-              value={draft.ref}
-              onChange={(event) =>
-                setDraft({ ...draft, ref: event.target.value })
-              }
-            />
-          </label>
-          <Button
-            disabled={!canLink}
-            pending={pending?.startsWith('link:')}
-            pendingLabel="Linking"
-            onClick={() => void mutate('link', draft)}
-          >
-            Link pull request
-          </Button>
-        </div>
-      </details>
-      {mutationError && <p role="alert">{mutationError}</p>}
+      )}
     </section>
   );
 }

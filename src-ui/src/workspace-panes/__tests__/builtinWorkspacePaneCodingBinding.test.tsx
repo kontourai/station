@@ -132,6 +132,7 @@ vi.mock('../../components/coding-layout/DiffPanel', () => ({
 }));
 vi.mock('../../components/coding-layout/PullRequestsPanel', () => ({
   PullRequestsPanel: () => null,
+  CurrentBranchPullRequestLine: () => null,
 }));
 
 import { getBuiltinWorkspacePaneRenderer } from '../builtinWorkspacePaneRegistry';

@@ -280,6 +280,15 @@
       "configKey": "workspaceCheckpoints"
     },
     {
+      "id": "usage-limit-auto-resume",
+      "label": "Resume after usage limits",
+      "help": "When Claude Code or Codex stops on a usage limit with a known reset time, Station sends the stopped turn again after the limit resets.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=usage-limit-auto-resume",
+      "configKey": "usageLimitAutoResume"
+    },
+    {
       "id": "chat-font-size",
       "label": "Chat font size",
       "help": "Chat messages render at this size on this device, ahead of the Station-configured default.",

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -22,13 +22,10 @@ import {
 } from './ChatDockInboxRows';
 import {
   clearSnooze,
-  groupMobileActivity,
-  readSnoozes,
-  type SnoozeMap,
   snoozeKeyFor,
   writeSnooze,
 } from './mobile-activity-groups';
-import { useHeldLifecycles } from './useHeldLifecycles';
+import { useInboxGroups } from './useInboxGroups';
 
 export interface ChatDockInboxPanelProps {
   items: HomeWorkItem[];
@@ -80,6 +77,10 @@ export interface ChatDockInboxPanelProps {
    * other shared props — the `memo()` wrap compares shallowly.
    */
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
+  /** Project accents by slug; see `InboxGroupListProps.projectAccentBySlug`. */
+  projectAccentBySlug?: InboxGroupListProps['projectAccentBySlug'];
+  /** Project icons by slug; see `InboxGroupListProps.projectIconBySlug`. */
+  projectIconBySlug?: InboxGroupListProps['projectIconBySlug'];
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
   workFacts?: InboxGroupListProps['workFacts'];
 }
@@ -107,6 +108,8 @@ function ChatDockInboxPanelImpl({
   now: suppliedNow,
   agents,
   gitLocationByThreadId,
+  projectAccentBySlug,
+  projectIconBySlug,
   workFacts,
 }: ChatDockInboxPanelProps) {
   // One coarse tick for the whole list's relative times, rather than a new
@@ -125,19 +128,15 @@ function ChatDockInboxPanelImpl({
     const panel = panelRef.current;
     if (panel) panel.inert = exiting;
   }, [exiting]);
-  const [snoozed, setSnoozed] = useState<SnoozeMap>(() => readSnoozes(now));
   const { inboxSections: sections } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const openChatIds = useMemo(
     () => new Set(openChatSessionIds),
     [openChatSessionIds],
   );
-  // Status churn must not move rows between groups (see useHeldLifecycles).
-  const heldItems = useHeldLifecycles(items);
-  const groups = useMemo(
-    () => groupMobileActivity(heldItems, now, snoozed),
-    [heldItems, now, snoozed],
-  );
+  // The live groups (held lifecycles, live snoozes): the same hook the
+  // inbox toggle's Needs-you count reads, so the two cannot disagree.
+  const groups = useInboxGroups(items, now);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
@@ -163,9 +162,10 @@ function ChatDockInboxPanelImpl({
             now={now}
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
+            projectAccentBySlug={projectAccentBySlug}
+            projectIconBySlug={projectIconBySlug}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
-            snoozeMenuOnly={coarsePointer}
             collapsible={{ sections, onToggle: toggleSection }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did
@@ -196,11 +196,9 @@ function ChatDockInboxPanelImpl({
             onSnoozeWake={(item, wakeAt, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               const key = snoozeKeyFor(item);
-              setSnoozed(
-                wakeAt === null
-                  ? clearSnooze(key, now)
-                  : writeSnooze(key, wakeAt, now),
-              );
+              // The write notifies every reader of the snooze map.
+              if (wakeAt === null) clearSnooze(key, now);
+              else writeSnooze(key, wakeAt, now);
             }}
             onCloseChat={(sessionId, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
@@ -219,7 +217,7 @@ function ChatDockInboxPanelImpl({
       <footer className="chat-dock-inbox__footer">
         <button type="button" onClick={onOpenHistory}>
           <MessageGlyph />
-          Conversation history
+          History
         </button>
         {onNewChat && <NewChatAction onClick={onNewChat} />}
       </footer>

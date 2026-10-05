@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   runFallowAnalysis,
@@ -182,6 +183,7 @@ async function runCodeHealthGate(root, baseRef) {
 
 if (invokedDirectly(import.meta.url)) {
   try {
+    await ensureLivenessScale();
     const args = process.argv.slice(2);
     if (args.length > 1 || (args.length && !args[0].startsWith('--base=')))
       throw new Error(

@@ -8570,6 +8570,349 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  // #3303: on macOS the login lives in the Keychain and no credentials file
+  // exists, so readiness asks the installed CLI (`claude auth status`).
+  describe('#3303 Keychain login via `claude auth status`', () => {
+    const makeTempDir = trackTempDirs();
+    const INSTALLED = '/Users/example/.local/bin/claude';
+    let configHome: string;
+
+    beforeEach(() => {
+      vi.stubEnv('HOME', makeTempDir('station-claude-keychain-home-'));
+      vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+      vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      // An existing config dir with no credentials file: the Keychain case.
+      configHome = makeTempDir('station-claude-keychain-config-');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    async function authStateWith(options: {
+      authStatus: ReturnType<typeof vi.fn>;
+      version?: string;
+      connectionEnv?: Record<string, string>;
+      adapter?: ClaudeAdapter;
+    }) {
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([]);
+      const adapter =
+        options.adapter ??
+        new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand: vi.fn().mockResolvedValue({
+            stdout: `${options.version ?? '2.1.224'} (Claude Code)\n`,
+            stderr: '',
+            code: 0,
+          }),
+          runAuthStatusCommand: options.authStatus as never,
+          readBundledVersion: () => '2.1.224',
+          getConnectionEnv: async () =>
+            options.connectionEnv ?? { CLAUDE_CONFIG_DIR: configHome },
+        });
+      await adapter.getPrerequisites?.();
+      const detectAuthState =
+        mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0].detectAuthState;
+      return { adapter, state: await detectAuthState() };
+    }
+
+    const status = (body: unknown, code = 0) =>
+      vi.fn().mockResolvedValue({
+        stdout: typeof body === 'string' ? body : JSON.stringify(body),
+        stderr: '',
+        code,
+      });
+
+    test('logged in per the CLI is authenticated, asked of the installed CLI under the connection env', async () => {
+      const authStatus = status({ loggedIn: true });
+      const { state } = await authStateWith({ authStatus });
+      expect(state).toBe('authenticated');
+      expect(authStatus).toHaveBeenCalledTimes(1);
+      const [command, args, , overlay, bounds] = authStatus.mock.calls[0];
+      expect(command).toBe(INSTALLED);
+      expect(args).toEqual(['auth', 'status', '--json']);
+      expect(overlay).toEqual({ CLAUDE_CONFIG_DIR: configHome });
+      // SIGKILL so a CLI ignoring SIGTERM cannot outlive the deadline.
+      expect(bounds).toEqual({
+        timeoutMs: 8000,
+        maxBuffer: 65536,
+        killSignal: 'SIGKILL',
+      });
+    });
+
+    test('logged out per the CLI is unauthenticated', async () => {
+      const { state } = await authStateWith({
+        authStatus: status({ loggedIn: false }, 1),
+      });
+      expect(state).toBe('unauthenticated');
+    });
+
+    test.each([
+      ['a non-zero exit with no JSON', status('boom', 2)],
+      ['garbage output', status('not json at all')],
+      ['a spawn failure', vi.fn().mockResolvedValue(null)],
+      ['a rejection', vi.fn().mockRejectedValue(new Error('spawn'))],
+      [
+        'a timeout that had printed logged-in JSON',
+        vi.fn().mockResolvedValue({
+          stdout: '{"loggedIn":true}',
+          stderr: '',
+          code: 1,
+          timedOut: true,
+        }),
+      ],
+    ])('%s is unknown, never authenticated', async (_name, authStatus) => {
+      const { state } = await authStateWith({ authStatus });
+      expect(state).toBe('unknown');
+    });
+
+    test.each([
+      ['1.0.128', false],
+      // `claude auth` arrived in 2.1.41: the boundary is exact.
+      ['2.1.40', false],
+      ['2.1.41', true],
+      ['2.2.0', true],
+    ])('CLI %s is asked: %s', async (version, asked) => {
+      const authStatus = status({ loggedIn: true });
+      const { state } = await authStateWith({ authStatus, version });
+      expect(state).toBe(asked ? 'authenticated' : 'unauthenticated');
+      expect(authStatus).toHaveBeenCalledTimes(asked ? 1 : 0);
+    });
+
+    test('a config home that does not exist is not probed, so nothing is created', async () => {
+      const missing = join(configHome, 'not-yet');
+      const authStatus = status({ loggedIn: true });
+      const { state } = await authStateWith({
+        authStatus,
+        connectionEnv: { CLAUDE_CONFIG_DIR: missing },
+      });
+      expect(state).toBe('unauthenticated');
+      expect(authStatus).not.toHaveBeenCalled();
+      expect(existsSync(missing)).toBe(false);
+    });
+
+    test('the env fast path wins without asking the CLI', async () => {
+      const authStatus = status({ loggedIn: false });
+      const { state } = await authStateWith({
+        authStatus,
+        connectionEnv: {
+          CLAUDE_CONFIG_DIR: configHome,
+          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+        },
+      });
+      expect(state).toBe('authenticated');
+      expect(authStatus).not.toHaveBeenCalled();
+    });
+
+    describe('polling', () => {
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      test('a definitive answer is reused for 15s, then asked again', async () => {
+        const authStatus = status({ loggedIn: true });
+        const first = await authStateWith({ authStatus });
+        const again = await authStateWith({
+          authStatus,
+          adapter: first.adapter,
+        });
+        expect(again.state).toBe('authenticated');
+        expect(authStatus).toHaveBeenCalledTimes(1);
+        vi.setSystemTime(Date.now() + 14_000);
+        await authStateWith({ authStatus, adapter: first.adapter });
+        expect(authStatus).toHaveBeenCalledTimes(1);
+        vi.setSystemTime(Date.now() + 2_000);
+        await authStateWith({ authStatus, adapter: first.adapter });
+        expect(authStatus).toHaveBeenCalledTimes(2);
+      });
+
+      test('a failed probe is not respawned inside 5s, and is retried after', async () => {
+        const authStatus = vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({
+            stdout: '{"loggedIn":true}',
+            stderr: '',
+            code: 0,
+          });
+        const a = await authStateWith({ authStatus });
+        expect(a.state).toBe('unknown');
+        vi.setSystemTime(Date.now() + 4_000);
+        const inside = await authStateWith({
+          authStatus,
+          adapter: a.adapter,
+        });
+        expect(inside.state).toBe('unknown');
+        expect(authStatus).toHaveBeenCalledTimes(1);
+        vi.setSystemTime(Date.now() + 2_000);
+        const after = await authStateWith({
+          authStatus,
+          adapter: a.adapter,
+        });
+        expect(after.state).toBe('authenticated');
+        expect(authStatus).toHaveBeenCalledTimes(2);
+      });
+
+      test('expired entries are evicted when another is inserted', async () => {
+        const authStatus = status({ loggedIn: true });
+        let current = configHome;
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand: vi.fn().mockResolvedValue({
+            stdout: '2.1.224 (Claude Code)\n',
+            stderr: '',
+            code: 0,
+          }),
+          runAuthStatusCommand: authStatus as never,
+          readBundledVersion: () => '2.1.224',
+          getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: current }),
+        });
+        const cache = (
+          adapter as unknown as { authStatusProbes: Map<string, unknown> }
+        ).authStatusProbes;
+        await authStateWith({ authStatus, adapter });
+        expect(cache.size).toBe(1);
+        vi.setSystemTime(Date.now() + 20_000);
+        current = makeTempDir('station-claude-keychain-config-');
+        await authStateWith({ authStatus, adapter });
+        expect(cache.size).toBe(1);
+        // Keys are digests, so no env value (a token, say) is held in a key.
+        expect([...cache.keys()][0]).toMatch(/^[0-9a-f]{64}$/);
+      });
+    });
+
+    describe('the cache key follows the env the CLI is asked under', () => {
+      // The fake CLI answers from the config dir it is given, as the real one
+      // does: logged in only for the dir named `logged-in`.
+      const answerByDir = (dir: string | undefined) => ({
+        stdout: JSON.stringify({ loggedIn: dir?.endsWith('logged-in') }),
+        stderr: '',
+        code: dir?.endsWith('logged-in') ? 0 : 1,
+      });
+
+      function adapterFor(
+        authStatus: ReturnType<typeof vi.fn>,
+        connectionEnv: () => Record<string, string> | undefined,
+      ) {
+        return new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand: vi.fn().mockResolvedValue({
+            stdout: '2.1.224 (Claude Code)\n',
+            stderr: '',
+            code: 0,
+          }),
+          runAuthStatusCommand: authStatus as never,
+          readBundledVersion: () => '2.1.224',
+          getConnectionEnv: async () => connectionEnv(),
+        });
+      }
+
+      test('two connections differing only in config home are judged separately', async () => {
+        const loggedIn = join(
+          makeTempDir('station-claude-keychain-'),
+          'logged-in',
+        );
+        const loggedOut = join(
+          makeTempDir('station-claude-keychain-'),
+          'logged-out',
+        );
+        mkdirSync(loggedIn);
+        mkdirSync(loggedOut);
+        const authStatus = vi.fn(
+          async (
+            _command: string,
+            _args: string[],
+            _signal?: AbortSignal,
+            overlay?: Record<string, string>,
+          ) => answerByDir(overlay?.CLAUDE_CONFIG_DIR),
+        );
+        let current = loggedIn;
+        const adapter = adapterFor(authStatus, () => ({
+          CLAUDE_CONFIG_DIR: current,
+        }));
+        expect((await authStateWith({ authStatus, adapter })).state).toBe(
+          'authenticated',
+        );
+        current = loggedOut;
+        expect((await authStateWith({ authStatus, adapter })).state).toBe(
+          'unauthenticated',
+        );
+        expect(authStatus).toHaveBeenCalledTimes(2);
+      });
+
+      test('the ambient CLAUDE_CONFIG_DIR is part of the key too', async () => {
+        const loggedIn = join(
+          makeTempDir('station-claude-keychain-'),
+          'logged-in',
+        );
+        const loggedOut = join(
+          makeTempDir('station-claude-keychain-'),
+          'logged-out',
+        );
+        mkdirSync(loggedIn);
+        mkdirSync(loggedOut);
+        // No connection env: the CLI inherits the process env.
+        const authStatus = vi.fn(async () =>
+          answerByDir(process.env.CLAUDE_CONFIG_DIR),
+        );
+        const adapter = adapterFor(authStatus, () => undefined);
+        vi.stubEnv('CLAUDE_CONFIG_DIR', loggedIn);
+        expect((await authStateWith({ authStatus, adapter })).state).toBe(
+          'authenticated',
+        );
+        vi.stubEnv('CLAUDE_CONFIG_DIR', loggedOut);
+        expect((await authStateWith({ authStatus, adapter })).state).toBe(
+          'unauthenticated',
+        );
+        expect(authStatus).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    // The adapter's real argument vector and bounds, through the real
+    // runCliCommand and a real child (this file mocks cli-auth otherwise).
+    test.skipIf(process.platform === 'win32')(
+      'asks a real stub executable with the adapter argument vector',
+      async () => {
+        const { runCliCommand } = await vi.importActual<
+          typeof import('../auth/cli-auth.js')
+        >('../auth/cli-auth.js');
+        const dir = makeTempDir('station-claude-stub-');
+        const stub = join(dir, 'claude');
+        const argsLog = join(dir, 'args.log');
+        writeFileSync(
+          stub,
+          `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "2.1.50 (Claude Code)"; exit 0; fi
+echo "$@ | $CLAUDE_CONFIG_DIR" >> "${argsLog}"
+echo '{"loggedIn":true}'
+`,
+          { mode: 0o755 },
+        );
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([]);
+        mockAugmentedSpawnEnv.mockResolvedValue({ ...process.env });
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => stub,
+          runCommand: runCliCommand,
+          runAuthStatusCommand: runCliCommand,
+          readBundledVersion: () => '2.1.224',
+          getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: configHome }),
+        });
+        await adapter.getPrerequisites?.();
+        const detect =
+          mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0]
+            .detectAuthState;
+        await expect(detect()).resolves.toBe('authenticated');
+        expect(readFileSync(argsLog, 'utf8').trim()).toBe(
+          `auth status --json | ${configHome}`,
+        );
+      },
+    );
+  });
+
   describe('station#2072: per-connection env layering', () => {
     test('startSession carries the connection routing keys into the SDK env, over the ambient layer', async () => {
       mockAugmentedSpawnEnv.mockResolvedValue({
@@ -10955,5 +11298,123 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
           event.delta.running.length === 0,
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * #3163: a subagent's transcript lives under the config home its session's
+ * engine was SPAWNED with. These drive the real `startSession` spawn seams
+ * (credential/app-home profile, connection config home, source-affinity
+ * resume) and read the config home off the child-work item the adapter
+ * then publishes for a real captured `task_started`.
+ */
+describe('#3163 the transcript reference carries the spawn config home', () => {
+  const makeTempDir = trackTempDirs();
+  const taskStarted = loadClaudeTaskCapture('nested-agent')
+    .map((line) => line.message as Record<string, unknown> | undefined)
+    .find(
+      (message) =>
+        message?.subtype === 'task_started' &&
+        message.task_type === 'local_agent',
+    );
+
+  async function transcriptOf(
+    adapter: ClaudeAdapter,
+    start: Parameters<ClaudeAdapter['startSession']>[0],
+  ) {
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession(start);
+    for (let step = 0; step < 40; step++) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const event = next.value as {
+        method?: string;
+        delta?: { kind?: string; running?: Array<{ transcript?: unknown }> };
+      };
+      if (
+        event.method === 'child-work.updated' &&
+        event.delta?.kind === 'snapshot'
+      ) {
+        await adapter.stopSession(start.threadId);
+        return event.delta.running?.[0]?.transcript as
+          | { configHome?: string; agentId?: string }
+          | undefined;
+      }
+    }
+    throw new Error('no child-work snapshot');
+  }
+
+  test('premise: the capture starts a local agent', () => {
+    expect(taskStarted?.task_type).toBe('local_agent');
+  });
+
+  test('a credential or app-home profile session records its profile home', async () => {
+    mockQuery.mockReturnValue(createMockQuery([taskStarted]));
+    const adapter = new ClaudeAdapter({
+      getAppHomeEnv: async () => ({
+        env: { CLAUDE_CONFIG_DIR: '/station/app-homes/claude/profile-a' },
+        profileRef: 'profile-a',
+      }),
+      getConnectionEnv: async () => ({
+        CLAUDE_CONFIG_DIR: '/connection/claude-home',
+      }),
+    });
+    const transcript = await transcriptOf(adapter, {
+      provider: 'claude',
+      threadId: 'thread-3163-profile',
+      cwd: '/workspace/project',
+    });
+    expect(transcript).toMatchObject({
+      agentId: taskStarted?.task_id,
+      configHome: '/station/app-homes/claude/profile-a',
+    });
+  });
+
+  test('a connection with its own config home records that home', async () => {
+    mockQuery.mockReturnValue(createMockQuery([taskStarted]));
+    const adapter = new ClaudeAdapter({
+      getAppHomeEnv: async () => ({ profileRef: null }),
+      getConnectionEnv: async () => ({
+        CLAUDE_CONFIG_DIR: '/connection/claude-home',
+      }),
+    });
+    const transcript = await transcriptOf(adapter, {
+      provider: 'claude',
+      threadId: 'thread-3163-connection',
+      cwd: '/workspace/project',
+    });
+    expect(transcript?.configHome).toBe('/connection/claude-home');
+  });
+
+  test('a source-affinity resume records the global home, not a profile or connection one', async () => {
+    const home = makeTempDir('station-claude-3163-source-');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+    try {
+      const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+      mockQuery.mockReturnValue(createMockQuery([taskStarted]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => ({
+          env: { CLAUDE_CONFIG_DIR: '/unused-profile-home' },
+          profileRef: null,
+        }),
+        getConnectionEnv: async () => ({
+          CLAUDE_CONFIG_DIR: '/unused-connection-home',
+        }),
+        resolveSourceHome: (affinity: typeof identity.affinity) =>
+          resolveConfigHomeAffinity('claude-config-home', home, affinity),
+      });
+      const transcript = await transcriptOf(adapter, {
+        provider: 'claude',
+        threadId: 'thread-3163-source',
+        resumeCursor: {
+          claudeSessionId: 'vendor-child',
+          sourceAffinity: identity.affinity,
+        },
+        cwd: '/workspace/project',
+      });
+      expect(transcript?.configHome).toBe(home);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

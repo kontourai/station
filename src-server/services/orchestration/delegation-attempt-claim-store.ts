@@ -5,6 +5,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { join } from 'node:path';
+import type { ExecutionPreparationReceipt } from '@kontourai/station-contracts/execution-preparation';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   publishJsonFileWithOwnedLock,
@@ -154,7 +155,19 @@ export interface DelegationAttemptClaimRecord {
     readonly localProjectId?: string;
     readonly portableProjectId: string;
     readonly resourceId: string;
+    /**
+     * #2875: the version check this attempt passed, bound with the other
+     * admitted facts before any provider effect. Present only for a
+     * `project-portable-prepared` intent.
+     */
+    readonly preparation?: ExecutionPreparationReceipt;
   };
+  /**
+   * The closed refusal code of a `refused` claim, when the refusal carried
+   * one (#2875: every preparation refusal does). Lets a caller that lost
+   * the reply learn why through the lookup; never free text.
+   */
+  refusalCode?: string;
   /**
    * The real provider turn id returned by the initial-turn dispatch. Set
    * only by the owner when marking `accepted` — never invented, never
@@ -192,6 +205,38 @@ const EMPTY_LEDGER: DelegationAttemptClaimLedger = Object.freeze({
   records: Object.freeze({}),
 });
 
+const CLOSED_REFUSAL_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+
+function isWellFormedVersion(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.scheme === 'string' &&
+    candidate.scheme.length > 0 &&
+    typeof candidate.value === 'string' &&
+    candidate.value.length > 0
+  );
+}
+
+function isWellFormedPreparation(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.protocol === 'string' &&
+    candidate.mode === 'existing-realization' &&
+    typeof candidate.resourceId === 'string' &&
+    candidate.resourceId.length > 0 &&
+    isWellFormedVersion(candidate.requested) &&
+    isWellFormedVersion(candidate.observed) &&
+    candidate.guarantee === 'version-matched-when-checked' &&
+    typeof candidate.checkedAt === 'string' &&
+    candidate.trackedChanges === 'none' &&
+    Number.isSafeInteger(candidate.untrackedFiles) &&
+    (candidate.untrackedFiles as number) >= 0 &&
+    candidate.setup === 'not-performed'
+  );
+}
+
 function isWellFormedAdmitted(
   admitted: unknown,
 ): admitted is NonNullable<DelegationAttemptClaimRecord['admitted']> {
@@ -206,6 +251,11 @@ function isWellFormedAdmitted(
     const value = candidate[field];
     if (value !== undefined && typeof value !== 'string') return false;
   }
+  if (
+    candidate.preparation !== undefined &&
+    !isWellFormedPreparation(candidate.preparation)
+  )
+    return false;
   return (
     typeof candidate.portableProjectId === 'string' &&
     candidate.portableProjectId.length > 0 &&
@@ -303,6 +353,14 @@ function isWellFormedClaimRecord(
     state === 'accepted' &&
     (typeof candidate.initialTurnId !== 'string' ||
       candidate.initialTurnId.length === 0)
+  ) {
+    return false;
+  }
+  if (
+    candidate.refusalCode !== undefined &&
+    (state !== 'refused' ||
+      typeof candidate.refusalCode !== 'string' ||
+      !CLOSED_REFUSAL_CODE.test(candidate.refusalCode))
   ) {
     return false;
   }
@@ -434,7 +492,11 @@ export interface DelegationAttemptClaimStore {
     ownerToken: string,
     initialTurnId: string,
   ): Promise<OwnerTransitionOutcome>;
-  markRefused(key: string, ownerToken: string): Promise<OwnerTransitionOutcome>;
+  markRefused(
+    key: string,
+    ownerToken: string,
+    refusalCode?: string,
+  ): Promise<OwnerTransitionOutcome>;
   markUnresolved(
     key: string,
     ownerToken: string,
@@ -705,15 +767,28 @@ export class FileDelegationAttemptClaimStore
   async markRefused(
     key: string,
     ownerToken: string,
+    refusalCode?: string,
   ): Promise<OwnerTransitionOutcome> {
     // A clean pre-effect refusal is terminal: the key is retained as a
-    // tombstone and can never execute again under changed intent.
+    // tombstone and can never execute again under changed intent. A code
+    // that is not a closed code shape is dropped, never stored as text.
+    const code =
+      refusalCode !== undefined && CLOSED_REFUSAL_CODE.test(refusalCode)
+        ? refusalCode
+        : undefined;
     return this.#transition(
       key,
       ownerToken,
       ['reserved', 'admitted'],
       (record) => {
         record.state = 'refused';
+        if (code !== undefined) record.refusalCode = code;
+        // #2875: a refused attempt never ran, so it keeps no "version
+        // matched" receipt — the pre-start recheck may be what refused it.
+        if (record.admitted?.preparation) {
+          const { preparation: _dropped, ...admitted } = record.admitted;
+          record.admitted = admitted;
+        }
       },
     );
   }
@@ -758,6 +833,8 @@ export interface DelegationAttemptProjection {
   readonly taskId?: string;
   /** Present only when `state === 'accepted'`: the real initial turn id. */
   readonly turnId?: string;
+  /** Present only when `state === 'refused'` and the refusal had a closed code. */
+  readonly refusalCode?: string;
 }
 
 export function projectDelegationAttemptClaim(
@@ -785,7 +862,12 @@ export function projectDelegationAttemptClaim(
         turnId: record.initialTurnId,
       };
     case 'refused':
-      return { attemptId, state: 'refused', taskId: record.taskId };
+      return {
+        attemptId,
+        state: 'refused',
+        taskId: record.taskId,
+        ...(record.refusalCode ? { refusalCode: record.refusalCode } : {}),
+      };
     case 'unresolved':
       return { attemptId, state: 'unresolved', taskId: record.taskId };
   }

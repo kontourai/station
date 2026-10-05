@@ -317,25 +317,45 @@ const MAX_STORED_SESSIONS = 500;
 const CLOSED_RETENTION_MS = 24 * 60 * 60 * 1000;
 const PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
+/**
+ * Why a viewport is refused, naming the field, or undefined when valid. The
+ * one definition behind {@link isValidBrowserViewport}, so the answer an API
+ * caller reads cannot drift from the check that refuses.
+ */
+export function browserViewportProblem(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return 'viewport must be an object with width, height and deviceScaleFactor';
+  const v = value as Record<string, unknown>;
+  for (const key of ['width', 'height'] as const) {
+    const n = v[key];
+    if (n === undefined) return `viewport.${key} is required`;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 100 || n > 4096)
+      return `viewport.${key} must be an integer from 100 to 4096`;
+  }
+  const scale = v.deviceScaleFactor;
+  if (scale === undefined) return 'viewport.deviceScaleFactor is required';
+  if (
+    typeof scale !== 'number' ||
+    !Number.isFinite(scale) ||
+    scale < 0.5 ||
+    scale > 4
+  )
+    return 'viewport.deviceScaleFactor must be a number from 0.5 to 4';
+  if (v.mobile !== undefined && typeof v.mobile !== 'boolean')
+    return 'viewport.mobile must be a boolean';
+  const unknown = Object.keys(v).find(
+    (key) => !['width', 'height', 'deviceScaleFactor', 'mobile'].includes(key),
+  );
+  if (unknown !== undefined)
+    // The key is caller-supplied; cap what is echoed back.
+    return `viewport.${unknown.length > 64 ? `${unknown.slice(0, 64)}...` : unknown} is not a viewport field`;
+  return undefined;
+}
+
 export function isValidBrowserViewport(
   value: unknown,
 ): value is BrowserViewport {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  const dimension = (n: unknown) =>
-    typeof n === 'number' && Number.isInteger(n) && n >= 100 && n <= 4096;
-  return (
-    dimension(v.width) &&
-    dimension(v.height) &&
-    typeof v.deviceScaleFactor === 'number' &&
-    Number.isFinite(v.deviceScaleFactor) &&
-    v.deviceScaleFactor >= 0.5 &&
-    v.deviceScaleFactor <= 4 &&
-    (v.mobile === undefined || typeof v.mobile === 'boolean') &&
-    Object.keys(v).every((key) =>
-      ['width', 'height', 'deviceScaleFactor', 'mobile'].includes(key),
-    )
-  );
+  return browserViewportProblem(value) === undefined;
 }
 
 export function isValidBrowserProjectId(

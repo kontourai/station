@@ -148,9 +148,39 @@ for local automation credentials and the repository instructions for arm/confirm
    Source qualification can reuse the same valid receipt; artifact, installation,
    update and external-provider evidence still has to match the Stable outputs.
 
-Nightly runs daily at 06:43 UTC, after the 06:17 qualification opportunity; it
-checks evidence rather than assuming the scheduled run has finished. It can run
-fresh qualification when necessary. Manual delivery remains available. Preview
+Nightly has two entry points, and both serialize on one `nightly` concurrency
+group:
+
+- **From qualification** (dormant until the owner sets the repository variable
+  `STATION_QUALIFIED_NIGHTLY` to `enabled`, after admitting
+  `main-qualification.yml@refs/heads/main` to the GCP workload identity
+  condition that Android staging uses). When a main qualification run passes, it calls
+  [Nightly](../../.github/workflows/nightly.yml) from inside the same run for
+  the commit it just qualified. That run's triggering commit is the qualified
+  commit, and attestations, provenance and the cohort verifiers all bind to it.
+  A Nightly started on a later `main` cannot publish an older qualified
+  commit. The qualification result stands in for Nightly's own
+  full-regression call. A
+  [decide step](../../scripts/nightly-qualification-decide.mjs) skips the call
+  in three cases: a native deploy-ledger row or a `nightly-version-code/*`
+  reservation already names the commit, or a native Nightly shipped less than
+  20 hours ago. That keeps this entry at about one build a day. A reserved
+  commit without a ledger row is not retried automatically; dispatch Nightly
+  to retry. npm trusted publishing matches the top-level workflow, so this
+  entry skips the CLI publication until `main-qualification.yml` is a
+  confirmed trusted publisher.
+- **Scheduled.** Nightly also runs daily at 06:43 UTC as the fallback and as
+  the CLI's npm publishing path. It checks evidence rather than assuming the
+  06:17 qualification has finished. It can run fresh qualification when
+  necessary.
+
+The native cohort refuses a source its published markers already contain, so a
+Nightly that waited behind a newer one cannot move the markers back. A failed
+Nightly started from qualification leaves that qualification run red. Repair
+judges the run by its `Full source qualification` job, so the failure does not
+open a repair episode, and source-qualification reuse also judges that run by
+the same gate job, so the passing qualification still counts. `Main pipeline
+health` does not watch the publication, so read the run itself. Manual delivery remains available. Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance still runs on main pushes; the manual package-publish operation

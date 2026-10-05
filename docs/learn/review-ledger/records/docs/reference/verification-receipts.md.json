@@ -14,6 +14,8 @@
 
     "schemas/verification-receipt.schema.json",
 
+    "scripts/__tests__/trust-reconcile-manifest.test.ts",
+
     "scripts/classify-ci-change.mjs",
 
     "scripts/lib/test-reliability.mjs",
@@ -36,9 +38,7 @@
 
     "scripts/run-verification.mjs",
 
-    "scripts/verification-lanes.mjs",
-
-    "scripts/__tests__/trust-reconcile-manifest.test.ts"
+    "scripts/verification-lanes.mjs"
   ],
 
   "checks": [

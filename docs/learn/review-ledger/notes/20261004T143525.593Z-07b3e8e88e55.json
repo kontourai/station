@@ -1,0 +1,7 @@
+{
+  "revision": "0e4cc2ff9afda08bfe3b0d24990cd8e08d974318",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed against the new start/dev --watch mode (tsx watch server, Vite dev UI with same-origin proxy, STATION_DEV_WATCH_POLL, loopback-only, distinct home); prose updated or confirmed accurate.","inputs":["docs/guides/agents.md"]}
+  ]
+}

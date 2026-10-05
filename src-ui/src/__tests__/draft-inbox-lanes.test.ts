@@ -3,11 +3,13 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { describe, expect, test } from 'vitest';
 import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
 import type { ChatUIState } from '../contexts/active-chats-state';
-import { sessionStatusWord } from '../utils/session-state';
 import { sessionFailureText } from '../utils/sessionFailure';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
-import { partitionSessionLanes } from '../views/sessions/sessions-lane-model';
+import {
+  partitionSessionLanes,
+  sessionWorkStatus,
+} from '../views/sessions/sessions-lane-model';
 
 /**
  * #2310 — a session nothing has been sent to is a Draft, not live work.
@@ -104,14 +106,16 @@ describe('Draft sessions are not live work (#2310)', () => {
     expect(items[0]?.lifecycleLabel).toBe('Draft');
     expect(liveIds()).toEqual([]);
     expect(idsIn('drafts')).toEqual([THREAD]);
-    expect(sessionStatusWord(SERVER_DRAFT)).toBe('Draft');
+    expect(sessionWorkStatus(SERVER_DRAFT, [], NOW).word).toBe('Draft');
   });
 
   test('a session with history and no open turn is Idle', () => {
     const { idsIn } = inboxGroups([SERVER_READY_WITH_HISTORY]);
     expect(idsIn('idle')).toEqual([SERVER_READY_WITH_HISTORY.threadId]);
     expect(idsIn('drafts')).toEqual([]);
-    expect(sessionStatusWord(SERVER_READY_WITH_HISTORY)).toBe('Ready');
+    expect(sessionWorkStatus(SERVER_READY_WITH_HISTORY, [], NOW).word).toBe(
+      'Idle',
+    );
   });
 
   test('the first turn promotes the same row into Running', () => {

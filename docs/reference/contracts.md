@@ -37,7 +37,8 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. `usageProvisional` marks a terminal child whose usage is still its last running figure; settles that report usage replace it, and settled usage is otherwise sticky. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps the flag, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
@@ -45,6 +46,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
+| `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
@@ -57,7 +59,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
-| `@kontourai/station-contracts/project` | Project config and metadata |
+| `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
@@ -93,7 +95,16 @@ execution child for the row's conversation, including when no turn is open.
 It is omitted when the current child is outside the caller's readable scope.
 `lastRuntimeErrorMessage` carries the current terminal error when the event
 fold can prove one; `lastTurnAbortReason` carries a non-recovery abort's
-reason. A later successful terminal clears them.
+reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
+is `true` when that terminal error carried an engine adapter's
+`UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
+queued follow-ups on it until a turn starts or the user sends one.
+
+`ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
+not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
+chat banner reads it through the Session API's
+[usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -196,7 +207,7 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) shows "No response from <engine> for …" and the stall notice with a
+`progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
 Stop button, and the user decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
@@ -471,6 +482,10 @@ an explicit unsupported/unavailable reason. `PullRequest.headSha` and
 `baseSha` are optional because a provider that omits exact revisions must not
 be presented as current by inference.
 
+`TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
+opt-in to move a Task to `done` when every pull request kept on it is merged;
+a Task store that carries it is refused by Station builds that predate it.
+
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
@@ -558,7 +573,17 @@ and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConfli
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
-separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+separate meaning. `needs_input` and `review_pending` items may also carry the
+optional `environmentKind: 'peer'` and `environmentName` fields
+(`AttentionSessionEnvironment`). They mark a delegated task that runs on a
+paired Station, where a local reply cannot reach it. The fields are additive.
+Their absence means the task runs on this Station, or the server predates them.
+`peerRequestReference` names the paired Station's open request (`environmentId`,
+`taskId`, `requestId`, `requestType`), and `viewerCanRespond` reports this
+Station's checks on the delegated `respond` route. Both are additive and
+optional; neither feeds the local request routes. The source is
+`OrchestrationDelegationContext.peerPendingRequest` on the orchestration
+subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)
@@ -634,6 +659,19 @@ identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
 engine/profile observation from the applied process environment. Its absence
 means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
+
+
+### Usage observation provenance
+
+`@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,
+and `UsageRollup`. A receipt's optional `sourceSequence` is durable order within
+its Station/thread, not a provider-clock timestamp or an authorization grant.
+Same-source cumulative replacements use that order and preserve omitted
+measured components. Older peers can omit it and retain timestamp ordering.
+Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
+`aggregateReceipts` is bounded logical transfer material, separate from the
+receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
+for limits and observation-window semantics.
 
 
 ## Immutable Task output review

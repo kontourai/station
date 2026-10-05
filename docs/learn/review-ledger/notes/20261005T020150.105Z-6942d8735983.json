@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read the inbox, Continue working and Chats and tasks passages. The change adds a decorative project colour dot to inbox/Home rows and a Git section on Home rows' hover cards; no user step, label or flow described here changed, and no claim contradicts the new metadata. Remains accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]}
+  ]
+}

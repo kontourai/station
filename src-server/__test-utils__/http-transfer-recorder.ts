@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { request as nodeRequest } from 'node:http';
 import { Readable, Transform } from 'node:stream';
 import { createGunzip } from 'node:zlib';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  ORCHESTRATION_STREAM_ACTIVITY_EVENT,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import type { ClientAuthenticatedTransport } from '../../packages/sdk/src/client/http.js';
 
 export type TransferAttempt = {
@@ -12,7 +15,14 @@ export type TransferAttempt = {
   socketBytesRead: number;
   encodedBodyBytes: number;
   decodedBodyBytes: number;
+  /** Event frames, excluding the debounced trailing activity frames below. */
   frames: number;
+  /**
+   * `orchestration:activity` frames. The route flushes one 100ms after the
+   * last coalesced event of a burst, so whether it lands inside a phase
+   * depends on host speed, not on the transfer. They are counted apart.
+   */
+  activityFrames: number;
   eventIdentities: Array<{
     frame: number;
     event: string;
@@ -30,6 +40,7 @@ const knownEvents = new Set<string>([
   ...Object.values(SERVER_EVENTS),
   'orchestration:snapshot',
   'orchestration:caughtUp',
+  ORCHESTRATION_STREAM_ACTIVITY_EVENT,
 ]);
 
 function frameIdentity(frame: string, index: number) {
@@ -89,6 +100,7 @@ export class HttpTransferRecorder {
         encodedBodyBytes: number;
         decodedBodyBytes: number;
         frames: number;
+        activityFrames: number;
       }
     | undefined;
 
@@ -107,8 +119,16 @@ export class HttpTransferRecorder {
       encodedBodyBytes: active.encodedBodyBytes(),
       decodedBodyBytes: active.decodedBodyBytes(),
       frames: active.frames(),
+      activityFrames: active.activityFrames(),
     };
     active.resetEventIdentities();
+  }
+
+  /** Activity frames seen on the active response since the checkpoint. */
+  activityFramesSinceCheckpoint(): number {
+    const active = this.#active;
+    if (!active) throw new Error('transfer recorder has no active response');
+    return active.activityFrames() - (this.#checkpoint?.activityFrames ?? 0);
   }
 
   #active:
@@ -117,6 +137,7 @@ export class HttpTransferRecorder {
         encodedBodyBytes: () => number;
         decodedBodyBytes: () => number;
         frames: () => number;
+        activityFrames: () => number;
         resetEventIdentities(): void;
       }
     | undefined;
@@ -166,6 +187,7 @@ export class HttpTransferRecorder {
         let encodedBodyBytes = 0;
         let decodedBodyBytes = 0;
         let frames = 0;
+        let activityFrames = 0;
         const eventIdentities: TransferAttempt['eventIdentities'] = [];
         let frameBuffer = '';
         let complete = false;
@@ -175,6 +197,7 @@ export class HttpTransferRecorder {
           encodedBodyBytes: () => encodedBodyBytes,
           decodedBodyBytes: () => decodedBodyBytes,
           frames: () => frames,
+          activityFrames: () => activityFrames,
           resetEventIdentities: () => {
             eventIdentities.length = 0;
           },
@@ -188,7 +211,11 @@ export class HttpTransferRecorder {
               const frame = frameBuffer.slice(0, boundary);
               frameBuffer = frameBuffer.slice(boundary + 2);
               if (frame.startsWith('event: ')) {
-                frames += 1;
+                const activity =
+                  frame.split('\n', 1)[0] ===
+                  `event: ${ORCHESTRATION_STREAM_ACTIVITY_EVENT}`;
+                if (activity) activityFrames += 1;
+                else frames += 1;
                 if (eventIdentities.length < 128)
                   eventIdentities.push(frameIdentity(frame, frames));
               }
@@ -230,6 +257,9 @@ export class HttpTransferRecorder {
             encodedBodyBytes: phaseEncodedBodyBytes,
             decodedBodyBytes: phaseDecodedBodyBytes,
             frames: checkpoint ? frames - checkpoint.frames : frames,
+            activityFrames: checkpoint
+              ? activityFrames - checkpoint.activityFrames
+              : activityFrames,
             eventIdentities: eventIdentities.map((identity) => ({
               ...identity,
               frame: identity.frame - (checkpoint?.frames ?? 0),

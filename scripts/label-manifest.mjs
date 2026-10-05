@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
@@ -202,7 +203,7 @@ function main(argv = process.argv.slice(2)) {
   }
   assertReconcileAuthority(argv);
   const live = JSON.parse(
-    execFileSync(
+    execFileSyncBounded(
       'gh',
       ['api', '--paginate', `repos/${REPOSITORY}/labels?per_page=100`],
       { encoding: 'utf8' },

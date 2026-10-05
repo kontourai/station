@@ -290,3 +290,21 @@ describe('#2456 background-task cards are unchanged through the child-work rende
     });
   }
 });
+
+test('#3163: a provider subagent card with no kind shows its own reported model as its detail', () => {
+  const view = selectChatBackgroundTasks(
+    createEmptyBackgroundTasksState(),
+    'chat-3163',
+    [
+      {
+        taskId: 'child-3163',
+        sessionThreadId: 'exec-3163',
+        model: { id: 'gpt-5.5-mini', source: 'spawn-result' },
+      },
+    ],
+  );
+  const card = [...view.running, ...view.finished].find(
+    (entry) => entry.id === 'child-3163',
+  );
+  expect(card?.detail).toBe('gpt-5.5-mini');
+});

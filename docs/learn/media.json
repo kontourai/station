@@ -91,12 +91,12 @@
     {
       "path": "docs/learn/media/repository-knowledge.png",
       "kind": "image",
-      "digest": "8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21",
-      "alt": "Knowledge Library shows 1149 repository records, 2089 links and the selected KnowledgeStoreProvider canonical record.",
+      "digest": "ff36a01d202fd05e8face22117d8c73f9051f52ebaaa965c910a8164d235e8a2",
+      "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail.",
       "scenario": "Knowledge Library \u2192 selected repository record",
-      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440\u00d71000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval.",
+      "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
@@ -105,12 +105,12 @@
     {
       "path": "docs/learn/media/repository-knowledge-narrow.png",
       "kind": "image",
-      "digest": "d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4",
-      "alt": "Knowledge Library shows 1149 repository records, 2089 links and the selected KnowledgeStoreProvider canonical record.",
+      "digest": "93a0b78417a551a7430d558e099b5457b83e3297a6b9a95b73d3c5cf0bb9725e",
+      "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
       "scenario": "Knowledge Library \u2192 narrow layout",
-      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 390\u00d7844 with the phone toolbar showing the whole Station name and no horizontal overflow (document width 390). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval.",
+      "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"

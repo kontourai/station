@@ -291,8 +291,8 @@ the bundled runtime under `versions/<version>`, then promotes the active link.
 When a running Station service's fixed launcher runs that install, the installer only
 stages the version and the launcher trials the switch instead.
 It does not run dependencies or build that archive. The Windows zip is
-`install.ps1`'s, which so far only stages a verified version
-(`STATION_INSTALL_STAGE_ONLY=1`, #2675 slice W). The default authenticated
+`install.ps1`'s, which installs it the same way without a service
+(#2675 slice W2; a Windows service is not switched yet). The default authenticated
 GitHub path and schema-v1 public source manifests still install and build a source
 release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
 and [installation lifecycle](release-channel-ports.md) for prerequisites,
@@ -314,8 +314,11 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is the scheduled Nightly build, which fires daily at 06:43 UTC,
-uses the current workflow event SHA, and skips native staging only when the
+Normal operation is a Nightly started by a passing main qualification run for
+the commit it qualified, at most about once a day, or the scheduled Nightly
+build, which fires daily at 06:43 UTC. Either uses its run's workflow event
+SHA, never stages a source its published markers already contain, and skips
+native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior
 manually, leave the optional field empty:

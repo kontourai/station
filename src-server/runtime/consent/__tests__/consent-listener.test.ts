@@ -371,6 +371,62 @@ describe('consent listener decision — the injections (each proven independentl
     expect(channel.store.get(channel.tenantId, id)?.status).toBe('pending');
   });
 
+  test('a configured HTTPS consent origin: its exact Origin on its exact Host decides; another https origin, the loopback origin on that Host, and an unmapped Host are refused', async () => {
+    const trusted = 'https://station.example.ts.net:8443';
+    const make = () => {
+      const made = setup();
+      const channel = new ConsentChannelService({ trustedOrigin: trusted });
+      channel.markListening(CONSENT_PORT);
+      const created = channel.store.create({
+        tenantId: channel.tenantId,
+        target: target(),
+        description: {
+          title: 'Trust Demo Plugin?',
+          summary: 'Review the exact capabilities.',
+          items: [{ label: 'plugin.server', detail: 'Runs server-side code' }],
+          approveLabel: 'Approve trusted access',
+          denyLabel: 'Deny',
+        },
+        requester: { kind: 'plugin-ui', id: 'demo' },
+        rateKey: 'plugin-ui',
+        revalidateTarget: async () => target(),
+        commitApproval: made.commitApproval,
+      });
+      if (!created.ok) throw new Error('setup failed');
+      return {
+        app: createConsentApp({ channel, credentials: makeCredentials() }),
+        id: created.transaction.id,
+        commitApproval: made.commitApproval,
+      };
+    };
+    const host = 'station.example.ts.net:8443';
+    for (const refused of [
+      { host, origin: 'https://other.example.ts.net:8443' },
+      { host, origin: 'https://station.example.ts.net' },
+      { host, origin: `http://${host}` },
+      { host: 'other.example.ts.net:8443', origin: trusted },
+    ]) {
+      const { app, id, commitApproval } = make();
+      const nonce = await renderNonce(app, id);
+      const response = await app.request(`/consent/${id}/decide`, {
+        method: 'POST',
+        headers: decideHeaders(refused),
+        body: decideBody('approve', nonce),
+      });
+      expect(response.status).toBe(403);
+      expect(commitApproval).not.toHaveBeenCalled();
+    }
+    const { app, id, commitApproval } = make();
+    const nonce = await renderNonce(app, id);
+    const accepted = await app.request(`/consent/${id}/decide`, {
+      method: 'POST',
+      headers: decideHeaders({ host, origin: trusted }),
+      body: decideBody('approve', nonce),
+    });
+    expect(accepted.status).toBe(200);
+    expect(commitApproval).toHaveBeenCalledTimes(1);
+  });
+
   test('station#3752: the page does not defeat its own guard — its Referrer-Policy keeps a real Origin coming, and a nested navigation is refused', async () => {
     const { app, id, commitApproval, channel } = setup();
 

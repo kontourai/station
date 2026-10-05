@@ -3,10 +3,10 @@
  * delta report: which paths a branch changes, and how to name a match set
  * without printing an unbounded list.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 
 function git(args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

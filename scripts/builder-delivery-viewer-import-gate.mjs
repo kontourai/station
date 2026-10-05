@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import ts from 'typescript';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = 'examples/builder-delivery-viewer';
@@ -445,7 +445,7 @@ export function scanFile(file, content) {
 }
 
 export function scopedFiles() {
-  return execFileSync(
+  return execFileSyncBounded(
     'git',
     [
       'ls-files',

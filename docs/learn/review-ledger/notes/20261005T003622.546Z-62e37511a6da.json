@@ -1,0 +1,7 @@
+{
+  "revision": "a9f4e5245bdd2a9ff154ccd7f68f3e73cd15f9f5",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"#3312: active-chats-state.ts changed only a comment (the Continue card's label in a #1582 history note); no replay, tape or chat-state claim in this doc is affected. No prose change.","inputs":["docs/design/session-tape-replay.md","src-ui/src/contexts/active-chats-state.ts","src-ui/src/components/chat/ChatSettingsPanel.tsx","src-ui/src/index.css"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"nightly.yml gained workflow_call from main-qualification.yml. GCP WIF step: in a called workflow the OIDC workflow_ref claim names the top-level caller, so a condition pinned to nightly.yml@refs/heads/main rejects the qualification entry. Added that requirement; live condition NOT_VERIFIED. Daily scheduled-channel sentence remains true.","inputs":["docs/guides/mobile-release.md",".github/workflows/nightly.yml"]}
+  ]
+}

@@ -5,11 +5,11 @@
  * connects to this test. The fixture-repo control that proves the oracle is
  * content-derived stays in the original file.
  */
-import { execFileSync } from 'node:child_process';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { BINARY_EXCLUDES } from '../content-integrity-gate.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -40,9 +40,10 @@ describe('BINARY_EXCLUDES cross-checked against the independent git-binary-detec
   }
 
   function gitEolClassification(): Map<string, boolean> {
-    const out = execFileSync('git', ['ls-files', '--eol'], {
+    const out = execFileSyncBounded('git', ['ls-files', '--eol'], {
       cwd: repoRoot,
       encoding: 'utf8',
+      windowsHide: true,
     });
     const classification = new Map<string, boolean>();
     for (const line of out.trim().split('\n')) {
@@ -64,9 +65,10 @@ describe('BINARY_EXCLUDES cross-checked against the independent git-binary-detec
   // self-maintaining: both sides move together as files are added or
   // removed, with no number to hand-update, ever.
   function trackedFileCount(): number {
-    return execFileSync('git', ['ls-files'], {
+    return execFileSyncBounded('git', ['ls-files'], {
       cwd: repoRoot,
       encoding: 'utf8',
+      windowsHide: true,
     })
       .trim()
       .split('\n')

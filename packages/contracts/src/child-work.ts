@@ -89,6 +89,182 @@ export interface ChildWorkUsage {
   durationMs?: number;
 }
 
+/**
+ * #3163: where a child's model came from. Every source is the engine's own
+ * report about THIS child. The parent's model is never a source, even when
+ * the child is documented to inherit it: an unreported model stays absent and
+ * renders as "model not reported".
+ */
+export type ChildWorkModelSource =
+  /**
+   * Claude: `message.model` on an assistant message the child itself
+   * produced (`parent_tool_use_id` is the tool call that spawned it). This is
+   * the API's resolved model, so it reflects an agent definition's or the
+   * Agent tool's model choice.
+   */
+  | 'subagent-reply'
+  /** Codex: `model` on the completed `spawnAgent` call that created the child. */
+  | 'spawn-result'
+  /** Codex: `thread.model` on the child thread's own `thread/started`. */
+  | 'child-thread';
+
+export const CHILD_WORK_MODEL_SOURCES: readonly ChildWorkModelSource[] = [
+  'subagent-reply',
+  'spawn-result',
+  'child-thread',
+];
+
+/** Bound on a reported model id; a longer one is not a model id and is dropped. */
+export const CHILD_WORK_MODEL_ID_MAX_CHARS = 200;
+
+export interface ChildWorkModel {
+  id: string;
+  source: ChildWorkModelSource;
+}
+
+/**
+ * #3163: the identity of a child's own transcript, resolved on the server.
+ * It names the engine's records by id and never by a file path, so a client
+ * can't steer a read at an arbitrary file.
+ *
+ * `claude-subagent`: Claude Code keeps every subagent's transcript under the
+ * parent Claude session (`session_id` on `task_started`) by agent id (the
+ * `local_agent` task's `task_id`).
+ */
+export type ChildWorkTranscriptRef = {
+  kind: 'claude-subagent';
+  sessionId: string;
+  agentId: string;
+  /**
+   * The Claude config home the session ran under (its app-home or
+   * credential profile, a connection's config home, or the global one), as
+   * the adapter applied it at spawn. Absent means the server's own global
+   * config home. Written by the server; no request supplies it.
+   */
+  configHome?: string;
+};
+
+/** Bound on a recorded config home path. */
+const CHILD_WORK_CONFIG_HOME_MAX_CHARS = 4_096;
+
+/** An absolute POSIX or Windows path, with no NUL. */
+function isAbsoluteConfigHome(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= CHILD_WORK_CONFIG_HOME_MAX_CHARS &&
+    !value.includes('\0') &&
+    (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value))
+  );
+}
+
+/**
+ * Whether `id` can be a model id at all. Claude labels a locally synthesized
+ * reply (an API error, an interruption) `<synthetic>`: no model produced it,
+ * so it is never a child's model and must not replace a real one.
+ */
+export function isReportableChildWorkModelId(id: string): boolean {
+  const trimmed = id.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= CHILD_WORK_MODEL_ID_MAX_CHARS &&
+    !(trimmed.startsWith('<') && trimmed.endsWith('>'))
+  );
+}
+
+/**
+ * The first `max` code points of `text`, flagged when cut. Never splits a
+ * surrogate pair, so a cut emoji does not become a lone surrogate.
+ */
+export function cutChildWorkText(
+  text: string,
+  max: number,
+): { text: string; truncated?: true } {
+  if (text.length <= max) return { text };
+  const points = Array.from(text);
+  if (points.length <= max) return { text };
+  return { text: points.slice(0, max).join(''), truncated: true };
+}
+
+/** A Claude session id: a UUID, as the SDK's own transcript reader requires. */
+const CLAUDE_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A Claude agent id: one path-safe segment (`agent-<id>.jsonl`). */
+const CLAUDE_AGENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** The ref when it is well-formed, else undefined. Never trusts a path. */
+export function parseChildWorkTranscriptRef(
+  value: unknown,
+): ChildWorkTranscriptRef | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    raw.kind !== 'claude-subagent' ||
+    typeof raw.sessionId !== 'string' ||
+    typeof raw.agentId !== 'string' ||
+    !CLAUDE_SESSION_ID_PATTERN.test(raw.sessionId) ||
+    !CLAUDE_AGENT_ID_PATTERN.test(raw.agentId)
+  ) {
+    return undefined;
+  }
+  const configHome =
+    typeof raw.configHome === 'string' && isAbsoluteConfigHome(raw.configHome)
+      ? raw.configHome
+      : undefined;
+  // A config home that is present but not an absolute path is not a ref.
+  if (raw.configHome !== undefined && configHome === undefined)
+    return undefined;
+  return {
+    kind: 'claude-subagent',
+    sessionId: raw.sessionId,
+    agentId: raw.agentId,
+    ...(configHome ? { configHome } : {}),
+  };
+}
+
+/** The model when it is a real reported id, else undefined. */
+function parseChildWorkModel(value: unknown): ChildWorkModel | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const raw = value as Record<string, unknown>;
+  const id = typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (
+    !isReportableChildWorkModelId(id) ||
+    !CHILD_WORK_MODEL_SOURCES.includes(raw.source as ChildWorkModelSource)
+  ) {
+    return undefined;
+  }
+  return { id, source: raw.source as ChildWorkModelSource };
+}
+
+/** Bound on the transcript messages one page may carry. */
+export const CHILD_WORK_TRANSCRIPT_PAGE_MAX = 50;
+/** Bound on one transcript entry's text; a longer one is cut and flagged. */
+export const CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS = 4_000;
+/** Bound on the entries one transcript message may contribute. */
+export const CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX = 20;
+
+/** One read-only line of a child's transcript. */
+export type ChildWorkTranscriptEntry = {
+  /** Index of the transcript message this entry came from. */
+  message: number;
+  truncated?: true;
+} & (
+  | { kind: 'text'; role: 'user' | 'assistant'; text: string }
+  | { kind: 'tool-call'; name: string; input?: string }
+  | { kind: 'tool-result'; text?: string; isError?: true }
+  /** Blocks of one message past the per-message bound. */
+  | { kind: 'omitted'; count: number }
+  /** A transcript record too large to read; it is skipped, not cut. */
+  | { kind: 'too-large' }
+);
+
+export interface ChildWorkTranscriptPage {
+  entries: ChildWorkTranscriptEntry[];
+  /** Message offset of the next page; absent on the last page. */
+  nextOffset?: number;
+}
+
 export type ChildWorkResultHandle =
   | { kind: 'transcript-file'; path: string }
   | { kind: 'session'; threadId: string; conversationId?: string };
@@ -108,11 +284,23 @@ export interface ChildWorkItem extends ChildWorkKey {
   title?: string;
   /** The producer's own name for the kind of child (e.g. a subagent type). */
   kindLabel?: string;
+  /** #3163: the child's OWN model, as its engine reported it. Absent when unreported. */
+  model?: ChildWorkModel;
+  /** #3163: where the child's own transcript can be read, when it has one. */
+  transcript?: ChildWorkTranscriptRef;
   /** The child outlived (or will outlive) the turn that spawned it. */
   backgrounded?: boolean;
   /** Latest one-line status while running. */
   progress?: string;
   usage?: ChildWorkUsage;
+  /**
+   * #3308: present only on a terminal child whose `usage` is still the last
+   * figure reported while it ran, because no settle has reported usage yet
+   * (Claude's `task_updated` terminal carries none; its `task_notification`
+   * follows with the final figure). A later settle's usage replaces it, where
+   * usage a settle reported stays sticky. Set by the reducer, never a producer.
+   */
+  usageProvisional?: true;
   result?: ChildWorkResult;
   startedAt?: string;
   endedAt?: string;
@@ -137,9 +325,23 @@ export type ChildWorkDelta =
       status: ChildWorkTerminalStatus;
       result?: ChildWorkResult;
       usage?: ChildWorkUsage;
+      /**
+       * #3308: `usage` is a running figure, not one the engine reported at
+       * settle — set when a stored provisional item is replayed as a settle
+       * (`childWorkSettleFromItem`). Such usage only fills and stays
+       * provisional, so the engine's later final figure still replaces it.
+       */
+      usageProvisional?: true;
       /** Identity a settle can supply when no earlier delta did. */
       identity?: Partial<
-        Omit<ChildWorkItem, keyof ChildWorkKey | 'status' | 'result' | 'usage'>
+        Omit<
+          ChildWorkItem,
+          | keyof ChildWorkKey
+          | 'status'
+          | 'result'
+          | 'usage'
+          | 'usageProvisional'
+        >
       >;
     } & ChildWorkKey)
   | {
@@ -279,9 +481,22 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (depth !== undefined) next.depth = depth;
   if (item.title !== undefined) next.title = item.title;
   if (item.kindLabel !== undefined) next.kindLabel = item.kindLabel;
+  const model = parseChildWorkModel(item.model);
+  if (model) next.model = model;
+  const transcript = parseChildWorkTranscriptRef(item.transcript);
+  if (transcript) next.transcript = transcript;
   if (item.backgrounded !== undefined) next.backgrounded = item.backgrounded;
   if (item.progress !== undefined) next.progress = item.progress;
   if (usage) next.usage = usage;
+  // Only the reducer's settle and snapshot paths derive this, and only a
+  // terminal child's usage can be provisional.
+  if (
+    usage &&
+    item.usageProvisional === true &&
+    isChildWorkTerminalStatus(item.status)
+  ) {
+    next.usageProvisional = true;
+  }
   if (result) next.result = result;
   if (item.startedAt !== undefined) next.startedAt = item.startedAt;
   if (item.endedAt !== undefined) next.endedAt = item.endedAt;
@@ -393,7 +608,12 @@ function applySnapshot(
   )) {
     if (listed.has(key)) continue;
     if (!changed) items = { ...items };
-    items[key] = { ...items[key], status: 'unresolved' };
+    // No settle reported this child's usage: what it has is a running figure.
+    items[key] = {
+      ...items[key],
+      status: 'unresolved',
+      ...(items[key].usage ? { usageProvisional: true as const } : {}),
+    };
     changed = true;
   }
   if (!changed) return state;
@@ -423,6 +643,46 @@ function applyUpsert(
   return { ...state, items: { ...state.items, [key]: next } };
 }
 
+/**
+ * #3308: a settled child's usage, and whether it is still a running figure.
+ *
+ * - Usage a settle reported is sticky: a later settle only fills what is
+ *   absent.
+ * - A running figure (the child's usage when this settle closes it, or usage
+ *   already marked provisional) is replaced by the settle's reported usage,
+ *   field by field. It stays provisional while any of its fields is left
+ *   unreplaced, so a duration-only settle cannot pass a running token count
+ *   off as final.
+ * - A provisional settle (a stored item replayed, `childWorkSettleFromItem`)
+ *   restates a running figure: it only fills, and keeps the usage provisional.
+ */
+function settledUsage(
+  existing: ChildWorkItem | undefined,
+  usage: ChildWorkUsage | undefined,
+  options: { open: boolean; provisional: boolean },
+): Pick<ChildWorkItem, 'usage' | 'usageProvisional'> {
+  const prior = existing?.usage;
+  if (!(options.open || existing?.usageProvisional) && prior) {
+    // Settled usage: sticky.
+    return {
+      usage: fillAbsent(prior, usage),
+      usageProvisional: existing?.usageProvisional,
+    };
+  }
+  // `prior`, when present, is a running figure.
+  if (!usage || options.provisional) {
+    const next = fillAbsent(prior, usage);
+    return { usage: next, usageProvisional: next ? true : undefined };
+  }
+  const unreplaced = Object.keys(prior ?? {}).some(
+    (field) => usage[field as keyof ChildWorkUsage] === undefined,
+  );
+  return {
+    usage: { ...prior, ...usage },
+    usageProvisional: unreplaced ? true : undefined,
+  };
+}
+
 function applySettle(
   state: ChildWorkRegistryState,
   delta: Extract<ChildWorkDelta, { kind: 'settle' }>,
@@ -432,6 +692,7 @@ function applySettle(
   const result = normalizeResult(delta.result);
   const usage = normalizeUsage(delta.usage);
   const identity = delta.identity ?? {};
+  const provisional = delta.usageProvisional === true;
   let next: ChildWorkItem;
   if (!existing) {
     // Settle before any listing: record the terminal as a tombstone, so a
@@ -443,7 +704,7 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       ...(result ? { result } : {}),
-      ...(usage ? { usage } : {}),
+      ...settledUsage(undefined, usage, { open: true, provisional }),
     });
   } else if (
     existing.status === 'running' ||
@@ -460,15 +721,17 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       result: result ?? existing.result,
-      usage: usage ? { ...existing.usage, ...usage } : existing.usage,
+      ...settledUsage(existing, usage, { open: true, provisional }),
     });
   } else {
-    // Sticky terminal: a duplicate settle may only fill what is absent.
+    // Sticky terminal: a duplicate settle may only fill what is absent —
+    // except usage that is still a running figure (#3308), which the first
+    // settle to report usage replaces, as it would have on a running child.
     next = normalizeItem({
       ...(fillAbsent(existing, identity as ChildWorkItem) ?? existing),
       status: existing.status,
       result: fillAbsent(existing.result, result),
-      usage: fillAbsent(existing.usage, usage),
+      ...settledUsage(existing, usage, { open: false, provisional }),
     });
   }
   if (sameItem(existing, next)) return state;
@@ -507,6 +770,40 @@ export function applyChildWorkDelta(
         },
       };
   }
+}
+
+/**
+ * A settled item restated as the settle delta that reproduces it, for a
+ * consumer that seeds a registry from stored items (history replay, a
+ * reconnect's session view). Undefined for a running item. Keeps a
+ * provisional usage figure provisional (#3308), so the engine's final figure
+ * can still replace it after the replay.
+ */
+export function childWorkSettleFromItem(
+  item: ChildWorkItem,
+): Extract<ChildWorkDelta, { kind: 'settle' }> | undefined {
+  const {
+    producer,
+    reporterThreadId,
+    childId,
+    status,
+    result,
+    usage,
+    usageProvisional,
+    ...identity
+  } = item;
+  if (!isChildWorkTerminalStatus(status)) return undefined;
+  return {
+    kind: 'settle',
+    producer,
+    reporterThreadId,
+    childId,
+    status,
+    ...(result ? { result } : {}),
+    ...(usage ? { usage } : {}),
+    ...(usage && usageProvisional ? { usageProvisional: true as const } : {}),
+    identity,
+  };
 }
 
 /** Every child a reporter holds (running and settled), in insertion order. */

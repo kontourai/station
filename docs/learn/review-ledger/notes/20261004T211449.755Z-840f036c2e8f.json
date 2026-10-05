@@ -1,0 +1,7 @@
+{
+  "revision": "ca8e5cdd8eb91aca69bf001cfce6abc73aebaa3c",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Re-read the pre-push line against scripts/orchestration-transfer-gate.mjs after its FAIL-line patterns were anchored to the thrown error's line (Error: or ClassName [Error]:). The line says slow hardware raises STATION_TRANSFER_CAPTURE_TIMEOUT_MS; that remains true and now covers every capture and scenario barrier, whose FAIL line names the setting. No text change.","inputs":["AGENTS.md","scripts/orchestration-transfer-gate.mjs"]}
+  ]
+}

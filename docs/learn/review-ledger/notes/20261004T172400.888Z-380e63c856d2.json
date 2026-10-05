@@ -1,0 +1,11 @@
+{
+  "revision": "62edcad8e122e757986ccf0724a6c3c73ccf63a6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the queued-retry paragraph to be accurate: the queue panel's x (Delete message, OutboundQueuedMessages.tsx) already discarded the queued turn, so discarding was never impossible; what was missing is a labelled control in a short dock and cleanup of the stale notice. Checked against ChatInputArea.tsx, ChatDockBody.tsx (latestQueuedRetryNotice and the new onDiscarded cleanup), index.css and the e2e cases at 375x667 half, 375x667 maximized and 390x844 maximized plus the new delete-clears-notice case, executed (57 of 57, twice). Not claimed: a dock tight for the transcript but not short for the composer (e.g. 390x844 half) still relies on the transcript copy.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Changed source: tests/mobile-chat-composer.spec.ts (draft test now runs for Claude and Station and pins the dispatched agent/model and persisted execution; delete-clears-notice case; Clear/Send and project-row assertions tightened). Re-read the Home / continuity rail row naming mobile-chat-composer for geometry and composer reachability: still accurate. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Changed source: ChatDockBody.tsx (an onDiscarded callback passed to the queued-messages component, plus the earlier latestQueuedRetryNotice helper). Searched this document for ChatDockBody, queued, discard and outbound claims: no match, so none is affected. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

@@ -61,7 +61,8 @@ rounding differences.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
-| Claude engine and imported transcripts | Input/output/cache tokens and provider-reported USD cost | Token events are per turn; reported cost is session cumulative |
+| Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is cumulative within each engine process; a restart begins another cost epoch |
+| Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
@@ -81,11 +82,70 @@ Codex session-cumulative observations still use the latest snapshot. This
 repairs [#581](https://github.com/kontourai/station/issues/581); it does not
 expand the window's event or byte limits.
 
+The receipt panel reads an aggregate separately from its drilldown page. Local
+aggregate reads select at most 500 observations; a page selects at most 100.
+Reaching the aggregate limit produces partial coverage. Paired transfer applies
+replacement and deduplication before its separate 500-receipt limit, preserving
+explicit dropped-material coverage instead of failing the entire peer read.
+
+A context-only ACP observation produces no empty token receipt and does not
+count as a consumed-usage report. Codex token snapshots retain one identity
+across engine-process restarts; Claude cost snapshots keep separate process
+epochs. Durable event sequence resolves equal Station-observation timestamps,
+and sparse cumulative updates preserve previously reported components.
+Combined counter estimates remain unpriced when their model, price snapshot,
+or inherited component evidence does not support one estimate. These receipts
+are observations; their latest cumulative snapshot is not a per-day consumption
+delta or an exact mixed-model allocation.
+
 These are implementation and captured-wire/fixture boundaries, not a new live
 billing reconciliation across every account and model. The scope declarations
 live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
 [receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
 The Muse serve fixture replay also exercises per-answer usage visibility.
+
+### Usage with children
+
+The conversation statistics dialog shows **Usage with children**: one total
+for the conversation and everything that ran under it, and a breakdown (own
+turns, then each subagent and delegated task, nested) with tokens, cost, tool
+uses and duration. Each child says in words whether the total counts it. The
+read is the [conversation usage tree](../reference/session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree),
+and the per-engine rules live in
+[the tree fold](../../packages/shared/src/thread-usage-tree.ts):
+
+| Child | Tokens | Cost | Evidence |
+| --- | --- | --- | --- |
+| Station-delegated task (this Station) | Added | Added | A delegate is its own session with its own receipts |
+| Station-delegated task (paired Station) | Not counted | Not counted | Its usage is recorded on the other Station |
+| Claude Code subagent | Not counted | Already in the parent's | The SDK documents `result.usage` as main-loop only and `total_cost_usd` as covering Task subagents. A measured run matched both. A subagent's own `total_tokens` equals its last request's size, not its consumption, in recorded transcripts, so it is shown as "last request", never as tokens used |
+| Codex subagent | Added | Not counted | Each child is its own thread; in the recorded collab captures the parent's cumulative total is the sum of its own calls only |
+| Muse workflow subagent | Added | Not counted | In the recorded `muse serve` captures the session's cumulative figures exclude the child's usage |
+| Any other engine | Not counted | Not counted | Undeclared; never guessed |
+
+"Not counted" makes the total partial, and the dialog lists why. A subagent's
+own figure is still shown in the breakdown. The token total is input + output
+only, unlike the dialog's own "Total", which adds cache where that is backed;
+the breakdown says whether its input figures exclude cached input, says so when
+that isn't established for an engine, and says the sum mixes measures only when
+two engines are declared to count cached input differently. Costs in different
+currencies, and estimates under different price snapshots, are listed side by
+side and not added together. The tree covers sessions on this Station only.
+
+Delegated tasks are found from the delegation context Station stamps at
+launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+session's `delegate_task` call Station derives the context from the calling
+session's own record; for Station's own agent the runtime attests it from the
+conversation the tool call ran in. A task launched through a caller-less
+station-control process (as a Strands-runtime agent uses) names neither, so it
+is not found and not shown as missing. A task you can't read is never named
+or figured. When Station derived or attested its link to your conversation
+(in hosted mode, a delegate Station couldn't attribute to a bound caller is
+the Station operator's), the total is partial and says how many such tasks
+there are. When the link was only a request's claim, the task is ignored, so
+no one can mark your total partial by naming your conversation. The tree
+refreshes every 15 seconds while the dialog is open, and stops after a 404 or
+422.
 
 **People paired with this Station** reads the existing paired-device registry
 through a captured API/authority scope. Only active interactive devices with an

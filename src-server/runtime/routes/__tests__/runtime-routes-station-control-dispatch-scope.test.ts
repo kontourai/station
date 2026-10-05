@@ -19,9 +19,19 @@ import type { AddressInfo } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import { PROVIDER_MODEL_OPTION_SUPPORT } from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { POSTURE_OPTION_KEYS } from '../../../routes/orchestration/dispatch-scope.js';
+import {
+  continueDelegatedTaskBodySchema,
+  continueForegroundMessageSchema,
+  conversationHandoffSchema,
+  delegateTaskSchema,
+  foregroundMessageObjectSchema,
+} from '../../../routes/orchestration/orchestration.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
@@ -1450,5 +1460,334 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       expect(await code('GET', leaf, headers)).toBe(
         'station_control_route_unmapped',
       );
+  });
+
+  // ── #2377 slice C3b: an agent dispatches without an approval posture ────
+  //
+  // Owner decision (2026-10-03): a station-control dispatch or follow-up
+  // from a caller that is not a bound operator may not carry an approval
+  // mode; it is refused, never clamped, whatever the value (Station ranks
+  // nothing, so `ask` is refused as surely as `auto`).
+
+  const POSTURE = 'station_control_posture_not_allowed';
+  /**
+   * The option keys the matrix drives, written out rather than read from
+   * `POSTURE_OPTION_KEYS`, so dropping a key from the source fails its row.
+   */
+  const POSTURE_OPTION_KEY_LITERALS = [
+    'approvalMode',
+    'mode',
+    'permissionMode',
+    'autoMode',
+  ] as const;
+  /** The posture each route's body can carry, by field path. */
+  const withOptions = (key: string) =>
+    ({
+      approvalMode: 'auto',
+      mode: 'acceptEdits',
+      permissionMode: 'plan',
+      autoMode: false,
+    })[key];
+  const optionVariants = (
+    path: string,
+    place: (options: Record<string, unknown>) => Record<string, unknown>,
+  ): Record<string, Record<string, unknown>> =>
+    Object.fromEntries([
+      ...POSTURE_OPTION_KEY_LITERALS.map((key) => [
+        `${path}.${key}`,
+        place({ [key]: withOptions(key) }),
+      ]),
+      // A posture beside an ordinary option is still a posture.
+      [
+        `${path}.approvalMode (with effort)`,
+        place({ effort: 'high', approvalMode: 'auto' }),
+      ],
+      [
+        `${path}.autoMode (with effort)`,
+        place({ effort: 'high', autoMode: false }),
+      ],
+    ]);
+  const pickVariants = {
+    'setApprovalMode (ask)': {
+      setApprovalMode: 'ask',
+      setApprovalModeBasedOn: null,
+    },
+    'setApprovalMode (connection-default)': {
+      setApprovalMode: 'connection-default',
+      setApprovalModeBasedOn: null,
+    },
+  };
+  const NEW_IN_P = { agent: 'writer', workspace: P };
+  const DELEGATION = {
+    mode: 'isolated-child',
+    depth: 1,
+    maxDepth: 2,
+    parentAgentSlug: 'writer',
+    rootAgentSlug: 'writer',
+  };
+  const POSTURE_ROUTES: Record<
+    string,
+    {
+      path: string;
+      base: Record<string, unknown>;
+      variants: Record<string, Record<string, unknown>>;
+    }
+  > = {
+    'POST /chat': {
+      path: '/api/orchestration/chat',
+      base: { message: 'go', target: NEW_IN_P },
+      variants: {
+        ...pickVariants,
+        ...optionVariants('target.model.options', (options) => ({
+          target: { ...NEW_IN_P, model: { options } },
+        })),
+      },
+    },
+    'POST /chat/background': {
+      path: '/api/orchestration/chat/background',
+      base: { message: 'go', target: NEW_IN_P },
+      variants: {
+        ...pickVariants,
+        ...optionVariants('target.model.options', (options) => ({
+          target: { ...NEW_IN_P, model: { options } },
+        })),
+      },
+    },
+    'POST /chat/delegated': {
+      path: '/api/orchestration/chat/delegated',
+      base: { message: 'go', target: NEW_IN_P, delegation: DELEGATION },
+      variants: {
+        ...pickVariants,
+        ...optionVariants('target.model.options', (options) => ({
+          target: { ...NEW_IN_P, model: { options } },
+        })),
+      },
+    },
+    'POST /chat/:conversationId/continue': {
+      path: '/api/orchestration/chat/op-thread-a/continue',
+      base: { message: 'go' },
+      variants: {
+        ...pickVariants,
+        ...optionVariants('model.options', (options) => ({
+          model: { options },
+        })),
+      },
+    },
+    'POST /delegations': {
+      path: '/api/orchestration/delegations',
+      base: { prompt: 'go', target: NEW_IN_P },
+      variants: optionVariants('target.model.options', (options) => ({
+        target: { ...NEW_IN_P, model: { options } },
+      })),
+    },
+    'POST /delegations/:taskId/continue': {
+      path: '/api/orchestration/delegations/op-thread-a/continue',
+      base: { message: 'go' },
+      variants: optionVariants('modelOptions', (modelOptions) => ({
+        modelOptions,
+      })),
+    },
+  };
+
+  test.each(Object.keys(POSTURE_ROUTES))(
+    '%s: a posture is refused for every caller but a bound operator and the operator UI',
+    async (route) => {
+      const { base } = await setup();
+      const { path, base: body, variants } = POSTURE_ROUTES[route]!;
+      const callers: Array<[string, () => Record<string, string>, string]> = [
+        ['bearer-exposed', as('bearer-exposed', 'op-caller-a'), POSTURE],
+        ['delegated-custody', as('delegated-custody', 'op-caller-a'), POSTURE],
+        ['bound, another person', as('bound', 'person-caller-a'), POSTURE],
+        ['raw token', () => internal(), 'station_control_caller_required'],
+        ['bound operator', as('bound', 'op-caller-a'), 'reached'],
+        ['operator UI', () => operatorUi, 'reached'],
+      ];
+      const rows: string[][] = [];
+      for (const [field, carried] of Object.entries(variants))
+        for (const [label, headers, expected] of callers)
+          rows.push([
+            field,
+            label,
+            await outcome(base, path, headers(), { ...body, ...carried }),
+            expected,
+          ]);
+      // Without a posture, nothing here refuses (the raw token is the
+      // guard's: no dispatch for a caller-less request, decision 4).
+      for (const [label, headers, expected] of [
+        ['bearer-exposed', as('bearer-exposed', 'op-caller-a'), 'reached'],
+        [
+          'delegated-custody',
+          as('delegated-custody', 'op-caller-a'),
+          'reached',
+        ],
+        ['raw token', () => internal(), 'station_control_caller_required'],
+        ['bound operator', as('bound', 'op-caller-a'), 'reached'],
+        ['operator UI', () => operatorUi, 'reached'],
+      ] as const)
+        rows.push([
+          'no posture',
+          label,
+          await outcome(base, path, headers(), body),
+          expected,
+        ]);
+      for (const [field, label, actual, expected] of rows)
+        expect([field, label, actual]).toEqual([field, label, expected]);
+    },
+  );
+
+  /**
+   * Fields of the dispatch bodies whose names speak of approvals or modes,
+   * and every open option bag, must be a posture field the matrix above
+   * refuses or a reviewed exception. A field added to these schemas later
+   * fails here until it is classified.
+   */
+  test('every posture-like field of the dispatch bodies is refused or a reviewed exception', () => {
+    // Case-sensitive on `Mode`, so `model` and `modelOptions` are not
+    // mistaken for one; a bare `mode` field is.
+    const SUSPECT =
+      /approv|Approv|permission|Permission|posture|Posture|sandbox|Sandbox|bypass|Bypass|trust|Trust|autonom|Autonom|unattended|Unattended|yolo|unsafe|Unsafe|danger|Danger|^mode$|Mode/;
+    const REVIEWED: Record<string, string> = {
+      // The basis of a pick; meaningless without `setApprovalMode`.
+      setApprovalModeBasedOn: 'basis only',
+      // The delegation shape (`isolated-child`), not an approval mode.
+      'delegation.mode': 'delegation shape',
+      // Only tightens, and a verified caller's claimed delegation is not
+      // read at all: it is rebuilt from the caller
+      // (`createRequestDelegationResolver`, `deriveCallerChildDelegation`).
+      'delegation.denyApprovals': 'tightens; attested claims only',
+      // An execution-preparation requirement (#2875), not an approval mode:
+      // it only narrows. The receiver refuses unless its own checkout is at
+      // the named version, and any mode but `existing-realization` is a
+      // typed refusal (`execution-preparation.ts`).
+      'target.workspace.preparation.mode': 'preparation requirement; narrows',
+    };
+    // Open bags that no engine reads as an option. A bag listed here is
+    // user data, never applied to the engine's settings.
+    const REVIEWED_BAGS: Record<string, string> = {
+      // Keyed by the selected skill's declared input ids (an undeclared key
+      // is refused in `skill-experience-runtime.ts`) and embedded in the
+      // prompt as "user data"; values are strings or attachment indices and
+      // are never read as an approval mode or a model option.
+      'skillExperience.inputs': 'skill input data, declared ids only',
+      'skillExperience.attachmentInputs':
+        'attachment indices, declared ids only',
+    };
+    const fieldsOf = (route: string): ReadonlySet<string> =>
+      new Set(
+        Object.keys(POSTURE_ROUTES[route]!.variants).map((field) =>
+          field.replace(/ \(.*\)$/, ''),
+        ),
+      );
+    const refused: Record<string, ReadonlySet<string>> = {
+      foreground: fieldsOf('POST /chat'),
+      continueForeground: fieldsOf('POST /chat/:conversationId/continue'),
+      delegate: fieldsOf('POST /delegations'),
+      continueDelegated: fieldsOf('POST /delegations/:taskId/continue'),
+      // No tool reaches the handoff route; its check, on the same fields as
+      // `/chat`, is driven in `handoff-posture.routes.test.ts`. Borrowing the
+      // `/chat` fields relies on `conversationHandoffSchema` extending
+      // `foregroundMessageObjectSchema` (the walk below still visits every
+      // handoff field, so one it adds is checked).
+      handoff: fieldsOf('POST /chat'),
+    };
+    const schemas: Record<string, z.ZodTypeAny> = {
+      foreground: foregroundMessageObjectSchema,
+      continueForeground: continueForegroundMessageSchema,
+      delegate: delegateTaskSchema,
+      continueDelegated: continueDelegatedTaskBodySchema,
+      handoff: conversationHandoffSchema,
+    };
+    type Def = {
+      typeName?: string;
+      innerType?: z.ZodTypeAny;
+      schema?: z.ZodTypeAny;
+      type?: z.ZodTypeAny;
+    };
+    const defOf = (schema: z.ZodTypeAny) =>
+      (schema as unknown as { _def: Def })._def;
+    const collect = (
+      schema: z.ZodTypeAny,
+      path: string,
+      out: { path: string; bag: boolean }[],
+    ): void => {
+      const def = defOf(schema);
+      switch (def.typeName) {
+        case 'ZodOptional':
+        case 'ZodNullable':
+        case 'ZodDefault':
+          if (def.innerType) collect(def.innerType, path, out);
+          return;
+        case 'ZodEffects':
+          if (def.schema) collect(def.schema, path, out);
+          return;
+        case 'ZodObject':
+          for (const [key, value] of Object.entries(
+            (schema as unknown as { shape: Record<string, z.ZodTypeAny> })
+              .shape,
+          )) {
+            const child = path ? `${path}.${key}` : key;
+            out.push({ path: child, bag: false });
+            collect(value, child, out);
+          }
+          return;
+        case 'ZodUnion':
+        case 'ZodDiscriminatedUnion':
+          for (const option of (
+            schema as unknown as {
+              options: z.ZodTypeAny[];
+            }
+          ).options)
+            collect(option, path, out);
+          return;
+        case 'ZodArray':
+          if (def.type) collect(def.type, `${path}[]`, out);
+          return;
+        case 'ZodRecord':
+          out.push({ path, bag: true });
+          return;
+        default:
+          return;
+      }
+    };
+    const unclassified: string[] = [];
+    for (const [name, schema] of Object.entries(schemas)) {
+      const fields: { path: string; bag: boolean }[] = [];
+      collect(schema, '', fields);
+      expect([name, fields.length > 0]).toEqual([name, true]);
+      const declared = refused[name]!;
+      const bags = new Set(
+        [...declared].map((field) => field.replace(/\.[^.]+$/, '')),
+      );
+      for (const { path, bag } of fields) {
+        if (bag) {
+          if (!bags.has(path) && !Object.hasOwn(REVIEWED_BAGS, path))
+            unclassified.push(`${name}: open bag ${path}`);
+          continue;
+        }
+        const leaf = path.split('.').at(-1)!;
+        if (!SUSPECT.test(leaf) || Object.hasOwn(REVIEWED, path)) continue;
+        if (!declared.has(path)) unclassified.push(`${name}: ${path}`);
+      }
+    }
+    expect(unclassified).toEqual([]);
+
+    // Every option key an engine applies is a refused posture key or a
+    // reviewed non-posture one.
+    const NOT_POSTURE = new Set([
+      'effort',
+      'reasoningEffort',
+      'thinking',
+      'fastMode',
+    ]);
+    const posture = new Set<string>(POSTURE_OPTION_KEYS);
+    const optionKeys = new Set(
+      Object.values(PROVIDER_MODEL_OPTION_SUPPORT).flat(),
+    );
+    expect(optionKeys.size).toBeGreaterThan(0);
+    expect(
+      [...optionKeys].filter(
+        (key) => !posture.has(key) && !NOT_POSTURE.has(key),
+      ),
+    ).toEqual([]);
   });
 });

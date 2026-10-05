@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"No prose change: it makes no claim about attention items, paired-Station requests, the delegated respond route or request-route access; runtime-routes only moves the attention route reader predicates into runtime-attention-route-options with unchanged behaviour; station-control-delegation only refuses a forwarded respond whose environment is not the task recorded host.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/runtime-routes.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

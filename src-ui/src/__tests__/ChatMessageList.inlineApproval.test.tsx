@@ -852,7 +852,7 @@ describe('#2316 inline approval card', () => {
         expect(
           screen.getByRole('status', { name: 'Approval announcements' })
             .textContent,
-        ).toBe('Approval needed: Bash'),
+        ).toBe('Needs approval: Bash'),
       );
     });
 
@@ -898,7 +898,7 @@ describe('#2316 inline approval card', () => {
         }),
       ];
       card.rerender();
-      await waitFor(() => expect(announced()).toBe('Approval needed: Write'));
+      await waitFor(() => expect(announced()).toBe('Needs approval: Write'));
     });
 
     test('the replay-to-live flip announces nothing already waiting, and a later request is announced', async () => {
@@ -937,7 +937,7 @@ describe('#2316 inline approval card', () => {
         }),
       ];
       card.rerender(chatSession());
-      await waitFor(() => expect(announced()).toBe('Approval needed: Edit'));
+      await waitFor(() => expect(announced()).toBe('Needs approval: Edit'));
     });
 
     test('lists only requests with no answerable card, and never takes the last row’s buttons', async () => {

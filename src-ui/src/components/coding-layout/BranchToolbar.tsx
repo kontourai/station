@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   type DiscoveredRepo,
   useGitBranchesQuery,
@@ -9,8 +16,10 @@ import {
 } from '../../hooks/useGitActions';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { Button } from '../Button';
 import {
   ArrowDownGlyph,
+  ArrowUpGlyph,
   BranchGlyph,
   CheckGlyph,
   PinGlyph,
@@ -30,12 +39,21 @@ import { SkeletonList } from '../state';
  * is pinned). Branch switching, status, commit, and push all target the active
  * repo's root. Every mutation invalidates the git-status query so the toolbar
  * reflects the new repository state.
+ *
+ * Two quiet rows. The first holds the pane's `leading` control (the Diff
+ * pane's view switch), the repo switcher where there is a choice, the branch
+ * chip and a Push icon that counts the commits ahead. The second is the
+ * commit row — message and one primary Commit — and it is not rendered at all
+ * once git has positively said the tree is clean: a pane with nothing to
+ * commit shows nothing to commit with.
  */
 export function BranchToolbar({
   projectSlug,
   workingDir,
   activeFile,
   onActiveRepoChange,
+  leading,
+  showCommit = true,
 }: {
   /** The Project whose folder commit and push act on (#2363). */
   projectSlug: string;
@@ -44,6 +62,14 @@ export function BranchToolbar({
   // Reports the resolved active-repo root upward so sibling panels (e.g. the
   // diff view) operate on the same repo instead of the raw workspace.
   onActiveRepoChange?: (root: string | null) => void;
+  /** The pane's own control at the start of the first row. */
+  leading?: ReactNode;
+  /**
+   * Render the commit row. The Diff pane shows it with the working tree's
+   * changes and not above the pull requests view, where a commit field has
+   * nothing to do with what is on screen.
+   */
+  showCommit?: boolean;
 }) {
   const reposQuery = useReposQuery(workingDir || null, { projectSlug });
   const reposResult = reposQuery.data;
@@ -118,8 +144,9 @@ export function BranchToolbar({
   const repoTriggerRef = useRef<HTMLButtonElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
   // The switcher is only meaningful when there is a genuine choice between
-  // multiple discovered repos. A single repo (or a repo-rooted workspace)
-  // renders a static label instead.
+  // multiple discovered repos. A single repo (or a repo-rooted workspace) has
+  // nothing to switch, and its name is already the pane's project: the
+  // branch chip's title carries the folder.
   const showSwitcher = repos.length > 1;
 
   const branches = branchesQuery.data ?? [];
@@ -260,16 +287,34 @@ export function BranchToolbar({
     }
   };
 
+  // A commit that empties the tree takes the commit row with it; focus goes
+  // to the branch chip rather than falling to <body>.
+  const focusChipWhenRowLeaves = useRef(false);
   const onCommit = () => {
     if (isClean || !message.trim()) return;
     commit.mutate(
       { message: message.trim() },
-      { onSuccess: () => setMessage('') },
+      {
+        onSuccess: () => {
+          setMessage('');
+          focusChipWhenRowLeaves.current = true;
+        },
+      },
     );
   };
 
   const error =
     checkout.error || commit.error || push.error || branchesQuery.error;
+
+  // The commit row exists while there may be something to commit. Only a
+  // resolved, clean read takes it away; a loading or errored read keeps it,
+  // because neither has earned the claim that there is nothing to do.
+  const showCommitRow = showCommit && !isClean;
+  useEffect(() => {
+    if (showCommitRow || !focusChipWhenRowLeaves.current) return;
+    focusChipWhenRowLeaves.current = false;
+    triggerRef.current?.focus();
+  }, [showCommitRow]);
 
   // No repos discovered. Subtle, non-error inline toolbar note — a short
   // status phrase inside a horizontal toolbar row, not a list/card placeholder,
@@ -285,6 +330,7 @@ export function BranchToolbar({
   if (!reposQuery.isLoading && reposQuery.isError && repos.length === 0) {
     return (
       <div className="branch-toolbar branch-toolbar--no-repo" ref={rootRef}>
+        {leading}
         <span className="branch-toolbar__no-repo-text" role="alert">
           Couldn’t discover git repositories.{' '}
           <button
@@ -301,6 +347,7 @@ export function BranchToolbar({
   if (!reposQuery.isLoading && repos.length === 0) {
     return (
       <div className="branch-toolbar branch-toolbar--no-repo" ref={rootRef}>
+        {leading}
         <span className="branch-toolbar__no-repo-text">
           No git repository in this folder
         </span>
@@ -309,328 +356,333 @@ export function BranchToolbar({
   }
 
   const hasActions = !!repoRoot;
+  const pushName = noRemote
+    ? 'Push unavailable — no remote configured'
+    : ahead > 0
+      ? `Push ${ahead} commit(s)`
+      : 'Push to remote';
 
   return (
     <div className="branch-toolbar" ref={rootRef}>
-      {/* ── Repo switcher / label ──────────────────────────────────────── */}
-      <div className="branch-toolbar__repo">
-        {showSwitcher ? (
-          <>
-            <button
-              ref={repoTriggerRef}
-              type="button"
-              className="branch-toolbar__repo-trigger"
-              aria-haspopup="menu"
-              aria-expanded={repoMenuOpen}
-              aria-controls={repoMenuOpen ? repoMenuId : undefined}
-              aria-label={
-                activeRepo
-                  ? `Active repository: ${activeRepo.name}. Switch repository`
-                  : 'Switch repository'
-              }
-              onClick={() =>
-                repoMenuOpen ? setRepoMenuOpen(false) : openRepoMenu()
-              }
-              onKeyDown={onRepoTriggerKeyDown}
-            >
-              <span className="branch-toolbar__repo-icon" aria-hidden="true">
-                ▦
-              </span>
-              <span className="branch-toolbar__repo-name">
-                {activeRepo?.name ?? 'Select repo'}
-              </span>
-              {pinnedRoot && (
-                <span
-                  className="branch-toolbar__repo-pin"
-                  title="Pinned — not following active file"
-                  aria-hidden="true"
-                >
-                  <PinGlyph />
-                </span>
-              )}
-              <ArrowDownGlyph className="choice-caret" />
-            </button>
-
-            {repoMenuOpen && (
-              <div
-                id={repoMenuId}
-                ref={repoMenuRef}
-                className="branch-toolbar__menu branch-toolbar__repo-menu"
-                role="menu"
-                aria-label="Repositories"
-                tabIndex={-1}
-                onKeyDown={onRepoMenuKeyDown}
+      <div className="branch-toolbar__row">
+        {leading}
+        <div className="branch-toolbar__scope">
+          {/* ── Repo switcher: only where there is a choice ──────────── */}
+          {showSwitcher && (
+            <div className="branch-toolbar__repo">
+              <button
+                ref={repoTriggerRef}
+                type="button"
+                className="branch-toolbar__chip branch-toolbar__repo-trigger"
+                aria-haspopup="menu"
+                aria-expanded={repoMenuOpen}
+                aria-controls={repoMenuOpen ? repoMenuId : undefined}
+                aria-label={
+                  activeRepo
+                    ? `Active repository: ${activeRepo.name}. Switch repository`
+                    : 'Switch repository'
+                }
+                onClick={() =>
+                  repoMenuOpen ? setRepoMenuOpen(false) : openRepoMenu()
+                }
+                onKeyDown={onRepoTriggerKeyDown}
               >
-                {repos.map((repo, index) => (
+                <span className="branch-toolbar__chip-name">
+                  {activeRepo?.name ?? 'Select repo'}
+                </span>
+                {pinnedRoot && (
+                  <span
+                    className="branch-toolbar__repo-pin"
+                    title="Pinned — not following active file"
+                    aria-hidden="true"
+                  >
+                    <PinGlyph />
+                  </span>
+                )}
+                <ArrowDownGlyph className="choice-caret" />
+              </button>
+
+              {repoMenuOpen && (
+                <div
+                  id={repoMenuId}
+                  ref={repoMenuRef}
+                  className="branch-toolbar__menu branch-toolbar__repo-menu"
+                  role="menu"
+                  aria-label="Repositories"
+                  tabIndex={-1}
+                  onKeyDown={onRepoMenuKeyDown}
+                >
+                  {repos.map((repo, index) => (
+                    <button
+                      key={repo.root}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={repo.root === repoRoot}
+                      className={`branch-toolbar__menu-item branch-toolbar__repo-item${
+                        index === repoActiveIndex
+                          ? ' branch-toolbar__menu-item--active'
+                          : ''
+                      }`}
+                      onMouseEnter={() => setRepoActiveIndex(index)}
+                      onClick={() => selectRepo(repo)}
+                    >
+                      <span
+                        className="branch-toolbar__menu-item-check"
+                        aria-hidden="true"
+                      >
+                        {repo.root === repoRoot ? <CheckGlyph /> : null}
+                      </span>
+                      <span className="branch-toolbar__repo-item-body">
+                        <span className="branch-toolbar__menu-item-name">
+                          {repo.name}
+                        </span>
+                        <span className="branch-toolbar__repo-item-meta">
+                          <span className="branch-toolbar__repo-item-path">
+                            {repo.relativePath}
+                          </span>
+                          <span className="branch-toolbar__repo-item-branch">
+                            <BranchGlyph className="branch-toolbar__repo-item-branch-icon" />{' '}
+                            {repo.branch}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+
+                  <div className="branch-toolbar__menu-divider" />
+
                   <button
-                    key={repo.root}
                     type="button"
                     role="menuitemradio"
-                    aria-checked={repo.root === repoRoot}
-                    className={`branch-toolbar__menu-item branch-toolbar__repo-item${
-                      index === repoActiveIndex
-                        ? ' branch-toolbar__menu-item--active'
-                        : ''
-                    }`}
-                    onMouseEnter={() => setRepoActiveIndex(index)}
-                    onClick={() => selectRepo(repo)}
+                    aria-checked={pinnedRoot === null}
+                    className="branch-toolbar__menu-item branch-toolbar__menu-item--follow"
+                    disabled={pinnedRoot === null}
+                    onClick={followActiveFile}
                   >
                     <span
                       className="branch-toolbar__menu-item-check"
                       aria-hidden="true"
                     >
-                      {repo.root === repoRoot ? <CheckGlyph /> : null}
+                      {pinnedRoot === null ? <CheckGlyph /> : null}
                     </span>
-                    <span className="branch-toolbar__repo-item-body">
-                      <span className="branch-toolbar__menu-item-name">
-                        {repo.name}
-                      </span>
-                      <span className="branch-toolbar__repo-item-meta">
-                        <span className="branch-toolbar__repo-item-path">
-                          {repo.relativePath}
-                        </span>
-                        <span className="branch-toolbar__repo-item-branch">
-                          <BranchGlyph className="branch-toolbar__repo-item-branch-icon" />{' '}
-                          {repo.branch}
-                        </span>
-                      </span>
+                    <span className="branch-toolbar__menu-item-name">
+                      Follow active file
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Branch switcher ──────────────────────────────────────── */}
+          <div className="branch-toolbar__switcher">
+            <button
+              ref={triggerRef}
+              type="button"
+              className="branch-toolbar__chip branch-toolbar__branch-trigger"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-controls={menuOpen ? menuId : undefined}
+              aria-label={
+                currentBranch
+                  ? `Current branch: ${currentBranch}. Switch branch`
+                  : 'Switch branch'
+              }
+              title={
+                activeRepo
+                  ? `${activeRepo.name} · ${currentBranch ?? 'no branch'}`
+                  : undefined
+              }
+              disabled={checkout.isPending || !hasActions}
+              onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+              onKeyDown={onTriggerKeyDown}
+            >
+              <BranchGlyph className="branch-toolbar__branch-icon" />
+              <span className="branch-toolbar__chip-name">
+                {checkout.isPending
+                  ? 'Switching…'
+                  : (currentBranch ?? 'No branch')}
+              </span>
+              <ArrowDownGlyph className="choice-caret" />
+            </button>
+
+            {menuOpen && (
+              <div
+                id={menuId}
+                ref={menuRef}
+                className="branch-toolbar__menu"
+                role="menu"
+                aria-label="Branches"
+                tabIndex={-1}
+                onKeyDown={onMenuKeyDown}
+              >
+                {branchesQuery.isLoading && (
+                  <SkeletonList
+                    count={3}
+                    withIcon={false}
+                    label="Loading branches"
+                  />
+                )}
+                {/* archive#771: a failed branch list also settles as
+                    `branches = []`; say so instead of the indistinguishable
+                    "No branches" — the inline error banner below the toolbar
+                    already carries `branchesQuery.error`, but this is the
+                    surface a user opening the menu actually stares at. */}
+                {!branchesQuery.isLoading && branchesQuery.isError && (
+                  <div className="branch-toolbar__menu-status" role="alert">
+                    Couldn’t load branches.{' '}
+                    <button
+                      type="button"
+                      className="button button--link"
+                      onClick={() => branchesQuery.refetch()}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {!branchesQuery.isLoading &&
+                  !branchesQuery.isError &&
+                  branches.length === 0 && (
+                    <div className="branch-toolbar__menu-status">
+                      No branches
+                    </div>
+                  )}
+                {branches.map((branch, index) => (
+                  <button
+                    key={branch.name}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={branch.name === currentBranch}
+                    className={`branch-toolbar__menu-item${
+                      index === activeIndex
+                        ? ' branch-toolbar__menu-item--active'
+                        : ''
+                    }`}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => selectBranch(branch.name)}
+                  >
+                    <span
+                      className="branch-toolbar__menu-item-check"
+                      aria-hidden="true"
+                    >
+                      {branch.name === currentBranch ? <CheckGlyph /> : null}
+                    </span>
+                    <span className="branch-toolbar__menu-item-name">
+                      {branch.name}
                     </span>
                   </button>
                 ))}
 
                 <div className="branch-toolbar__menu-divider" />
 
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={pinnedRoot === null}
-                  className="branch-toolbar__menu-item branch-toolbar__menu-item--follow"
-                  disabled={pinnedRoot === null}
-                  onClick={followActiveFile}
-                >
-                  <span
-                    className="branch-toolbar__menu-item-check"
-                    aria-hidden="true"
+                {newBranchMode ? (
+                  <form
+                    className="branch-toolbar__new-branch"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      createBranch();
+                    }}
                   >
-                    {pinnedRoot === null ? <CheckGlyph /> : null}
-                  </span>
-                  <span className="branch-toolbar__menu-item-name">
-                    Follow active file
-                  </span>
-                </button>
+                    <input
+                      ref={newBranchInputRef}
+                      type="text"
+                      className="branch-toolbar__new-branch-input"
+                      aria-label="New branch name"
+                      placeholder="new-branch-name"
+                      value={newBranchName}
+                      onChange={(e) => setNewBranchName(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="branch-toolbar__new-branch-create"
+                      disabled={!newBranchName.trim()}
+                    >
+                      Create
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="branch-toolbar__menu-item branch-toolbar__menu-item--new"
+                    onClick={() => setNewBranchMode(true)}
+                  >
+                    <span
+                      className="branch-toolbar__menu-item-check"
+                      aria-hidden="true"
+                    >
+                      +
+                    </span>
+                    <span className="branch-toolbar__menu-item-name">
+                      New branch…
+                    </span>
+                  </button>
+                )}
               </div>
-            )}
-          </>
-        ) : (
-          <span className="branch-toolbar__repo-label" title={activeRepo?.root}>
-            <span className="branch-toolbar__repo-icon" aria-hidden="true">
-              ▦
-            </span>
-            {activeRepo?.name ?? ''}
-          </span>
-        )}
-      </div>
-
-      {/* ── Branch switcher ────────────────────────────────────────────── */}
-      <div className="branch-toolbar__switcher">
-        <button
-          ref={triggerRef}
-          type="button"
-          className="branch-toolbar__branch-trigger"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          aria-controls={menuOpen ? menuId : undefined}
-          aria-label={
-            currentBranch
-              ? `Current branch: ${currentBranch}. Switch branch`
-              : 'Switch branch'
-          }
-          disabled={checkout.isPending || !hasActions}
-          onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
-          onKeyDown={onTriggerKeyDown}
-        >
-          <BranchGlyph className="branch-toolbar__branch-icon" />
-          <span className="branch-toolbar__branch-name">
-            {checkout.isPending ? 'Switching…' : (currentBranch ?? 'No branch')}
-          </span>
-          <ArrowDownGlyph className="choice-caret" />
-        </button>
-
-        {menuOpen && (
-          <div
-            id={menuId}
-            ref={menuRef}
-            className="branch-toolbar__menu"
-            role="menu"
-            aria-label="Branches"
-            tabIndex={-1}
-            onKeyDown={onMenuKeyDown}
-          >
-            {branchesQuery.isLoading && (
-              <SkeletonList
-                count={3}
-                withIcon={false}
-                label="Loading branches"
-              />
-            )}
-            {/* archive#771: a failed branch list also settles as
-                `branches = []`; say so instead of the indistinguishable
-                "No branches" — the inline error banner below the toolbar
-                already carries `branchesQuery.error`, but this is the
-                surface a user opening the menu actually stares at. */}
-            {!branchesQuery.isLoading && branchesQuery.isError && (
-              <div className="branch-toolbar__menu-status" role="alert">
-                Couldn’t load branches.{' '}
-                <button
-                  type="button"
-                  className="button button--link"
-                  onClick={() => branchesQuery.refetch()}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-            {!branchesQuery.isLoading &&
-              !branchesQuery.isError &&
-              branches.length === 0 && (
-                <div className="branch-toolbar__menu-status">No branches</div>
-              )}
-            {branches.map((branch, index) => (
-              <button
-                key={branch.name}
-                type="button"
-                role="menuitemradio"
-                aria-checked={branch.name === currentBranch}
-                className={`branch-toolbar__menu-item${
-                  index === activeIndex
-                    ? ' branch-toolbar__menu-item--active'
-                    : ''
-                }`}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => selectBranch(branch.name)}
-              >
-                <span
-                  className="branch-toolbar__menu-item-check"
-                  aria-hidden="true"
-                >
-                  {branch.name === currentBranch ? <CheckGlyph /> : null}
-                </span>
-                <span className="branch-toolbar__menu-item-name">
-                  {branch.name}
-                </span>
-              </button>
-            ))}
-
-            <div className="branch-toolbar__menu-divider" />
-
-            {newBranchMode ? (
-              <form
-                className="branch-toolbar__new-branch"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  createBranch();
-                }}
-              >
-                <input
-                  ref={newBranchInputRef}
-                  type="text"
-                  className="branch-toolbar__new-branch-input"
-                  aria-label="New branch name"
-                  placeholder="new-branch-name"
-                  value={newBranchName}
-                  onChange={(e) => setNewBranchName(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  className="branch-toolbar__new-branch-create"
-                  disabled={!newBranchName.trim()}
-                >
-                  Create
-                </button>
-              </form>
-            ) : (
-              <button
-                type="button"
-                role="menuitem"
-                className="branch-toolbar__menu-item branch-toolbar__menu-item--new"
-                onClick={() => setNewBranchMode(true)}
-              >
-                <span
-                  className="branch-toolbar__menu-item-check"
-                  aria-hidden="true"
-                >
-                  +
-                </span>
-                <span className="branch-toolbar__menu-item-name">
-                  New branch…
-                </span>
-              </button>
             )}
           </div>
-        )}
-      </div>
 
-      <div className="branch-toolbar__commit">
-        <input
-          type="text"
-          className="branch-toolbar__commit-input"
-          aria-label="Commit message"
-          placeholder={
-            status.isLoading
-              ? 'Checking git status…'
-              : status.isError || !gitStatus
-                ? 'Git status unavailable'
-                : isClean
-                  ? 'Working tree clean'
-                  : `Commit message (${dirtyCount})`
-          }
-          value={message}
-          disabled={isClean || commit.isPending || !hasActions}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !isComposingKeyEvent(e)) {
-              e.preventDefault();
-              onCommit();
+          {/* ── Push: an icon that counts what is ahead ─────────────── */}
+          <button
+            type="button"
+            className="branch-toolbar__push"
+            aria-label={pushName}
+            title={
+              noRemote
+                ? 'This checkout has no remote configured, so there is nowhere to push.'
+                : pushName
             }
-          }}
-        />
-        <button
-          type="button"
-          className="branch-toolbar__commit-btn"
-          aria-label="Commit changes"
-          disabled={isClean || !message.trim() || commit.isPending}
-          onClick={onCommit}
-        >
-          {commit.isPending ? 'Committing…' : 'Commit'}
-        </button>
+            disabled={push.isPending || !hasActions || noRemote}
+            onClick={() => push.mutate({ setUpstream: true })}
+          >
+            <ArrowUpGlyph />
+            {(ahead > 0 || behind > 0) && (
+              <span className="branch-toolbar__sync" aria-hidden="true">
+                {ahead > 0 ? `${ahead}` : ''}
+                {behind > 0 ? `↓${behind}` : ''}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
-      <button
-        type="button"
-        className="branch-toolbar__push-btn"
-        aria-label={
-          noRemote
-            ? 'Push unavailable — no remote configured'
-            : ahead > 0
-              ? `Push ${ahead} commit(s)`
-              : 'Push to remote'
-        }
-        title={
-          noRemote
-            ? 'This checkout has no remote configured, so there is nowhere to push.'
-            : undefined
-        }
-        disabled={push.isPending || !hasActions || noRemote}
-        onClick={() => push.mutate({ setUpstream: true })}
-      >
-        {push.isPending ? 'Pushing…' : 'Push'}
-        {(ahead > 0 || behind > 0) && (
-          <span className="branch-toolbar__sync" aria-hidden="true">
-            {ahead > 0 ? `↑${ahead}` : ''}
-            {behind > 0 ? `↓${behind}` : ''}
-          </span>
-        )}
-      </button>
+      {showCommitRow && (
+        <div className="branch-toolbar__commit">
+          <input
+            type="text"
+            className="branch-toolbar__commit-input"
+            aria-label="Commit message"
+            placeholder={
+              status.isLoading
+                ? 'Checking git status…'
+                : status.isError || !gitStatus
+                  ? 'Git status unavailable'
+                  : `Commit message (${dirtyCount})`
+            }
+            value={message}
+            disabled={commit.isPending || !hasActions}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isComposingKeyEvent(e)) {
+                e.preventDefault();
+                onCommit();
+              }
+            }}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            className="branch-toolbar__commit-btn"
+            aria-label="Commit changes"
+            disabled={!message.trim()}
+            pending={commit.isPending}
+            pendingLabel="Committing…"
+            onClick={onCommit}
+          >
+            Commit
+          </Button>
+        </div>
+      )}
 
       {error && (
         <span className="branch-toolbar__error" role="alert">

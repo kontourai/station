@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * #1582 B9: an empty, just-created chat produced a "Continue most recent work
- * → New chat" card on Home. After a reload it was gone — so it was never work.
+ * #1582 B9: an empty, just-created chat produced a Continue card naming "New
+ * chat" on Home. After a reload it was gone — so it was never work.
  * What survives a reload is decided by the store's own write path
  * (`serializeActiveChats`); Home's card read the raw live map, unfiltered.
  *

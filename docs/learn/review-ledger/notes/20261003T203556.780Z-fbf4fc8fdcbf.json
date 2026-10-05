@@ -1,0 +1,7 @@
+{
+  "revision": "bb7a857ef86301c916b1362d6a77a51710778141",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed merged shared reference anchors: the new agent default uses existing MCP selection and custody contracts without adding shared exports or changing earlier documented source/path safety. Retained incoming history and existing evidence limits.","inputs":["docs/reference/shared.md"]}
+  ]
+}

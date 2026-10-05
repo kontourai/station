@@ -1,0 +1,7 @@
+{
+  "revision": "b9374edd195e9d4155771c810dd816df8f1ea3c5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the task-first-home and default-agent-workflow rows after both journeys moved to the New chat draft (open draft, Send starts the chat): the Home continuity row (continuation, deep links, mobile geometry, composer reachability, mocked Home responses) and the Agents row (default-agent-workflow as a turn journey) still describe what those specs prove; no claim or spec ownership changed.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/default-agent-workflow.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

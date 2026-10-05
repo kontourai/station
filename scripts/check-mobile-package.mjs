@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { assertIosStoreSdk } from './check-ios-store-sdk.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const CHECKED_IOS_ALLOWLIST = JSON.parse(
@@ -222,7 +222,7 @@ export function auditIosPackage({ info, entitlements, dependencies }) {
 }
 
 function command(program, args) {
-  return execFileSync(program, args, {
+  return execFileSyncBounded(program, args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });

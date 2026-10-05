@@ -18,6 +18,8 @@ import {
 import { eligibleLanding } from '../landing-automation.mjs';
 import {
   nextRepairState,
+  QUALIFICATION_GATE_JOB,
+  qualificationConclusion,
   repairState,
   validateRepairPaths,
   validateRepairRun,
@@ -238,6 +240,102 @@ describe('qualification repair lifecycle', () => {
       }
     },
   );
+
+  it('judges a run by its qualification gate when the qualified Nightly made it red', () => {
+    expect(QUALIFICATION_GATE_JOB).toBe(
+      'qualification / Full source qualification',
+    );
+    const gate = (conclusion: string) => ({
+      name: QUALIFICATION_GATE_JOB,
+      conclusion,
+    });
+    const nightlyFailed = {
+      name: 'nightly / 3 · Publish native cohort / Promote',
+      conclusion: 'failure',
+    };
+    for (const conclusion of ['failure', 'cancelled', 'timed_out'])
+      expect(
+        qualificationConclusion({ ...run, conclusion }, [
+          gate('success'),
+          nightlyFailed,
+        ]),
+      ).toBe('success');
+    // A failed, skipped, missing or ambiguous gate keeps the run's verdict.
+    for (const jobs of [
+      [gate('failure'), nightlyFailed],
+      [gate('skipped')],
+      [nightlyFailed],
+      [gate('success'), gate('failure')],
+      // The Nightly's own full-regression gate is not the qualification gate.
+      [
+        {
+          name: 'nightly / 2 · Full regression gate / Full source qualification',
+          conclusion: 'success',
+        },
+      ],
+    ])
+      expect(qualificationConclusion(run, jobs)).toBe('failure');
+  });
+
+  it('opens no repair episode when only the qualified Nightly failed', async () => {
+    const root = makeTempDir('station-repair-nightly-');
+    const writes: string[] = [];
+    const server = createServer(async (req, res) => {
+      for await (const _chunk of req);
+      res.setHeader('content-type', 'application/json');
+      if (req.method !== 'GET') writes.push(`${req.method} ${req.url}`);
+      if (req.url?.includes('/actions/runs/42/jobs')) {
+        res.end(
+          JSON.stringify({
+            total_count: 2,
+            jobs: [
+              { name: QUALIFICATION_GATE_JOB, conclusion: 'success' },
+              {
+                name: 'nightly / 3 · Publish CLI to npm nightly',
+                conclusion: 'failure',
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      if (req.url?.endsWith('/actions/runs/42')) {
+        res.end(JSON.stringify(run));
+        return;
+      }
+      if (req.url?.includes('/issues?')) {
+        res.end('[]');
+        return;
+      }
+      res.writeHead(500);
+      res.end('{}');
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No address');
+    const event = join(root, 'event.json');
+    writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+    const output = join(root, 'output');
+    try {
+      await exec(process.execPath, [script, 'prepare'], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'owner/repo',
+          GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          GITHUB_EVENT_PATH: event,
+          GITHUB_OUTPUT: output,
+          GITHUB_RUN_ID: '99',
+          GITHUB_RUN_ATTEMPT: '1',
+        },
+        windowsHide: true,
+      });
+      expect(readFileSync(output, 'utf8')).toBe('claim=false\n');
+      expect(writes).toEqual([]);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
 
   it('settles an attempt whose preparation fails after claiming the durable episode', async () => {
     const root = makeTempDir('station-repair-prepare-');

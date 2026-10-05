@@ -1146,6 +1146,14 @@
     min-height: 44px;
   }
 
+  /* Every "type to narrow this list" field (index.css's
+     `.list-filter-input`): the split-pane list header and the provider
+     picker's modal, which borrows the class outside a split pane (#3061,
+     #3102). The base rule and the phone rule (40px) are single-class too. */
+  .list-filter-input.list-filter-input {
+    min-height: 44px;
+  }
+
   /* Moved here from index.css, unchanged. It was added to the entry sheet on
      this lane's base branch, where `useIsMobile.test.tsx` forbids any `@media`
      condition that is not `MOBILE_MEDIA_QUERY` byte-for-byte — so the base
@@ -1231,6 +1239,33 @@
   display: block;
 }
 
+/* A send queued to retry by itself is not a failure, but its notice carries the
+   one way to discard it, and that sits in the transcript this same state
+   shrinks to nothing. The composer repeats just the action, in the controls row
+   (already a 44px touch row, so the draft's floor is untouched); the notice's
+   words are its accessible description. The shared `-actions` row rule
+   (index.css) gives the button its 44px floor. */
+.chat-input__queued-retry-actions {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__queued-retry-actions {
+  display: inline-flex;
+}
+
+.chat-input__queued-retry-actions > button {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The banner steps aside (the composer's own line repeats what failed). The
    transcript only gives up its padding and shrinks to nothing: it is never
    taken out of the layout, so a stale reading cannot remove the conversation. */
@@ -1240,6 +1275,17 @@
 
 .chat-dock__body[data-composer-priority] > .chat-messages {
   padding-block: 0;
+}
+
+/* With no room for the transcript there is nothing to scroll back to, so the
+   transcript's Scroll to bottom control (portaled into the composer's activity
+   row) is not shown, and an activity row left with no status pill takes no
+   height. Under load the transcript can report a scroll while it is still
+   collapsing, and that phantom row pushed the composer below the viewport. */
+.chat-dock__body[data-composer-priority]
+  .chat-input__activity
+  .chat-scroll-to-bottom {
+  display: none;
 }
 
 /* Composer validation and attach-time notes sit in the fieldset's normal
@@ -2580,9 +2626,7 @@
   }
   .mobile-task-switcher__list .chat-dock-inbox__group-label,
   .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
-    font-size: var(--k-text-md);
-    text-transform: none;
-    letter-spacing: normal;
+    --work-group-label-size: var(--k-text-md);
   }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the
@@ -2764,6 +2808,13 @@
   }
 
   .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+    display: none;
+  }
+
+  /* In a dock too short for the transcript the Scroll to bottom button is not
+     shown (see data-composer-priority), so it cannot hold this row open. */
+  .chat-dock__body[data-composer-priority]
+  .chat-input__activity:not(:has(.chat-status-pill)) {
     display: none;
   }
 

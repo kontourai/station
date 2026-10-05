@@ -528,6 +528,27 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(existsSync(join(home, 'config', 'agent-registry.json'))).toBe(false);
   });
 
+  it('refuses to construct a runtime when STATION_TRUSTED_CONSENT_ORIGIN is malformed', () => {
+    // The field initializer throws before the home is read, so nothing is created.
+    const unusedHome = join(tmpdir(), 'station-consent-origin-never-created');
+    const previous = process.env.STATION_TRUSTED_CONSENT_ORIGIN;
+    try {
+      for (const bad of ['http://station.example.ts.net', 'https://10.0.0.1']) {
+        process.env.STATION_TRUSTED_CONSENT_ORIGIN = bad;
+        expect(
+          () =>
+            new StationRuntime({ projectHomeDir: unusedHome, port: TEST_PORT }),
+        ).toThrow(/STATION_TRUSTED_CONSENT_ORIGIN/);
+      }
+    } finally {
+      if (previous === undefined) {
+        delete process.env.STATION_TRUSTED_CONSENT_ORIGIN;
+      } else {
+        process.env.STATION_TRUSTED_CONSENT_ORIGIN = previous;
+      }
+    }
+  });
+
   it('refuses listener and VirtualApplication admission when relay recovery cannot revoke a pending provider session', async () => {
     home = await createSchemaHome('station-relay-recovery-failure-');
     const stationIdentity = await new EnvironmentSecurityService({

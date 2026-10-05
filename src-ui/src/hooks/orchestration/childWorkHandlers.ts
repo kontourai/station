@@ -6,6 +6,7 @@ import {
   type ChildWorkSessionView,
   type ChildWorkTerminalStatus,
   childWorkKey,
+  childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
   type SessionChildWork,
@@ -63,6 +64,7 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
     toolCallId: item.parent?.toolCallId,
     description: item.title,
     subagentType: item.kindLabel,
+    ...(item.model ? { model: item.model } : {}),
     backgrounded: item.backgrounded === true,
     // Absent depth stays absent: "not reported" is not "top level".
     spawnDepth: item.depth,
@@ -240,26 +242,8 @@ export function applySnapshotChildWork(
     running: view.running,
   });
   for (const item of view.settled ?? []) {
-    const {
-      producer,
-      reporterThreadId,
-      childId,
-      status,
-      result,
-      usage,
-      ...identity
-    } = item;
-    if (status === 'running') continue;
-    applyChildWorkToChat(threadId, {
-      kind: 'settle',
-      producer,
-      reporterThreadId,
-      childId,
-      status,
-      ...(result ? { result } : {}),
-      ...(usage ? { usage } : {}),
-      identity,
-    });
+    const settle = childWorkSettleFromItem(item);
+    if (settle) applyChildWorkToChat(threadId, settle);
   }
 }
 

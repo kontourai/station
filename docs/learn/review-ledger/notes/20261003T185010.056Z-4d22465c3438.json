@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-recorded after a main merge reset the record. The branch delta here is the base branch's (PR #3171): the review snapshot's optional checks and reviewComments observations (partial/unavailable semantics, the 1000-context rollup cap, GitLab merged-results pipelines unavailable with a reason, file-level comments with null line), traced to pull-request-provider.ts and pull-request-review.ts. This lane adds no contract; its UI reads those fields as the reference describes. No prose change.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/src/orchestration.ts","packages/contracts/src/plugin.ts","packages/contracts/src/pull-request-provider.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

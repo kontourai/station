@@ -96,6 +96,7 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
 
 const loadChatInputArea = () =>
@@ -207,6 +208,9 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
   padding: 0,
 };
 
+/** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
+const LOADING_ESCAPE_DELAY_MS = 6_000;
+
 interface ChatDockBodyProps {
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -254,6 +258,13 @@ interface ChatDockBodyProps {
   ) => void | Promise<void>;
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
+  /**
+   * D3 (design round 2026-10): how long a load runs before the "Start new
+   * chat" escape joins the skeleton. One state at a time: a load that is
+   * going to land shows a skeleton and nothing else; the escape is for a
+   * load that has stopped looking like one. Tests set it to 0.
+   */
+  loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
@@ -331,6 +342,53 @@ export function latestSendFailureLine(
   return undefined;
 }
 
+/**
+ * The newest "queued to retry" notice, for the composer to carry while a short
+ * dock hides the transcript that holds it. It is a queued send, not a failure,
+ * so `latestSendFailureLine` never repeats it; its action (Discard) is what the
+ * composer must keep reachable. Like a failure it is stale once a LATER message
+ * was accepted; `queued` (the chat still waits on its retry) ends it too, since
+ * the notice itself is left in the transcript after the retry settles.
+ */
+export function latestQueuedRetryNotice<
+  Message extends {
+    role: string;
+    content: string;
+    ephemeral?: boolean;
+    queuedRetry?: boolean;
+    action?: { label: string; handler: () => void };
+  },
+>(messages: readonly Message[], queued: boolean) {
+  if (!queued) return undefined;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.ephemeral) {
+      if (!message.queuedRetry || !message.action) continue;
+      const line = noticeLine(message.content);
+      return line ? { line, action: message.action } : undefined;
+    }
+    if (message.role === 'user') return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The chat's ephemeral messages once the queue panel's "x" has discarded a
+ * queued turn: only the queued-retry notices go, and only when no queued turn
+ * is left for them to explain. Undefined when nothing changes, so a send
+ * failure or a command's output survives the discard.
+ */
+export function ephemeralAfterQueueDiscard<Message extends object>(
+  ephemeral: readonly Message[],
+  remaining: number,
+) {
+  if (remaining > 0) return undefined;
+  const kept = ephemeral.filter(
+    (message) => !(message as { queuedRetry?: boolean }).queuedRetry,
+  );
+  return kept.length === ephemeral.length ? undefined : kept;
+}
+
 function noticeLine(content: string) {
   if (!content) return undefined;
   const line = content
@@ -369,6 +427,7 @@ export function ChatDockBody({
   onOpenBackgroundTasks,
   onNewChat,
   onRetryConversationOpen,
+  loadingEscapeDelayMs = LOADING_ESCAPE_DELAY_MS,
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
@@ -449,7 +508,7 @@ export function ChatDockBody({
    * point-read (`resolvingOpen`, seeded by `hydrateActiveChats` for every
    * persisted chat with a conversation id) and the transcript's first read
    * (`settled`). Before #1582 E3/B6 these produced a red "is read-only" alert,
-   * an empty "Start a conversation" placeholder and a second red line under
+   * an empty "Start a chat" placeholder and a second red line under
    * the composer — three contradictory claims about a healthy conversation.
    */
   const transcriptPending =
@@ -491,13 +550,28 @@ export function ChatDockBody({
    * after it. A turn ending bumps the history revision (and can re-key the
    * window when the conversation id lands), and that refetch is a background
    * refresh of a transcript already on screen: counting it flashed a
-   * "Loading conversation" skeleton and a "Start new chat" escape under the
+   * "Loading chat" skeleton and a "Start new chat" escape under the
    * finished answer on every turn. Once this session has shown messages, a
    * pending refetch keeps showing them and claims nothing is loading.
    */
   const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
   const conversationLoading =
     resolvingOpen || (transcriptPending && !transcriptLoaded);
+  // D3: the escape joins the skeleton only once a load has run long; a load
+  // that lands in the ordinary second or two shows one state, the skeleton.
+  const [loadingLong, setLoadingLong] = useState(false);
+  useEffect(() => {
+    if (!conversationLoading) {
+      setLoadingLong(false);
+      return;
+    }
+    if (loadingEscapeDelayMs <= 0) {
+      setLoadingLong(true);
+      return;
+    }
+    const timer = setTimeout(() => setLoadingLong(true), loadingEscapeDelayMs);
+    return () => clearTimeout(timer);
+  }, [conversationLoading, loadingEscapeDelayMs]);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
@@ -765,6 +839,20 @@ export function ChatDockBody({
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
   const sendFailureNotice = latestSendFailureLine(activeSession.messages);
+  const queuedRetry = latestQueuedRetryNotice(
+    activeSession.messages,
+    activeSession.status === 'queued',
+  );
+  const queuedRetryNotice = queuedRetry
+    ? {
+        text: queuedRetry.line,
+        // What the transcript's own action does: run it, then drop the notice.
+        onDiscard: () => {
+          queuedRetry.action.handler();
+          clearEphemeralMessages(activeSession.id);
+        },
+      }
+    : undefined;
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -1037,12 +1125,12 @@ export function ChatDockBody({
         displayedTranscriptMessages.length > 0 &&
         historyFailureNotice}
       {sessionRecordPending && (
-        <SkeletonList count={1} label="Reading this session's record" />
+        <SkeletonList count={1} label="Reading this chat's record" />
       )}
       {sessionRecordUnreadable && (
         <ErrorState
-          title="Could not read this Station's session records"
-          description="The chat below is what this browser still holds. Retry to find out whether the session is still there."
+          title="Could not read this Station's chat records"
+          description="The chat below is what this browser still holds. Retry to find out whether the chat is still there."
           action={
             onRetryOrchestrationSessions ? (
               <button
@@ -1094,7 +1182,7 @@ export function ChatDockBody({
           {historyFailureNotice ??
             (conversationLoading ? (
               /*
-               * "Start a conversation" is a CLAIM that this chat has none, and
+               * "Start a chat" is a CLAIM that this chat has none, and
                * a transcript read that has not landed has established nothing.
                * It rendered here for ~1.7s on every reload of a conversation
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
@@ -1102,11 +1190,7 @@ export function ChatDockBody({
                */
               <SkeletonList
                 count={4}
-                label={
-                  transcript.catchingUp
-                    ? 'Catching up conversation'
-                    : 'Loading conversation'
-                }
+                label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
               />
             ) : (
               <ChatEmptyState
@@ -1119,7 +1203,7 @@ export function ChatDockBody({
       {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
-          pending={<SkeletonList count={4} label="Loading conversation" />}
+          pending={<SkeletonList count={4} label="Loading chat" />}
           componentProps={{
             activeSession: renderedSession,
             suppressStreamingRow: transcript.openTurnProjected,
@@ -1202,8 +1286,8 @@ export function ChatDockBody({
           ) && (
             <span>
               Your decision is recorded, but Station did not send it because the
-              engine would not accept that reply. The engine is still waiting
-              for an answer.
+              engine would not accept that reply. The engine still needs an
+              answer.
             </span>
           )}
           {activeSession.unacknowledgedDecisions?.some(
@@ -1244,6 +1328,7 @@ export function ChatDockBody({
             onSendMessageNow: (messageId: string) =>
               sendPendingMessageNow(apiBase, activeSession.id, messageId),
             failure: activeSession.queuedMessageFailure,
+            heldByUsageLimit: activeSession.usageLimitStopped === true,
             // UX audit T3: the automatic drain only fires on a later
             // `turn.completed`/`runtime.error`. A follow-up refused for a
             // reason the user has since fixed (a workspace binding, a paused
@@ -1513,6 +1598,17 @@ export function ChatDockBody({
             turns: activeSession.outboundQueuedTurns,
             messages: renderedSession.messages,
             onError: (error: string) => surfaceRecoveryFailure(error),
+            // The "x" discards the same queued turn as the notice's Discard;
+            // once none is left, the notice has nothing to explain.
+            onDiscarded: (remaining: number) => {
+              const kept = ephemeralAfterQueueDiscard(
+                ephemeralMessages,
+                remaining,
+              );
+              if (!kept) return;
+              if (kept.length === 0) clearEphemeralMessages(activeSession.id);
+              else updateChat(activeSession.id, { ephemeralMessages: kept });
+            },
             onRetry: async (clientTurnId: string) => {
               try {
                 const { outboundDispatch } = await import(
@@ -1558,6 +1654,14 @@ export function ChatDockBody({
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
         note={sessionFailureNote(activeOrchestrationSession)}
+      />
+      {/* #3157: the limited conversation's own banner, from the server's
+          recovery projection; it re-reads with each snapshot update. */}
+      <UsageLimitBanner
+        apiBase={apiBase}
+        scope={mentionRequestScope}
+        session={activeSession}
+        summary={activeOrchestrationSession}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
@@ -1652,7 +1756,7 @@ export function ChatDockBody({
         (delta-review M1).
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading conversation" />
+        <SkeletonBlock count={1} label="Loading chat" />
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
@@ -1665,7 +1769,7 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && !recoveryOpen ? (
+      {conversationLoading && loadingLong && !recoveryOpen ? (
         <div className="session-history-controls">
           {onNewChat ? (
             <button
@@ -1722,7 +1826,7 @@ export function ChatDockBody({
       {busyOpen && !isTurnInFlight(activeSession) ? (
         <div className="session-history-controls" role="status">
           <span>
-            Still waiting on the active turn. If it already finished, check
+            Waiting for the active turn to finish. If it already has, check
             again to send.
           </span>
           {onRetryConversationOpen ? (
@@ -1774,19 +1878,18 @@ export function ChatDockBody({
                     connection.id === activeSession.agentConnectionId,
                 )?.name ??
                 engineDisplayLabel(turnProgressSilence.provider) ??
-                'the engine'
+                'the agent'
               }
-            />{' '}
-            You can{' '}
+            />
+            {'. '}
             <button
               type="button"
               onClick={() => void chatInput.handleCancel()}
               disabled={!!activeSession.stopPending}
               style={BANNER_LINK_BUTTON_STYLE}
             >
-              stop this turn
+              Stop this turn
             </button>
-            .
           </div>
         )}
       {activeSession.replay?.mode === 'timeline' ? (
@@ -1842,6 +1945,7 @@ export function ChatDockBody({
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
+            queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}

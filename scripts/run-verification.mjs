@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   coordinateVerification,
@@ -634,6 +635,7 @@ export async function runVerificationCli(
 }
 
 async function main() {
+  await ensureLivenessScale();
   process.exitCode = await runVerificationCli(process.argv.slice(2));
 }
 

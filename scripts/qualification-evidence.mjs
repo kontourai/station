@@ -148,7 +148,18 @@ export async function findQualification(source, env = process.env) {
       )
     )
       return '';
-    if (run.conclusion !== 'success') continue;
+    // A Main qualification run also publishes the Nightly from the commit it
+    // qualified, so a red publication must not discard a passing gate: that
+    // run is judged by its gate job, every other workflow by its conclusion.
+    if (
+      run.conclusion !== 'success' &&
+      !(
+        run.path === '.github/workflows/main-qualification.yml' &&
+        gate.length === 1 &&
+        gate[0].conclusion === 'success'
+      )
+    )
+      continue;
     // A reused receipt does not reset the original evidence's age: only fresh
     // corpus execution is admitted as the source of another reuse.
     const corpora = jobs.filter((job) => job.name.includes('Ordinary corpus '));

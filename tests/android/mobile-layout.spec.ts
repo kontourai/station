@@ -299,12 +299,12 @@ test.describe('Android — Mobile Layout', () => {
     const toggle = page.getByRole('button', { name: 'Toggle menu' });
     await expect(toggle).toBeVisible();
     // The toolbar brand only shows on phones (index.css hides it on desktop),
-    // beside the toggle that replaces the desktop nav.
-    const brand = page
-      .locator('.app-toolbar')
-      .getByRole('link', { name: 'Station home' });
-    await expect(brand).toBeVisible();
-    await expect(brand).toHaveText('Station');
+    // beside the toggle that replaces the desktop nav. Since #3235 the logo is
+    // the home link and the wordmark beside it is an aria-hidden repeat.
+    const toolbar = page.locator('.app-toolbar');
+    const home = toolbar.getByRole('link', { name: 'Station home' });
+    await expect(home).toBeVisible();
+    await expect(toolbar.locator('.app-toolbar__brand')).toHaveText('Station');
     await toggle.focus();
     await toggle.press('Enter');
 

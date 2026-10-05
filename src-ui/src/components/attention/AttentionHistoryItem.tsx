@@ -3,6 +3,8 @@ import { useAcknowledgeAttentionItemMutation } from '@kontourai/station-sdk';
 import {
   attentionKindLabel,
   isApprovalLivePending,
+  isPeerHostedAttentionItem,
+  peerAttentionElsewhereText,
   sessionFailedIdentity,
   sessionFailureCause,
 } from '../../utils/attention';
@@ -58,6 +60,16 @@ export function AttentionHistoryItem({
             <div className="notification-history__detail">{item.body}</div>
           )
         )}
+        {/* The popover offers no reply, but its row must not read as one
+            to answer here: say where, as the inbox card and detail do. */}
+        {isPeerHostedAttentionItem(item) && (
+          <div
+            className="notification-history__detail"
+            data-testid="attention-peer-elsewhere"
+          >
+            {peerAttentionElsewhereText(item.environmentName)}
+          </div>
+        )}
         <div className="notification-history__actions">
           {item.kind === 'approval' &&
             item.actions.map((action) => (
@@ -80,7 +92,9 @@ export function AttentionHistoryItem({
                 href={item.openHref}
                 onClick={onClose}
               >
-                {openLinkLabel(item.kind)}
+                {isPeerHostedAttentionItem(item)
+                  ? 'Open in Activity'
+                  : openLinkLabel(item.kind)}
               </a>
             )
           )}

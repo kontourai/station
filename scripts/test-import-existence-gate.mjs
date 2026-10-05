@@ -28,11 +28,11 @@
 // Parse syntax so generated module fixtures and comments are not mistaken for
 // imports by the test itself. The TypeScript parser also preserves real imports
 // across comments and visits executable expressions inside template literals.
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 // `process.cwd()`, not a path relative to this script file — matches
@@ -178,7 +178,7 @@ export function packageResolvesFrom(fromDir, packageName, boundaryRoot) {
 }
 
 function listTrackedTestFiles(root) {
-  const out = execFileSync('git', ['ls-files'], {
+  const out = execFileSyncBounded('git', ['ls-files'], {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,

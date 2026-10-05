@@ -314,6 +314,14 @@ export class AttentionProjectionService {
        * absent means unknown, which projects none.
        */
       isOperator?: boolean;
+      /**
+       * Whether the caller passes this Station's HTTP boundary and
+       * station-control dispatch scope for `POST /delegations/:taskId/respond`
+       * on this paired-Station task, evaluated at the HTTP seam. The handler
+       * can still refuse. Absent means unknown: no item claims the caller
+       * can respond.
+       */
+      mayRespondToPeerTask?: (taskId: string) => boolean;
     },
   ): Promise<AttentionProjection> {
     const readAuthority = authority ?? this.defaultReadAuthority();
@@ -397,7 +405,7 @@ export class AttentionProjectionService {
     const lifecycle = (
       await Promise.all(
         lifecycleCandidates.map((session) =>
-          this.projectLifecycle(session, readAuthority),
+          this.projectLifecycle(session, readAuthority, viewer),
         ),
       )
     ).filter((item): item is AttentionItem => item !== null);
@@ -649,6 +657,7 @@ export class AttentionProjectionService {
   private async projectLifecycle(
     session: OrchestrationSessionSummary,
     authority: SessionReadAuthority,
+    viewer?: { mayRespondToPeerTask?: (taskId: string) => boolean },
   ): Promise<AttentionItem | null> {
     // archive#1284 originally added a second terminal guard here, and after
     // the archive#1548 merge it was deliberately not re-applied: a HAND-WRITTEN
@@ -784,15 +793,48 @@ export class AttentionProjectionService {
     } finally {
       attentionRequestEvidenceScanDuration.record(Date.now() - scanStart);
     }
+    // A peer record has no local request events; its paired Station's
+    // reported request (type + title, nothing more) is presented through the
+    // same `presentOpenRequest` wording a local request gets.
+    const peerOpenRequest = peerOpenRequestForPresentation(session);
     const presentation = openRequest
       ? presentOpenRequest(openRequest)
-      : fallbackLifecyclePresentation(via, session.blockedReason);
+      : peerOpenRequest
+        ? presentOpenRequest(peerOpenRequest)
+        : fallbackLifecyclePresentation(via, session.blockedReason);
 
     const requestReference =
       kind === 'review_pending' && openRequest
         ? attentionRequestReference(openRequest, session.threadId)
         : undefined;
     const projectSlug = sessionProjectSlug(session);
+    // A delegated task running on a PAIRED Station: this thread is only the
+    // local lifecycle record, so the item says so and links to the Activity
+    // detail (which renders the peer note) instead of rehydrating a chat
+    // whose conversation id is the peer's.
+    const peer = session.delegation?.environmentKind === 'peer';
+    const environmentName = peer
+      ? session.delegation?.environmentName
+      : undefined;
+    // The paired Station's own open request, as its status read reported
+    // it. It never feeds `requestReference`/`inputReference`, which address
+    // THIS Station's request routes.
+    const peerRequest = peer
+      ? session.delegation?.peerPendingRequest
+      : undefined;
+    const peerRequestReference =
+      peerRequest && session.delegation?.environmentId
+        ? {
+            environmentId: session.delegation.environmentId,
+            taskId: session.delegation.taskId,
+            requestId: peerRequest.id,
+            ...(peerRequest.type ? { requestType: peerRequest.type } : {}),
+          }
+        : undefined;
+    const viewerCanRespond =
+      peerRequestReference && viewer?.mayRespondToPeerTask
+        ? viewer.mayRespondToPeerTask(peerRequestReference.taskId)
+        : undefined;
     return {
       id: `${kind}:${session.threadId}`,
       kind,
@@ -805,8 +847,14 @@ export class AttentionProjectionService {
       // #2064 (D4): the project row's count reads this. Omitted, never
       // guessed, for a project-less session.
       ...(projectSlug ? { projectSlug } : {}),
-      openHref: sessionOpenHref(session),
+      openHref: peer
+        ? activityDeepLink({ sessionId: session.threadId })
+        : sessionOpenHref(session),
       source: { threadId: session.threadId },
+      ...(peer ? { environmentKind: 'peer' as const } : {}),
+      ...(environmentName ? { environmentName } : {}),
+      ...(peerRequestReference ? { peerRequestReference } : {}),
+      ...(viewerCanRespond !== undefined ? { viewerCanRespond } : {}),
       ...(kind === 'needs_input' &&
       openRequest &&
       inputRequestReference(openRequest, session.threadId)
@@ -1308,6 +1356,29 @@ function latestOpenRequestFromMap(
  * (the same field `buildSessionFailedItem` reads; absence stays absence,
  * never an invented cause).
  */
+/**
+ * The paired Station's reported request, shaped only for presentation (never
+ * stored or dispatched): its type and title, and nothing it did not send.
+ * Undefined unless the peer reported a known type.
+ */
+function peerOpenRequestForPresentation(
+  session: OrchestrationSessionSummary,
+): RequestOpenedEvent | undefined {
+  if (session.delegation?.environmentKind !== 'peer') return undefined;
+  const request = session.delegation.peerPendingRequest;
+  if (!request?.type) return undefined;
+  return {
+    eventId: `peer-request:${request.id}`,
+    provider: session.provider,
+    threadId: session.threadId,
+    createdAt: request.observedAt,
+    method: 'request.opened',
+    requestId: request.id,
+    requestType: request.type,
+    title: request.title ?? '',
+  };
+}
+
 function fallbackLifecyclePresentation(
   via: SessionAwaitingVia,
   blockedReason?: string,

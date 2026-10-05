@@ -236,6 +236,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'device-helper-url': 'station',
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
+  'usage-limit-auto-resume': 'station',
   'default-workspace-isolation': 'station',
   'device-hosts': 'station',
   'default-approval-mode': 'station',

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import {
   createWriteStream,
   existsSync,
@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import yauzl from 'yauzl';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   E2E_LATEST_SCHEMA_VERSION,
   inspectE2EEvidenceDirectory,
@@ -54,7 +55,7 @@ export function parseSyncArgs(args) {
 }
 
 function gh(args) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });

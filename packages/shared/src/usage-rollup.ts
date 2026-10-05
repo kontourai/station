@@ -4,7 +4,11 @@ import type {
   UsageRollup,
   UsageRollupRow,
 } from '@kontourai/station-contracts/usage-rollup';
-import { providerPromptCacheInclusivity } from './usage-fold.js';
+import {
+  providerCostScope,
+  providerPromptCacheInclusivity,
+  providerUsageScope,
+} from './usage-fold.js';
 
 export const USAGE_ROLLUP_MAX_RECEIPTS = 500;
 export const USAGE_ROLLUP_MAX_PAGE_SIZE = 100;
@@ -83,13 +87,9 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
   // Receipt identity is stable across local replay and peer pagination. A
   // repeated id is replacement, not another billable event; later observed
   // data wins so delayed corrections cannot double-count.
-  const deduplicated = new Map<string, UsageReceipt>();
-  for (const receipt of input.aggregateReceipts ?? input.receipts) {
-    const current = deduplicated.get(receipt.id);
-    if (!current || (receipt.observedAt ?? '') >= (current.observedAt ?? '')) {
-      deduplicated.set(receipt.id, receipt);
-    }
-  }
+  const deduplicated = reconcileUsageReceiptObservations(
+    input.aggregateReceipts ?? input.receipts,
+  );
   // A rollup window is a Station observation window, never an untrusted
   // provider clock window. Legacy rows with no Station clock are deliberately
   // excluded here; a caller that elects to expose their lifetime total must
@@ -240,6 +240,7 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
   return {
     window: { from: input.from, to: input.to },
     rows: [...rows.values()],
+    aggregateReceipts: accepted,
     coverage: input.coverage.map((coverage) => {
       const droppedReceiptCount = droppedByStation.get(coverage.stationId);
       return droppedReceiptCount === undefined
@@ -254,4 +255,89 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
     }),
     receipts,
   };
+}
+
+/**
+ * One receipt per receipt id. A repeated id is the same fact observed again,
+ * never another billable event: observations are ordered by durable source
+ * sequence (then observation time) and reconciled, a cumulative reporter's
+ * sparse restatement keeping the components it omitted. Shared by the
+ * windowed rollup and the conversation usage tree.
+ */
+export function reconcileUsageReceiptObservations(
+  receipts: readonly UsageReceipt[],
+): Map<string, UsageReceipt> {
+  const deduplicated = new Map<string, UsageReceipt>();
+  const observations = [...receipts].sort((left, right) => {
+    const identity =
+      left.id.localeCompare(right.id) ||
+      left.stationId.localeCompare(right.stationId) ||
+      (left.threadId ?? '').localeCompare(right.threadId ?? '');
+    if (identity) return identity;
+    const hasSequence =
+      Number(left.sourceSequence !== undefined) -
+      Number(right.sourceSequence !== undefined);
+    if (hasSequence) return hasSequence;
+    return (
+      (left.sourceSequence ?? 0) - (right.sourceSequence ?? 0) ||
+      (left.observedAt ?? '').localeCompare(right.observedAt ?? '')
+    );
+  });
+  for (const receipt of observations) {
+    const current = deduplicated.get(receipt.id);
+    deduplicated.set(
+      receipt.id,
+      current ? mergeReceiptObservations(current, receipt) : receipt,
+    );
+  }
+  return deduplicated;
+}
+
+function mergeReceiptObservations(
+  current: UsageReceipt,
+  candidate: UsageReceipt,
+): UsageReceipt {
+  const sequenceOrdered =
+    current.stationId === candidate.stationId &&
+    current.threadId === candidate.threadId &&
+    current.sourceSequence !== undefined &&
+    candidate.sourceSequence !== undefined;
+  const candidateIsNewer = sequenceOrdered
+    ? candidate.sourceSequence! >= current.sourceSequence!
+    : (candidate.observedAt ?? '') >= (current.observedAt ?? '');
+  const newer = candidateIsNewer ? candidate : current;
+  const older = candidateIsNewer ? current : candidate;
+  const cumulativeTokens =
+    providerUsageScope(newer.provider) === 'session-cumulative' &&
+    !newer.reportedCost;
+  const cumulativeCost =
+    providerCostScope(newer.provider) === 'engine-process-cumulative' &&
+    newer.reportedCost !== undefined;
+  if (!cumulativeTokens && !cumulativeCost) return newer;
+  const result = { ...newer };
+  let inheritedComponent = false;
+  if (cumulativeTokens) {
+    for (const field of [
+      'inputTokens',
+      'outputTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+    ] as const) {
+      if (result[field] === undefined && older[field] !== undefined) {
+        result[field] = older[field];
+        inheritedComponent = true;
+      }
+    }
+  }
+  if (older.model !== newer.model) delete result.model;
+  if (
+    cumulativeTokens &&
+    (inheritedComponent ||
+      older.model !== newer.model ||
+      older.pricing.pricingSnapshotId !== newer.pricing.pricingSnapshotId)
+  ) {
+    delete result.estimatedCost;
+    result.pricing = { ...newer.pricing, status: 'unpriced' };
+  }
+  return result;
 }

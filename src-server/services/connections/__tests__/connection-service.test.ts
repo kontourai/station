@@ -902,6 +902,86 @@ describe('ConnectionService', () => {
     });
   });
 
+  test('resolves engine identities per Adapter without a live inspection (#3355)', async () => {
+    const getPrerequisites = vi.fn(async () => []);
+    // A plugin Adapter whose metadata accessor throws: it loses only its own
+    // identity, where the live inspection loses everyone's.
+    const broken = { provider: 'muse' };
+    Object.defineProperty(broken, 'metadata', {
+      get: () => {
+        throw new Error('plugin metadata unavailable');
+      },
+    });
+    const registry: AgentRegistry = {
+      version: 2,
+      revision: 0,
+      engineConnections: ['codex-cli', 'muse', 'kiro'].map((id) => ({
+        id: engineConnectionId(id),
+      })),
+      defaultAgents: [],
+    };
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () =>
+        [
+          {
+            provider: 'codex',
+            metadata: {
+              displayName: 'Codex',
+              description: 'runtime',
+              capabilities: ['agent-runtime'],
+              engineId: 'codex',
+              // The public id differs from the engine id; attribution keys on
+              // the public connection id an Agent binds.
+              connectionId: 'codex-cli',
+            },
+            getPrerequisites,
+          },
+          broken,
+          {
+            provider: 'claude',
+            metadata: {
+              displayName: 'Claude Code',
+              description: 'runtime',
+              capabilities: ['agent-runtime'],
+              engineId: 'claude',
+            },
+            getPrerequisites,
+          },
+        ] as any,
+      async () => [
+        { id: 'kiro', name: 'Kiro', command: 'kiro', enabled: true },
+        { id: 'not registered', name: 'Bad', command: 'x', enabled: true },
+      ],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(),
+      undefined,
+      undefined,
+      [],
+      undefined,
+      { load: async () => registry, register: vi.fn(), unregister: vi.fn() },
+    );
+
+    await expect(service.listRuntimeConnections()).rejects.toThrow(
+      'Runtime capability inspection unavailable',
+    );
+    getPrerequisites.mockClear();
+
+    await expect(service.listEngineConnectionIdentities()).resolves.toEqual([
+      { id: 'codex-cli', engineId: 'codex', type: 'codex' },
+      // `claude` is not registered, so it has no public connection.
+      { id: 'kiro', engineId: 'acp', type: 'acp' },
+    ]);
+    // Static: no Adapter probe ran.
+    expect(getPrerequisites).not.toHaveBeenCalled();
+  });
+
   test('reports the active launchable inventory without exposing connection secrets', async () => {
     const providerService = {
       listProviderConnections: vi.fn(() => [

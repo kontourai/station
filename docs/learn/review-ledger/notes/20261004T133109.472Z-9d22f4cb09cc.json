@@ -1,0 +1,23 @@
+{
+  "revision": "ceffa0f8d5058b52c4237ed05db31bc390d1cad8",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked the freshness guard change in documentation-freshness.mjs: it adds a scoped-mode block on a hand-edited coverageBaseline and changes nothing this page describes.","inputs":[".veritas/README.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/README.md","note":"Read the added docs/guides/documentation.md paragraph on the scoped baseline rule; this page's claims are unaffected.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Read the added docs/guides/documentation.md paragraph on the scoped baseline rule; this page's claims are unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the new baseline guard in documentation-freshness.mjs and the new doc paragraph against this page's freshness guidance; the guidance still holds.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Read the added docs/guides/documentation.md paragraph on the scoped baseline rule; this page's claims are unaffected.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Authored the change: the new paragraph matches baselineAdvanceProblem (reachable from merge base, strict at that commit, names --advance-baseline) and the fixture tests.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Read the added docs/guides/documentation.md paragraph on the scoped baseline rule; this page's claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Read the added docs/guides/documentation.md paragraph on the scoped baseline rule; this page's claims are unaffected.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/learn/README.md","note":"Checked the guard change in documentation-freshness.mjs; the learn index describes no baseline handling.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs"]}
+  ]
+}

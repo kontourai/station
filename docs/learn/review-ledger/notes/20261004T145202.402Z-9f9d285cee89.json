@@ -1,0 +1,7 @@
+{
+  "revision": "a6c28926c020a3130400a954b42191d59c6d1210",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the account-bound Device gate fix: neutral observations (/.well-known/station/v1, /api/system/status) are now admitted only with a verified native Device proof, which is what this document already describes; a credential-bound account Device keeps only its exact /api/system/identity and /api/auth/authority self-reads. No claim needed changing.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]}
+  ]
+}

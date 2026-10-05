@@ -217,6 +217,8 @@ function sameTaskWorkspaceBinding(
   );
 }
 
+const taskCloseOnMergeSchema = z.object({ enabled: z.boolean() }).strict();
+
 const taskStatusSchema = z.object({
   status: z.preprocess((value) => {
     if (typeof value === 'string' && value in REMOVED_TASK_STATUS_VALUES) {
@@ -1921,6 +1923,28 @@ export function createTaskRoutes(
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
   });
+
+  // #3161: a person's opt-in to close the Task when every pull request kept
+  // on it is merged. No station-control tool names this route, so the central
+  // authority guard refuses an agent's request to it.
+  app.put(
+    '/:taskId/close-on-merge',
+    validate(taskCloseOnMergeSchema),
+    async (c) => {
+      try {
+        const service = serviceForRequest(c.req.raw);
+        if (!service) return hostedNotFound(c);
+        const data = await service.setCloseOnMerge(
+          param(c, 'taskId'),
+          getBody(c).enabled,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
 
   app.post('/:taskId/dispatch', validate(taskDispatchSchema), async (c) => {
     // #2436: a dispatch that asks for full access needs the operator in

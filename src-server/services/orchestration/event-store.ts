@@ -28,6 +28,7 @@ import { isClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
+  ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import type {
@@ -36,6 +37,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   type ProviderSession,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -231,6 +233,11 @@ import {
   type RecoveryTransition,
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
+import {
+  createSqliteSessionControlRequestKeys,
+  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
+  type SessionControlRequestKeys,
+} from './session-control-request-keys.js';
 import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
@@ -467,6 +474,65 @@ const SESSION_INVENTORY_GROUP_METHODS: Readonly<
   decisions: ['request.resolved'],
   resources: ['session.configured', 'token-usage.updated'],
 };
+
+/**
+ * The receipt facts joined onto each `token-usage.updated` row: its
+ * conversation, task, model, credential account and engine process epoch.
+ * Shared by the windowed usage rollup and the per-conversation usage tree so
+ * the two cannot attribute one event differently.
+ */
+const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
+                e.created_at, e.observed_at, e.sequence, e.global_sequence,
+                COALESCE(cs.conversation_id, h.thread_id) AS conversation_id,
+                (SELECT json_extract(config.payload, '$.metadata.taskId')
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method IN ('session.started', 'session.configured')
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.taskId') = 'text'
+                  ORDER BY config.sequence DESC LIMIT 1) AS task_id,
+                (SELECT COALESCE(json_extract(config.payload, '$.metadata.effectiveModel'), json_extract(config.payload, '$.model'))
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method = 'session.configured'
+                    AND json_valid(config.payload)
+                    AND (json_type(config.payload, '$.metadata.effectiveModel') = 'text'
+                      OR json_type(config.payload, '$.model') = 'text')
+                  ORDER BY config.sequence DESC LIMIT 1) AS model,
+                (SELECT json_quote(json_extract(config.payload, '$.metadata.usageAccountKey'))
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method IN ('session.started', 'session.configured')
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
+                    AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
+                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json,
+                (SELECT COUNT(*) FROM orchestration_events epoch
+                  WHERE epoch.thread_id = e.thread_id
+                    AND epoch.method = 'session.started'
+                    AND epoch.sequence <= e.sequence) AS process_epoch
+`;
+
+/** A session that names a parent conversation; see `listSessionsNamingParents`. */
+export interface SessionNamingParent {
+  threadId: string;
+  parentId: string;
+  binding: 'delegation-context' | 'parent-task-id';
+  stationDerived: boolean;
+}
+
+/** One `token-usage.updated` row with the receipt facts joined onto it. */
+export interface UsageReceiptEventRow {
+  event: PersistedRuntimeEvent;
+  conversationId: string;
+  taskId?: string;
+  model?: string;
+  processEpoch: number;
+  accountKey?: string;
+}
 
 /**
  * `IN (?, ...)` placeholders for a usage read's owner set. An empty set would
@@ -1810,6 +1876,7 @@ export class EventStore {
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
+  private sessionControlKeys?: SessionControlRequestKeys;
 
   constructor(
     dbPath: string,
@@ -1958,6 +2025,8 @@ export class EventStore {
         confirmed_turn_id TEXT,
         PRIMARY KEY (thread_id, client_input_id)
       )`);
+      // #3160: the request keys behind `send_to_session` / `interrupt_session`.
+      this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -4553,50 +4622,11 @@ export class EventStore {
     to: string;
     after?: { observedAt: string; eventId: string };
     limit: number;
-  }): Array<{
-    event: PersistedRuntimeEvent;
-    conversationId: string;
-    taskId?: string;
-    model?: string;
-    processEpoch: number;
-    accountKey?: string;
-  }> {
+  }): UsageReceiptEventRow[] {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
       .prepare(
-        `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
-                e.created_at, e.observed_at, e.sequence, e.global_sequence,
-                COALESCE(cs.conversation_id, h.thread_id) AS conversation_id,
-                (SELECT json_extract(config.payload, '$.metadata.taskId')
-                   FROM orchestration_events config
-                  WHERE config.thread_id = e.thread_id
-                    AND config.sequence <= e.sequence
-                    AND config.method IN ('session.started', 'session.configured')
-                    AND json_valid(config.payload)
-                    AND json_type(config.payload, '$.metadata.taskId') = 'text'
-                  ORDER BY config.sequence DESC LIMIT 1) AS task_id,
-                (SELECT COALESCE(json_extract(config.payload, '$.metadata.effectiveModel'), json_extract(config.payload, '$.model'))
-                   FROM orchestration_events config
-                  WHERE config.thread_id = e.thread_id
-                    AND config.sequence <= e.sequence
-                    AND config.method = 'session.configured'
-                    AND json_valid(config.payload)
-                    AND (json_type(config.payload, '$.metadata.effectiveModel') = 'text'
-                      OR json_type(config.payload, '$.model') = 'text')
-                  ORDER BY config.sequence DESC LIMIT 1) AS model,
-                (SELECT json_quote(json_extract(config.payload, '$.metadata.usageAccountKey'))
-                   FROM orchestration_events config
-                  WHERE config.thread_id = e.thread_id
-                    AND config.sequence <= e.sequence
-                    AND config.method IN ('session.started', 'session.configured')
-                    AND json_valid(config.payload)
-                    AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
-                    AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
-                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json,
-                (SELECT COUNT(*) FROM orchestration_events epoch
-                  WHERE epoch.thread_id = e.thread_id
-                    AND epoch.method = 'session.started'
-                    AND epoch.sequence <= e.sequence) AS process_epoch
+        `${USAGE_RECEIPT_EVENT_SELECT}
            FROM orchestration_events e
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
@@ -4620,20 +4650,178 @@ export class EventStore {
         options.after?.eventId ?? null,
         options.limit + 1,
       ) as any[];
-    return rows.map((row) => {
-      const accountKey: unknown =
-        typeof row.credential_profile_json === 'string'
-          ? JSON.parse(row.credential_profile_json)
-          : undefined;
-      return {
-        event: this.mapEventRow(row),
-        conversationId: row.conversation_id,
-        ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
-        ...(typeof row.model === 'string' ? { model: row.model } : {}),
-        ...(typeof accountKey === 'string' ? { accountKey } : {}),
-        processEpoch: Number(row.process_epoch),
-      };
-    });
+    return rows.map((row) => this.mapUsageReceiptEventRow(row));
+  }
+
+  private mapUsageReceiptEventRow(row: any): UsageReceiptEventRow {
+    const accountKey: unknown =
+      typeof row.credential_profile_json === 'string'
+        ? JSON.parse(row.credential_profile_json)
+        : undefined;
+    return {
+      event: this.mapEventRow(row),
+      conversationId: row.conversation_id,
+      ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
+      ...(typeof row.model === 'string' ? { model: row.model } : {}),
+      ...(typeof accountKey === 'string' ? { accountKey } : {}),
+      processEpoch: Number(row.process_epoch),
+    };
+  }
+
+  /**
+   * Every usage observation of the given session threads, in observation
+   * order, with the same receipt facts {@link listUsageReceiptEvents} joins.
+   * Not windowed: a usage tree covers the conversation's whole life. Reads at
+   * most `limit` rows; the caller passes its bound plus one so a tree past its
+   * bound is refused rather than silently cut. Authorization is the caller's:
+   * it passes only threads the reader may read.
+   */
+  listUsageReceiptEventsForThreads(
+    threadIds: readonly string[],
+    limit: number,
+  ): UsageReceiptEventRow[] {
+    const unique = [...new Set(threadIds)];
+    if (unique.length === 0 || limit < 1) return [];
+    const rows: UsageReceiptEventRow[] = [];
+    for (
+      let offset = 0;
+      offset < unique.length && rows.length < limit;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = unique.slice(offset, offset + EVENT_STORE_BATCH_CHUNK_SIZE);
+      const found = this.db
+        .prepare(
+          `${USAGE_RECEIPT_EVENT_SELECT}
+           FROM orchestration_events e
+           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
+           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
+          WHERE e.method = 'token-usage.updated'
+            AND e.thread_id IN (${chunk.map(() => '?').join(', ')})
+          ORDER BY e.global_sequence ASC
+          LIMIT ?`,
+        )
+        .all(...chunk, limit - rows.length) as unknown[];
+      for (const row of found) rows.push(this.mapUsageReceiptEventRow(row));
+    }
+    return rows;
+  }
+
+  /**
+   * Sessions that name one of `parentIds` as the conversation that launched
+   * them, and how:
+   *
+   * - `delegation-context`: the delegation context Station stamped at launch
+   *   (`metadata.delegation.parentConversationId`), or the copy a
+   *   paired-Station dispatch record keeps (`metadata.parentConversationId`).
+   *   For an agent's station-control call Station derives it from the calling
+   *   session's own record; for a direct request it is the requester's claim.
+   * - `parent-task-id`: only `metadata.parentTaskId`, which a delegation
+   *   request may set itself. Used only when there is no delegation context.
+   *
+   * `stationDerived` (#3323) is true only when a `session.started` row of the
+   * session names that same parent AND carries the dispatch route's
+   * provenance stamp saying Station derived the context from the calling
+   * session or its own runtime attested it. The stamp is a reserved key a
+   * caller can never set, so a request's bare claim never reads as derived.
+   *
+   * Every session.started/session.configured row is examined once for the
+   * whole batch of parents (one level of a tree read), through the method
+   * index; there is no index on the JSON fields. Reads one candidate past
+   * `limit` per chunk of parents and reports `truncated` when a chunk has
+   * more than `limit`, so the caller can refuse rather than read a cut list.
+   */
+  listSessionsNamingParents(
+    parentIds: readonly string[],
+    limit: number,
+  ): {
+    sessions: SessionNamingParent[];
+    truncated: boolean;
+  } {
+    const unique = [...new Set(parentIds)];
+    const result: SessionNamingParent[] = [];
+    let truncated = false;
+    if (unique.length === 0 || limit < 1)
+      return { sessions: result, truncated };
+    const seen = new Set<string>();
+    for (
+      let offset = 0;
+      offset < unique.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = unique.slice(offset, offset + EVENT_STORE_BATCH_CHUNK_SIZE);
+      const list = chunk.map(() => '?').join(', ');
+      const rows = this.db
+        .prepare(
+          `SELECT e.thread_id AS thread_id,
+                  MAX(COALESCE(
+                    json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
+                    json_extract(e.payload, '$.metadata.parentConversationId'))) AS verified_parent,
+                  MAX(json_extract(e.payload, '$.metadata.parentTaskId')) AS claimed_parent,
+                  MAX(CASE
+                    WHEN e.method = 'session.started'
+                     AND json_extract(e.payload, '$.metadata.${DELEGATION_PROVENANCE_METADATA_KEY}') IN ('caller-derived', 'runtime-attested')
+                    THEN COALESCE(
+                      json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
+                      json_extract(e.payload, '$.metadata.parentConversationId'))
+                  END) AS derived_parent,
+                  MIN(e.global_sequence) AS first_sequence
+             FROM orchestration_events e
+            WHERE e.method IN ('session.started', 'session.configured')
+              AND json_valid(e.payload)
+              AND (json_extract(e.payload, '$.metadata.delegation.parentConversationId') IN (${list})
+                OR json_extract(e.payload, '$.metadata.parentConversationId') IN (${list})
+                OR json_extract(e.payload, '$.metadata.parentTaskId') IN (${list}))
+            GROUP BY e.thread_id
+            ORDER BY first_sequence ASC
+            LIMIT ?`,
+        )
+        .all(...chunk, ...chunk, ...chunk, limit + 1) as Array<{
+        thread_id: string;
+        verified_parent: unknown;
+        claimed_parent: unknown;
+        derived_parent: unknown;
+      }>;
+      // One row past the bound proves there is more than it allows.
+      if (rows.length > limit) truncated = true;
+      const named = new Set(chunk);
+      for (const row of rows) {
+        // Matched by another chunk's parents already.
+        if (seen.has(row.thread_id)) continue;
+        // A delegation context decides; a parent task id counts only when
+        // there is none.
+        const verified =
+          typeof row.verified_parent === 'string'
+            ? row.verified_parent
+            : undefined;
+        const claimed =
+          typeof row.claimed_parent === 'string'
+            ? row.claimed_parent
+            : undefined;
+        if (verified !== undefined) {
+          // Pushed by the chunk that names the verified parent, if any.
+          if (named.has(verified)) {
+            seen.add(row.thread_id);
+            result.push({
+              threadId: row.thread_id,
+              parentId: verified,
+              binding: 'delegation-context',
+              stationDerived: row.derived_parent === verified,
+            });
+          }
+          continue;
+        }
+        if (claimed !== undefined && named.has(claimed)) {
+          seen.add(row.thread_id);
+          result.push({
+            threadId: row.thread_id,
+            parentId: claimed,
+            binding: 'parent-task-id',
+            stationDerived: false,
+          });
+        }
+      }
+    }
+    return { sessions: result, truncated };
   }
 
   /**
@@ -4987,6 +5175,19 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /** Whether the thread has ever recorded any `turn.*` event. */
+  hasTurnFacts(threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_events
+           WHERE thread_id = ? AND method LIKE 'turn.%'
+           LIMIT 1`,
+        )
+        .get(threadId) !== undefined
+    );
+  }
+
   firstEventByMethod(
     threadId: string,
     method: string,
@@ -5063,6 +5264,51 @@ export class EventStore {
       )
       .get(threadId) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * #3159: the typed prompts of `threadIds`' turns that contain `needle`,
+   * with who sent each (`clientOrigin.actor`, which Station resolved from the
+   * request's credential; absent on turns recorded without one). `needle` is
+   * only a narrowing prefilter: the caller parses each prompt for the exact
+   * reference it is looking for. One indexed lookup per thread
+   * (`thread_id, method, sequence`), at most `limitPerThread` rows each.
+   */
+  turnPromptsContaining(
+    threadIds: readonly string[],
+    needle: string,
+    limitPerThread = 256,
+  ): Array<{ prompt: string; actor?: unknown }> {
+    const statement = this.db.prepare(
+      `SELECT json_extract(payload, '$.prompt') AS prompt,
+              json_extract(payload, '$.clientOrigin.actor') AS actor
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'turn.started'
+         AND typeof(json_extract(payload, '$.prompt')) = 'text'
+         AND instr(json_extract(payload, '$.prompt'), ?) > 0
+       ORDER BY sequence ASC
+       LIMIT ?`,
+    );
+    const prompts: Array<{ prompt: string; actor?: unknown }> = [];
+    for (const threadId of new Set(threadIds)) {
+      const rows = statement.all(threadId, needle, limitPerThread) as Array<{
+        prompt: string;
+        actor: string | null;
+      }>;
+      for (const row of rows) {
+        let actor: unknown;
+        try {
+          actor = row.actor === null ? undefined : JSON.parse(row.actor);
+        } catch {
+          actor = undefined;
+        }
+        prompts.push({
+          prompt: row.prompt,
+          ...(actor === undefined ? {} : { actor }),
+        });
+      }
+    }
+    return prompts;
   }
 
   /**
@@ -10682,7 +10928,10 @@ export class EventStore {
         this.markRecoveryCompensation(fingerprint, now, expectedOutcome),
       resolveCompensation: (fingerprint, now) =>
         this.resolveRecoveryCompensationRecord(fingerprint, now),
-      cancel: (fingerprint, now) => this.cancelRecovery(fingerprint, now),
+      cancel: (fingerprint, now, reason) =>
+        this.cancelRecovery(fingerprint, now, reason),
+      retireWaiting: (input) => this.retireWaitingRecovery(input),
+      awaitingUser: () => this.readUsageLimitIntentsAwaitingUser(),
       cancelSourceTerminated: (now) =>
         this.cancelSourceTerminatedRecoveries(now),
       cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
@@ -11065,6 +11314,12 @@ export class EventStore {
       );
   }
 
+  /** #3160: the durable request keys of Station Control's Session tools. */
+  sessionControlRequestKeys(): SessionControlRequestKeys {
+    this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(this.db);
+    return this.sessionControlKeys;
+  }
+
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
   readSteerInput(input: {
     threadId: string;
@@ -11184,8 +11439,8 @@ export class EventStore {
           (fingerprint, thread_id, provider, source_event_id, source_turn_id,
            failure_kind, scope, decision, due_at, attempts, max_attempts,
            outcome, dispatch_attempt_id, recovery_correlation_id,
-           dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
+           dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`,
       )
       .run(
         input.fingerprint,
@@ -11199,6 +11454,7 @@ export class EventStore {
         input.dueAt ?? null,
         input.maxAttempts,
         input.outcome,
+        input.usageLimit ? 1 : null,
         input.createdAt,
         input.updatedAt,
       );
@@ -11213,7 +11469,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
          FROM orchestration_recovery_intents WHERE fingerprint = ?`,
       )
       .get(fingerprint) as RecoveryIntentRow | undefined;
@@ -11228,7 +11484,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
          FROM orchestration_recovery_intents
          WHERE thread_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1`,
       )
@@ -11243,6 +11499,8 @@ export class EventStore {
       ...(intent.dueAt ? { dueAt: intent.dueAt } : {}),
       attempts: intent.attempts,
       maxAttempts: intent.maxAttempts,
+      ...(intent.outcomeReason ? { outcomeReason: intent.outcomeReason } : {}),
+      ...(intent.usageLimit ? { usageLimit: true as const } : {}),
       updatedAt: intent.updatedAt,
     };
   }
@@ -11253,9 +11511,26 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
          FROM orchestration_recovery_intents
          WHERE outcome IN ('armed', 'resumed') ORDER BY due_at ASC, created_at ASC`,
+      )
+      .all()
+      .map((row: unknown) => mapRecoveryIntentRow(row as RecoveryIntentRow));
+  }
+
+  /** #3157: usage-limit intents left to the user (`manual`), never claimed. */
+  private readUsageLimitIntentsAwaitingUser(): ConnectionRecoveryIntent[] {
+    return this.db
+      .prepare(
+        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
+                failure_kind, scope, decision, due_at, attempts, max_attempts,
+                outcome, dispatch_attempt_id, recovery_correlation_id,
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
+         FROM orchestration_recovery_intents
+         WHERE outcome = 'manual' AND usage_limit = 1
+           AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
+         ORDER BY updated_at ASC`,
       )
       .all()
       .map((row: unknown) => mapRecoveryIntentRow(row as RecoveryIntentRow));
@@ -11267,7 +11542,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
          FROM orchestration_recovery_intents
          WHERE outcome = 'compensation-required'
          ORDER BY updated_at ASC, created_at ASC`,
@@ -11279,19 +11554,27 @@ export class EventStore {
   private claimRecoveryDispatch(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /**
+     * #3157: the user's own "Resume now" on a usage-limit stop. It claims a
+     * waiting (`armed`) or left-to-the-user (`manual`) usage-limit intent
+     * before its due time, and is still an ordinary `due` dispatch.
+     */
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
     now: string;
   }): ConnectionRecoveryIntent | null {
-    const eligibility =
-      input.kind === 'due'
+    const immediate = input.kind === 'due' && input.immediate === true;
+    const eligibility = immediate
+      ? "outcome IN ('armed', 'manual') AND usage_limit = 1"
+      : input.kind === 'due'
         ? "outcome = 'armed' AND due_at IS NOT NULL AND due_at <= ?"
         : "outcome IN ('armed', 'manual')";
     const row = this.db
       .prepare(
         `UPDATE orchestration_recovery_intents
-         SET outcome = 'resumed', attempts = attempts + 1,
+         SET outcome = 'resumed', attempts = attempts + 1, outcome_reason = NULL,
              dispatch_attempt_id = ?, recovery_correlation_id = ?,
              dispatch_settlement = 'prepared', dispatch_kind = ?,
              dispatch_owner_id = ?, dispatch_owner_pid = ?,
@@ -11301,7 +11584,7 @@ export class EventStore {
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at`,
+                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at`,
       )
       .get(
         input.dispatchAttemptId,
@@ -11313,7 +11596,7 @@ export class EventStore {
         input.owner.identityKind,
         input.now,
         input.fingerprint,
-        ...(input.kind === 'due' ? [input.now] : []),
+        ...(input.kind === 'due' && !immediate ? [input.now] : []),
       ) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
   }
@@ -11385,7 +11668,7 @@ export class EventStore {
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at`,
+                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at`,
       )
       .get(turnId, now, recoveryCorrelationId) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
@@ -11448,7 +11731,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at,
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at,
                 dispatch_owner_id, dispatch_owner_pid, dispatch_owner_birth,
                 dispatch_owner_identity_kind, credential_attempt_id
          FROM orchestration_recovery_intents
@@ -11515,7 +11798,7 @@ export class EventStore {
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at`,
+                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at`,
       )
       .get(
         input.now,
@@ -11590,13 +11873,43 @@ export class EventStore {
     return recoveryTransition(result);
   }
 
-  private cancelRecovery(fingerprint: string, now: string): RecoveryTransition {
+  private cancelRecovery(
+    fingerprint: string,
+    now: string,
+    reason?: ConnectionRecoveryOutcomeReason,
+  ): RecoveryTransition {
     const result = this.db
       .prepare(
-        `UPDATE orchestration_recovery_intents SET outcome = 'canceled', updated_at = ?
+        `UPDATE orchestration_recovery_intents
+         SET outcome = 'canceled', outcome_reason = COALESCE(?, outcome_reason), updated_at = ?
          WHERE fingerprint = ? AND outcome IN ('armed', 'resumed', 'manual')`,
       )
-      .run(now, fingerprint) as { changes: number | bigint };
+      .run(reason ?? null, now, fingerprint) as { changes: number | bigint };
+    return recoveryTransition(result);
+  }
+
+  /**
+   * #3157: settles an intent that is still only waiting — armed, never
+   * claimed — without a dispatch. Anything already claimed belongs to its
+   * claim and is left alone (`stale`).
+   */
+  private retireWaitingRecovery(input: {
+    fingerprint: string;
+    outcome: 'manual' | 'canceled';
+    reason: ConnectionRecoveryOutcomeReason;
+    now: string;
+  }): RecoveryTransition {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_recovery_intents
+         SET outcome = ?, outcome_reason = ?, updated_at = ?
+         WHERE fingerprint = ?
+           AND (outcome = 'armed' OR (outcome = 'manual' AND usage_limit = 1))
+           AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL`,
+      )
+      .run(input.outcome, input.reason, input.now, input.fingerprint) as {
+      changes: number | bigint;
+    };
     return recoveryTransition(result);
   }
 
@@ -11627,13 +11940,28 @@ export class EventStore {
   }
 
   /** A bounded shutdown may lose its per-intent CAS result. Persist the
-   * cancel request itself so startup fences it before any timer is rebuilt. */
+   * cancel request itself so startup fences it before any timer is rebuilt.
+   *
+   * #3157: a usage-limit intent that is only waiting for its provider reset,
+   * or that the user was left to resume (`manual`, whether the setting was off
+   * or the provider gave no reset), holds no dispatch to stop. It is not
+   * fenced: a restart rebuilds its timer (`reconcile`), a manual one is never
+   * dispatched on its own, and the coordinator re-checks the Session before
+   * any dispatch. */
   private cancelShutdownRecoveries(now: string): RecoveryTransition {
     const result = this.db
       .prepare(
         `UPDATE orchestration_recovery_intents
          SET shutdown_cancel_requested_at = ?, updated_at = ?
-         WHERE outcome IN ('armed', 'resumed', 'manual')`,
+         WHERE outcome IN ('armed', 'resumed', 'manual')
+           AND NOT (
+             COALESCE(dispatch_attempt_id, recovery_correlation_id) IS NULL
+             AND COALESCE(usage_limit, 0) = 1
+             AND (
+               (outcome = 'armed' AND decision = 'wait-until-reset')
+               OR outcome = 'manual'
+             )
+           )`,
       )
       .run(now, now) as { changes: number | bigint };
     return recoveryTransition(result);
@@ -11739,6 +12067,11 @@ export class EventStore {
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_steer_inputs WHERE thread_id = ?')
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM session_control_request_keys WHERE caller_session_id = ?',
+        )
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_request_state WHERE thread_id = ?')
@@ -12893,6 +13226,9 @@ interface RecoveryIntentRow {
   dispatch_settlement: 'prepared' | 'accepted' | null;
   dispatch_kind: 'due' | 'profile' | null;
   resumed_turn_id: string | null;
+  /** Absent from rows selected before #3157's column existed. */
+  outcome_reason?: ConnectionRecoveryOutcomeReason | null;
+  usage_limit?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -12924,6 +13260,8 @@ function mapRecoveryIntentRow(
       : {}),
     ...(row.dispatch_kind ? { dispatchKind: row.dispatch_kind } : {}),
     ...(row.resumed_turn_id ? { resumedTurnId: row.resumed_turn_id } : {}),
+    ...(row.outcome_reason ? { outcomeReason: row.outcome_reason } : {}),
+    ...(row.usage_limit === 1 ? { usageLimit: true as const } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

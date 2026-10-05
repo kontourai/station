@@ -89,7 +89,7 @@
       "name": "mobile-activity-compact",
       "width": 390,
       "height": 844,
-      "sha256": "b0fa2a4c51369ff62a020aa3eb4d28f4f5b387f6d908f16167c581519222ea0d"
+      "sha256": "f3e8f2e843d9144a8443353a93bc8b0ecb64f2f260dffdf8297a4a0b1aeefb17"
     },
     {
       "name": "mobile-agent-editor",
@@ -113,7 +113,7 @@
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "f5c3f67ecf30c90d4def0628cb6f1f0f42b4a34e4d747b66af079912ca577be0"
+      "sha256": "b6752920a6405b16a62eaaa4d691265e479cc2c4e1fbfd1e0e1b525330b9be9b"
     },
     {
       "name": "mobile-chat-dock-header-320",
@@ -125,7 +125,7 @@
       "name": "mobile-connections",
       "width": 390,
       "height": 844,
-      "sha256": "772f2b78e67bea72f70586474b08e00670a812ae7113e0b82b00979ff3fe8d8d"
+      "sha256": "d4d1e50ff42f9b8160005668e54bb77df06c53ea32184418c1896ad36e866fd5"
     },
     {
       "name": "mobile-home",
@@ -203,7 +203,7 @@
       "name": "overlay-command-palette-results",
       "width": 1440,
       "height": 900,
-      "sha256": "55f398619259a3af14338719b3a203c98311c396d615a05db94acdd6f2074407"
+      "sha256": "e9a8783c2cc78cf36475b45fc99e06ee4d1236c2c1179a9bd3ec05b94e136f77"
     },
     {
       "name": "overlay-confirm-dialog",

@@ -49,8 +49,8 @@
 // `@kontourai` mentions elsewhere in the tree (verified empirically: this
 // repo's existing `node_modules` references, in packages/cli and
 // packages/shared, are never adjacent to `@kontourai`/`flow-agents` tokens).
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 // Matches `@kontourai/flow-agents/kits`, `/build`, or `/src` — i.e. any
@@ -131,7 +131,7 @@ const SCOPED_EXTENSIONS = [
 ];
 
 function listTrackedFiles() {
-  const out = execFileSync('git', ['ls-files', '--', ...SCOPED_DIRS], {
+  const out = execFileSyncBounded('git', ['ls-files', '--', ...SCOPED_DIRS], {
     encoding: 'utf8',
     windowsHide: true,
   });

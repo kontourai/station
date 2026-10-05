@@ -1757,7 +1757,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
-  test('stops a never-used predecessor through the stopSession command once the successor has started', async () => {
+  test('retires a never-used predecessor through the conditional service operation once the successor has started', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
@@ -1772,12 +1772,14 @@ describe('Station Control canonical Environment + Agent execution', () => {
       throw new Error(`Unexpected request: ${url}`);
     });
     const orchestrationService = localService();
+    const retireNeverRanSession = vi.fn(async () => ({ stopped: true }));
     Object.assign(orchestrationService, {
       resolveConversationContinuation: vi.fn(async () => ({
         sessionId: 'conversation:retire:session:2',
         startRequired: true,
         retirePredecessorSessionId: 'conversation:retire',
       })),
+      retireNeverRanSession,
     });
     orchestrationService.readSession.mockResolvedValue({
       session: { cwd: '/srv/scratch' },
@@ -1805,8 +1807,16 @@ describe('Station Control canonical Environment + Agent execution', () => {
       orchestrationService as never,
     );
 
-    expect(orchestrationService.dispatchWithReceipt).toHaveBeenCalledWith(
-      { type: 'stopSession', threadId: 'conversation:retire' },
+    // The stop is decided inside the service, not by an unconditional
+    // `stopSession` dispatch from this wrapper.
+    await vi.waitFor(() =>
+      expect(retireNeverRanSession).toHaveBeenCalledWith(
+        'conversation:retire',
+        expect.objectContaining({ userId: 'test-user' }),
+      ),
+    );
+    expect(orchestrationService.dispatchWithReceipt).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'stopSession' }),
       expect.anything(),
     );
   });

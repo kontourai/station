@@ -54,6 +54,8 @@ export type OrchestrationSnapshotPayload = {
     displayTitle?: string;
     lastEventMethod?: CanonicalRuntimeEvent['method'];
     lastRuntimeErrorMessage?: string;
+    /** #3157: the terminal runtime error is a provider usage limit. */
+    lastRuntimeErrorUsageLimit?: true;
     lastTurnAbortReason?: string;
     /**
      * #2309: the activity of the conversation this row's session belongs
