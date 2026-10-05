@@ -1,0 +1,9 @@
+{
+  "revision": "4f0e253dbae9f759a05f918ca75c8f71ca7b49d3",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Retaken at 390x844 from the installed Knowledge Library plugin on an isolated Station built from 4e900230b (same imported 1656-record root as the 171fcbe0c capture); the plugin takes KnowledgeRecall from the host, so the heading is this revision's. Viewed the image: KnowledgeStoreProvider wraps as KnowledgeStore / Provider, toolbar shows the whole Station name, connection dot green, no horizontal overflow (document width 390). Alt, evidence, digest and capturedRevision updated.","inputs":["docs/learn/media/repository-knowledge-narrow.png","packages/sdk/src/components/KnowledgeRecall.tsx"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Re-captured at 1440x1000 from the same isolated Station on 4e900230b to compare: the canonical record heading still fits on one line, so adding identifier break opportunities changes nothing in this view. Kept the 171fcbe0c capture; its alt and evidence remain accurate.","inputs":["docs/learn/media/repository-knowledge.png","packages/sdk/src/components/KnowledgeRecall.tsx"]}
+  ]
+}
