@@ -126,7 +126,8 @@ first; the two chips under the text box show what **Start** will use:
 - The **project** chip shows the project's colour and name, or **No
   project**. Open it to choose a project. The list shows each project's
   folder, and the folder this chat will run in. A project with no folder
-  cannot be chosen there (a chat cannot run in it); the list says so.
+  can be chosen too; its chats run in your home folder, and the chip and
+  list say so.
 - **⋯** holds **Use a visual skill**.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
@@ -134,9 +135,7 @@ remembered for each project and for **No project** on this browser and
 Station access, and the Model for each Agent. The project is remembered as the
 chat dock's project for new chats, the same setting the dock's project
 switcher changes, so Home and the dock always open on the same choices.
-**No project** clears it. If the chat dock is bound to a project with no
-folder (from the sidebar), new chats open in **No project** on both, as they
-always have.
+**No project** clears it.
 Runtime options such as reasoning effort apply to that start only; they are
 not remembered. A choice you make stays on both surfaces for this browser tab,
 even if another chat later runs on a different Model, until you change it or
@@ -159,9 +158,10 @@ starting another Agent. If what Home sent cannot be read, or its Model is
 no longer offered, the dock says so and keeps your message for you to choose
 again.
 
-Home's message is never lost. **Start** from Home empties the field once the
-chat has started; if you close the dock's draft instead, the message stays on
-Home. If no chat dock is open to take it, Home keeps the message and says so.
+Home's message is never lost. **Start** from Home removes the text it sent
+once the chat has started, and keeps anything you typed while it started; if
+you close the dock's draft instead, the message stays on Home. If no chat dock
+is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the pencil on the collapsed bar),
 **⌘T**, and **New chat** in **Chats and tasks** open the same composer.
@@ -171,7 +171,11 @@ Setup from Home continues in the chat dock. When you choose **Connect**,
 **Set up**, **Edit agent**, or **Use a visual skill** on Home, your message,
 project, Agent and Model move into the chat dock's composer, which opens the
 setup page or the skills list; Home says your draft moved. If you then close
-that draft or cancel the setup return, the message comes back to Home.
+that draft or cancel the setup return, the message comes back to Home as you
+left it in the dock. If Home's text box is empty, it goes straight back in.
+If you have typed something new meanwhile, Home keeps your new text and offers
+**Restore your earlier draft** (which swaps the two, so neither is lost) or
+**Discard it**.
 **Enable** prepares an Agent in place on either surface.
 
 Context handed to a new chat, such as a prepared request from a plugin page,

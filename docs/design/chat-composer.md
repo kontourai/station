@@ -43,14 +43,20 @@ detail, with a Back to list control, instead of squeezing both columns.
 New chat opens the start composer, the same component Home renders inline: a
 text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
 readiness, repair and Model picker), a project chip (accent, name, folder, No
-project; a project with no folder is shown but cannot be chosen), and, beside
+project; a project with no folder can be chosen and runs in the home folder,
+which the chip and list say), and, beside
 Start, an overflow for visual skills. Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says
-so (the intent is cancelable); Home keeps its message until the chat starts
-and gets it back if the dock's draft is dismissed.
+so (the intent is cancelable); Home keeps its message until the chat starts,
+then removes only the text it sent. A dismissed dock draft comes back as
+edited there: into an empty field directly, otherwise behind Restore your
+earlier draft (a swap) and Discard it, so no ordering of dismiss, hand-off and
+start loses text.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
+When Continue holds Home's only item of work, Recent work is not shown and
+View Activity sits beside the Continue heading.
 Home's Recent work rows are the same row: a decorative dot before the Project
 name repeats that Project's sidebar colour (the name stays plain text), and the
 hover card's Git section reads the row's local session folder, as in the dock.
