@@ -385,6 +385,9 @@
 .sidebar__project-btn--active {
   background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
   border-left: 2px solid var(--accent-primary);
+  /* The 2px border comes out of the left padding, so the active row's bar
+     and name stay at the same x as every other row's. */
+  padding-left: 10px;
 }
 
 .sidebar--collapsed .sidebar__project-btn {

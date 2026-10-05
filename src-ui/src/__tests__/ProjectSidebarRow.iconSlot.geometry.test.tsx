@@ -58,9 +58,15 @@ assertNoImportsSurvive(css);
 const PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-const CASES: Array<{ slug: string; icon?: string; accent?: string }> = [
+const CASES: Array<{
+  slug: string;
+  icon?: string;
+  accent?: string;
+  active?: boolean;
+}> = [
   { slug: 'glyph', icon: '🧭', accent: 'var(--event-tool-call)' },
-  { slug: 'plain', accent: 'var(--event-agent-complete)' },
+  // The selected project: its 2px active border must not shift it.
+  { slug: 'plain', accent: 'var(--event-agent-complete)', active: true },
   { slug: 'image', icon: PNG, accent: 'var(--event-error)' },
   // A refused legacy link draws no icon: it is an icon-less row.
   {
@@ -75,7 +81,7 @@ const CASES: Array<{ slug: string; icon?: string; accent?: string }> = [
 function rowsMarkup(collapsed: boolean): string {
   const { container, unmount } = render(
     <>
-      {CASES.map(({ slug, icon, accent }) => (
+      {CASES.map(({ slug, icon, accent, active }) => (
         <ProjectSidebarRow
           key={slug}
           project={
@@ -88,7 +94,7 @@ function rowsMarkup(collapsed: boolean): string {
               ...(icon ? { icon } : {}),
             } as ProjectMetadata
           }
-          isActive={false}
+          isActive={Boolean(active)}
           activeLayout={null}
           collapsed={collapsed}
           accent={accent}
@@ -131,6 +137,7 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
               const name = row.querySelector('.sidebar__project-name');
               const icon = row.querySelector('.sidebar__project-icon');
               const slot = row.querySelector('.sidebar__project-icon-slot');
+              const bar = row.querySelector('.sidebar__project-accent');
               return {
                 name: name?.textContent,
                 nameLeft: name?.getBoundingClientRect().left ?? null,
@@ -138,6 +145,8 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
                   icon?.querySelector('img, .brand-icon__glyph'),
                 ),
                 slotWidth: slot?.getBoundingClientRect().width ?? 0,
+                barLeft: bar?.getBoundingClientRect().left ?? null,
+                active: row.classList.contains('sidebar__project-btn--active'),
                 slotChildren: slot?.childElementCount ?? null,
                 rowHeight: row.getBoundingClientRect().height,
               };
@@ -157,6 +166,17 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             `${label} names drawn: ${lefts}`,
           ).toBe(true);
           expect(new Set(lefts).size, `${label} name x: ${lefts}`).toBe(1);
+          // The fixture includes the selected row, and its bar sits where
+          // every other row's does.
+          expect(rows.map((row) => row.active)).toEqual([
+            false,
+            true,
+            false,
+            false,
+            false,
+          ]);
+          const bars = rows.map((row) => row.barLeft);
+          expect(new Set(bars).size, `${label} bar x: ${bars}`).toBe(1);
           // Every row reserves the same slot; only the iconed rows fill it.
           expect(
             rows.map((row) => row.slotWidth),
