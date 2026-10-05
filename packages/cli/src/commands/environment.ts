@@ -1,32 +1,32 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { hostname } from 'node:os';
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { hostname } from "node:os";
 import {
   decodeDevicePairingPayload,
   encodeDevicePairingPayload,
   exchangeDevicePairing,
   requestCurrentStationAccess,
-} from '@kontourai/station-connect/device-pairing';
+} from "@kontourai/station-connect/device-pairing";
 import {
   encodePairingDeepLink,
   PAIRING_LINK_REMEDY,
   type PairingDeepLinkChannel,
-} from '@kontourai/station-connect/pairing-deep-link';
+} from "@kontourai/station-connect/pairing-deep-link";
 import type {
   DevicePairingOffer,
   StationProfileCredentialRef,
   StationProfileSetupSource,
-} from '@kontourai/station-contracts';
+} from "@kontourai/station-contracts";
 import {
   buildStationProofMessage,
   PUBLIC_STATION_PROOF_PATH,
   STATION_PROOF_PROTOCOL_VERSION,
-} from '@kontourai/station-contracts/environment-security';
-import { readExistingEnvironmentSecurityRecord } from '@kontourai/station-shared/environment-security-record';
-import QRCode from 'qrcode';
+} from "@kontourai/station-contracts/environment-security";
+import { readExistingEnvironmentSecurityRecord } from "@kontourai/station-shared/environment-security-record";
+import QRCode from "qrcode";
 import {
   activeLocalStationPath,
   readActiveLocalStation,
-} from './active-local-station.js';
+} from "./active-local-station.js";
 import {
   type ApiBaseSource,
   configureApiCredential,
@@ -39,26 +39,30 @@ import {
   resolveApiBase,
   resolveApiBaseDetailed,
   withRequestTimeout,
-} from './core-api.js';
+} from "./core-api.js";
 import {
   type DeviceAccessOperatorChannel,
+  parseDeviceRemovalArgs,
   parseDeviceScopeArgs,
   renderGrantableScopes,
+  requireDeviceRemovalApproval,
+  runDeviceRemoveCommand,
+  runDeviceRevokeCommand,
   runDeviceScopeCommand,
   runDevicesCommand,
-} from './device-access.js';
-import { DEFAULT_SERVER_PORT } from './helpers.js';
+} from "./device-access.js";
+import { DEFAULT_SERVER_PORT } from "./helpers.js";
 import {
   collectPairingFlags,
   pairingBooleanFlag,
   pairingValueFlag,
-} from './pairing-flags.js';
+} from "./pairing-flags.js";
 import {
   assertCredentialTransportAllowed,
   getProfileCredentialStore,
   newPairingCredentialRef,
   type ProfileCredentialStore,
-} from './profile-credentials.js';
+} from "./profile-credentials.js";
 import {
   assertValidProfileName,
   findProfile,
@@ -68,13 +72,13 @@ import {
   registerPairedProfile,
   selectPairedProfileAsDefault,
   suggestProfileName,
-} from './profile-store.js';
+} from "./profile-store.js";
 import {
   resolveTailscaleOfferEndpoint,
   type TailscaleOfferDependencies,
   type TailscaleOfferEndpoint,
-} from './tailscale-serve.js';
-import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
+} from "./tailscale-serve.js";
+import { terminalSafeJson, terminalSafeText } from "./terminal-safe.js";
 
 /** Injectable device-pairing dependencies (real implementations by default). */
 export interface AccessRequestDependencies {
@@ -107,11 +111,11 @@ const DEFAULT_PAIRING_TIMEOUT_SECONDS = 300;
 /** Seconds between exchange polls while a request is still pending. */
 const PAIRING_POLL_INTERVAL_SECONDS = 2;
 const ACCESS_REQUEST_FLAGS = [
-  'api-base',
-  'station',
-  'device-name',
-  'timeout',
-  'force',
+  "api-base",
+  "station",
+  "device-name",
+  "timeout",
+  "force",
 ] as const;
 
 export interface EnvironmentSecuritySnapshot {
@@ -236,6 +240,8 @@ const USAGE = `Usage:
   station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
   station environment access scopes [--json]
+  station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+  station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
@@ -289,20 +295,20 @@ export async function runEnvironmentCommand(
   // boundary even though expected command paths currently do not write to it.
   void stderr;
 
-  if (args.length === 1 && args[0] === 'show') {
+  if (args.length === 1 && args[0] === "show") {
     const service = requireSecurityService(dependencies);
     const snapshot = await service.initialize();
     stdout(
       JSON.stringify({
         schemaVersion: snapshot.schemaVersion,
         environmentId: snapshot.environmentId,
-        credential: 'configured',
+        credential: "configured",
       }),
     );
     return;
   }
 
-  if (args.length === 2 && args[0] === 'credential' && args[1] === 'show') {
+  if (args.length === 2 && args[0] === "credential" && args[1] === "show") {
     const service = requireSecurityService(dependencies);
     const snapshot = await service.initialize();
     stdout(snapshot.credential);
@@ -310,19 +316,19 @@ export async function runEnvironmentCommand(
   }
 
   const isRotation =
-    args[0] === 'credential' &&
-    args[1] === 'rotate' &&
-    args.slice(2).every((arg) => arg === '--force') &&
-    args.filter((arg) => arg === '--force').length <= 1;
+    args[0] === "credential" &&
+    args[1] === "rotate" &&
+    args.slice(2).every((arg) => arg === "--force") &&
+    args.filter((arg) => arg === "--force").length <= 1;
   if (isRotation) {
     const service = requireSecurityService(dependencies);
     const confirmed = await confirmDestructiveAction(
-      args.includes('--force'),
-      'Rotate the Station environment credential',
+      args.includes("--force"),
+      "Rotate the Station environment credential",
       dependencies,
     );
     if (!confirmed) {
-      stdout('Cancelled.');
+      stdout("Cancelled.");
       return;
     }
     const snapshot = await service.rotateCredential();
@@ -331,18 +337,18 @@ export async function runEnvironmentCommand(
   }
 
   const isReset =
-    args[0] === 'reset' &&
-    args.slice(1).every((arg) => arg === '--force') &&
-    args.filter((arg) => arg === '--force').length <= 1;
+    args[0] === "reset" &&
+    args.slice(1).every((arg) => arg === "--force") &&
+    args.filter((arg) => arg === "--force").length <= 1;
   if (isReset) {
     const service = requireSecurityService(dependencies);
     const confirmed = await confirmDestructiveAction(
-      args.includes('--force'),
-      'Reset the Station environment identity and credential',
+      args.includes("--force"),
+      "Reset the Station environment identity and credential",
       dependencies,
     );
     if (!confirmed) {
-      stdout('Cancelled.');
+      stdout("Cancelled.");
       return;
     }
     const snapshot = await service.resetEnvironment();
@@ -350,7 +356,7 @@ export async function runEnvironmentCommand(
       JSON.stringify({
         schemaVersion: snapshot.schemaVersion,
         environmentId: snapshot.environmentId,
-        credential: 'rotated',
+        credential: "rotated",
       }),
     );
     return;
@@ -367,33 +373,33 @@ export async function runEnvironmentCommand(
 }
 
 function parseDevicePairingOffer(value: unknown): DevicePairingOffer {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Station returned an invalid device pairing offer.');
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Station returned an invalid device pairing offer.");
   }
   const offer = value as Partial<DevicePairingOffer>;
   if (
-    typeof offer.protocolVersion !== 'number' ||
-    typeof offer.environmentId !== 'string' ||
-    typeof offer.offerId !== 'string' ||
-    typeof offer.challenge !== 'string' ||
-    typeof offer.endpoint !== 'string' ||
-    typeof offer.scope !== 'string' ||
-    typeof offer.expiresAt !== 'number'
+    typeof offer.protocolVersion !== "number" ||
+    typeof offer.environmentId !== "string" ||
+    typeof offer.offerId !== "string" ||
+    typeof offer.challenge !== "string" ||
+    typeof offer.endpoint !== "string" ||
+    typeof offer.scope !== "string" ||
+    typeof offer.expiresAt !== "number"
   ) {
-    throw new Error('Station returned an invalid device pairing offer.');
+    throw new Error("Station returned an invalid device pairing offer.");
   }
   const payload = encodeDevicePairingPayload(offer as DevicePairingOffer);
   if (!decodeDevicePairingPayload(payload)) {
-    throw new Error('Station returned an unusable device pairing offer.');
+    throw new Error("Station returned an unusable device pairing offer.");
   }
   return offer as DevicePairingOffer;
 }
 
 async function renderTerminalQr(payload: string): Promise<string> {
   return QRCode.toString(payload, {
-    type: 'terminal',
+    type: "terminal",
     small: true,
-    errorCorrectionLevel: 'M',
+    errorCorrectionLevel: "M",
   });
 }
 
@@ -402,7 +408,7 @@ interface EnvironmentOfferInvocation {
   tailscaleServePort?: number;
   payloadOnly: boolean;
   advertiseUrl?: string;
-  clientChannel: Exclude<PairingDeepLinkChannel, 'dev'>;
+  clientChannel: Exclude<PairingDeepLinkChannel, "dev">;
 }
 
 interface VerifiedLocalOfferHost {
@@ -416,48 +422,48 @@ function parseEnvironmentOfferInvocation(
 ): EnvironmentOfferInvocation | null {
   const normalizedArgs = normalizeEnvironmentArgsForParsing(args);
   const tailscaleFlags = normalizedArgs.filter(
-    (arg) => arg === '--tailscale' || arg.startsWith('--tailscale='),
+    (arg) => arg === "--tailscale" || arg.startsWith("--tailscale="),
   );
   const servePortFlags = normalizedArgs.filter(
     (arg) =>
-      arg === '--tailscale-serve-port' ||
-      arg.startsWith('--tailscale-serve-port='),
+      arg === "--tailscale-serve-port" ||
+      arg.startsWith("--tailscale-serve-port="),
   );
   if (tailscaleFlags.length > 1 || servePortFlags.length > 1) {
     throw usageError();
   }
   const parsed = parseCoreArgs(normalizedArgs);
-  if (parsed.positionals[0] !== 'offer') return null;
+  if (parsed.positionals[0] !== "offer") return null;
   if (
     parsed.positionals.length !== 1 ||
     !allowedFlags(parsed.flags, [
-      'tailscale',
-      'tailscale-serve-port',
-      'payload-only',
-      'advertise-url',
-      'client-channel',
+      "tailscale",
+      "tailscale-serve-port",
+      "payload-only",
+      "advertise-url",
+      "client-channel",
     ]) ||
     (parsed.flags.tailscale !== undefined && parsed.flags.tailscale !== true) ||
-    (parsed.flags['payload-only'] !== undefined &&
-      parsed.flags['payload-only'] !== true)
+    (parsed.flags["payload-only"] !== undefined &&
+      parsed.flags["payload-only"] !== true)
   ) {
     throw usageError();
   }
-  const advertiseUrl = parsed.flags['advertise-url'];
-  const clientChannel = parsed.flags['client-channel'];
+  const advertiseUrl = parsed.flags["advertise-url"];
+  const clientChannel = parsed.flags["client-channel"];
   if (
     clientChannel !== undefined &&
-    clientChannel !== 'stable' &&
-    clientChannel !== 'beta' &&
-    clientChannel !== 'nightly'
+    clientChannel !== "stable" &&
+    clientChannel !== "beta" &&
+    clientChannel !== "nightly"
   ) {
     throw usageError();
   }
-  const tailscaleServePort = parsed.flags['tailscale-serve-port'];
+  const tailscaleServePort = parsed.flags["tailscale-serve-port"];
   if (
     tailscaleServePort !== undefined &&
     (!parsed.flags.tailscale ||
-      typeof tailscaleServePort !== 'string' ||
+      typeof tailscaleServePort !== "string" ||
       !/^[1-9][0-9]*$/.test(tailscaleServePort) ||
       !Number.isSafeInteger(Number(tailscaleServePort)) ||
       Number(tailscaleServePort) > 65535)
@@ -466,7 +472,7 @@ function parseEnvironmentOfferInvocation(
   }
   if (advertiseUrl !== undefined) {
     if (
-      typeof advertiseUrl !== 'string' ||
+      typeof advertiseUrl !== "string" ||
       new URL(advertiseUrl).origin !== advertiseUrl
     ) {
       throw usageError();
@@ -477,8 +483,8 @@ function parseEnvironmentOfferInvocation(
     ...(tailscaleServePort !== undefined
       ? { tailscaleServePort: Number(tailscaleServePort) }
       : {}),
-    payloadOnly: parsed.flags['payload-only'] === true,
-    clientChannel: clientChannel ?? 'stable',
+    payloadOnly: parsed.flags["payload-only"] === true,
+    clientChannel: clientChannel ?? "stable",
     ...(advertiseUrl ? { advertiseUrl } : {}),
   };
 }
@@ -501,29 +507,29 @@ async function verifyLocalOfferHost(
   });
   if (!apiBase || !isLoopbackApiBase(apiBase)) {
     throw new Error(
-      'No running local Station was discovered. Start this Station first, then rerun `station environment offer` from its host.',
+      "No running local Station was discovered. Start this Station first, then rerun `station environment offer` from its host.",
     );
   }
 
   const request = dependencies.request ?? requestBareJson;
   const snapshot = await requireSecurityService(dependencies).initialize();
-  const handshake = await request(apiBase, '/.well-known/station/v1');
+  const handshake = await request(apiBase, "/.well-known/station/v1");
   if (
     !handshake ||
-    typeof handshake !== 'object' ||
+    typeof handshake !== "object" ||
     Array.isArray(handshake) ||
     (handshake as { environmentId?: unknown }).environmentId !==
       snapshot.environmentId
   ) {
     throw new Error(
-      'The discovered loopback listener does not match this Station home. Check STATION_HOME and restart the local Station before offering a pairing code.',
+      "The discovered loopback listener does not match this Station home. Check STATION_HOME and restart the local Station before offering a pairing code.",
     );
   }
 
-  const nonce = randomBytes(32).toString('base64url');
+  const nonce = randomBytes(32).toString("base64url");
   const proof = await request(apiBase, PUBLIC_STATION_PROOF_PATH, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       protocolVersion: STATION_PROOF_PROTOCOL_VERSION,
       nonce,
@@ -531,7 +537,7 @@ async function verifyLocalOfferHost(
   });
   if (!verifyLocalStationProof(snapshot, nonce, proof)) {
     throw new Error(
-      'The loopback listener could not prove it owns this Station environment. No pairing offer was created and no credential was sent.',
+      "The loopback listener could not prove it owns this Station environment. No pairing offer was created and no credential was sent.",
     );
   }
   return { apiBase, snapshot, request };
@@ -558,11 +564,11 @@ async function mintEnvironmentPairingOffer(
 ): Promise<DevicePairingOffer> {
   try {
     return parseDevicePairingOffer(
-      await host.request(host.apiBase, '/api/pairing/offers', {
-        method: 'POST',
+      await host.request(host.apiBase, "/api/pairing/offers", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${host.snapshot.credential}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           endpoint: advertiseUrl ?? publication?.endpoint ?? host.apiBase,
@@ -572,7 +578,7 @@ async function mintEnvironmentPairingOffer(
   } catch (error) {
     if (publication?.configured) {
       throw new Error(
-        `Pairing offer creation failed after Tailscale HTTPS Serve was configured. To undo this mapping, run \`tailscale serve --https=${new URL(publication.endpoint).port || '443'} off\`. ${(error as Error).message}`,
+        `Pairing offer creation failed after Tailscale HTTPS Serve was configured. To undo this mapping, run \`tailscale serve --https=${new URL(publication.endpoint).port || "443"} off\`. ${(error as Error).message}`,
       );
     }
     throw error;
@@ -589,27 +595,27 @@ function formatEnvironmentOfferOutput(input: {
   const endpoint = new URL(input.offer.endpoint).origin;
   const expires = new Date(input.offer.expiresAt).toISOString();
   return [
-    'Station device pairing offer',
+    "Station device pairing offer",
     `Endpoint: ${endpoint}`,
     `Expires: ${expires}`,
     input.publication
       ? `Reachability: published privately on this tailnet as ${input.publication.endpoint}.`
-      : 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.',
-    'Payload (one-time pairing offer; scan or paste into Join):',
+      : "Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.",
+    "Payload (one-time pairing offer; scan or paste into Join):",
     input.payload,
-    'Open in selected Station client:',
+    "Open in selected Station client:",
     input.pairingLink,
-    'If the operating system has no app for that custom scheme:',
+    "If the operating system has no app for that custom scheme:",
     `  ${PAIRING_LINK_REMEDY}`,
-    'Terminal QR:',
+    "Terminal QR:",
     input.qr,
     ...(input.publication
       ? [
-          'Tailscale teardown (manual only; the offer expiry does not change Serve):',
-          `  tailscale serve --https=${new URL(input.publication.endpoint).port || '443'} off`,
+          "Tailscale teardown (manual only; the offer expiry does not change Serve):",
+          `  tailscale serve --https=${new URL(input.publication.endpoint).port || "443"} off`,
         ]
       : []),
-  ].join('\n');
+  ].join("\n");
 }
 
 /**
@@ -698,9 +704,9 @@ async function warnIfSshProfileTakesPrecedence(
       stderr(
         `Warning: environment '${environmentId}' already has a saved SSH profile. ` +
           "delegate_task connects via the SSH tunnel, not this credential's apiBase " +
-          '— but the credential IS attached to and scope-enforced on that SSH-tunneled ' +
-          'connection (station#1123 slice 3). Only the apiBase you set here is ignored ' +
-          'while the SSH profile exists.',
+          "— but the credential IS attached to and scope-enforced on that SSH-tunneled " +
+          "connection (station#1123 slice 3). Only the apiBase you set here is ignored " +
+          "while the SSH profile exists.",
       );
     }
   } catch {
@@ -723,14 +729,14 @@ async function runPeerCredentialCommand(
   dependencies: EnvironmentCommandDependencies,
 ): Promise<boolean> {
   const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
-  if (parsed.positionals[0] !== 'peers') return false;
+  if (parsed.positionals[0] !== "peers") return false;
   const action = parsed.positionals[1];
-  if (!['list', 'add', 'remove'].includes(action ?? '')) {
+  if (!["list", "add", "remove"].includes(action ?? "")) {
     throw usageError();
   }
   if (!dependencies.createPeerCredentialStore) {
     throw new Error(
-      'Peer credential commands require the Station repository launcher (./station).',
+      "Peer credential commands require the Station repository launcher (./station).",
     );
   }
   const store = dependencies.createPeerCredentialStore(
@@ -739,7 +745,7 @@ async function runPeerCredentialCommand(
   const stdout = dependencies.stdout ?? console.log;
   const stderr = dependencies.stderr ?? console.error;
 
-  if (action === 'list') {
+  if (action === "list") {
     if (
       parsed.positionals.length !== 2 ||
       Object.keys(parsed.flags).length > 0
@@ -750,27 +756,27 @@ async function runPeerCredentialCommand(
     return true;
   }
 
-  if (action === 'add') {
+  if (action === "add") {
     if (
       parsed.positionals.length !== 2 ||
       !allowedFlags(parsed.flags, [
-        'environment-id',
-        'api-base',
-        'credential',
-        'scope',
-        'label',
+        "environment-id",
+        "api-base",
+        "credential",
+        "scope",
+        "label",
       ])
     ) {
       throw usageError();
     }
-    const environmentId = requireValueFlag(parsed.flags, 'environment-id');
+    const environmentId = requireValueFlag(parsed.flags, "environment-id");
     await warnIfSshProfileTakesPrecedence(environmentId, dependencies, stderr);
     const record = await store.upsert({
       environmentId,
-      apiBase: requireValueFlag(parsed.flags, 'api-base'),
-      credential: requireValueFlag(parsed.flags, 'credential'),
-      scope: requireValueFlag(parsed.flags, 'scope'),
-      ...(typeof parsed.flags.label === 'string'
+      apiBase: requireValueFlag(parsed.flags, "api-base"),
+      credential: requireValueFlag(parsed.flags, "credential"),
+      scope: requireValueFlag(parsed.flags, "scope"),
+      ...(typeof parsed.flags.label === "string"
         ? { label: parsed.flags.label }
         : {}),
     });
@@ -794,9 +800,9 @@ interface PairingRequestView {
   // that `access list` prints.
   offerId?: string;
   deviceName: string;
-  source: 'same-origin' | 'pairing-code' | 'tailnet';
+  source: "same-origin" | "pairing-code" | "tailnet";
   requester?: {
-    provider: 'tailscale-serve';
+    provider: "tailscale-serve";
     login: string;
     displayName?: string;
   };
@@ -807,7 +813,7 @@ interface PairingRequestView {
   };
   createdAt: number;
   expiresAt: number;
-  status: 'pending' | 'confirmed' | 'denied';
+  status: "pending" | "confirmed" | "denied";
 }
 
 async function requestBareJson<T>(
@@ -817,7 +823,7 @@ async function requestBareJson<T>(
 ): Promise<T> {
   const response = await fetch(
     `${apiBase}${path}`,
-    withRequestTimeout({ ...init, redirect: 'error' }),
+    withRequestTimeout({ ...init, redirect: "error" }),
   );
   let value: unknown;
   try {
@@ -825,7 +831,7 @@ async function requestBareJson<T>(
   } catch {
     throw new Error(
       response.ok
-        ? 'Station returned a malformed JSON response.'
+        ? "Station returned a malformed JSON response."
         : `Station request failed with HTTP ${response.status}.`,
     );
   }
@@ -833,14 +839,14 @@ async function requestBareJson<T>(
     // The bare pairing routes answer `{ error: <code> }`; keep the code and
     // status on the error (#1796) so a caller branches on them, not on text.
     const code =
-      value && typeof value === 'object' && !Array.isArray(value)
+      value && typeof value === "object" && !Array.isArray(value)
         ? (value as { error?: unknown }).error
         : undefined;
     throw Object.assign(
       new Error(describeBareJsonFailure(response.status, value)),
       {
         status: response.status,
-        ...(typeof code === 'string' && /^[a-z_]{1,64}$/.test(code)
+        ...(typeof code === "string" && /^[a-z_]{1,64}$/.test(code)
           ? { code }
           : {}),
       },
@@ -859,10 +865,10 @@ async function requestBareJson<T>(
  */
 function describeBareJsonFailure(status: number, value: unknown): string {
   const error =
-    value && typeof value === 'object' && !Array.isArray(value)
+    value && typeof value === "object" && !Array.isArray(value)
       ? (value as { error?: unknown }).error
       : undefined;
-  if (typeof error !== 'string' || error.trim().length === 0) {
+  if (typeof error !== "string" || error.trim().length === 0) {
     return `Station request failed with HTTP ${status}.`;
   }
   // `terminalSafeText` prevents a compromised/failed peer from writing
@@ -874,7 +880,7 @@ function describeBareJsonFailure(status: number, value: unknown): string {
 
 async function readBoundedJson(response: Response): Promise<unknown> {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('Missing response body');
+  if (!reader) throw new Error("Missing response body");
   const chunks: Uint8Array[] = [];
   let length = 0;
   while (true) {
@@ -883,7 +889,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
     length += value.byteLength;
     if (length > 64 * 1024) {
       await reader.cancel();
-      throw new Error('Response body too large');
+      throw new Error("Response body too large");
     }
     chunks.push(value);
   }
@@ -907,79 +913,79 @@ async function readBoundedJson(response: Response): Promise<unknown> {
  * an arbitrarily long string.
  */
 function sanitizeUntrustedEnvironmentId(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) return '(missing)';
+  if (typeof value !== "string" || value.length === 0) return "(missing)";
   return terminalSafeText(value).slice(0, 128);
 }
 
 function parsePairingRequest(value: unknown): PairingRequestView {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Station returned an invalid device access request.');
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Station returned an invalid device access request.");
   }
   const request = value as Partial<PairingRequestView>;
   if (
-    typeof request.requestId !== 'string' ||
+    typeof request.requestId !== "string" ||
     !/^[A-Za-z0-9_-]{1,128}$/.test(request.requestId) ||
     (request.offerId !== undefined &&
-      (typeof request.offerId !== 'string' ||
+      (typeof request.offerId !== "string" ||
         !/^[A-Za-z0-9_-]{1,128}$/.test(request.offerId))) ||
-    typeof request.deviceName !== 'string' ||
+    typeof request.deviceName !== "string" ||
     request.deviceName.length === 0 ||
     request.deviceName.length > 64 ||
-    !['same-origin', 'pairing-code', 'tailnet'].includes(
-      request.source ?? '',
+    !["same-origin", "pairing-code", "tailnet"].includes(
+      request.source ?? "",
     ) ||
     !Number.isFinite(request.createdAt) ||
     !Number.isFinite(request.expiresAt) ||
-    !['pending', 'confirmed', 'denied'].includes(request.status ?? '')
+    !["pending", "confirmed", "denied"].includes(request.status ?? "")
   ) {
-    throw new Error('Station returned an invalid device access request.');
+    throw new Error("Station returned an invalid device access request.");
   }
   if (
-    request.source === 'tailnet' &&
-    (request.requester?.provider !== 'tailscale-serve' ||
-      typeof request.requester.login !== 'string' ||
+    request.source === "tailnet" &&
+    (request.requester?.provider !== "tailscale-serve" ||
+      typeof request.requester.login !== "string" ||
       request.requester.login.length === 0 ||
       request.requester.login.length > 254 ||
       (request.requester.displayName !== undefined &&
-        (typeof request.requester.displayName !== 'string' ||
+        (typeof request.requester.displayName !== "string" ||
           request.requester.displayName.length === 0 ||
           request.requester.displayName.length > 128)))
   ) {
-    throw new Error('Station returned an invalid device access request.');
+    throw new Error("Station returned an invalid device access request.");
   }
-  if (request.source !== 'tailnet' && request.requester !== undefined) {
-    throw new Error('Station returned an invalid device access request.');
+  if (request.source !== "tailnet" && request.requester !== undefined) {
+    throw new Error("Station returned an invalid device access request.");
   }
   if (request.accountCandidate !== undefined) {
     const candidate = request.accountCandidate as unknown;
     if (
       !candidate ||
-      typeof candidate !== 'object' ||
+      typeof candidate !== "object" ||
       Array.isArray(candidate) ||
-      typeof (candidate as { issuer?: unknown }).issuer !== 'string' ||
+      typeof (candidate as { issuer?: unknown }).issuer !== "string" ||
       (candidate as { issuer: string }).issuer.length === 0 ||
       (candidate as { issuer: string }).issuer.length > 512 ||
-      typeof (candidate as { subject?: unknown }).subject !== 'string' ||
+      typeof (candidate as { subject?: unknown }).subject !== "string" ||
       (candidate as { subject: string }).subject.length === 0 ||
       (candidate as { subject: string }).subject.length > 512 ||
       typeof (candidate as { displayName?: unknown }).displayName !==
-        'string' ||
+        "string" ||
       (candidate as { displayName: string }).displayName.length === 0 ||
       (candidate as { displayName: string }).displayName.length > 128
     ) {
-      throw new Error('Station returned an invalid device access request.');
+      throw new Error("Station returned an invalid device access request.");
     }
   }
   return request as PairingRequestView;
 }
 
 function parsePairingRequestList(value: unknown): PairingRequestView[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Station returned an invalid device access request list.');
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Station returned an invalid device access request list.");
   }
   const requests = (value as { requests?: unknown }).requests;
   if (!Array.isArray(requests) || requests.length > 128) {
-    throw new Error('Station returned an invalid device access request list.');
+    throw new Error("Station returned an invalid device access request list.");
   }
   return requests.map(parsePairingRequest);
 }
@@ -989,24 +995,24 @@ function verifyLocalStationProof(
   nonce: string,
   value: unknown,
 ): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const proof = value as Record<string, unknown>;
   if (
     proof.protocolVersion !== STATION_PROOF_PROTOCOL_VERSION ||
     proof.environmentId !== snapshot.environmentId ||
     proof.nonce !== nonce ||
-    typeof proof.signature !== 'string' ||
+    typeof proof.signature !== "string" ||
     !/^[A-Za-z0-9_-]{43}$/.test(proof.signature)
   ) {
     return false;
   }
   const expected = createHmac(
-    'sha256',
-    Buffer.from(snapshot.credential, 'base64url'),
+    "sha256",
+    Buffer.from(snapshot.credential, "base64url"),
   )
     .update(buildStationProofMessage(snapshot.environmentId, nonce))
     .digest();
-  const received = Buffer.from(proof.signature, 'base64url');
+  const received = Buffer.from(proof.signature, "base64url");
   return (
     received.byteLength === expected.byteLength &&
     timingSafeEqual(received, expected)
@@ -1017,10 +1023,10 @@ function isLoopbackApiBase(apiBase: string): boolean {
   try {
     const url = new URL(apiBase);
     return (
-      (url.protocol === 'http:' || url.protocol === 'https:') &&
-      (url.hostname === '127.0.0.1' || url.hostname === '[::1]') &&
-      url.username === '' &&
-      url.password === ''
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "127.0.0.1" || url.hostname === "[::1]") &&
+      url.username === "" &&
+      url.password === ""
     );
   } catch {
     return false;
@@ -1035,13 +1041,13 @@ function isLoopbackApiBase(apiBase: string): boolean {
  * mirror of that one.
  */
 const API_BASE_SOURCE_LABEL: Record<ApiBaseSource, string> = {
-  'api-base-flag': '--api-base',
-  'station-flag': '--station',
-  'station-env': 'STATION_TARGET',
-  'project-station': 'project Station selection',
-  'default-station': 'default Station',
-  'active-local': 'active local Station',
-  loopback: 'loopback fallback',
+  "api-base-flag": "--api-base",
+  "station-flag": "--station",
+  "station-env": "STATION_TARGET",
+  "project-station": "project Station selection",
+  "default-station": "default Station",
+  "active-local": "active local Station",
+  loopback: "loopback fallback",
 };
 
 /**
@@ -1071,22 +1077,24 @@ function suggestDirectAccessInvocation(
   apiBase: string,
 ): string {
   const base = `station environment access ${action} --api-base=${apiBase}`;
-  if (action === 'list') return `${base}.`;
+  if (action === "list") return `${base}.`;
+  if (action === "revoke" || action === "remove")
+    return `${base} <device>. Interactively this prompts for confirmation; pass --force only for non-interactive/scripted use.`;
   return (
     `${base} <request-id>. Interactively this prompts for confirmation; ` +
-    'pass --force only for non-interactive/scripted use.'
+    "pass --force only for non-interactive/scripted use."
   );
 }
 
 function accessRequestLabel(request: PairingRequestView): string {
   const identity =
-    request.source === 'tailnet' && request.requester
+    request.source === "tailnet" && request.requester
       ? `, verified Tailscale user ${JSON.stringify(
           terminalSafeText(
             request.requester.displayName ?? request.requester.login,
           ),
         )}`
-      : '';
+      : "";
   return `${JSON.stringify(terminalSafeText(request.deviceName))} (${request.source}${identity})`;
 }
 
@@ -1100,7 +1108,7 @@ function pairingRequestListEntry(
   request: PairingRequestView,
 ): Record<string, unknown> {
   const requestedBy =
-    request.source === 'tailnet' && request.requester
+    request.source === "tailnet" && request.requester
       ? (request.requester.displayName ?? request.requester.login)
       : undefined;
   return {
@@ -1129,19 +1137,19 @@ function pairingErrorSignal(error: unknown): {
   code?: string;
   status?: number;
 } {
-  if (error && typeof error === 'object') {
+  if (error && typeof error === "object") {
     const record = error as { code?: unknown; status?: unknown };
     return {
-      code: typeof record.code === 'string' ? record.code : undefined,
-      status: typeof record.status === 'number' ? record.status : undefined,
+      code: typeof record.code === "string" ? record.code : undefined,
+      status: typeof record.status === "number" ? record.status : undefined,
     };
   }
   return {};
 }
 
 function defaultDeviceName(resolveHostname: () => string): string {
-  const base = `${resolveHostname()} CLI`.trim() || 'Station CLI';
-  return Array.from(base).slice(0, 64).join('');
+  const base = `${resolveHostname()} CLI`.trim() || "Station CLI";
+  return Array.from(base).slice(0, 64).join("");
 }
 
 export interface PairSavedStationInput {
@@ -1158,13 +1166,12 @@ export interface PairSavedStationInput {
   allowEndpointReplacement?: boolean;
 }
 
-export interface PairSavedStationDependencies
-  extends AccessRequestDependencies {
+export interface PairSavedStationDependencies extends AccessRequestDependencies {
   stdout?: (value: string) => void;
 }
 
 export interface PairSavedStationResult {
-  profile: ReturnType<typeof registerPairedProfile>['profile'];
+  profile: ReturnType<typeof registerPairedProfile>["profile"];
   alreadyPaired: boolean;
 }
 
@@ -1197,12 +1204,12 @@ export async function pairSavedStation(
   if (input.name !== undefined) assertValidProfileName(input.name);
   const deviceName = input.deviceName ?? defaultDeviceName(resolveHostname);
   if (deviceName.trim().length === 0 || deviceName.length > 64) {
-    throw new Error('--device-name must be 1-64 characters.');
+    throw new Error("--device-name must be 1-64 characters.");
   }
   const timeoutSeconds =
     input.timeoutSeconds ?? DEFAULT_PAIRING_TIMEOUT_SECONDS;
   if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds <= 0) {
-    throw new Error('--timeout must be a positive whole number of seconds.');
+    throw new Error("--timeout must be a positive whole number of seconds.");
   }
   const initialStore = readProfileStore();
   const initialProfile = input.name
@@ -1249,15 +1256,15 @@ export async function pairSavedStation(
     throw new Error(
       `Could not request device access from ${origin}: ${describeApiError(
         code ?? (error instanceof Error ? error.message : error),
-        'the host rejected the pairing request',
+        "the host rejected the pairing request",
       )}`,
     );
   }
   const { offerId, proof, requestId } = access;
   if (
-    typeof offerId !== 'string' ||
-    typeof proof !== 'string' ||
-    typeof requestId !== 'string'
+    typeof offerId !== "string" ||
+    typeof proof !== "string" ||
+    typeof requestId !== "string"
   ) {
     throw new Error(
       `Unexpected access-request response from ${origin}: missing pending-exchange fields (offerId/proof/requestId).`,
@@ -1266,7 +1273,7 @@ export async function pairSavedStation(
   stdout(
     `Requested device access to ${origin} as "${deviceName}".\n` +
       `Request id: ${requestId}\n` +
-      'Waiting for approval on the host… ' +
+      "Waiting for approval on the host… " +
       `Approve it there with: station environment access approve ${requestId} --force`,
   );
 
@@ -1279,21 +1286,21 @@ export async function pairSavedStation(
       result = await exchange({ endpoint: origin, offerId, proof, requestId });
     } catch (error) {
       const { code, status } = pairingErrorSignal(error);
-      if (code === 'request_denied' || status === 403) {
+      if (code === "request_denied" || status === 403) {
         throw new Error(
           `The host denied device access for request ${requestId}.`,
         );
       }
-      if (code === 'offer_expired' || status === 410) {
+      if (code === "offer_expired" || status === 410) {
         throw new Error(
-          'The pairing offer expired before it was approved. Rerun to start a new request.',
+          "The pairing offer expired before it was approved. Rerun to start a new request.",
         );
       }
-      if (code !== 'request_not_confirmed' && status !== 409) {
+      if (code !== "request_not_confirmed" && status !== 409) {
         throw new Error(
           `Pairing exchange failed: ${describeApiError(
             code ?? (error instanceof Error ? error.message : error),
-            'unexpected pairing error',
+            "unexpected pairing error",
           )}`,
         );
       }
@@ -1311,7 +1318,7 @@ export async function pairSavedStation(
   }
   if (!result.credential) {
     throw new Error(
-      'The host completed pairing without issuing a bearer credential.',
+      "The host completed pairing without issuing a bearer credential.",
     );
   }
 
@@ -1379,7 +1386,7 @@ export async function pairSavedStation(
   );
   if (!cleanupCompleted) {
     stdout(
-      'The new Station binding is active, but retirement of the replaced credential could not be confirmed.',
+      "The new Station binding is active, but retirement of the replaced credential could not be confirmed.",
     );
   }
   return { profile: registration.profile, alreadyPaired: false };
@@ -1405,8 +1412,8 @@ async function runAccessRequestCommand(
   const normalizedArgs = normalizeEnvironmentArgsForParsing(args);
   const parsed = parseCoreArgs(normalizedArgs);
   if (
-    parsed.positionals[0] !== 'access' ||
-    parsed.positionals[1] !== 'request'
+    parsed.positionals[0] !== "access" ||
+    parsed.positionals[1] !== "request"
   ) {
     return false;
   }
@@ -1421,24 +1428,24 @@ async function runAccessRequestCommand(
     ACCESS_REQUEST_FLAGS,
   );
 
-  const apiBaseFlag = pairingValueFlag(pairingFlags, 'api-base');
+  const apiBaseFlag = pairingValueFlag(pairingFlags, "api-base");
   if (apiBaseFlag === undefined) {
     throw new Error(
-      'station environment access request requires --api-base=<host-url> — the remote Station you want to pair with.',
+      "station environment access request requires --api-base=<host-url> — the remote Station you want to pair with.",
     );
   }
-  const stationFlag = pairingValueFlag(pairingFlags, 'station');
+  const stationFlag = pairingValueFlag(pairingFlags, "station");
   if (stationFlag !== undefined) assertValidProfileName(stationFlag);
-  const deviceName = pairingValueFlag(pairingFlags, 'device-name');
-  const timeout = pairingValueFlag(pairingFlags, 'timeout');
-  const force = pairingBooleanFlag(pairingFlags, 'force');
+  const deviceName = pairingValueFlag(pairingFlags, "device-name");
+  const timeout = pairingValueFlag(pairingFlags, "timeout");
+  const force = pairingBooleanFlag(pairingFlags, "force");
   // Here `--station` names the saved Station that a successful direct pairing
   // will create; it is not a second target selector beside `--api-base`.
   const apiBase = resolveApiBase({
     ...parsed,
     flags: {
       ...Object.fromEntries(
-        Object.entries(parsed.flags).filter(([name]) => name !== 'station'),
+        Object.entries(parsed.flags).filter(([name]) => name !== "station"),
       ),
       ...(parsed.flags.verbose === true ? { verbose: true } : {}),
     },
@@ -1446,7 +1453,7 @@ async function runAccessRequestCommand(
   await pairSavedStation(
     {
       endpoint: apiBase,
-      ...(typeof stationFlag === 'string' ? { name: stationFlag } : {}),
+      ...(typeof stationFlag === "string" ? { name: stationFlag } : {}),
       ...(deviceName !== undefined ? { deviceName } : {}),
       ...(timeout !== undefined ? { timeoutSeconds: Number(timeout) } : {}),
       force,
@@ -1487,12 +1494,12 @@ async function openLocalOperatorChannel(
     throw new Error(
       targetProfile
         ? `Station "${targetProfile.name}" targets ${apiBase}, which is not a loopback address. ` +
-            'Environment-security commands (access list/approve/deny/devices/scope) operate only on a Station ' +
-            'running on this same machine, so a script can never approve device access on a Station ' +
+            "Environment-security commands (access list/approve/deny/devices/scope/revoke/remove) operate only on a Station " +
+            "running on this same machine, so a script can never approve device access on a Station " +
             "it merely has network reach to. Run this command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Operator access commands (access list/approve/deny/devices/scope) require a loopback --api-base, but this resolved to ${apiBase}. ` +
-            'Run this command on the Station host or over SSH, and pass an explicit ' +
+        : `Operator access commands (access list/approve/deny/devices/scope/revoke/remove) require a loopback --api-base, but this resolved to ${apiBase}. ` +
+            "Run this command on the Station host or over SSH, and pass an explicit " +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
   }
@@ -1508,7 +1515,7 @@ async function openLocalOperatorChannel(
   if (targetProfile && !targetProfile.localService?.baseDir) {
     throw new Error(
       `Station "${targetProfile.name}" has no recorded local home. It was saved by pairing ` +
-        '(or `stations add`), not `station setup local`, so this saved Station does not record ' +
+        "(or `stations add`), not `station setup local`, so this saved Station does not record " +
         "the home directory environment-security commands need in order to read that Station's " +
         "own operator credential from disk. Set STATION_HOME to that Station's home directory, " +
         `then run: ${suggestDirectAccessInvocation(action, apiBase)}`,
@@ -1532,7 +1539,7 @@ async function openLocalOperatorChannel(
           : service.initialize();
       })()
     : readExistingEnvironmentSecurityRecord(serviceProjectHome);
-  const handshake = await request(apiBase, '/.well-known/station/v1');
+  const handshake = await request(apiBase, "/.well-known/station/v1");
   // station#4515 review NEW-3: an explicit, standalone shape rejection —
   // mirrors the sibling check in `verifyLocalOfferHost` above
   // (`!handshake || typeof handshake !== 'object' || Array.isArray(handshake)`)
@@ -1544,7 +1551,7 @@ async function openLocalOperatorChannel(
   // should never depend on the security service to uphold.
   const handshakeIsWellFormed =
     Boolean(handshake) &&
-    typeof handshake === 'object' &&
+    typeof handshake === "object" &&
     !Array.isArray(handshake);
   const handshakeEnvironmentId = handshakeIsWellFormed
     ? (handshake as { environmentId?: unknown }).environmentId
@@ -1569,9 +1576,9 @@ async function openLocalOperatorChannel(
         targetProfile.environmentId !== snapshot.environmentId
           ? ` This saved Station's own pairing record (environment ${targetProfile.environmentId}) ` +
             "is also out of date relative to its home's current environment — most likely its " +
-            'identity was reset or re-provisioned since it was paired; re-pair or re-provision ' +
-            'this saved Station to refresh it.'
-          : '';
+            "identity was reset or re-provisioned since it was paired; re-pair or re-provision " +
+            "this saved Station to refresh it."
+          : "";
       throw new Error(
         `Station "${targetProfile.name}" targets ${apiBase}, but the loopback listener there ` +
           `advertised environment ${advertised}, not the environment (${snapshot.environmentId}) ` +
@@ -1581,13 +1588,13 @@ async function openLocalOperatorChannel(
       );
     }
     throw new Error(
-      'The loopback Station identity does not match this local Station home. Check STATION_HOME, STATION_PORT, and --api-base.',
+      "The loopback Station identity does not match this local Station home. Check STATION_HOME, STATION_PORT, and --api-base.",
     );
   }
-  const nonce = randomBytes(32).toString('base64url');
+  const nonce = randomBytes(32).toString("base64url");
   const proof = await request(apiBase, PUBLIC_STATION_PROOF_PATH, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       protocolVersion: STATION_PROOF_PROTOCOL_VERSION,
       nonce,
@@ -1597,8 +1604,8 @@ async function openLocalOperatorChannel(
     throw new Error(
       targetProfile
         ? `The loopback listener for Station "${targetProfile.name}" (${apiBase}) could not ` +
-            'prove it owns this Station environment. No credential was sent.'
-        : 'The loopback listener could not prove it owns this Station environment. No credential was sent.',
+            "prove it owns this Station environment. No credential was sent."
+        : "The loopback listener could not prove it owns this Station environment. No credential was sent.",
     );
   }
   const operatorHeaders = {
@@ -1624,17 +1631,17 @@ async function openLocalOperatorChannel(
  */
 const PASSKEY_ERROR_TEXT: Record<string, string> = {
   invalid_code:
-    'No pending enrollment request has that code. Check the code shown in the browser; it expires after 5 minutes and works once.',
-  rate_limited: 'Too many wrong codes. Wait a few minutes before trying again.',
+    "No pending enrollment request has that code. Check the code shown in the browser; it expires after 5 minutes and works once.",
+  rate_limited: "Too many wrong codes. Wait a few minutes before trying again.",
   enrollment_unavailable:
-    'Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN (an HTTPS origin on a DNS name) on the Station. A Station reachable only by IP has no remote operator sign-in.',
-  passkey_not_found: 'No active operator passkey has that id.',
+    "Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN (an HTTPS origin on a DNS name) on the Station. A Station reachable only by IP has no remote operator sign-in.",
+  passkey_not_found: "No active operator passkey has that id.",
   store_unavailable:
-    'The operator passkey store could not be opened privately, so passkeys are unavailable.',
+    "The operator passkey store could not be opened privately, so passkeys are unavailable.",
   device_gone:
-    'The device that opened this request is no longer paired. Nothing was confirmed.',
+    "The device that opened this request is no longer paired. Nothing was confirmed.",
   device_mismatch:
-    'The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.',
+    "The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.",
   authentication_required:
     "The Station did not accept this home's operator credential.",
 };
@@ -1656,21 +1663,21 @@ interface PasskeyRequestDetails {
 function describePasskeyRequest(request: PasskeyRequestDetails): string {
   const who = request.requester ?? {};
   const paired =
-    typeof who.pairedAt === 'number'
+    typeof who.pairedAt === "number"
       ? new Date(who.pairedAt).toISOString()
-      : 'n/a';
+      : "n/a";
   return [
     `Device name (chosen by the device): ${terminalSafeText(String(request.deviceLabel))}`,
-    `Device id: ${terminalSafeText(String(who.deviceId ?? 'unknown'))} (${who.kind === 'operator-credential' ? 'the operator credential' : 'paired device'})`,
-    `Paired: ${paired}${who.active === false ? ' (NO LONGER PAIRED)' : ''}`,
-    `Scopes: ${terminalSafeText(String(who.scope || 'n/a'))}`,
+    `Device id: ${terminalSafeText(String(who.deviceId ?? "unknown"))} (${who.kind === "operator-credential" ? "the operator credential" : "paired device"})`,
+    `Paired: ${paired}${who.active === false ? " (NO LONGER PAIRED)" : ""}`,
+    `Scopes: ${terminalSafeText(String(who.scope || "n/a"))}`,
     `For: ${terminalSafeText(String(request.rpId))}, expires ${new Date(Number(request.expiresAt)).toISOString()}`,
-  ].join('\n');
+  ].join("\n");
 }
 
 function passkeyCommandFailure(error: unknown): Error {
   const code = (error as { code?: unknown }).code;
-  const text = typeof code === 'string' ? PASSKEY_ERROR_TEXT[code] : undefined;
+  const text = typeof code === "string" ? PASSKEY_ERROR_TEXT[code] : undefined;
   return text ? new Error(text) : (error as Error);
 }
 
@@ -1679,107 +1686,107 @@ async function runOperatorPasskeysCommand(
   dependencies: EnvironmentCommandDependencies,
 ): Promise<boolean> {
   const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
-  if (parsed.positionals[0] !== 'operator') return false;
-  if (parsed.positionals[1] !== 'passkeys') throw usageError();
-  const action = parsed.positionals[2] ?? 'list';
-  if (!['list', 'approve', 'deny', 'revoke'].includes(action)) {
+  if (parsed.positionals[0] !== "operator") return false;
+  if (parsed.positionals[1] !== "passkeys") throw usageError();
+  const action = parsed.positionals[2] ?? "list";
+  if (!["list", "approve", "deny", "revoke"].includes(action)) {
     throw usageError();
   }
   const json = parsed.flags.json === true;
   if (
     !allowedFlags(parsed.flags, [
-      'api-base',
-      'station',
-      ...(action === 'list' ? ['json'] : []),
-      ...(action === 'approve' ? ['device'] : []),
+      "api-base",
+      "station",
+      ...(action === "list" ? ["json"] : []),
+      ...(action === "approve" ? ["device"] : []),
     ]) ||
     (parsed.flags.json !== undefined && parsed.flags.json !== true)
   ) {
     throw usageError();
   }
   // The browser shows the code as "482 913"; accept it split or joined.
-  const operand = parsed.positionals.slice(3).join('');
-  if (action === 'list' && operand !== '') throw usageError();
+  const operand = parsed.positionals.slice(3).join("");
+  if (action === "list" && operand !== "") throw usageError();
   if (
-    (action === 'approve' || action === 'deny') &&
+    (action === "approve" || action === "deny") &&
     !/^[0-9]{6}$/.test(operand)
   ) {
     throw new Error(
       `Usage: station environment operator passkeys ${action} <6-digit code shown in the browser>`,
     );
   }
-  if (action === 'revoke' && !/^[A-Za-z0-9_-]{1,32}$/.test(operand)) {
+  if (action === "revoke" && !/^[A-Za-z0-9_-]{1,32}$/.test(operand)) {
     throw new Error(
-      'Usage: station environment operator passkeys revoke <passkey-id> (see `station environment operator passkeys`)',
+      "Usage: station environment operator passkeys revoke <passkey-id> (see `station environment operator passkeys`)",
     );
   }
   const { requestOperatorJson } = await openLocalOperatorChannel(
     parsed,
-    'passkeys',
+    "passkeys",
     dependencies,
   );
   const write = dependencies.stdout ?? console.log;
-  const base = '/api/pairing/operator-passkeys';
+  const base = "/api/pairing/operator-passkeys";
   try {
-    if (action === 'approve' || action === 'deny') {
+    if (action === "approve" || action === "deny") {
       let device: string | undefined;
-      if (action === 'approve') {
+      if (action === "approve") {
         device =
-          typeof parsed.flags.device === 'string'
+          typeof parsed.flags.device === "string"
             ? parsed.flags.device
             : undefined;
         if (parsed.flags.device !== undefined && device === undefined) {
-          throw new Error('--device needs a device id prefix.');
+          throw new Error("--device needs a device id prefix.");
         }
         if (device === undefined) {
           // Show who asked, then require a human to commit.
           if (!dependencies.isInteractive || !dependencies.confirm) {
             throw new Error(
-              'Approving needs to know WHICH device asked. Run `station environment operator passkeys` to see the requests, then pass --device <id-prefix> of the device you expect (or run this on a terminal and confirm).',
+              "Approving needs to know WHICH device asked. Run `station environment operator passkeys` to see the requests, then pass --device <id-prefix> of the device you expect (or run this on a terminal and confirm).",
             );
           }
           const details = (await requestOperatorJson(
             `${base}/requests/inspect`,
             {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ code: operand }),
             },
           )) as PasskeyRequestDetails;
           write(describePasskeyRequest(details));
           if (
             !(await dependencies.confirm(
-              'Enroll an operator passkey for this device?',
+              "Enroll an operator passkey for this device?",
             ))
           ) {
-            write('Cancelled. Nothing was confirmed.');
+            write("Cancelled. Nothing was confirmed.");
             return true;
           }
-          device = String(details.requester?.deviceId ?? '');
+          device = String(details.requester?.deviceId ?? "");
         }
       }
       const result = (await requestOperatorJson(`${base}/requests/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: operand,
           ...(device !== undefined ? { device } : {}),
         }),
       })) as { deviceLabel?: unknown; rpId?: unknown };
       const label = terminalSafeText(
-        String(result.deviceLabel ?? 'the browser'),
+        String(result.deviceLabel ?? "the browser"),
       );
       write(
-        action === 'approve'
+        action === "approve"
           ? `Confirmed. Finish creating the passkey in ${label}.`
           : `Denied the enrollment request from ${label}.`,
       );
       return true;
     }
-    if (action === 'revoke') {
+    if (action === "revoke") {
       const result = (await requestOperatorJson(
         `${base}/${encodeURIComponent(operand)}`,
-        { method: 'DELETE' },
+        { method: "DELETE" },
       )) as { label?: unknown };
       write(
         `Revoked passkey "${terminalSafeText(String(result.label ?? operand))}".`,
@@ -1799,33 +1806,33 @@ async function runOperatorPasskeysCommand(
     const pending = listing.pending ?? [];
     write(
       listing.enrollment?.available
-        ? `Enrollment is available for ${terminalSafeText(String(listing.enrollment.rpId ?? ''))}.`
-        : `Enrollment is unavailable: ${terminalSafeText(String(listing.enrollment?.reason ?? 'unknown'))}`,
+        ? `Enrollment is available for ${terminalSafeText(String(listing.enrollment.rpId ?? ""))}.`
+        : `Enrollment is unavailable: ${terminalSafeText(String(listing.enrollment?.reason ?? "unknown"))}`,
     );
     write(
-      passkeys.length === 0 ? 'No operator passkeys.' : 'Operator passkeys:',
+      passkeys.length === 0 ? "No operator passkeys." : "Operator passkeys:",
     );
     for (const passkey of passkeys) {
       write(
-        `  ${terminalSafeText(String(passkey.id))}  ${terminalSafeText(String(passkey.label))}  created ${new Date(Number(passkey.createdAt)).toISOString()}  last used ${passkey.lastUsedAt ? new Date(Number(passkey.lastUsedAt)).toISOString() : 'never'}`,
+        `  ${terminalSafeText(String(passkey.id))}  ${terminalSafeText(String(passkey.label))}  created ${new Date(Number(passkey.createdAt)).toISOString()}  last used ${passkey.lastUsedAt ? new Date(Number(passkey.lastUsedAt)).toISOString() : "never"}`,
       );
     }
     if (passkeys.length === 1) {
       write(
-        'Enroll a second passkey (a backup) so losing one does not lock you out.',
+        "Enroll a second passkey (a backup) so losing one does not lock you out.",
       );
     }
     if (pending.length > 0) {
       write(
-        'Pending enrollment requests (compare with the code in the browser):',
+        "Pending enrollment requests (compare with the code in the browser):",
       );
       for (const request of pending) {
         write(
-          `  ${describePasskeyRequest(request as PasskeyRequestDetails).replace(/\n/g, '\n  ')}`,
+          `  ${describePasskeyRequest(request as PasskeyRequestDetails).replace(/\n/g, "\n  ")}`,
         );
       }
       write(
-        'Confirm one with: station environment operator passkeys approve <code> --device <id-prefix>',
+        "Confirm one with: station environment operator passkeys approve <code> --device <id-prefix>",
       );
     }
     return true;
@@ -1839,22 +1846,29 @@ async function runLocalAccessCommand(
   dependencies: EnvironmentCommandDependencies,
 ): Promise<boolean> {
   const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
-  if (parsed.positionals[0] !== 'access') return false;
+  if (parsed.positionals[0] !== "access") return false;
 
   const action = parsed.positionals[1];
   if (
-    !['list', 'approve', 'deny', 'devices', 'scope', 'scopes'].includes(
-      action ?? '',
-    )
+    ![
+      "list",
+      "approve",
+      "deny",
+      "devices",
+      "scope",
+      "scopes",
+      "revoke",
+      "remove",
+    ].includes(action ?? "")
   ) {
     throw usageError();
   }
   // #1796: the device-scope verbs. Validated in full, and the scope change
   // computed from the vocabulary, before any Station is contacted.
-  if (action === 'scopes') {
+  if (action === "scopes") {
     if (
       parsed.positionals.length !== 2 ||
-      !allowedFlags(parsed.flags, ['json'])
+      !allowedFlags(parsed.flags, ["json"])
     )
       throw usageError();
     // Needs no Station: the vocabulary is this build's own.
@@ -1863,16 +1877,39 @@ async function runLocalAccessCommand(
     );
     return true;
   }
-  if (action === 'devices' || action === 'scope') {
+  if (action === "revoke" || action === "remove") {
+    const removalArgs = parseDeviceRemovalArgs(parsed, usageError);
+    // A person at a terminal confirms after the device is resolved (so the
+    // question names it); with no terminal and no --force, refuse now.
+    const confirm =
+      dependencies.isInteractive && dependencies.confirm
+        ? dependencies.confirm
+        : null;
+    requireDeviceRemovalApproval(removalArgs, action, confirm);
+    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
+      parsed,
+      action,
+      dependencies,
+    );
+    const channel: DeviceAccessOperatorChannel = {
+      request: requestOperatorJson,
+      target: describeResolvedTargetForHuman(resolved),
+    };
+    await (
+      action === "revoke" ? runDeviceRevokeCommand : runDeviceRemoveCommand
+    )(channel, removalArgs, confirm, dependencies.stdout ?? console.log);
+    return true;
+  }
+  if (action === "devices" || action === "scope") {
     if (
-      action === 'devices' &&
+      action === "devices" &&
       (parsed.positionals.length !== 2 ||
-        !allowedFlags(parsed.flags, ['api-base', 'station', 'json']) ||
+        !allowedFlags(parsed.flags, ["api-base", "station", "json"]) ||
         (parsed.flags.json !== undefined && parsed.flags.json !== true))
     )
       throw usageError();
     const scopeArgs =
-      action === 'scope' ? parseDeviceScopeArgs(parsed, usageError) : undefined;
+      action === "scope" ? parseDeviceScopeArgs(parsed, usageError) : undefined;
     const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
       parsed,
       action,
@@ -1896,54 +1933,54 @@ async function runLocalAccessCommand(
   // local credential, or contacting a listener. A malformed action must never
   // have observable security-service or network effects.
   if (
-    action === 'list' &&
+    action === "list" &&
     (parsed.positionals.length !== 2 ||
-      !allowedFlags(parsed.flags, ['api-base', 'station']))
+      !allowedFlags(parsed.flags, ["api-base", "station"]))
   ) {
     throw usageError();
   }
   if (
-    action !== 'list' &&
+    action !== "list" &&
     (parsed.positionals.length > 3 ||
       !allowedFlags(parsed.flags, [
-        'api-base',
-        'station',
-        'latest',
-        'force',
-        ...(action === 'approve'
-          ? ['bind-person', 'bind-account', 'personal-device']
+        "api-base",
+        "station",
+        "latest",
+        "force",
+        ...(action === "approve"
+          ? ["bind-person", "bind-account", "personal-device"]
           : []),
       ]) ||
-      (parsed.flags['bind-person'] !== undefined &&
-        parsed.flags['bind-person'] !== true) ||
-      (parsed.flags['bind-account'] !== undefined &&
-        parsed.flags['bind-account'] !== true) ||
-      (parsed.flags['personal-device'] !== undefined &&
-        parsed.flags['personal-device'] !== true) ||
+      (parsed.flags["bind-person"] !== undefined &&
+        parsed.flags["bind-person"] !== true) ||
+      (parsed.flags["bind-account"] !== undefined &&
+        parsed.flags["bind-account"] !== true) ||
+      (parsed.flags["personal-device"] !== undefined &&
+        parsed.flags["personal-device"] !== true) ||
       (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
       (parsed.flags.force !== undefined && parsed.flags.force !== true))
   ) {
     throw usageError();
   }
-  const explicitId = action === 'list' ? undefined : parsed.positionals[2];
-  const useLatest = action !== 'list' && parsed.flags.latest === true;
+  const explicitId = action === "list" ? undefined : parsed.positionals[2];
+  const useLatest = action !== "list" && parsed.flags.latest === true;
   if (explicitId && useLatest) {
-    throw new Error('Provide a request id or --latest, not both.');
+    throw new Error("Provide a request id or --latest, not both.");
   }
-  const bindPerson = parsed.flags['bind-person'] === true;
-  const bindAccount = parsed.flags['bind-account'] === true;
-  const personalDevice = parsed.flags['personal-device'] === true;
+  const bindPerson = parsed.flags["bind-person"] === true;
+  const bindAccount = parsed.flags["bind-account"] === true;
+  const personalDevice = parsed.flags["personal-device"] === true;
   if ([bindPerson, bindAccount, personalDevice].filter(Boolean).length > 1) {
     throw new Error(
-      'Choose --bind-person, --bind-account, or --personal-device; use only one.',
+      "Choose --bind-person, --bind-account, or --personal-device; use only one.",
     );
   }
   const { requestOperatorJson, resolved, apiBase } =
     await openLocalOperatorChannel(parsed, action, dependencies);
 
-  if (action === 'list') {
+  if (action === "list") {
     const requests = parsePairingRequestList(
-      await requestOperatorJson('/api/pairing/requests'),
+      await requestOperatorJson("/api/pairing/requests"),
     );
     (dependencies.stdout ?? console.log)(
       terminalSafeJson({ requests: requests.map(pairingRequestListEntry) }),
@@ -1952,12 +1989,12 @@ async function runLocalAccessCommand(
   }
 
   const actionable = parsePairingRequestList(
-    await requestOperatorJson('/api/pairing/requests'),
+    await requestOperatorJson("/api/pairing/requests"),
   )
     .filter((candidate) =>
-      action === 'approve'
-        ? candidate.status === 'pending'
-        : candidate.status === 'pending' || candidate.status === 'confirmed',
+      action === "approve"
+        ? candidate.status === "pending"
+        : candidate.status === "pending" || candidate.status === "confirmed",
     )
     .sort((left, right) => right.createdAt - left.createdAt);
   if (
@@ -1966,7 +2003,7 @@ async function runLocalAccessCommand(
     actionable[1]?.createdAt === actionable[0].createdAt
   ) {
     throw new Error(
-      'The newest access request is ambiguous. Use access list and provide the exact request id.',
+      "The newest access request is ambiguous. Use access list and provide the exact request id.",
     );
   }
   const selected = explicitId
@@ -1985,21 +2022,21 @@ async function runLocalAccessCommand(
       throw new Error(`No actionable access request matches ${explicitId}.`);
     }
     if (actionable.length === 0) {
-      throw new Error('There are no actionable device access requests.');
+      throw new Error("There are no actionable device access requests.");
     }
     throw new Error(
-      'Multiple access requests are waiting. Use access list, then provide a request id or --latest.',
+      "Multiple access requests are waiting. Use access list, then provide a request id or --latest.",
     );
   }
 
-  if (bindPerson && (selected.source !== 'tailnet' || !selected.requester)) {
+  if (bindPerson && (selected.source !== "tailnet" || !selected.requester)) {
     throw new Error(
-      'Person binding requires a request with server-verified Tailscale identity.',
+      "Person binding requires a request with server-verified Tailscale identity.",
     );
   }
   if (bindAccount && !selected.accountCandidate) {
     throw new Error(
-      'Account binding requires a request with a current server-verified account candidate.',
+      "Account binding requires a request with a current server-verified account candidate.",
     );
   }
   if (
@@ -2009,52 +2046,52 @@ async function runLocalAccessCommand(
     !personalDevice
   ) {
     throw new Error(
-      'This request has a server-verified account candidate. Choose --bind-account to limit the Device to that account, --bind-person for its verified Tailscale identity, or --personal-device for ordinary Device access that remains until revocation and is not limited by account Project membership.',
+      "This request has a server-verified account candidate. Choose --bind-account to limit the Device to that account, --bind-person for its verified Tailscale identity, or --personal-device for ordinary Device access that remains until revocation and is not limited by account Project membership.",
     );
   }
   if (personalDevice && !selected.accountCandidate) {
     throw new Error(
-      '--personal-device is required only when a request presents an account-binding choice.',
+      "--personal-device is required only when a request presents an account-binding choice.",
     );
   }
   const force = parsed.flags.force === true;
   if (!force) {
     if (!dependencies.isInteractive) {
       const rerunTarget =
-        typeof parsed.flags.station === 'string'
+        typeof parsed.flags.station === "string"
           ? ` --station=${parsed.flags.station}`
-          : typeof parsed.flags['api-base'] === 'string'
-            ? ` --api-base=${parsed.flags['api-base']}`
-            : '';
+          : typeof parsed.flags["api-base"] === "string"
+            ? ` --api-base=${parsed.flags["api-base"]}`
+            : "";
       throw new Error(
-        `${action === 'approve' ? 'Approving' : 'Denying'} device access requires --force when stdin is non-interactive, ` +
+        `${action === "approve" ? "Approving" : "Denying"} device access requires --force when stdin is non-interactive, ` +
           `so a script can never silently grant a stranger's device access to this Station without a human confirming ` +
-          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : personalDevice ? ' --personal-device' : ''}${rerunTarget}`,
+          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? " --bind-person" : bindAccount ? " --bind-account" : personalDevice ? " --personal-device" : ""}${rerunTarget}`,
       );
     }
     if (!dependencies.confirm) {
       throw new Error(
-        'Device access approval requires an interactive confirmation handler.',
+        "Device access approval requires an interactive confirmation handler.",
       );
     }
     const confirmed = await dependencies.confirm(
-      `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
-        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again, currently supports viewing permitted Projects only, and does not grant Project membership or personal access` : personalDevice ? '; approve it as an ordinary Personal Device whose selected scope remains until revocation and is not limited by account Project membership' : ''}?`,
+      `${action === "approve" ? "Approve" : "Deny"} device access for ${accessRequestLabel(selected)} ` +
+        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again, currently supports viewing permitted Projects only, and does not grant Project membership or personal access` : personalDevice ? "; approve it as an ordinary Personal Device whose selected scope remains until revocation and is not limited by account Project membership" : ""}?`,
     );
     if (!confirmed) {
-      (dependencies.stdout ?? console.log)('Cancelled.');
+      (dependencies.stdout ?? console.log)("Cancelled.");
       return true;
     }
   }
 
   const path = `/api/pairing/requests/${encodeURIComponent(selected.requestId)}${
-    action === 'approve' ? '/confirm' : ''
+    action === "approve" ? "/confirm" : ""
   }`;
   const result = await requestOperatorJson(path, {
-    method: action === 'approve' ? 'POST' : 'DELETE',
+    method: action === "approve" ? "POST" : "DELETE",
     ...(bindPerson || bindAccount
       ? {
-          headers: { 'Content-Type': 'application/json' },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             bindAccount
               ? { bindAccountIdentity: true }
@@ -2066,49 +2103,49 @@ async function runLocalAccessCommand(
   if (
     bindPerson &&
     (!result ||
-      typeof result !== 'object' ||
-      !('personBindingApproved' in result) ||
+      typeof result !== "object" ||
+      !("personBindingApproved" in result) ||
       result.personBindingApproved !== true)
   ) {
     throw new Error(
-      'Device access was approved, but this Station did not confirm person binding. Update this Station and pair again.',
+      "Device access was approved, but this Station did not confirm person binding. Update this Station and pair again.",
     );
   }
   if (bindAccount) {
     const candidate = selected.accountCandidate!;
     const binding =
-      result && typeof result === 'object' && 'principalBinding' in result
+      result && typeof result === "object" && "principalBinding" in result
         ? result.principalBinding
         : undefined;
     if (
       !binding ||
-      typeof binding !== 'object' ||
-      !('kind' in binding) ||
-      binding.kind !== 'account' ||
-      !('issuer' in binding) ||
+      typeof binding !== "object" ||
+      !("kind" in binding) ||
+      binding.kind !== "account" ||
+      !("issuer" in binding) ||
       binding.issuer !== candidate.issuer ||
-      !('subject' in binding) ||
+      !("subject" in binding) ||
       binding.subject !== candidate.subject ||
-      !('displayName' in binding) ||
+      !("displayName" in binding) ||
       binding.displayName !== candidate.displayName ||
-      !('approvalId' in binding) ||
-      typeof binding.approvalId !== 'string' ||
+      !("approvalId" in binding) ||
+      typeof binding.approvalId !== "string" ||
       binding.approvalId.length === 0
     ) {
       throw new Error(
-        'Device access was approved, but this Station did not confirm account binding. Update this Station and pair again.',
+        "Device access was approved, but this Station did not confirm account binding. Update this Station and pair again.",
       );
     }
   }
   const updated = parsePairingRequest(result);
-  const expectedStatus = action === 'approve' ? 'confirmed' : 'denied';
+  const expectedStatus = action === "approve" ? "confirmed" : "denied";
   if (
     updated.requestId !== selected.requestId ||
     updated.deviceName !== selected.deviceName ||
     updated.source !== selected.source ||
     updated.status !== expectedStatus
   ) {
-    throw new Error('Station returned a mismatched access-request result.');
+    throw new Error("Station returned a mismatched access-request result.");
   }
   (dependencies.stdout ?? console.log)(
     terminalSafeJson({
@@ -2137,7 +2174,7 @@ function requireSecurityService(
       readExistingEnvironmentSecurityRecord(dependencies.projectHome);
     const unavailable = async (): Promise<EnvironmentSecuritySnapshot> => {
       throw new Error(
-        'Credential rotation and identity reset require the host management UI or repository launcher.',
+        "Credential rotation and identity reset require the host management UI or repository launcher.",
       );
     };
     return {
@@ -2169,7 +2206,7 @@ async function readSavedStationRecord(
   } catch (error) {
     throw new Error(
       `Saved Station ${savedStationErrorValue(name, 128)} recorded home ${savedStationErrorValue(homeDir, 512)} cannot be read without changing it. ` +
-        'Re-run `station setup local` or fix this saved Station.',
+        "Re-run `station setup local` or fix this saved Station.",
       { cause: error },
     );
   }
@@ -2177,32 +2214,32 @@ async function readSavedStationRecord(
 
 export function normalizeEnvironmentArgsForParsing(args: string[]): string[] {
   const valueFlags = new Set([
-    '--ssh',
-    '--project',
-    '--name',
-    '--remote-port',
-    '--api-base',
-    '--credential',
-    '--device-name',
-    '--timeout',
-    '--station',
-    '--environment-id',
-    '--scope',
-    '--label',
-    '--advertise-url',
+    "--ssh",
+    "--project",
+    "--name",
+    "--remote-port",
+    "--api-base",
+    "--credential",
+    "--device-name",
+    "--timeout",
+    "--station",
+    "--environment-id",
+    "--scope",
+    "--label",
+    "--advertise-url",
     // #1796: `access scope`'s scope lists.
-    '--add',
-    '--remove',
-    '--set',
-    '--tailscale-serve-port',
+    "--add",
+    "--remove",
+    "--set",
+    "--tailscale-serve-port",
     // `operator passkeys approve --device <id-prefix>`.
-    '--device',
+    "--device",
   ]);
   const normalized: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     const next = args[index + 1];
-    if (valueFlags.has(value) && next && !next.startsWith('--')) {
+    if (valueFlags.has(value) && next && !next.startsWith("--")) {
       normalized.push(`${value}=${next}`);
       index += 1;
     } else {
@@ -2217,7 +2254,7 @@ function requireValueFlag(
   name: string,
 ): string {
   const value = flags[name];
-  if (typeof value !== 'string' || !value.trim()) {
+  if (typeof value !== "string" || !value.trim()) {
     throw new Error(`--${name} requires a non-empty value.`);
   }
   return value;
@@ -2239,7 +2276,7 @@ async function connectEnvironment(
   return (await requestJson<SshEnvironmentApiView>(
     apiBase,
     `/api/environments/ssh/${encodeURIComponent(id)}/connect`,
-    { method: 'POST' },
+    { method: "POST" },
   )) as SshEnvironmentApiView;
 }
 
@@ -2247,8 +2284,8 @@ async function runSshEnvironmentCommand(args: string[]): Promise<boolean> {
   const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
   const action = parsed.positionals[0];
   if (
-    !['hosts', 'list', 'show', 'add', 'connect', 'stop', 'remove'].includes(
-      action ?? '',
+    !["hosts", "list", "show", "add", "connect", "stop", "remove"].includes(
+      action ?? "",
     )
   ) {
     return false;
@@ -2256,37 +2293,37 @@ async function runSshEnvironmentCommand(args: string[]): Promise<boolean> {
   const apiBase = resolveApiBase(parsed);
   configureApiCredential(parsed, apiBase);
 
-  if (action === 'hosts') {
-    printJson(await requestJson(apiBase, '/api/environments/ssh/hosts'));
+  if (action === "hosts") {
+    printJson(await requestJson(apiBase, "/api/environments/ssh/hosts"));
     return true;
   }
-  if (action === 'list') {
-    printJson(await requestJson(apiBase, '/api/environments/ssh'));
+  if (action === "list") {
+    printJson(await requestJson(apiBase, "/api/environments/ssh"));
     return true;
   }
-  if (action === 'show' && !parsed.positionals[1]) return false;
-  if (action === 'add') {
-    const remotePort = parsed.flags['remote-port'];
-    const data = await requestJson(apiBase, '/api/environments/ssh', {
-      method: 'POST',
+  if (action === "show" && !parsed.positionals[1]) return false;
+  if (action === "add") {
+    const remotePort = parsed.flags["remote-port"];
+    const data = await requestJson(apiBase, "/api/environments/ssh", {
+      method: "POST",
       body: JSON.stringify({
-        hostAlias: requireValueFlag(parsed.flags, 'ssh'),
-        remoteProjectPath: requireValueFlag(parsed.flags, 'project'),
-        ...(typeof parsed.flags.name === 'string'
+        hostAlias: requireValueFlag(parsed.flags, "ssh"),
+        remoteProjectPath: requireValueFlag(parsed.flags, "project"),
+        ...(typeof parsed.flags.name === "string"
           ? { name: parsed.flags.name }
           : {}),
-        ...(typeof remotePort === 'string'
+        ...(typeof remotePort === "string"
           ? { remotePort: Number(remotePort) }
           : {}),
-        ...(parsed.flags.managed === true ? { launchMode: 'managed' } : {}),
+        ...(parsed.flags.managed === true ? { launchMode: "managed" } : {}),
       }),
     });
     printJson(data);
     return true;
   }
 
-  const id = requirePositional(parsed, 1, 'environment id');
-  if (action === 'show') {
+  const id = requirePositional(parsed, 1, "environment id");
+  if (action === "show") {
     printJson(
       await requestJson(
         apiBase,
@@ -2295,26 +2332,26 @@ async function runSshEnvironmentCommand(args: string[]): Promise<boolean> {
     );
     return true;
   }
-  if (action === 'connect') {
+  if (action === "connect") {
     printJson(await connectEnvironment(apiBase, id));
     return true;
   }
-  if (action === 'stop') {
+  if (action === "stop") {
     printJson(
       await requestJson(
         apiBase,
         `/api/environments/ssh/${encodeURIComponent(id)}/disconnect`,
-        { method: 'POST' },
+        { method: "POST" },
       ),
     );
     return true;
   }
-  if (action === 'remove') {
+  if (action === "remove") {
     printJson(
       await requestJson(
         apiBase,
         `/api/environments/ssh/${encodeURIComponent(id)}`,
-        { method: 'DELETE' },
+        { method: "DELETE" },
       ),
     );
     return true;

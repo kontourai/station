@@ -200,7 +200,11 @@ is source inspection only (**REASONED**). The panel's native-host text said
 the operator credential is "managed by" the host app, which describes a
 credential the desktop does not hold. For a scope change it now names the
 host CLI (`station environment access scope`, #3256). Revoke and record
-removal still carry the old text, because the CLI has no command for them yet.
+removal name `station environment access revoke <device>` and
+`station environment access remove <device>` (#3256): the same host-only
+operator channel and device selector as `scope`, a confirmation on a terminal
+or `--force` without one, and a refusal unless Station's answer names the
+device the operator chose.
 
 Consequence for the design: "host operator" via `isBoundLocalGrantMintedOperator`
 (section 3.1, item 5) is a **new** acceptance on the write routes, not the
