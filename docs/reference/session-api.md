@@ -487,6 +487,12 @@ Every adopted child records its resolved folder as
 recovery) refuses a folder that no longer resolves there
 (`assertDispatchCwdUnmoved`).
 
+A refusal of the folder or Project answers 400 with
+`code: 'continuation_place_refused'` and `retryable: false`: the same request
+is refused again until the folder or the Projects change, so clients show the
+reason and offer no retry. The Starter Work launch reports it with
+`retrySafe: false`. Other adoption failures keep their retryable answers.
+
 `target` accepts only these two shapes; any other field, such as a path, is
 refused at the route. The Starter Work `continue-session` launch accepts the
 same `target`.
