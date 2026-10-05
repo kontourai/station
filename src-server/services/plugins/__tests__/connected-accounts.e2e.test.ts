@@ -53,9 +53,8 @@ const { createAuthorizedTurnCorrelation, runWithAuthorizedTurnCorrelation } =
 const { createMCPToolProvenanceGeneration } = await import(
   '../../orchestration/mcp-tool-provenance.js'
 );
-const { FileSecretBindingAdministration } = await import(
-  '../../secrets/secret-binding-administration.js'
-);
+const { FileSecretBindingAdministration, SecretBindingIntegrationService } =
+  await import('../../secrets/secret-binding-administration.js');
 const { MCPService } = await import('../mcp-service.js');
 
 const SERVER = 'mail';
@@ -159,6 +158,7 @@ function runtimeContext(
     setLevel: vi.fn(),
     getLevel: vi.fn(() => 'info' as const),
   };
+  const secretBindingAdministration = new FileSecretBindingAdministration(home);
   const context = new Proxy(
     {
       app,
@@ -166,7 +166,14 @@ function runtimeContext(
       appConfig: {},
       configLoader: loader,
       mcpService: service,
-      secretBindingAdministration: new FileSecretBindingAdministration(home),
+      secretBindingAdministration,
+      // The production consumer service, so bind/unbind reach a real grant
+      // and a real integration document.
+      secretBindingIntegrationAdministration:
+        new SecretBindingIntegrationService(
+          secretBindingAdministration,
+          loader,
+        ),
       logger,
       deploymentAuthentication: undefined,
       eventBus: { emit: vi.fn() },
@@ -340,6 +347,26 @@ async function post(
     status: response.status,
     body: (await response.json()) as Record<string, any>,
   };
+}
+
+/** Status plus the exact response bytes, for indistinguishability checks. */
+async function raw(
+  app: Hono,
+  method: 'GET' | 'POST',
+  path: string,
+  credential: Credential,
+  body?: unknown,
+) {
+  const response = await app.request(
+    path,
+    {
+      method,
+      headers: headers(credential),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    },
+    loopbackEnv(),
+  );
+  return { status: response.status, body: await response.text() };
 }
 
 async function get(app: Hono, path: string, credential: Credential) {
@@ -583,24 +610,120 @@ test('two principals each reach the MCP server with their own token and cannot u
       ).map((binding) => binding.id);
     expect(await ids('alice-credential')).toEqual(['alice-mail', 'shared-crm']);
     expect(await ids('bob-credential')).toEqual(['shared-crm']);
-    expect(
-      (await get(app, '/api/secret-bindings/alice-mail', 'bob-credential'))
-        .status,
-    ).toBe(404);
-    const bobRevoke = await post(
-      app,
-      '/api/secret-bindings/alice-mail/revoke',
-      'bob-credential',
-      { expectedRevision: 1 },
-    );
-    expect(bobRevoke.status).toBe(400);
-    const bobGrant = await post(
+
+    // A stdio integration that can consume bindings (never spawned here).
+    const LOCAL = 'local-mail';
+    await loader.saveIntegration(LOCAL, {
+      id: LOCAL,
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'local-mail-mcp',
+      env: { MAIL_TOKEN: 'declared', CRM_TOKEN: 'declared' },
+    });
+    const consumer = (envName: string, expectedRevision: number) => ({
+      integrationId: LOCAL,
+      envName,
+      expectedRevision,
+    });
+    // Someone else's binding answers exactly like an id that does not exist:
+    // same status, same bytes, on every route that names a binding.
+    const assertHiddenLikeMissing = async () => {
+      const probes: Array<[string, 'GET' | 'POST', string, unknown]> = [
+        ['get', 'GET', '', undefined],
+        ['revoke', 'POST', '/revoke', { expectedRevision: 1 }],
+        ['bind', 'POST', '/bind', consumer('MAIL_TOKEN', 1)],
+        ['unbind', 'POST', '/unbind', consumer('MAIL_TOKEN', 1)],
+      ];
+      for (const [label, method, suffix, body] of probes) {
+        const hidden = await raw(
+          app,
+          method,
+          `/api/secret-bindings/alice-mail${suffix}`,
+          'bob-credential',
+          body,
+        );
+        const missing = await raw(
+          app,
+          method,
+          `/api/secret-bindings/no-such-binding${suffix}`,
+          'bob-credential',
+          body,
+        );
+        expect(hidden, label).toEqual(missing);
+        expect(hidden, label).toEqual({
+          status: 404,
+          body: JSON.stringify({
+            success: false,
+            error: 'Secret binding not found.',
+          }),
+        });
+      }
+    };
+    await assertHiddenLikeMissing();
+
+    // The owner binds and unbinds their own binding to a stdio env.
+    const aliceBind = await post(
       app,
       '/api/secret-bindings/alice-mail/bind',
-      'bob-credential',
-      { integrationId: SERVER, envName: 'MAIL_TOKEN', expectedRevision: 1 },
+      'alice-credential',
+      consumer('MAIL_TOKEN', 1),
     );
-    expect(bobGrant.status).toBe(400);
+    expect(aliceBind.status, JSON.stringify(aliceBind.body)).toBe(200);
+    expect(aliceBind.body.data).toMatchObject({
+      outcome: 'complete',
+      binding: { id: 'alice-mail', revision: 2 },
+    });
+    const mailGrant = {
+      kind: 'mcp-integration-env',
+      integrationId: LOCAL,
+      envName: 'MAIL_TOKEN',
+    };
+    expect(
+      (await get(app, '/api/secret-bindings/alice-mail', 'alice-credential'))
+        .body.data.grants,
+    ).toEqual([mailGrant]);
+    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toEqual({
+      MAIL_TOKEN: 'alice-mail',
+    });
+    // Bound, the env's reference still cannot tell Bob which binding it is.
+    await assertHiddenLikeMissing();
+
+    // An instance binding binds exactly as before, for anyone.
+    const crmBind = await post(
+      app,
+      '/api/secret-bindings/shared-crm/bind',
+      'bob-credential',
+      consumer('CRM_TOKEN', 1),
+    );
+    expect(crmBind.status, JSON.stringify(crmBind.body)).toBe(200);
+    expect(crmBind.body.data.binding.grants).toEqual([
+      { ...mailGrant, envName: 'CRM_TOKEN' },
+    ]);
+    const integrationRefs = async (credential: Credential) =>
+      (await get(app, `/api/secret-bindings/integrations/${LOCAL}`, credential))
+        .body.data.secretEnvBindingIds;
+    expect(await integrationRefs('alice-credential')).toEqual({
+      MAIL_TOKEN: 'alice-mail',
+      CRM_TOKEN: 'shared-crm',
+    });
+    expect(await integrationRefs('bob-credential')).toEqual({
+      CRM_TOKEN: 'shared-crm',
+    });
+
+    const aliceUnbind = await post(
+      app,
+      '/api/secret-bindings/alice-mail/unbind',
+      'alice-credential',
+      consumer('MAIL_TOKEN', 2),
+    );
+    expect(aliceUnbind.status, JSON.stringify(aliceUnbind.body)).toBe(200);
+    expect(aliceUnbind.body.data).toMatchObject({
+      outcome: 'complete',
+      binding: { id: 'alice-mail', revision: 3, grants: [] },
+    });
+    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toEqual({
+      CRM_TOKEN: 'shared-crm',
+    });
     // The body cannot name another principal as owner.
     const forged = await post(app, '/api/secret-bindings', 'bob-credential', {
       id: 'forged',

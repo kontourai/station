@@ -57,6 +57,20 @@ export class SecretBindingConflictError extends Error {
   }
 }
 
+/** Stable not-found copy shared by the operator route. */
+export const SECRET_BINDING_NOT_FOUND_MESSAGE = 'Secret binding not found.';
+
+/**
+ * #3279: one refusal for a binding that does not exist and one owned by
+ * another person, so the two cannot be told apart by any route response.
+ */
+export class SecretBindingNotFoundError extends Error {
+  constructor() {
+    super(SECRET_BINDING_NOT_FOUND_MESSAGE);
+    this.name = 'SecretBindingNotFoundError';
+  }
+}
+
 /** Stable, non-Datum diagnostic that is safe to show outside the secret seam. */
 export class SecretBindingResolutionError extends Error {
   constructor(
@@ -177,22 +191,29 @@ export type IntegrationSecretBindingGranter = Pick<
  * possible after one side has committed.
  */
 export interface SecretBindingIntegrationAdministration {
-  getIntegrationBindings(input: { integrationId: string }): Promise<{
+  /** Lists only the references whose binding the viewer can see. */
+  getIntegrationBindings(input: {
+    integrationId: string;
+    viewer?: SecretBindingViewer;
+  }): Promise<{
     integrationId: string;
     secretEnvBindingIds: Record<string, string>;
   }>;
-  bind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome>;
-  unbind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome>;
+  bind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome>;
+  unbind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome>;
+}
+
+export interface SecretBindingConsumerInput {
+  id: SecretBindingId;
+  integrationId: string;
+  envName: string;
+  expectedRevision: number;
+  /** The request's resolved principal; every binding read and grant uses it. */
+  viewer?: SecretBindingViewer;
 }
 
 export type SecretBindingIntegrationOutcome = {
@@ -235,23 +256,36 @@ export class SecretBindingIntegrationService
     return this.mutateIntegration ? this.mutateIntegration(id, write) : write();
   }
 
-  async getIntegrationBindings(input: { integrationId: string }): Promise<{
+  async getIntegrationBindings(input: {
+    integrationId: string;
+    viewer?: SecretBindingViewer;
+  }): Promise<{
     integrationId: string;
     secretEnvBindingIds: Record<string, string>;
   }> {
     const def = await this.configLoader.loadIntegration(input.integrationId);
+    const refs = Object.entries(def.secretEnvRefs ?? {});
+    // A reference to another person's binding would name it; show only the
+    // references this viewer could read through `get`.
+    const visible =
+      refs.length > 0
+        ? new Set(
+            (await this.bindings.list(input.viewer)).map(
+              (binding) => binding.id,
+            ),
+          )
+        : new Set<string>();
     return {
       integrationId: input.integrationId,
-      secretEnvBindingIds: { ...(def.secretEnvRefs ?? {}) },
+      secretEnvBindingIds: Object.fromEntries(
+        refs.filter(([, id]) => visible.has(id)),
+      ),
     };
   }
 
-  async bind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  async bind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     try {
       return await this.bindInternal(input);
     } catch (error) {
@@ -260,15 +294,15 @@ export class SecretBindingIntegrationService
     }
   }
 
-  private async bindInternal(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  private async bindInternal(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     const def = await this.assertConsumer(input.integrationId, input.envName);
     const configured = def.secretEnvRefs?.[input.envName];
     if (configured && configured !== input.id) {
+      // A hidden or missing id refuses as not found before this check can
+      // reveal which binding the environment uses.
+      await this.requiredVisibleBinding(input.id, input.viewer);
       throw new Error(
         'The integration environment is already bound to a different secret binding.',
       );
@@ -276,6 +310,7 @@ export class SecretBindingIntegrationService
     const current = await this.requiredBindingAtRevision(
       input.id,
       input.expectedRevision,
+      input.viewer,
     );
     // Grant FIRST: a config reference never becomes live unless the binding
     // authority has recorded permission for exactly this consumer/env pair.
@@ -294,6 +329,7 @@ export class SecretBindingIntegrationService
             integrationId: input.integrationId,
             envName: input.envName,
           },
+          ...(input.viewer ? { viewer: input.viewer } : {}),
         });
     try {
       await this.updateIntegration(input.integrationId, (current) => ({
@@ -317,12 +353,9 @@ export class SecretBindingIntegrationService
     }
   }
 
-  async unbind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  async unbind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     try {
       return await this.unbindInternal(input);
     } catch (error) {
@@ -331,15 +364,13 @@ export class SecretBindingIntegrationService
     }
   }
 
-  private async unbindInternal(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  private async unbindInternal(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     const def = await this.assertConsumer(input.integrationId, input.envName);
     const configured = def.secretEnvRefs?.[input.envName];
     if (configured && configured !== input.id) {
+      await this.requiredVisibleBinding(input.id, input.viewer);
       throw new Error(
         'The integration environment is bound to a different secret binding.',
       );
@@ -347,6 +378,7 @@ export class SecretBindingIntegrationService
     const current = await this.requiredBindingAtRevision(
       input.id,
       input.expectedRevision,
+      input.viewer,
       { allowRevoked: true },
     );
     // Config FIRST: after this point the child cannot consume the binding,
@@ -390,13 +422,14 @@ export class SecretBindingIntegrationService
               integrationId: input.integrationId,
               envName: input.envName,
             },
+            ...(input.viewer ? { viewer: input.viewer } : {}),
           })
         : current;
       const result = this.outcome(input, binding, 'complete');
       this.auditConsumer('unbind', result, 'success');
       return result;
     } catch {
-      const binding = await this.bindings.get(input.id);
+      const binding = await this.bindings.get(input.id, input.viewer);
       if (!binding)
         throw new Error('Secret binding not found after config update.');
       const result = {
@@ -441,13 +474,22 @@ export class SecretBindingIntegrationService
     return def;
   }
 
+  private async requiredVisibleBinding(
+    id: SecretBindingId,
+    viewer: SecretBindingViewer | undefined,
+  ): Promise<SecretBindingView> {
+    const binding = await this.bindings.get(id, viewer);
+    if (!binding) throw new SecretBindingNotFoundError();
+    return binding;
+  }
+
   private async requiredBindingAtRevision(
     id: SecretBindingId,
     expectedRevision: number,
+    viewer: SecretBindingViewer | undefined,
     options: { allowRevoked?: boolean } = {},
   ): Promise<SecretBindingView> {
-    const binding = await this.bindings.get(id);
-    if (!binding) throw new Error('Secret binding not found.');
+    const binding = await this.requiredVisibleBinding(id, viewer);
     if (binding.revokedAt && !options.allowRevoked)
       throw new Error('Secret binding is revoked.');
     if (binding.revision !== expectedRevision)
@@ -1380,7 +1422,7 @@ function requiredActiveBinding(
   const binding = document.bindings[id];
   // Another person's binding is indistinguishable from a missing one.
   if (!binding || !secretBindingVisibleTo(binding, viewer))
-    throw new Error('Secret binding not found.');
+    throw new SecretBindingNotFoundError();
   if (binding.revokedAt) throw new Error('Secret binding is revoked.');
   if (binding.revision !== expectedRevision)
     throw new SecretBindingConflictError();

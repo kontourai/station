@@ -8,7 +8,9 @@ import type {
 } from '../services/secrets/secret-binding-administration.js';
 import {
   SECRET_BINDING_CONFLICT_MESSAGE,
+  SECRET_BINDING_NOT_FOUND_MESSAGE,
   SecretBindingConflictError,
+  SecretBindingNotFoundError,
 } from '../services/secrets/secret-binding-administration.js';
 
 /** Operator-only mount; runtime composition owns its access:manage gate. */
@@ -47,6 +49,7 @@ export function createSecretBindingRoutes(
     return respond(c, () =>
       consumers.getIntegrationBindings({
         integrationId: c.req.param('integrationId'),
+        viewer: viewerOf(c),
       }),
     );
   });
@@ -57,7 +60,10 @@ export function createSecretBindingRoutes(
     const binding = await service.get(c.req.param('id'), viewerOf(c));
     return binding
       ? c.json({ success: true, data: binding })
-      : c.json({ success: false, error: 'Secret binding not found.' }, 404);
+      : c.json(
+          { success: false, error: SECRET_BINDING_NOT_FOUND_MESSAGE },
+          404,
+        );
   });
   app.post('/', async (c) =>
     respond(
@@ -182,7 +188,7 @@ async function respondBindingMutation(
     });
   }
   if (input.kind !== 'acp-provider-header') {
-    return respondConsumer(c, consumers, operation, id, input);
+    return respondConsumer(c, consumers, operation, id, viewer, input);
   }
   const grant: SecretBindingGrant = {
     kind: 'acp-provider-header',
@@ -205,6 +211,7 @@ async function respondConsumer(
   consumers: SecretBindingIntegrationAdministration | undefined,
   operation: 'bind' | 'unbind',
   id: string,
+  viewer: SecretBindingViewer | undefined,
   parsedInput?: Record<string, unknown>,
 ) {
   if (!consumers)
@@ -221,6 +228,7 @@ async function respondConsumer(
         integrationId: input.integrationId as string,
         envName: input.envName as string,
         expectedRevision: input.expectedRevision as number,
+        ...(viewer ? { viewer } : {}),
       });
     },
     200,
@@ -263,14 +271,17 @@ async function respond(
 /**
  * The route exposes only typed, stable refusal copy. An Error's `message` is
  * mutable and can originate in storage or an integration, so it is never an
- * outward contract — even for the one conflict type whose public outcome is
- * intentionally specific.
+ * outward contract — even for the typed outcomes whose public copy is
+ * intentionally specific. Not found covers another person's binding too
+ * (#3279), so the two responses are identical.
  */
 function secretBindingRouteFailure(error: unknown): {
-  status: 400 | 409;
+  status: 400 | 404 | 409;
   error: string;
 } {
-  return error instanceof SecretBindingConflictError
-    ? { status: 409, error: SECRET_BINDING_CONFLICT_MESSAGE }
-    : { status: 400, error: 'Invalid secret binding request.' };
+  if (error instanceof SecretBindingConflictError)
+    return { status: 409, error: SECRET_BINDING_CONFLICT_MESSAGE };
+  if (error instanceof SecretBindingNotFoundError)
+    return { status: 404, error: SECRET_BINDING_NOT_FOUND_MESSAGE };
+  return { status: 400, error: 'Invalid secret binding request.' };
 }

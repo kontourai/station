@@ -1358,9 +1358,14 @@ before #3279, which keep their behavior), `principal`, or `principal-project`. T
 owner id is an existing human `PrincipalRef.id` from request resolution; a paired
 device without a person, a non-human principal, or a hosted request owns none
 ([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
-List, get, and every mutation take the request principal as viewer: another person's
-binding is indistinguishable from a missing one, and a caller without a viewer sees
-only instance bindings. Resolution refuses a person-owned binding with
+List, get, replace, revoke, and integration bind/unbind (including the grant and
+ungrant inside them) take the request principal as viewer, so an owner can bind their
+own binding to a stdio MCP env. One typed not-found refusal covers a missing binding
+and another person's, and `/api/secret-bindings` returns it as the same 404 body on
+get, replace, revoke, bind, and unbind; request validation that runs before the lookup
+still returns 400 for both. The integration binding projection lists only references
+whose binding the viewer can see. A caller without a viewer, including stored-env
+migration, sees and grants only instance bindings. Resolution refuses a person-owned binding with
 `owner_mismatch` unless the invocation names that principal (and Project); shared MCP
 children and ACP providers name none, so they never receive a person's secret.
 
