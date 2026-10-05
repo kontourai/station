@@ -120,11 +120,36 @@ export async function raceWorktreeDirectoryCheck<T>(
 export type ProjectUpdate = Partial<
   Omit<
     ProjectConfig,
-    'id' | 'slug' | 'createdAt' | ProjectOverrideRecordField | 'defaultAgent'
+    | 'id'
+    | 'slug'
+    | 'createdAt'
+    | ProjectOverrideRecordField
+    | 'defaultAgent'
+    | 'icon'
   >
 > & {
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
-} & { defaultAgent?: ProjectConfig['defaultAgent'] | null };
+} & {
+  defaultAgent?: ProjectConfig['defaultAgent'] | null;
+  /** `''` and `null` clear the icon; see {@link withoutClearedIcon}. */
+  icon?: string | null;
+};
+
+/**
+ * `''` and `null` both mean "no icon" on a write: the settings form's None
+ * sends `''` (its text field's empty value) and an API caller may send
+ * `null`. Neither is stored — a stored `''` is an icon field that says
+ * nothing, and `projectSchema` admits no null — so the field is dropped.
+ */
+function withoutClearedIcon<T extends { icon?: string | null }>(
+  record: T,
+): Omit<T, 'icon'> & { icon?: string } {
+  if (record.icon !== '' && record.icon !== null) {
+    return record as Omit<T, 'icon'> & { icon?: string };
+  }
+  const { icon: _cleared, ...rest } = record;
+  return rest;
+}
 
 /**
  * A `POST /projects` body, as `createProject` accepts it.
@@ -137,10 +162,18 @@ export type ProjectUpdate = Partial<
  */
 export type ProjectCreate = Omit<
   ProjectConfig,
-  'id' | 'createdAt' | 'updatedAt' | ProjectOverrideRecordField | 'defaultAgent'
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | ProjectOverrideRecordField
+  | 'defaultAgent'
+  | 'icon'
 > & {
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
-} & { defaultAgent?: ProjectConfig['defaultAgent'] | null };
+} & {
+  defaultAgent?: ProjectConfig['defaultAgent'] | null;
+  icon?: string | null;
+};
 
 export async function assertProjectWorktreeDirectory(
   projectSlug: string,
@@ -404,7 +437,7 @@ export class ProjectService {
     // below asks what mode this project will resolve to, and `null` is not a
     // mode — passing it through would make "no override" look like a choice
     // to whatever read it next.
-    const normalized = { ...config } as Omit<
+    const normalized = withoutClearedIcon({ ...config }) as Omit<
       ProjectConfig,
       'id' | 'createdAt' | 'updatedAt'
     >;
@@ -483,11 +516,12 @@ export class ProjectService {
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
-    const updated: ProjectConfig = {
+    // Cleared AFTER the spread, so `''`/`null` also removes a stored icon.
+    const updated: ProjectConfig = withoutClearedIcon({
       ...existing,
       ...updates,
       updatedAt: new Date().toISOString(),
-    } as ProjectConfig;
+    }) as ProjectConfig;
     // #2144 slice 2: `null` on a settings-override field DROPS the override
     // rather than storing it. Storing it is not an option that merely reads
     // oddly — `projectSchema` (file-storage-schemas.ts) has no null for any
