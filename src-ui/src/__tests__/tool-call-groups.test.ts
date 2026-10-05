@@ -1134,3 +1134,91 @@ describe('file targets beyond a single path (#3364 review round 2)', () => {
     expect(group.summary).toBe('Read a.ts +2 more');
   });
 });
+
+describe('only file-like arguments are file targets (#3364 review round 3)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test('a source alone is no target, even beside a blank path', () => {
+    expect(settled('delete_agent', { source: 'github' }).summary).toBe(
+      'Used delete agent',
+    );
+    expect(
+      settled('delete_file', { path: '   ', source: '/x/y' }).summary,
+    ).toBe('Used delete file');
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'remove_source',
+        args: { source: 'a' },
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'remove_source',
+        args: { source: 'b' },
+      }),
+    ]);
+    expect(group.aggregateSummary).toBe('Used 2 tools');
+  });
+
+  test('a whitespace-only path is no target', () => {
+    expect(settled('delete_file', { path: '   ' }).summary).toBe(
+      'Used delete file',
+    );
+  });
+
+  test('ids in paths are not files; empty and non-string paths are skipped', () => {
+    expect(
+      settled('delete_documents', { paths: ['doc-1', 'doc-2'] }).summary,
+    ).toBe('Used delete documents');
+    expect(settled('read_multiple_files', { paths: [] }).summary).toBe(
+      'Used read multiple files',
+    );
+    expect(
+      settled('read_multiple_files', { paths: [1, null, '/r/z.ts'] }).summary,
+    ).toBe('Read z.ts');
+    expect(
+      settled('read_multiple_files', { paths: ['notes.md', 'b\\c.txt'] })
+        .summary,
+    ).toBe('Read notes.md +1 more');
+  });
+
+  test('blank patch headers are dropped', () => {
+    const group = settled('apply_patch', {
+      input:
+        '*** Begin Patch\n*** Update File:   \n*** Add File: b.ts\n+x\n*** End Patch',
+    });
+    expect(group.summary).toBe('Edited b.ts');
+  });
+
+  test('each end of a move is truncated so the destination survives', () => {
+    const longName = `${'a'.repeat(80)}.txt`;
+    const label = settled('move_file', {
+      source: `/r/${longName}`,
+      destination: '/r/dest.txt',
+    }).summary;
+    expect(label.endsWith(' → dest.txt')).toBe(true);
+    expect(label.length).toBeLessThanOrEqual('Edited '.length + 60);
+  });
+
+  test('bidi and control characters are stripped from shown names', () => {
+    const rlo = '‮';
+    const patch = settled('apply_patch', {
+      input: `*** Begin Patch\n*** Update File: ev${rlo}il\u0007.ts\n*** End Patch`,
+    }).summary;
+    expect(patch).toBe('Edited evil.ts');
+    const paths = settled('read_multiple_files', {
+      paths: [`/r/⁦a\u0085b.ts`],
+    }).summary;
+    expect(paths).toBe('Read ab.ts');
+  });
+
+  test("trash is a noun only as the listing verb's object", () => {
+    expect(classifyToolName('list_trash')).toBe('read');
+    expect(classifyToolName('list_trash_items')).toBe('read');
+    expect(classifyToolName('list_and_trash')).toBe('delete');
+    expect(settled('list_and_trash', { path: '/r/app.tsx' }).summary).toBe(
+      'Deleted app.tsx',
+    );
+  });
+});

@@ -212,7 +212,9 @@ const NON_DELETION_OBJECTS = new Set([
  * only NAMED by a delete word (`list_trash`, `list_deleted_items`) — but
  * never over a real delete or write verb (`list_and_delete`, `ls_rm`). */
 const LEADING_READ_TOKENS = new Set(['list', 'ls']);
-/** Delete-class words that are also nouns for a place things go. */
+/** Delete-class words that are also nouns for a place things go. Only a
+ * noun as the listing verb's direct object (`list_trash`, `ls_trash_items`);
+ * anywhere else it is the verb (`list_and_trash`). */
 const DELETE_NOUNS = new Set(['trash']);
 
 function tokenize(value: string): string[] {
@@ -242,8 +244,9 @@ export function classifyToolName(toolName: string | undefined): ToolCallKind {
   if (
     LEADING_READ_TOKENS.has(tokens[0] ?? '') &&
     !tokens.some(
-      (t) =>
-        (DELETE_TOKENS.has(t) && !DELETE_NOUNS.has(t)) || WRITE_TOKENS.has(t),
+      (t, index) =>
+        (DELETE_TOKENS.has(t) && !(index === 1 && DELETE_NOUNS.has(t))) ||
+        WRITE_TOKENS.has(t),
     )
   ) {
     return 'read';
@@ -298,9 +301,37 @@ function filePathArgument(args: Record<string, unknown>): string | undefined {
   return stringField(args, FILE_PATH_KEYS);
 }
 
-function listTarget(first: string, count: number): string {
-  return count > 1 ? `${basename(first)} +${count - 1} more` : basename(first);
+const MAX_TARGET_LENGTH = 60;
+
+/** Bidi overrides/isolates and C0/C1 controls: a file name from a patch or
+ * an argument is untrusted and must not reorder or hide the row's text. */
+const UNSAFE_NAME_CHARACTERS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/gu;
+
+function safeName(value: string): string {
+  return value.replace(UNSAFE_NAME_CHARACTERS, '').trim();
 }
+
+/** The shown name of one file: its sanitised basename. */
+function fileName(path: string): string {
+  return safeName(basename(safeName(path)));
+}
+
+function listTarget(first: string, count: number): string {
+  const name = fileName(first);
+  return count > 1 ? `${name} +${count - 1} more` : name;
+}
+
+/** A `paths` entry that looks like a file: it has a directory separator or
+ * a file extension. `doc-1` or `github` is an id, not a file. */
+function isPathLike(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const name = safeName(value);
+  return /[/\\]/.test(name) || /^[^\s/\\]+\.[A-Za-z0-9]{1,10}$/.test(name);
+}
+
+/** Each end of a move gets half the room, so a long source cannot push the
+ * destination out of the collapsed row. */
+const MOVE_END_LENGTH = Math.floor(MAX_TARGET_LENGTH / 2) - 2;
 
 const PATCH_ENVELOPE = '*** Begin Patch';
 const PATCH_FILE_HEADER = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
@@ -341,14 +372,15 @@ function patchBody(a: Record<string, unknown>): string | undefined {
  */
 function fileCallTarget(args: unknown): string | null | undefined {
   if (typeof args === 'string') {
-    return args.trim() ? truncate(firstLine(args)) : undefined;
+    const line = safeName(firstLine(args));
+    return line ? truncate(line) : undefined;
   }
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
     return undefined;
   }
   const a = args as Record<string, unknown>;
   const single = filePathArgument(a);
-  if (single) return basename(single);
+  if (single && fileName(single)) return fileName(single);
   if (Array.isArray(a.changes) && a.changes.length > 0) {
     const first = a.changes[0];
     const path =
@@ -359,26 +391,27 @@ function fileCallTarget(args: unknown): string | null | undefined {
             'filePath',
           ])
         : undefined;
-    if (path) return listTarget(path, a.changes.length);
+    if (path && fileName(path)) return listTarget(path, a.changes.length);
   }
   if (Array.isArray(a.paths)) {
-    const paths = a.paths.filter(
-      (value): value is string => typeof value === 'string' && !!value.trim(),
-    );
+    const paths = a.paths.filter(isPathLike).filter((p) => fileName(p));
     if (paths.length > 0) return listTarget(paths[0]!, paths.length);
   }
+  // A move or copy names both ends. A `source` alone is as often an id
+  // (`delete_agent {source: 'github'}`) as a file, so it is no target.
   const source = stringField(a, ['source']);
-  if (source) {
-    const destination = stringField(a, ['destination']);
-    return destination
-      ? `${basename(source)} → ${basename(destination)}`
-      : basename(source);
+  const destination = stringField(a, ['destination']);
+  if (source && destination && fileName(source) && fileName(destination)) {
+    return `${truncate(fileName(source), MOVE_END_LENGTH)} → ${truncate(
+      fileName(destination),
+      MOVE_END_LENGTH,
+    )}`;
   }
   const patch = patchBody(a);
   if (patch !== undefined) {
-    const files = [...patch.matchAll(PATCH_FILE_HEADER)].map((m) =>
-      m[1]!.trim(),
-    );
+    const files = [...patch.matchAll(PATCH_FILE_HEADER)]
+      .map((m) => m[1]!)
+      .filter((name) => fileName(name));
     return files.length > 0 ? listTarget(files[0]!, files.length) : null;
   }
   return undefined;
@@ -465,8 +498,6 @@ export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
   return classifyToolArgs(call.args);
 }
 
-const MAX_TARGET_LENGTH = 60;
-
 function truncate(value: string, max = MAX_TARGET_LENGTH): string {
   const collapsed = value.trim().replace(/\s+/g, ' ');
   if (collapsed.length <= max) return collapsed;
@@ -539,7 +570,7 @@ function extractTarget(
     if (!args.trim()) return null;
     return kind === 'exec'
       ? commandTarget(args, trimEnv)
-      : truncate(firstLine(args));
+      : truncate(safeName(firstLine(args)));
   }
   if (!args || typeof args !== 'object') return null;
   const a = args as Record<string, unknown>;
@@ -569,7 +600,7 @@ function extractTarget(
 
   // An unrecognised tool: its path is the target, its name says what it did.
   const pathValue = filePathArgument(a);
-  return pathValue ? basename(pathValue) : null;
+  return pathValue && fileName(pathValue) ? fileName(pathValue) : null;
 }
 
 /** e.g. "Read app.tsx" (done), "Running npm run build:ui" (in flight),
