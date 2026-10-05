@@ -258,7 +258,10 @@ describe('GrokSessionSource', () => {
       lines:
         w.user('Start', 0) +
         w.message('Working.') +
-        w.user('Also check tests', 0, { interjection: true }) +
+        w.interjection(
+          '<interjection>The user added: Also check tests</interjection>',
+          'Also check tests',
+        ) +
         w.turnCompleted(),
     });
     const source = new GrokSessionSource({ homeDir: home });
@@ -272,6 +275,90 @@ describe('GrokSessionSource', () => {
         prompt: 'Also check tests',
       },
     ]);
+  });
+
+  test('shows the typed text of a locally expanded slash skill, not its expansion', async () => {
+    const home = fixtureRoot();
+    const w = new Writer('skill-session');
+    grokSession(home, {
+      sessionId: 'skill-session',
+      lines:
+        w.expandedPrompt(
+          'Full skill expansion for the model',
+          '/loop 5s check',
+          0,
+        ) + w.message('Looping.'),
+    });
+    const source = new GrokSessionSource({ homeDir: home });
+    const { events } = await drain(source, await discoverOne(source));
+    expect(events[0]).toMatchObject({
+      method: 'turn.started',
+      prompt: '/loop 5s check',
+    });
+    expect(JSON.stringify(events)).not.toContain('Full skill expansion');
+  });
+
+  test('a new prompt aborts a turn that never completed, with its open tools', async () => {
+    const home = fixtureRoot();
+    const w = new Writer('crash-session');
+    grokSession(home, {
+      sessionId: 'crash-session',
+      lines:
+        w.user('First', 0) +
+        w.toolCall('call-1', 'run_terminal_cmd', { command: 'sleep' }) +
+        w.user('Second', 1) +
+        w.message('Fresh start.') +
+        w.turnCompleted(),
+    });
+    const source = new GrokSessionSource({ homeDir: home });
+    const { events } = await drain(source, await discoverOne(source));
+    expect(events.map((event) => [event.method, event.turnId])).toEqual([
+      ['turn.started', 'crash-session-1'],
+      ['tool.started', 'crash-session-1'],
+      ['tool.completed', 'crash-session-1'],
+      ['turn.aborted', 'crash-session-1'],
+      ['turn.started', 'crash-session-3'],
+      ['content.text-delta', 'crash-session-3'],
+      ['token-usage.updated', 'crash-session-3'],
+      ['turn.completed', 'crash-session-3'],
+    ]);
+    expect(events[2]).toMatchObject({
+      toolCallId: 'call-1',
+      status: 'unresolved',
+    });
+  });
+
+  test('records a rewind marker and keeps the rewound turns', async () => {
+    const home = fixtureRoot();
+    const w = new Writer('rewind-session');
+    grokSession(home, {
+      sessionId: 'rewind-session',
+      lines:
+        w.user('One', 0) +
+        w.message('A') +
+        w.turnCompleted() +
+        w.user('Two', 1) +
+        w.message('B') +
+        w.turnCompleted() +
+        w.rewind(1) +
+        w.user('Two again', 1) +
+        w.message('C') +
+        w.turnCompleted(),
+    });
+    const source = new GrokSessionSource({ homeDir: home });
+    const { events } = await drain(source, await discoverOne(source));
+    expect(
+      events
+        .filter((event) => event.method === 'turn.started')
+        .map((event) => (event as { prompt?: string }).prompt),
+    ).toEqual(['One', 'Two', 'Two again']);
+    expect(
+      events.find((event) => event.method === 'extension.notification'),
+    ).toMatchObject({
+      namespace: 'grok-session',
+      type: 'conversation-rewound',
+      payload: { targetPromptIndex: 1 },
+    });
   });
 
   test('resumes from its byte cursor after an append without replaying events', async () => {
@@ -407,9 +494,92 @@ describe('GrokSessionSource', () => {
 
     const traversal = await new GrokSessionSource({
       homeDir: home,
-      maxTraversalEntries: 3,
+      maxDirectoryEntries: 3,
     }).discover();
     expect(traversal.outcome).toBe('candidate_limit');
+  });
+
+  test('finds the newest prompted sessions behind a probe backlog larger than one poll can stat', async () => {
+    // Reviewer's shape: one probe group with more prompt-less session
+    // directories than a poll's stat budget, plus two newer prompted sessions
+    // in other groups whose names sort last.
+    const home = fixtureRoot();
+    const probeGroup = join(
+      home,
+      'sessions',
+      encodeURIComponent('/station/runtime/acp-workspaces/probe/abc'),
+    );
+    mkdirSync(probeGroup, { recursive: true });
+    for (let index = 0; index < 16_500; index += 1) {
+      mkdirSync(join(probeGroup, `ffffffff-${String(index).padStart(8, '0')}`));
+    }
+    const late = new Date(Date.now() + 60_000);
+    for (const id of ['00000000-real-a', '00000000-real-b']) {
+      const { dir } = grokSession(home, {
+        sessionId: id,
+        cwd: `/work/${id}`,
+        lines: new Writer(id).user('Real question', 0),
+      });
+      utimesSync(dir, late, late);
+    }
+    const source = new GrokSessionSource({ homeDir: home });
+    const found = new Set<string>();
+    for (let poll = 0; poll < 4 && found.size < 2; poll += 1) {
+      for (const session of (await source.discover()).sessions) {
+        found.add(session.sessionId);
+      }
+    }
+    expect([...found].sort()).toEqual(['00000000-real-a', '00000000-real-b']);
+  }, 120_000);
+
+  test('a prompt-less session that later gets a prompt is found behind a large backlog', async () => {
+    const home = fixtureRoot();
+    const probeGroup = join(home, 'sessions', encodeURIComponent('/probe'));
+    mkdirSync(probeGroup, { recursive: true });
+    for (let index = 0; index < 40; index += 1) {
+      mkdirSync(join(probeGroup, `ffffffff-${index}`));
+    }
+    const w = new Writer('00000000-opened');
+    const { dir, file } = grokSession(home, {
+      sessionId: '00000000-opened',
+      lines: w.hook(),
+    });
+    const old = new Date(BASE_MS);
+    utimesSync(dir, old, old);
+    const source = new GrokSessionSource({
+      homeDir: home,
+      maxStats: 8,
+      maxSweepStats: 4,
+    });
+    for (let poll = 0; poll < 8; poll += 1) await source.discover();
+    appendFileSync(file, w.user('Now a question', 0));
+    const later = new Date(BASE_MS + 10_000);
+    utimesSync(dir, later, later);
+    let listed = false;
+    for (let poll = 0; poll < 16 && !listed; poll += 1) {
+      listed = (await source.discover()).sessions.length === 1;
+    }
+    expect(listed).toBe(true);
+  });
+
+  test('warns once per unrecognized file kind', async () => {
+    const home = fixtureRoot();
+    grokSession(home, {
+      sessionId: 'foreign-log',
+      lines: `${JSON.stringify({ type: 'user', text: 'Hello' })}\n`,
+    });
+    const { dir } = grokSession(home, { sessionId: 'foreign-summary' });
+    writeSummary(dir, { id: 'mismatch', cwd: '/work/project' });
+    const warnings: unknown[][] = [];
+    const source = new GrokSessionSource({
+      homeDir: home,
+      logger: { warn: (...args) => warnings.push(args) },
+    });
+    await source.discover();
+    await source.discover();
+    expect(
+      warnings.map((args) => (args[1] as { file: string }).file).sort(),
+    ).toEqual(['summary.json', 'updates.jsonl']);
   });
 
   test('an unrecognized log format is skipped with one warning, not guessed', async () => {

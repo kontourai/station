@@ -63,6 +63,53 @@ export class Writer {
     );
   }
 
+  /**
+   * Upstream `persist_synthetic_user_message_with_model`: the chunk `_meta`
+   * has `modelId` and `interjection` (no `promptIndex`); the text block keeps
+   * the model-facing frame and carries what the user typed in its own
+   * `_meta.displayText`.
+   */
+  interjection(modelFacing: string, displayText: string) {
+    return this.line(
+      'session/update',
+      {
+        sessionUpdate: 'user_message_chunk',
+        content: {
+          type: 'text',
+          text: modelFacing,
+          _meta: { displayText },
+        },
+        _meta: { modelId: 'grok-build', interjection: true },
+      },
+      {},
+    );
+  }
+
+  /** A locally expanded slash skill: expansion in `text`, invocation in `displayText`. */
+  expandedPrompt(expansion: string, displayText: string, promptIndex: number) {
+    return this.line(
+      'session/update',
+      {
+        sessionUpdate: 'user_message_chunk',
+        content: { type: 'text', text: expansion, _meta: { displayText } },
+        _meta: { modelId: 'grok-build', promptIndex },
+      },
+      {},
+    );
+  }
+
+  rewind(targetPromptIndex: number) {
+    return this.line(
+      '_x.ai/session/update',
+      {
+        sessionUpdate: 'rewind_marker',
+        target_prompt_index: targetPromptIndex,
+        created_at: '2026-09-17T16:30:00.000000Z',
+      },
+      {},
+    );
+  }
+
   thought(text: string) {
     return this.line(
       'session/update',

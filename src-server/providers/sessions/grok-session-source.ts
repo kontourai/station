@@ -51,18 +51,22 @@ const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 // 128 KiB, 7 exceed 1 MiB. Those 7 are skipped with a reported line limit.
 const DEFAULT_MAX_LINE_BYTES = 1024 * 1024;
 const DEFAULT_MAX_EVENTS = 512;
-const DEFAULT_MAX_TRAVERSAL_ENTRIES = 16_384;
+const DEFAULT_MAX_DIRECTORY_ENTRIES = 131_072;
+const DEFAULT_MAX_STATS = 16_384;
+const DEFAULT_MAX_SWEEP_STATS = 1024;
 const DEFAULT_MAX_INSPECTIONS = 1024;
+/** A prompt-less session this recent is re-checked every poll. */
+const RECENT_SESSION_MS = 60 * 60 * 1000;
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 const MAX_CANDIDATES_CEILING = 512;
 const MAX_BYTES_CEILING = 8 * 1024 * 1024;
 const MAX_EVENTS_CEILING = 512;
-const MAX_TRAVERSAL_ENTRIES_CEILING = 65_536;
+const MAX_DIRECTORY_ENTRIES_CEILING = 1_048_576;
+const MAX_STATS_CEILING = 65_536;
 const MAX_INSPECTIONS_CEILING = 4096;
 /** Leading bytes searched for a user prompt; Station's ACP probes have none. */
 const PROMPT_SCAN_BYTES = 64 * 1024;
 const MAX_SUMMARY_BYTES = 256 * 1024;
-const MAX_INSPECTION_CACHE = 32_768;
 const MAX_OPEN_TOOLS = 24;
 const MAX_CURSOR_TEXT_BYTES = 192;
 const MAX_OPEN_TOOL_STATE_BYTES = 16 * 1024;
@@ -121,8 +125,18 @@ interface Inspection {
   outcome: AttachedSessionSourceOutcome;
   /** Absent: not a prompted, well-formed session (yet). */
   session?: { sessionId: string; cwd: string; createdAt: string };
-  /** False when the answer may change without the file changing size. */
+  /** False when the answer may change while the directory's mtime does not. */
   cacheable: boolean;
+}
+
+/** One session directory this source has listed, kept across polls. */
+interface KnownSession {
+  dirName: string;
+  /** Directory mtime at its last stat; absent until first stat. */
+  modifiedAt?: number;
+  /** Valid while `inspectedAt` equals `modifiedAt`. */
+  inspection?: Inspection;
+  inspectedAt?: number;
 }
 
 interface GrokSessionSourceOptions {
@@ -132,9 +146,16 @@ interface GrokSessionSourceOptions {
   maxBytes?: number;
   maxLineBytes?: number;
   maxEvents?: number;
-  maxTraversalEntries?: number;
+  /** Directory entries listed per poll (names only, no stat). */
+  maxDirectoryEntries?: number;
+  /** Session-directory stats per poll; unvisited directories wait for later polls. */
+  maxStats?: number;
+  /** Of those, stats spent re-checking older prompt-less sessions per poll. */
+  maxSweepStats?: number;
   /** Uncached session inspections per discovery; the rest wait for later polls. */
   maxInspections?: number;
+  /** Test seam for the recency window. */
+  now?: () => number;
   readYieldEveryLines?: number;
   /** Test seam for the bounded event-loop yield. */
   yieldFn?: () => Promise<void>;
@@ -150,14 +171,19 @@ export class GrokSessionSource implements AttachedSessionSource {
   private readonly maxBytes: number;
   private readonly maxLineBytes: number;
   private readonly maxEvents: number;
-  private readonly maxTraversalEntries: number;
+  private readonly maxDirectoryEntries: number;
+  private readonly maxStats: number;
+  private readonly maxSweepStats: number;
   private readonly maxInspections: number;
+  private readonly now: () => number;
   private readonly readYieldEveryLines: number;
   private readonly yieldFn: () => Promise<void>;
   private readonly logger?: GrokSessionSourceOptions['logger'];
   private readonly handles = new Map<string, SourceRegistration>();
-  private readonly inspections = new Map<string, Inspection>();
-  private formatWarningLogged = false;
+  private readonly known = new Map<string, KnownSession>();
+  private sweepPosition = 0;
+  private groupOffset = 0;
+  private readonly formatWarnings = new Set<string>();
 
   constructor(options: GrokSessionSourceOptions = {}) {
     this.homeDir =
@@ -190,11 +216,27 @@ export class GrokSessionSource implements AttachedSessionSource {
       options.maxEvents ?? DEFAULT_MAX_EVENTS,
       MAX_EVENTS_CEILING,
     );
-    this.maxTraversalEntries = boundedInteger(
-      'maxTraversalEntries',
-      options.maxTraversalEntries ?? DEFAULT_MAX_TRAVERSAL_ENTRIES,
-      MAX_TRAVERSAL_ENTRIES_CEILING,
+    this.maxDirectoryEntries = boundedInteger(
+      'maxDirectoryEntries',
+      options.maxDirectoryEntries ?? DEFAULT_MAX_DIRECTORY_ENTRIES,
+      MAX_DIRECTORY_ENTRIES_CEILING,
     );
+    this.maxStats = boundedInteger(
+      'maxStats',
+      options.maxStats ?? DEFAULT_MAX_STATS,
+      MAX_STATS_CEILING,
+    );
+    if (this.maxStats < 2) {
+      throw new RangeError('maxStats must leave room for the sweep.');
+    }
+    // The sweep has its own share so recent directories cannot starve it.
+    this.maxSweepStats = boundedInteger(
+      'maxSweepStats',
+      options.maxSweepStats ??
+        Math.min(DEFAULT_MAX_SWEEP_STATS, Math.floor(this.maxStats / 2)),
+      this.maxStats - 1,
+    );
+    this.now = options.now ?? Date.now;
     this.maxInspections = boundedInteger(
       'maxInspections',
       options.maxInspections ?? DEFAULT_MAX_INSPECTIONS,
@@ -215,6 +257,13 @@ export class GrokSessionSource implements AttachedSessionSource {
    * Station drives Grok as an ACP connection, so its own Grok sessions are
    * persisted under provider `acp` with the agent-issued session id in the
    * resume cursor. Grok writes that same id as its session directory.
+   *
+   * Any ACP connection counts, not only the built-in `grok-build` one: the
+   * persisted session records a connection id, not the command it ran, so a
+   * user-defined connection that launches `grok` cannot be told apart, and
+   * excluding it would import that Station chat a second time. The id is
+   * issued by the agent (a UUIDv7 from Grok), so another engine's session id
+   * matching a session in this store is not a realistic collision.
    */
   ownedNativeSessionId(session: {
     provider: string;
@@ -238,62 +287,122 @@ export class GrokSessionSource implements AttachedSessionSource {
 
     // Layout is exactly two levels: <encoded-cwd>/<session-id>/. Grok renames
     // a fresh summary.json into the session directory on every appended
-    // update, so the directory's mtime orders sessions by activity without a
-    // second stat per session (Station's probes leave thousands of them).
-    const candidates: Array<{
-      sessionDir: string;
-      dirName: string;
-      modifiedAt: number;
-    }> = [];
+    // update, so the directory's mtime orders sessions by activity.
+    //
+    // Station's own ACP probes leave a prompt-less session per run, so the
+    // tree can outgrow any one poll's stat budget. Listing names is cheap and
+    // complete; stats are spent first on directories never seen, then on
+    // listed sessions and recent prompt-less ones, then on a rotating sweep
+    // of the rest. A directory a poll could not reach waits for the next one
+    // instead of being dropped, whatever order the filesystem lists it in.
     let outcome: AttachedSessionSourceOutcome = 'ok';
-    let visited = 0;
-    const visitDirectories = async (
-      directory: string,
-      onDirectory: (name: string, path: string) => void,
-    ): Promise<boolean> => {
-      let handle: import('node:fs').Dir;
-      try {
-        handle = opendirSync(directory);
-      } catch {
-        outcome = mergeOutcome(outcome, 'rejected_candidate');
+    const listing = await this.listSessionDirectories(root);
+    if (!listing.complete) outcome = 'candidate_limit';
+    if (listing.rejected) outcome = mergeOutcome(outcome, 'rejected_candidate');
+    if (listing.complete) {
+      for (const path of this.known.keys()) {
+        if (!listing.entries.has(path)) this.known.delete(path);
+      }
+    }
+    for (const [path, dirName] of listing.entries) {
+      if (this.known.has(path)) continue;
+      if (this.known.size >= this.maxDirectoryEntries) {
+        outcome = mergeOutcome(outcome, 'candidate_limit');
+        break;
+      }
+      this.known.set(path, { dirName });
+    }
+    // Never statted, including those an earlier poll's budget did not reach.
+    const unseen = [...this.known]
+      .filter(([, entry]) => entry.modifiedAt === undefined)
+      .map(([path]) => path);
+    // Grok's generated session ids are UUIDv7, so a greater name is newer.
+    unseen.sort((left, right) => (left < right ? 1 : -1));
+
+    let stats = 0;
+    const statted = new Set<string>();
+    const stat = async (path: string, budget: number): Promise<boolean> => {
+      if (statted.has(path)) return true;
+      if (stats >= budget) return false;
+      stats += 1;
+      if (stats % 512 === 0) await this.yieldFn();
+      statted.add(path);
+      const entry = this.known.get(path);
+      const info = safeLstat(path);
+      if (!entry) return true;
+      if (!info?.isDirectory()) {
+        this.known.delete(path);
         return true;
       }
-      try {
-        let entry = handle.readSync();
-        while (entry) {
-          visited += 1;
-          if (visited > this.maxTraversalEntries) {
-            outcome = mergeOutcome(outcome, 'candidate_limit');
-            return false;
-          }
-          if (visited % 512 === 0) await this.yieldFn();
-          // Dirent types come from the directory read: no stat, and a
-          // symlink never reads as a directory.
-          if (entry.isDirectory()) {
-            onDirectory(entry.name, join(directory, entry.name));
-          }
-          entry = handle.readSync();
-        }
-      } finally {
-        handle.closeSync();
-      }
+      entry.modifiedAt = info.mtimeMs;
       return true;
     };
-    const groups: string[] = [];
-    let complete = await visitDirectories(root, (_name, path) => {
-      groups.push(path);
-    });
-    for (const group of groups) {
-      if (!complete) break;
-      complete = await visitDirectories(group, (name, sessionDir) => {
-        const stat = safeLstat(sessionDir);
-        if (!stat?.isDirectory()) return;
-        candidates.push({
-          sessionDir,
-          dirName: name,
-          modifiedAt: stat.mtimeMs,
-        });
+    const recentSince = this.now() - RECENT_SESSION_MS;
+    // Listed sessions first, so a followed session is never starved.
+    const listed: string[] = [];
+    const recent: string[] = [];
+    for (const [path, entry] of this.known) {
+      if (entry.inspection?.session) listed.push(path);
+      else if (
+        entry.modifiedAt !== undefined &&
+        entry.modifiedAt >= recentSince
+      )
+        recent.push(path);
+    }
+    const priorityBudget = this.maxStats - this.maxSweepStats;
+    for (const path of [...listed, ...unseen, ...recent]) {
+      if (!(await stat(path, priorityBudget))) {
+        outcome = mergeOutcome(outcome, 'candidate_limit');
+        break;
+      }
+    }
+    const sweep = [...this.known.keys()].filter((path) => !statted.has(path));
+    const sweepCount = Math.min(sweep.length, this.maxSweepStats);
+    for (let index = 0; index < sweepCount; index += 1) {
+      const path = sweep[(this.sweepPosition + index) % sweep.length]!;
+      if (!(await stat(path, this.maxStats))) break;
+    }
+    this.sweepPosition = sweep.length
+      ? (this.sweepPosition + sweepCount) % sweep.length
+      : 0;
+
+    const toInspect = [...this.known]
+      .filter(
+        ([, entry]) =>
+          entry.modifiedAt !== undefined &&
+          entry.inspectedAt !== entry.modifiedAt,
+      )
+      .sort(([, left], [, right]) => right.modifiedAt! - left.modifiedAt!);
+    let inspections = 0;
+    for (const [sessionDir, entry] of toInspect) {
+      if (inspections >= this.maxInspections) {
+        outcome = mergeOutcome(outcome, 'candidate_limit');
+        break;
+      }
+      inspections += 1;
+      if (inspections % 64 === 0) await this.yieldFn();
+      const inspection = this.inspect(root, {
+        sessionDir,
+        dirName: entry.dirName,
       });
+      entry.inspection = inspection;
+      if (inspection.cacheable) entry.inspectedAt = entry.modifiedAt;
+      else delete entry.inspectedAt;
+    }
+
+    const candidates: Array<{
+      sessionDir: string;
+      modifiedAt: number;
+      inspection: Inspection;
+    }> = [];
+    for (const [sessionDir, entry] of this.known) {
+      const inspection = entry.inspection;
+      if (!inspection || entry.modifiedAt === undefined) continue;
+      if (!inspection.session) {
+        outcome = mergeOutcome(outcome, inspection.outcome);
+        continue;
+      }
+      candidates.push({ sessionDir, modifiedAt: entry.modifiedAt, inspection });
     }
     candidates.sort(
       (left, right) =>
@@ -304,28 +413,13 @@ export class GrokSessionSource implements AttachedSessionSource {
 
     const sourceIdentity = filesystemIdentity(root);
     const sessions: AttachedSessionDescriptor[] = [];
-    let inspections = 0;
     for (const candidate of candidates) {
       if (sessions.length >= this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
         break;
       }
-      const cacheKey = `${candidate.sessionDir}\u0000${candidate.modifiedAt}`;
-      let inspection = this.inspections.get(cacheKey);
-      if (!inspection) {
-        if (inspections >= this.maxInspections) {
-          outcome = mergeOutcome(outcome, 'candidate_limit');
-          break;
-        }
-        inspections += 1;
-        if (inspections % 64 === 0) await this.yieldFn();
-        inspection = this.inspect(root, candidate);
-        if (inspection.cacheable) this.remember(cacheKey, inspection);
-      }
-      if (!inspection.session) {
-        outcome = mergeOutcome(outcome, inspection.outcome);
-        continue;
-      }
+      const inspection = candidate.inspection;
+      if (!inspection.session) continue;
       const canonical = canonicalRegularFile(
         root,
         join(candidate.sessionDir, 'updates.jsonl'),
@@ -513,14 +607,57 @@ export class GrokSessionSource implements AttachedSessionSource {
     }
   }
 
-  private remember(key: string, inspection: Inspection): void {
-    this.inspections.delete(key);
-    this.inspections.set(key, inspection);
-    while (this.inspections.size > MAX_INSPECTION_CACHE) {
-      const oldest = this.inspections.keys().next().value;
-      if (oldest === undefined) break;
-      this.inspections.delete(oldest);
+  /**
+   * Names of every `<group>/<session>` directory, from directory reads only
+   * (dirent types: no stat, and a symlink never reads as a directory). When
+   * the entry bound cuts a listing short, the next poll starts one group later
+   * so no group is starved.
+   */
+  private async listSessionDirectories(root: string): Promise<{
+    entries: Map<string, string>;
+    complete: boolean;
+    rejected: boolean;
+  }> {
+    const entries = new Map<string, string>();
+    let visited = 0;
+    let rejected = false;
+    const read = async (
+      directory: string,
+      onDirectory: (name: string) => void,
+    ): Promise<boolean> => {
+      let handle: import('node:fs').Dir;
+      try {
+        handle = opendirSync(directory);
+      } catch {
+        rejected = true;
+        return true;
+      }
+      try {
+        let entry = handle.readSync();
+        while (entry) {
+          visited += 1;
+          if (visited > this.maxDirectoryEntries) return false;
+          if (visited % 1024 === 0) await this.yieldFn();
+          if (entry.isDirectory()) onDirectory(entry.name);
+          entry = handle.readSync();
+        }
+      } finally {
+        handle.closeSync();
+      }
+      return true;
+    };
+    const groups: string[] = [];
+    let complete = await read(root, (name) => groups.push(join(root, name)));
+    groups.sort();
+    const start = groups.length ? this.groupOffset % groups.length : 0;
+    for (let index = 0; complete && index < groups.length; index += 1) {
+      const group = groups[(start + index) % groups.length]!;
+      complete = await read(group, (name) =>
+        entries.set(join(group, name), name),
+      );
     }
+    this.groupOffset = complete ? 0 : start + 1;
+    return { entries, complete, rejected };
   }
 
   /**
@@ -564,7 +701,7 @@ export class GrokSessionSource implements AttachedSessionSource {
         break;
       }
     }
-    // Not prompted yet: cached only by size, so the next append re-inspects.
+    // Not prompted yet: cached by directory mtime, which the next append changes.
     if (!prompted) return { outcome: 'ok', cacheable: true };
 
     const summary = readSummary(join(candidate.sessionDir, 'summary.json'));
@@ -591,10 +728,13 @@ export class GrokSessionSource implements AttachedSessionSource {
     };
   }
 
-  /** One warning per source: an unrecognized format is skipped, never guessed. */
-  private warnUnknownFormat(file: string): void {
-    if (this.formatWarningLogged) return;
-    this.formatWarningLogged = true;
+  /**
+   * One warning per unrecognized file kind (a fixed set of two), not per
+   * session or poll: an unrecognized format is skipped, never guessed.
+   */
+  private warnUnknownFormat(file: 'updates.jsonl' | 'summary.json'): void {
+    if (this.formatWarnings.has(file)) return;
+    this.formatWarnings.add(file);
     this.logger?.warn(
       'Grok session store has an unrecognized format; those sessions are not imported',
       { source: this.kind, file },
@@ -700,6 +840,18 @@ function mapGrokUpdate(
       return { events: [], state };
     }
     const events = flushPendingTurn(state, session);
+    // A new prompt while the previous turn never recorded `turn_completed`
+    // (Grok crashed or was killed): that turn and its open tools end here.
+    if (state.turnId) {
+      events.push(
+        ...abortOpenTurn(
+          state,
+          base,
+          (index, label) => id(index, label),
+          events.length,
+        ),
+      );
+    }
     const turnId =
       boundedText(envelope.meta?.eventId) ?? `grok-turn:${lineOffset}`;
     state.turnId = turnId;
@@ -917,6 +1069,29 @@ function mapGrokUpdate(
     return { events, state };
   }
 
+  if (envelope.method === XAI_METHOD && kind === 'rewind_marker') {
+    // Grok's rewind appends this marker and its own replay drops the turns
+    // after the target prompt (`filter_rewind_by`). Station keeps them: by the
+    // time the marker is written, a live follower has already published those
+    // turns into an append-only event log that has no retraction event, and
+    // dropping them only on a cold import would make two imports of one
+    // session disagree. The marker is recorded so the branch point is visible.
+    const target = isOffset(update.target_prompt_index)
+      ? update.target_prompt_index
+      : undefined;
+    const events = flushPendingTurn(state, session);
+    events.push({
+      ...base,
+      ...(state.turnId ? { turnId: state.turnId } : {}),
+      eventId: id(events.length, 'rewound'),
+      method: 'extension.notification',
+      namespace: 'grok-session',
+      type: 'conversation-rewound',
+      payload: target !== undefined ? { targetPromptIndex: target } : {},
+    });
+    return { events, state };
+  }
+
   if (envelope.method === XAI_METHOD && kind === 'compaction_checkpoint') {
     const events = flushPendingTurn(state, session);
     events.push({
@@ -988,13 +1163,62 @@ function flushPendingTurn(
 function renderContent(raw: unknown): string | undefined {
   const content = asRecord(raw);
   if (!content) return undefined;
-  if (content.type === 'text') return text(content.text);
+  if (content.type === 'text') {
+    // Interjections and locally expanded slash skills carry the model-facing
+    // frame or expansion in `text` and what the user typed in
+    // `_meta.displayText` (upstream `queue_text_from_blocks`). Station shows
+    // the typed text, as Grok does; the model-facing text is not imported,
+    // like the hidden input this source already omits.
+    const display = asRecord(content._meta)?.displayText;
+    if (typeof display === 'string' && display.trim()) return display.trim();
+    return text(content.text);
+  }
   if (content.type === 'image') return '[image]';
   if (content.type === 'resource') {
     const resource = asRecord(content.resource);
     return text(resource?.text) ?? text(resource?.uri) ?? '[resource]';
   }
   return undefined;
+}
+
+/** Ends an open turn that never completed, with its open tools unresolved. */
+function abortOpenTurn(
+  state: ParserState,
+  base: { provider: string; threadId: string; createdAt: string },
+  id: (index: number, label: string) => string,
+  offset: number,
+): CanonicalRuntimeEvent[] {
+  const turnId = state.turnId;
+  if (!turnId) return [];
+  const events: CanonicalRuntimeEvent[] = [];
+  const open = state.grok.openTools ?? [];
+  for (const tool of open.filter((candidate) => candidate.turnId === turnId)) {
+    events.push({
+      ...base,
+      eventId: id(offset + events.length, `tool-abandoned:${tool.callId}`),
+      method: 'tool.completed',
+      turnId,
+      itemId: tool.callId,
+      toolCallId: tool.callId,
+      toolName: tool.toolName,
+      status: 'unresolved',
+    });
+  }
+  const remaining = open.filter((candidate) => candidate.turnId !== turnId);
+  if (remaining.length) state.grok.openTools = remaining;
+  else delete state.grok.openTools;
+  events.push({
+    ...base,
+    eventId: id(offset + events.length, 'turn-abandoned'),
+    method: 'turn.aborted',
+    turnId,
+    reason:
+      'Grok started a new prompt without recording this turn as complete.',
+  });
+  delete state.turnId;
+  delete state.grok.activityObserved;
+  delete state.grok.assistantTextObserved;
+  return events;
 }
 
 function grokToolName(update: Record<string, unknown>): string {
