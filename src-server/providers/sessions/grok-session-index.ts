@@ -12,13 +12,17 @@ import type { AttachedSessionSourceOutcome } from './attached-session-source.js'
  *
  * - Directory reads. A group (one working directory) is re-read only when its
  *   own mtime changed, which is exactly when a session folder was added or
- *   removed in it. A read the entry budget cuts short leaves the group dirty,
- *   and the next poll starts one group later, so no group is starved.
+ *   removed in it. A read the entry budget cuts short, or one that could not
+ *   admit every folder, makes the next poll start one group later, so no
+ *   group is starved.
  * - Stats. Listed sessions first, then never-statted folders (carried until
  *   reached), then recently changed prompt-less ones, then a reserved
  *   rotating sweep of everything else. Grok renames a fresh summary.json into
  *   a session folder on every append, so the folder mtime tracks activity.
  * - Inspections, newest first.
+ *
+ * Groups the caller excludes (Station's own ACP workspaces) are skipped
+ * before any stat. The rest are visited newest first.
  *
  * The index itself holds at most `maxEntries` folders. When it is full, a new
  * folder evicts an inspected prompt-less folder from a group this poll has not
@@ -44,6 +48,13 @@ export interface GrokSessionIndexOptions {
   maxInspections: number;
   now: () => number;
   yieldFn: () => Promise<void>;
+  /**
+   * False for a group (one working directory) that never holds user
+   * sessions; it is skipped before any stat or admission.
+   */
+  includeGroup?: (groupPath: string, name: string) => boolean;
+  /** Test seam: directory reads. */
+  openDirectory?: (path: string) => import('node:fs').Dir;
 }
 
 interface Entry {
@@ -236,7 +247,7 @@ export class GrokSessionIndex {
     ): Promise<'complete' | 'partial' | 'failed'> => {
       let handle: import('node:fs').Dir;
       try {
-        handle = opendirSync(directory);
+        handle = (this.options.openDirectory ?? opendirSync)(directory);
       } catch {
         return 'failed';
       }
@@ -259,9 +270,26 @@ export class GrokSessionIndex {
     const rootRead = await readNames(root, (name) => names.push(name));
     if (rootRead === 'failed')
       return { complete: false, rejected: true, refused };
-    const groupPaths = names.map((name) => join(root, name)).sort();
+    // Newest groups first, so a burst of new sessions is never queued behind
+    // old ones. A group's mtime changes when a session folder is added.
+    const included: Array<{ path: string; mtime: number }> = [];
+    for (const name of names) {
+      const path = join(root, name);
+      if (this.options.includeGroup && !this.options.includeGroup(path, name)) {
+        continue;
+      }
+      try {
+        included.push({ path, mtime: lstatSync(path).mtimeMs });
+      } catch {
+        rejected = true;
+      }
+    }
+    included.sort(
+      (left, right) =>
+        right.mtime - left.mtime || (left.path < right.path ? -1 : 1),
+    );
     if (rootRead === 'complete') {
-      const present = new Set(groupPaths);
+      const present = new Set(included.map((group) => group.path));
       for (const group of [...this.groups.keys()]) {
         if (!present.has(group)) this.dropGroup(group);
       }
@@ -269,18 +297,12 @@ export class GrokSessionIndex {
 
     const readThisPoll = new Set<string>();
     let complete = rootRead === 'complete';
-    const start = groupPaths.length ? this.groupOffset % groupPaths.length : 0;
-    for (let index = 0; index < groupPaths.length; index += 1) {
-      const groupPath = groupPaths[(start + index) % groupPaths.length]!;
+    const start = included.length ? this.groupOffset % included.length : 0;
+    for (let index = 0; index < included.length; index += 1) {
+      const { path: groupPath, mtime } =
+        included[(start + index) % included.length]!;
       const group = this.groups.get(groupPath) ?? { members: new Set() };
       this.groups.set(groupPath, group);
-      let mtime: number;
-      try {
-        mtime = lstatSync(groupPath).mtimeMs;
-      } catch {
-        rejected = true;
-        continue;
-      }
       if (group.cleanAt === mtime) continue;
       if (group.partial?.mtime === mtime && group.partial.entries >= budget) {
         complete = false;
@@ -333,7 +355,9 @@ export class GrokSessionIndex {
         group.cleanAt = mtime;
       }
     }
-    this.groupOffset = complete ? 0 : start + 1;
+    // Any poll that could not admit everything starts one group later next
+    // time, so a refusal never pins the same groups to the front.
+    this.groupOffset = complete && !refused ? 0 : start + 1;
     return { complete, rejected, refused };
   }
 
@@ -419,7 +443,13 @@ export class GrokSessionIndex {
 
   private record(path: string, entry: Entry, inspection: IndexedInspection) {
     entry.inspection = inspection;
-    if (inspection.cacheable) {
+    // A folder changed within one mtime tick may change again without its
+    // mtime moving: it is not settled as prompt-less until the tick passes.
+    const settled =
+      inspection.session !== undefined ||
+      (entry.modifiedAt !== undefined &&
+        this.options.now() - entry.modifiedAt >= MTIME_SETTLE_MS);
+    if (inspection.cacheable && settled) {
       entry.inspectedAt = entry.modifiedAt;
       this.uninspected.delete(path);
     } else {
@@ -431,7 +461,7 @@ export class GrokSessionIndex {
       this.evictable.delete(path);
     } else {
       this.listed.delete(path);
-      if (inspection.cacheable) this.evictable.add(path);
+      if (inspection.cacheable && settled) this.evictable.add(path);
       else this.evictable.delete(path);
     }
     if (!inspection.session && inspection.outcome !== 'ok') {

@@ -7,6 +7,7 @@ import type {
   CanonicalRuntimeEvent,
   EngineToolKind,
 } from '@kontourai/station-contracts/runtime-events';
+import { isManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
 import { isRecord } from '../../utils/is-record.js';
 import { PARAGRAPH_BREAK } from '../adapters/paragraph-boundary.js';
 import {
@@ -70,6 +71,8 @@ const MAX_INSPECTIONS_CEILING = 4096;
 /** Leading bytes searched for a user prompt; Station's ACP probes have none. */
 const PROMPT_SCAN_BYTES = 64 * 1024;
 const MAX_SUMMARY_BYTES = 256 * 1024;
+const MAX_CWD_MARKER_BYTES = 4096;
+const MAX_GROUP_CACHE = 65_536;
 const MAX_OPEN_TOOLS = 24;
 const MAX_CURSOR_TEXT_BYTES = 192;
 const MAX_OPEN_TOOL_STATE_BYTES = 16 * 1024;
@@ -170,6 +173,8 @@ export class GrokSessionSource implements AttachedSessionSource {
   private readonly logger?: GrokSessionSourceOptions['logger'];
   private readonly handles = new Map<string, SourceRegistration>();
   private readonly index: GrokSessionIndex;
+  /** Group name -> whether it is a Station workspace; names never change cwd. */
+  private readonly stationGroups = new Map<string, boolean>();
   private readonly formatWarnings = new Set<string>();
 
   constructor(options: GrokSessionSourceOptions = {}) {
@@ -245,6 +250,8 @@ export class GrokSessionSource implements AttachedSessionSource {
       maxInspections: this.maxInspections,
       now: () => this.now(),
       yieldFn: () => this.yieldFn(),
+      includeGroup: (groupPath, name) =>
+        !this.isStationWorkspaceGroup(groupPath, name),
     });
   }
 
@@ -484,6 +491,24 @@ export class GrokSessionSource implements AttachedSessionSource {
   }
 
   /**
+   * Station runs Grok in private ACP workspaces (its own and other Station
+   * homes' probe and session workspaces). Their sessions are Station's, never
+   * user conversations, so those groups are skipped before any stat. The
+   * group name is Grok's URL-encoded cwd, or for a long cwd a slug-and-hash
+   * whose real cwd Grok records in the group's `.cwd` file. A group whose cwd
+   * cannot be decoded is kept.
+   */
+  private isStationWorkspaceGroup(groupPath: string, name: string): boolean {
+    const cached = this.stationGroups.get(name);
+    if (cached !== undefined) return cached;
+    const cwd = decodeGroupCwd(groupPath, name);
+    const excluded = cwd !== undefined && isManagedAcpWorkspace(cwd);
+    if (this.stationGroups.size >= MAX_GROUP_CACHE) this.stationGroups.clear();
+    this.stationGroups.set(name, excluded);
+    return excluded;
+  }
+
+  /**
    * A session is listed once its log holds a user prompt. Station's own ACP
    * capability probes create thousands of prompt-less sessions here.
    */
@@ -565,6 +590,25 @@ export class GrokSessionSource implements AttachedSessionSource {
   }
 }
 
+/** The cwd a group folder stands for, per Grok's `decode_cwd_from_dirname`. */
+function decodeGroupCwd(groupPath: string, name: string): string | undefined {
+  try {
+    const decoded = decodeURIComponent(name);
+    if (isAbsolute(decoded) || /^[A-Za-z]:[\\/]/.test(decoded)) return decoded;
+  } catch {
+    // Not URL-encoded: the slug-and-hash form below.
+  }
+  try {
+    const marker = join(groupPath, '.cwd');
+    const stat = lstatSync(marker);
+    if (!stat.isFile() || stat.size > MAX_CWD_MARKER_BYTES) return undefined;
+    const cwd = readWindow(marker, 0, stat.size).toString('utf8').trim();
+    return cwd || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface GrokEnvelope {
   method: typeof ACP_METHOD | typeof XAI_METHOD;
   timestamp?: number;
@@ -632,41 +676,36 @@ function mapGrokUpdate(
       : undefined;
     const hidden = meta?.hideFromScrollback === true;
     const text = hidden ? undefined : renderContent(update.content);
-    if (
-      meta?.interjection === true &&
-      state.turnId &&
-      !state.grok.pendingTurn
-    ) {
+    // Upstream's turn counting (`UserRunTurnTracker`): once any chunk has
+    // carried `promptIndex`, a chunk without it does not start a turn.
+    // Upstream also merges queued prompts into one prompt before the turn
+    // runs, so a changed `promptIndex` is a genuinely separate turn.
+    const phantom =
+      promptIndex === undefined && state.grok.promptIndexSeen === true;
+    if (promptIndex !== undefined) state.grok.promptIndexSeen = true;
+    // Interjections, host-turn echoes and direct `!command` echoes are written
+    // without `promptIndex` while a turn is open, and Grok shows them to the
+    // user: they are imported as in-turn input (a steer on the open turn),
+    // never as a new or aborted turn.
+    // An open pending prompt has already set `state.turnId`.
+    const openTurnId = state.turnId;
+    if ((phantom || meta?.interjection === true) && openTurnId) {
       if (!text) return { events: [], state };
+      const events = flushPendingTurn(state, session);
       const bounded = boundedPrompt(text, {
         maxBytes: MAX_PROMPT_BYTES,
         source: 'grok-session',
       });
-      return {
-        events: [
-          {
-            ...base,
-            eventId: id(0, 'turn-steer'),
-            method: 'turn.started',
-            turnId: state.turnId,
-            inputKind: 'steer',
-            prompt: bounded.value,
-            metadata: { source: 'grok-session', ...bounded.metadata },
-          },
-        ],
-        state,
-      };
-    }
-    // Upstream's turn counting (`UserRunTurnTracker`): once any chunk has
-    // carried `promptIndex`, a chunk without it is a mid-turn phantom
-    // (synthetic, model-facing input), not a new prompt. Upstream also merges
-    // queued prompts into one prompt before the turn runs, so a changed
-    // `promptIndex` is a genuinely separate turn.
-    const phantom =
-      promptIndex === undefined && state.grok.promptIndexSeen === true;
-    if (promptIndex !== undefined) state.grok.promptIndexSeen = true;
-    if (phantom && (state.turnId || state.grok.pendingTurn)) {
-      return { events: [], state };
+      events.push({
+        ...base,
+        eventId: id(events.length, 'turn-steer'),
+        method: 'turn.started',
+        turnId: openTurnId,
+        inputKind: 'steer',
+        prompt: bounded.value,
+        metadata: { source: 'grok-session', ...bounded.metadata },
+      });
+      return { events, state };
     }
     const pending = state.grok.pendingTurn;
     if (pending && pending.promptIndex === promptIndex) {

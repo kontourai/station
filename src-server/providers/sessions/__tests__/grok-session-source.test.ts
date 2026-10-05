@@ -10,6 +10,7 @@ import {
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { prepareManagedAcpWorkspace } from '../../../services/acp/managed-acp-workspace.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -133,6 +134,36 @@ describe('GrokSessionSource', () => {
     // Grok renames a fresh summary.json into the directory on each update.
     utimesSync(dir, new Date(BASE_MS + 5000), new Date(BASE_MS + 5000));
     expect((await source.discover()).sessions).toHaveLength(1);
+  });
+
+  test("skips Station's own ACP workspaces from any Station home, but not look-alike user folders", async () => {
+    const home = fixtureRoot();
+    // Real workspaces from the real writer, under another Station home.
+    const otherStation = fixtureRoot();
+    const probe = await prepareManagedAcpWorkspace(
+      { kind: 'probe', connectionId: 'grok-build' },
+      otherStation,
+    );
+    const chat = await prepareManagedAcpWorkspace(
+      { kind: 'session', connectionId: 'grok-build', threadId: 't-1' },
+      otherStation,
+    );
+    grokSession(home, { sessionId: 'probe-prompted', cwd: probe });
+    // Grok's long-path form: slug-and-hash name, real cwd in `.cwd`.
+    const { dir } = grokSession(home, {
+      sessionId: 'chat-prompted',
+      cwd: chat,
+      dirName: 'session-0123456789abcdef',
+    });
+    writeFileSync(join(dir, '..', '.cwd'), chat);
+    grokSession(home, {
+      sessionId: 'user-session',
+      cwd: '/work/acp-workspaces/probe/notes',
+    });
+    const discovery = await new GrokSessionSource({ homeDir: home }).discover();
+    expect(discovery.sessions.map((session) => session.sessionId)).toEqual([
+      'user-session',
+    ]);
   });
 
   test('maps prompts, reasoning, messages, tools, plans, usage and completion', async () => {
@@ -329,31 +360,63 @@ describe('GrokSessionSource', () => {
     });
   });
 
-  test('a synthetic mid-turn user chunk without promptIndex neither aborts nor starts a turn', async () => {
+  test('a user echo without promptIndex during a turn is a steer on that turn, not a new one', async () => {
     const home = fixtureRoot();
-    const w = new Writer('phantom-session');
+    const w = new Writer('echo-session');
     grokSession(home, {
-      sessionId: 'phantom-session',
+      sessionId: 'echo-session',
       lines:
         w.user('Run the build', 0) +
         w.toolCall('call-1', 'run_terminal_cmd', { command: 'build' }) +
-        // Upstream `persist_synthetic_user_message`: modelId only.
-        w.syntheticUser('Background task finished: build ok') +
+        // Upstream echo shape (host-turn echo, direct `!command`): modelId only.
+        w.syntheticUser('!git status') +
         w.toolResult('call-1', 'completed', 'ok') +
         w.message('Built.') +
         w.turnCompleted(),
     });
     const source = new GrokSessionSource({ homeDir: home });
     const { events } = await drain(source, await discoverOne(source));
-    expect(events.map((event) => event.method)).toEqual([
-      'turn.started',
-      'tool.started',
-      'tool.completed',
-      'content.text-delta',
-      'token-usage.updated',
-      'turn.completed',
+    expect(events.map((event) => [event.method, event.turnId])).toEqual([
+      ['turn.started', 'echo-session-1'],
+      ['tool.started', 'echo-session-1'],
+      ['turn.started', 'echo-session-1'],
+      ['tool.completed', 'echo-session-1'],
+      ['content.text-delta', 'echo-session-1'],
+      ['token-usage.updated', 'echo-session-1'],
+      ['turn.completed', 'echo-session-1'],
     ]);
-    expect(events[2]).toMatchObject({ status: 'success' });
+    expect(events[2]).toMatchObject({
+      inputKind: 'steer',
+      prompt: '!git status',
+    });
+    expect(events[3]).toMatchObject({ status: 'success' });
+  });
+
+  test('an interjection while the prompt is still pending follows that prompt as a steer', async () => {
+    const home = fixtureRoot();
+    const w = new Writer('pending-session');
+    grokSession(home, {
+      sessionId: 'pending-session',
+      lines:
+        w.user('Start', 0) +
+        w.interjection('<frame>also lint</frame>', 'also lint') +
+        w.message('On it.') +
+        w.turnCompleted(),
+    });
+    const source = new GrokSessionSource({ homeDir: home });
+    const { events } = await drain(source, await discoverOne(source));
+    expect(
+      events
+        .filter((event) => event.method === 'turn.started')
+        .map((event) => [
+          (event as { prompt?: string }).prompt,
+          (event as { inputKind?: string }).inputKind,
+        ]),
+    ).toEqual([
+      ['Start', undefined],
+      ['also lint', 'steer'],
+    ]);
+    expect(events.some((event) => event.method === 'turn.aborted')).toBe(false);
   });
 
   test('records a rewind marker and keeps the rewound turns', async () => {
@@ -599,9 +662,12 @@ describe('GrokSessionSource', () => {
     for (let index = 0; index < 80; index += 1) {
       mkdirSync(join(probeGroup, `ffffffff-${String(index).padStart(4, '0')}`));
     }
+    // Each poll is 5 s apart, so freshly made folders settle (E3).
+    let clock = Date.now();
     const source = new GrokSessionSource({
       homeDir: home,
       maxDirectoryEntries: 50,
+      now: () => (clock += 5000),
     });
     for (let poll = 0; poll < 5; poll += 1) await source.discover();
     const ids = ['00000000-late-a', '00000000-late-b', '00000000-late-c'];
