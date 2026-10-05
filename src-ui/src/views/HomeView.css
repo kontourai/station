@@ -362,3 +362,10 @@
 .home-view__start .start-composer {
   grid-column: 1 / -1;
 }
+/* The compact form's Agent and Model: a quiet note beside Start (#3312). */
+.home-view__goal--compact .home-view__goal-identity {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
