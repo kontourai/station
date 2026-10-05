@@ -4683,7 +4683,7 @@ export class EventStore {
           ORDER BY e.global_sequence ASC
           LIMIT ?`,
         )
-        .all(...chunk, limit - rows.length) as any[];
+        .all(...chunk, limit - rows.length) as unknown[];
       for (const row of found) rows.push(this.mapUsageReceiptEventRow(row));
     }
     return rows;
