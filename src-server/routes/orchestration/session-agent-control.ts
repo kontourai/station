@@ -62,6 +62,7 @@ import {
   type SessionSendMode,
 } from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
+import { sessionSenderIdentity } from '../../services/orchestration/session-sender-identity.js';
 import {
   evaluateSessionWait,
   SESSION_WAIT_MAX_TIMEOUT_MS,
@@ -183,13 +184,16 @@ export interface SessionAgentControlDeps {
     | 'currentConversationSessionId'
     | 'dispatchWithReceipt'
     | 'hasActiveTurn'
-    | 'sessionSenderIdentity'
   >;
   eventStore: Pick<
     EventStore,
     | 'conversationForSession'
+    | 'conversationRootFirstPromptedTurn'
+    | 'firstTurnStartedWithPrompt'
     | 'listEventsByMethods'
+    | 'readSessionByThread'
     | 'readSessionInventoryHighWater'
+    | 'sessionAgentPresentation'
     | 'sessionControlRequestKeys'
   >;
   /** Server events; an appended orchestration event wakes a wait. */
@@ -553,7 +557,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         sender: {
           kind: 'agent-session',
           sessionId: caller.sessionId,
-          ...deps.orchestrationService.sessionSenderIdentity(caller.sessionId),
+          ...sessionSenderIdentity(deps.eventStore, caller.sessionId),
           requestKey: body.requestKey,
         },
       });

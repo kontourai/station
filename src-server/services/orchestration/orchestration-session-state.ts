@@ -838,7 +838,7 @@ function extractModelSelectionReceipt(
  * projecting their full prompts. Only the first meaningful user turn is
  * considered, and injected timezone context is removed before bounding.
  */
-function extractDisplayTitle(
+export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   for (const event of events) {
