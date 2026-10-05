@@ -1904,8 +1904,15 @@ export function NewChatModal({
               modelUnavailableFor={(agent) =>
                 modelsForAgent(agent).length === 0 && !modelsLoading
               }
-              onOpenModel={(agent, trigger) =>
-                setChipMenu({ kind: 'model', trigger, agentSlug: agent.slug })
+              // The Agent list closes for the Model picker, so the picker
+              // anchors to (and returns focus to) the Agent chip, not the
+              // row's trigger that goes with the list.
+              onOpenModel={(agent) =>
+                setChipMenu({
+                  kind: 'model',
+                  trigger: chipMenu.trigger,
+                  agentSlug: agent.slug,
+                })
               }
               onChoose={(agent) => {
                 start.chooseAgent(agent.slug);
@@ -1923,6 +1930,7 @@ export function NewChatModal({
               interactionDisabled={checkingSetup || setupReturn.pending}
               search={agentSearch}
               onSearch={setAgentSearch}
+              notice={compatibilityMessage}
               onClose={() => {
                 setAgentSearch('');
                 setChipMenu(null);

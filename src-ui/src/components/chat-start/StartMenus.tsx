@@ -9,6 +9,7 @@ import type {
 } from '../../utils/modelCapabilities';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { Button } from '../Button';
+import { WarningGlyph } from '../icons/Glyph';
 import {
   type NewChatModalContextOption,
   scheduleSelectedAgentVisibility,
@@ -17,7 +18,13 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
+import {
+  describeReadFailure,
+  Empty,
+  ErrorState,
+  FilteredEmpty,
+  SkeletonList,
+} from '../state';
 import { AgentPickerGroups } from './AgentPickerRow';
 import { ContextPickerOptions, CwdBreadcrumb } from './ContextPickerOptions';
 // The menus reuse the composer popover shell (`.composer-popover-*`).
@@ -63,10 +70,13 @@ export function StartAgentMenu({
   interactionDisabled,
   search,
   onSearch,
+  notice,
   onClose,
 }: {
   anchor: HTMLElement | null;
   layer: MenuLayer;
+  /** The catalog's compatibility warning for this context, when it has one. */
+  notice?: string;
   groups: AgentGroups;
   flatList: AgentData[];
   selectedSlug?: string;
@@ -139,6 +149,11 @@ export function StartAgentMenu({
         }}
       />
       <div className="new-chat-modal__list start-menu__list">
+        {notice && (
+          <div className="new-chat-modal__compat-warning" role="note">
+            <WarningGlyph /> {notice}
+          </div>
+        )}
         {flatList.length === 0 &&
           (loading ? (
             <SkeletonList count={3} label="Loading agents" />
@@ -150,10 +165,10 @@ export function StartAgentMenu({
               action={<Button onClick={onRetry}>Retry</Button>}
             />
           ) : search ? (
-            <Empty
-              variant="compact"
-              label="No matches"
-              description="No Agent here matches that search."
+            <FilteredEmpty
+              query={search}
+              noun="Agents"
+              onClear={() => onSearch('')}
             />
           ) : (
             <Empty

@@ -1271,13 +1271,13 @@ describe('the start composer in the dock', () => {
   // with a message, the message comes first, then that same context, sent.
   describe('context handed to the draft', () => {
     const draft = {
-      title: 'Prepared prompt',
+      title: 'Prepared request',
       description: 'From the plugin primer',
       framing: 'verbatim' as const,
       items: [
         {
           id: 'composer-draft',
-          label: 'Prompt',
+          label: 'Request',
           detail: 'Build a plugin',
           messageLine: 'Build a plugin that lists my tasks.',
         },
@@ -1288,7 +1288,7 @@ describe('the start composer in the dock', () => {
     test('with no message the start is byte-identical to the Agent-row start, and is not sent', () => {
       const onSelect = start(vi.fn(), { draftContext: draft });
       expect(
-        screen.getByRole('button', { name: 'Prompt: Build a plugin' }),
+        screen.getByRole('button', { name: 'Request: Build a plugin' }),
       ).toBeTruthy();
       expect(
         screen.getByText(/With no message, Start puts this context/),
@@ -1313,7 +1313,7 @@ describe('the start composer in the dock', () => {
     test('removing the context leaves nothing to start until a message is typed', () => {
       const onSelect = start(vi.fn(), { draftContext: draft });
       fireEvent.click(
-        screen.getByRole('button', { name: 'Prompt: Build a plugin' }),
+        screen.getByRole('button', { name: 'Request: Build a plugin' }),
       );
       expect(startButton().disabled).toBe(true);
       fireEvent.change(message(), { target: { value: 'Just this' } });

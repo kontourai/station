@@ -235,6 +235,7 @@ export function StartComposer({
             <ActionOverflowMenu
               label="More start options"
               actions={overflowActions}
+              triggerClassName="action-overflow__trigger start-composer__more"
             />
           )}
         </fieldset>

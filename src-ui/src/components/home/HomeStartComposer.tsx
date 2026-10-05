@@ -346,8 +346,14 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               modelUnavailableFor={(entry) =>
                 modelsForAgent(entry).length === 0 && !modelsLoading
               }
-              onOpenModel={(entry, trigger) =>
-                setMenu({ kind: 'model', trigger, agentSlug: entry.slug })
+              // The Agent list closes for the Model picker, so the picker
+              // anchors to (and returns focus to) the Agent chip.
+              onOpenModel={(entry) =>
+                setMenu({
+                  kind: 'model',
+                  trigger: menu.trigger,
+                  agentSlug: entry.slug,
+                })
               }
               onChoose={(entry) => {
                 start.chooseAgent(entry.slug);
@@ -364,6 +370,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               }
               search={agentSearch}
               onSearch={setAgentSearch}
+              notice={viewModel.compatibilityMessage}
               onClose={() => {
                 setAgentSearch('');
                 setMenu(null);

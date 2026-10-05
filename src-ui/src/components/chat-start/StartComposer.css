@@ -151,6 +151,9 @@
 .start-menu__list {
   overflow-y: auto;
   min-height: 0;
+  /* The list, not the panel, scrolls: the phone sheet lifts the shared
+     panel's height cap, and the filter and header must stay in view. */
+  max-height: min(55dvh, 440px);
   padding-bottom: var(--k-space-2);
 }
 .start-menu__hint {
@@ -161,4 +164,13 @@
 .start-menu__search {
   width: auto;
   box-sizing: border-box;
+}
+/* The overflow sits among 44px chips: it takes their height, square. */
+.start-composer__chips > .start-composer__more {
+  width: 44px;
+  height: 44px;
+}
+/* Every project row is a 44px target, on every pointer. */
+.start-menu__list .new-chat-modal__dropdown-item {
+  min-height: 44px;
 }
