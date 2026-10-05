@@ -293,12 +293,14 @@ export class ProjectResourceResolver {
     projectSlug: string,
   ): Promise<ProjectRunsAt> {
     let root: string | undefined;
-    let workingDirectory: string | undefined;
+    let stored: string | undefined;
     try {
       root = await this.executionRoot(projectSlug, 'trust-records');
-      workingDirectory = this.source
-        .getProject(projectSlug)
-        .workingDirectory?.trim();
+      // Compared expanded; returned as stored (`~/dev/app`), which is how
+      // every other surface shows the project's folder.
+      stored = this.source.getProject(projectSlug).workingDirectory?.trim();
+      if (stored && resolvePath(expandTilde(stored)) !== root)
+        stored = undefined;
     } catch (error) {
       return {
         kind: 'unavailable',
@@ -306,14 +308,7 @@ export class ProjectResourceResolver {
       };
     }
     if (root === undefined) return { kind: 'none' };
-    if (
-      workingDirectory &&
-      resolvePath(expandTilde(workingDirectory)) === root
-    ) {
-      // Spelled as the person stored it (`~/dev/app`), which is how every
-      // other surface shows the project's folder.
-      return { kind: 'folder', path: workingDirectory };
-    }
+    if (stored) return { kind: 'folder', path: stored };
     return { kind: 'execution-root', path: root };
   }
 

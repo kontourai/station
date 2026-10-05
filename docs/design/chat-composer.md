@@ -42,10 +42,13 @@ detail, with a Back to list control, instead of squeezing both columns.
 
 New chat opens the start composer, the same component Home renders inline: a
 text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
-readiness, repair and Model picker), a project chip (accent, name, folder, No
-project; a project with no folder can be chosen and runs where the server
-puts it: the home folder, or for an ACP engine its connection folder or a
-private Station-managed workspace, which the chip and list say), and, beside
+readiness, repair and Model picker), a project chip (the project's icon, else
+its accent, then name, folder, No project; the folder is the server's
+`runsAt`, so a project bound through its manifest names that checkout's
+execution root; a project with no folder can be chosen and runs where the
+server puts it: the home folder, or for an ACP engine its connection folder or
+a private Station-managed workspace, which the chip and list say; a project a
+start would refuse names no folder, only the reason), and, beside
 Start, an overflow for visual skills. Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says
