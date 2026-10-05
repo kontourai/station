@@ -373,7 +373,7 @@ describe('ChatMessageList', () => {
     expect(loadOlder).toHaveBeenCalledTimes(1);
   });
 
-  test('a layout that holds still for fewer than the settle threshold and then moves again is not settled', async () => {
+  test('a layout that has held still for only a couple of frames is not settled yet', async () => {
     const loadOlder = vi.fn(async () => {});
     const { log, press, prependPage } = pressAndCommit({
       layoutSettles: true,
@@ -383,9 +383,9 @@ describe('ChatMessageList', () => {
     fireEvent.click(press);
     await act(async () => {});
     prependPage();
-    // Restored position, held for a couple of frames, then the virtualizer's
-    // measurement moves the layout again; a reader scroll into the band inside
-    // that stretch is still the restoration's.
+    // Restored position, held for only a couple of frames: a reader scroll
+    // into the band inside that stretch is still the restoration's. This
+    // rules out a threshold of 1; it does not tell 3 from 4.
     await framesElapsed(3);
     log.scrollTop = 50;
     fireEvent.scroll(log);
