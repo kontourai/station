@@ -127,11 +127,13 @@ describe('qualification repair lifecycle', () => {
       mergeable_state: 'clean',
     };
     expect(eligibleLanding(pr, run, 'owner/repo')).toBe(true);
+    expect(eligibleLanding({ ...pr, auto_merge: {} }, run, 'owner/repo')).toBe(
+      true,
+    );
     for (const change of [
       { labels: [] },
       { draft: true },
       { mergeable_state: 'dirty' },
-      { auto_merge: {} },
       { head: { sha: 'b'.repeat(40), repo: { full_name: 'owner/repo' } } },
     ])
       expect(eligibleLanding({ ...pr, ...change }, run, 'owner/repo')).toBe(
@@ -206,7 +208,13 @@ describe('qualification repair lifecycle', () => {
       mkdirSync(bin);
       writeFileSync(
         join(bin, 'gh'),
-        '#!/bin/sh\nprintf "%s\n" "$*" > "$ARM_MARKER"\n',
+        `#!/bin/sh
+if [ "$1" = api ]; then
+  node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.EXPECTED_HEAD,isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:armed && process.env.QUEUE_RESULT === "armed" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
+else
+  printf "%s\n" "$*" >> "$ARM_MARKER"
+fi
+`,
       );
       chmodSync(join(bin, 'gh'), 0o755);
       const marker = join(root, 'armed');
@@ -214,6 +222,8 @@ describe('qualification repair lifecycle', () => {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
         ARM_MARKER: marker,
+        EXPECTED_HEAD: run.head_sha,
+        QUEUE_RESULT: 'queued',
         GITHUB_EVENT_PATH: event,
         GITHUB_REPOSITORY: 'owner/repo',
         GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
@@ -235,6 +245,29 @@ describe('qualification repair lifecycle', () => {
         expect(readFileSync(marker, 'utf8')).toBe(
           'pr merge 7 --repo owner/repo --auto\n',
         );
+        // Already queued is a no-op, not another arming attempt.
+        await exec(process.execPath, [landing], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        expect(readFileSync(marker, 'utf8')).toBe(
+          'pr merge 7 --repo owner/repo --auto\n',
+        );
+        // A green CLI exit alone must not claim successful admission.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: { ...env, QUEUE_RESULT: 'none' },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('neither armed nor queued');
+        const waiting = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, QUEUE_RESULT: 'armed' },
+          windowsHide: true,
+        });
+        expect(waiting.stdout).toContain('armed_waiting_for_queue');
       } finally {
         await new Promise<void>((done) => server.close(() => done()));
       }
