@@ -16,6 +16,12 @@
 
     "docs/guides/starter-work.md",
 
+    "docs/learn/media.json#/captures/0",
+
+    "docs/learn/media.json#/captures/3",
+
+    "docs/learn/media.json#/captures/4",
+
     "docs/learn/media/inspect-request.png",
 
     "docs/learn/media/inspect-request.webm",
@@ -40,9 +46,17 @@
 
     "src-server/services/orchestration/orchestration-service.ts",
 
+    "src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx",
+
+    "src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx",
+
     "src-ui/src/components/attention/RequestInspectionDialog.css",
 
     "src-ui/src/components/attention/RequestInspectionDialog.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
 
     "src-ui/src/components/chat/ChatInputArea.tsx",
 
@@ -64,21 +78,41 @@
 
     "src-ui/src/components/header/useHeaderViewModel.ts",
 
+    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx",
+
     "src-ui/src/components/modals/NewChatModal.tsx",
 
     "src-ui/src/components/modals/useNewChatSetupReturn.ts",
 
+    "src-ui/src/components/scheduler/JobFormModal.tsx",
+
+    "src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx",
+
+    "src-ui/src/contexts/NavigationContext.tsx",
+
+    "src-ui/src/contexts/scheduler-job-dialog-store.ts",
+
     "src-ui/src/hooks/useChatInput.ts",
 
+    "src-ui/src/hooks/useNewChatSelectionModel.ts",
+
     "src-ui/src/index.css",
+
+    "src-ui/src/lib/newChatIntent.ts",
 
     "src-ui/src/pages/NotificationsPage.css",
 
     "src-ui/src/pages/NotificationsPage.tsx",
 
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
+
+    "src-ui/src/platform/native/authenticatedTransport.ts",
+
     "src-ui/src/views/ProjectPage.css",
 
     "src-ui/src/views/ProjectPage.tsx",
+
+    "src-ui/src/views/ScheduleView.css",
 
     "src-ui/src/views/learning-review/LearningSourceAction.tsx",
 
@@ -89,42 +123,6 @@
     "tests/helpers/exact-request-backend.ts",
 
     "tests/helpers/live-station-task.ts",
-
-    "docs/learn/media.json#/captures/0",
-
-    "docs/learn/media.json#/captures/3",
-
-    "docs/learn/media.json#/captures/4",
-
-    "src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx",
-
-    "src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
-
-    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
-
-    "src-ui/src/components/home/HomeChatStartForm.tsx",
-
-    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx",
-
-    "src-ui/src/components/scheduler/JobFormModal.tsx",
-
-    "src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx",
-
-    "src-ui/src/contexts/NavigationContext.tsx",
-
-    "src-ui/src/contexts/scheduler-job-dialog-store.ts",
-
-    "src-ui/src/hooks/useNewChatSelectionModel.ts",
-
-    "src-ui/src/lib/newChatIntent.ts",
-
-    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
-
-    "src-ui/src/platform/native/authenticatedTransport.ts",
-
-    "src-ui/src/views/ScheduleView.css",
 
     "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
 
@@ -194,7 +192,15 @@
 
     "src-server/services/projects/project-service.ts",
 
-    "packages/contracts/src/project.ts"
+    "packages/contracts/src/project.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/home/HomeStartComposer.tsx",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/hooks/useStartSelection.ts"
   ],
 
   "checks": [

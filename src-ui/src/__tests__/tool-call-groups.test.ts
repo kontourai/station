@@ -6,6 +6,7 @@ import {
   type ToolCallLike,
 } from '../components/chat/tool-call-groups';
 import {
+  callLabel,
   classifyToolName,
   isToolCallAwaitingApproval,
   toolCallPhase,
@@ -820,5 +821,462 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     expect(group.key).toBe('tool-call-run:first-id');
+  });
+});
+
+/**
+ * #3364: a destructive or unknown tool must never be labelled a read. These
+ * go through the production pipeline (`splitToolCallRuns` →
+ * `classifyToolCallRun`), so they reach the row label the transcript shows.
+ */
+describe('mutating and unknown tools are labelled by what they do (#3364)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test.each([
+    'delete_file',
+    'remove_file',
+    'rm',
+    'unlink',
+    'rmdir',
+    'fs/delete',
+    'trashItem',
+  ])('%s with a path is a delete: "Deleted secret.txt"', (toolName) => {
+    const group = settled(toolName, { path: '/repo/secret.txt' });
+    expect(group.calls[0]!.kind).toBe('delete');
+    expect(group.summary).toBe('Deleted secret.txt');
+  });
+
+  test('a delete in flight and one awaiting approval take their own tenses', () => {
+    const running = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'delete_file',
+        args: { path: 'secret.txt' },
+        state: 'running',
+      }),
+    ]);
+    expect(running.calls[0]!.label).toBe('Deleting secret.txt');
+    const proposed = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'delete_file',
+        args: { path: 'secret.txt' },
+        state: 'call',
+        needsApproval: true,
+      }),
+    ]);
+    expect(proposed.calls[0]!.label).toBe('Delete secret.txt');
+  });
+
+  test("an engine's own delete kind is a delete", () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Remove the old build output',
+        toolKind: 'delete',
+        args: { path: '/repo/dist' },
+      }),
+    ]);
+    expect(group.calls[0]!.kind).toBe('delete');
+    expect(group.summary).toBe('Deleted dist');
+  });
+
+  test('a batch of deletes counts them as deletions, not edits', () => {
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'rm', args: { path: 'a.txt' } }),
+      toolCall({ toolCallId: 'b', toolName: 'rm', args: { path: 'b.txt' } }),
+    ]);
+    expect(group.aggregateSummary).toBe('Deleted 2 files');
+  });
+
+  test.each(['move_file', 'rename_file', 'mv', 'copy_file', 'mkdir'])(
+    '%s with a path is a write, not a read',
+    (toolName) => {
+      const group = settled(toolName, { path: '/repo/notes.md' });
+      expect(group.calls[0]!.kind).toBe('write');
+      expect(group.summary).toBe('Edited notes.md');
+    },
+  );
+
+  test.each(['list_files', 'ls'])('%s with a path is a read', (toolName) => {
+    const group = settled(toolName, { path: '/repo/src' });
+    expect(group.calls[0]!.kind).toBe('read');
+    expect(group.summary).toBe('Read src');
+  });
+
+  test.each([
+    ['frobnicate', 'Used frobnicate on secret.txt'],
+    ['archive_item', 'Used archive item on secret.txt'],
+    ['sync-file', 'Used sync-file on secret.txt'],
+  ])(
+    'an unknown tool %s with only a path names the tool and its target, never a read',
+    (toolName, label) => {
+      for (const key of ['path', 'file_path', 'filePath', 'filepath']) {
+        const group = settled(toolName, { [key]: '/repo/secret.txt' });
+        expect(group.calls[0]!.kind).toBe('other');
+        expect(group.summary).toBe(label);
+        expect(group.summary).not.toMatch(/^Read/);
+      }
+    },
+  );
+
+  test('names are split into words, never substring-matched', () => {
+    // `readme` is not `read`; `remove` wins over it and is not `move`.
+    expect(classifyToolName('readme_remove')).toBe('delete');
+    expect(classifyToolName('readmeRemove')).toBe('delete');
+    expect(classifyToolName('remover_status')).toBe('other');
+    expect(classifyToolName('unread_count')).toBe('other');
+    expect(classifyToolName('format_disk')).toBe('other');
+    expect(settled('readme_sync', { path: 'README.md' }).summary).toBe(
+      'Used readme sync on README.md',
+    );
+  });
+
+  test('a delete or write word outranks a read word in the same name', () => {
+    expect(classifyToolName('read_and_delete')).toBe('delete');
+    expect(classifyToolName('view_edit')).toBe('write');
+  });
+});
+
+/**
+ * #3364 review: a file verb in a tool's NAME is not a file. Station's own
+ * control tools (src-server/tools/station-control-*-tools.ts) take slugs and
+ * ids, so their rows and batches must name a tool, never claim a file, and
+ * never put the verb in front of a name that already says it.
+ */
+describe('file verbs without a file stay tool calls (#3364 review)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test.each([
+    ['delete_agent', { slug: 'helper' }, 'Used delete agent'],
+    ['delete_conversation', { id: 'c1' }, 'Used delete conversation'],
+    ['delete_integration', { id: 'i1' }, 'Used delete integration'],
+    ['remove_plugin', { name: 'p' }, 'Used remove plugin'],
+    ['list_agents', {}, 'Used list agents'],
+    ['list_integrations', {}, 'Used list integrations'],
+    ['read_conversation', { conversationId: 'c1' }, 'Used read conversation'],
+    [
+      'mcp__station-control__list_agents',
+      {},
+      'Used mcp station-control list agents',
+    ],
+    [
+      'station-control/delete_agent',
+      { slug: 'x' },
+      'Used station-control/delete agent',
+    ],
+  ])('%s with %j reads "%s"', (toolName, args, label) => {
+    const group = settled(toolName, args);
+    expect(group.calls[0]!.kind).toBe('other');
+    expect(group.summary).toBe(label);
+  });
+
+  test('a batch of Station-control calls counts tools, not files', () => {
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'list_agents', args: {} }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'delete_agent',
+        args: { slug: 'helper' },
+      }),
+      toolCall({
+        toolCallId: 'c',
+        toolName: 'read_conversation',
+        args: { conversationId: 'c1' },
+      }),
+    ]);
+    expect(group.aggregateSummary).toBe('Used 3 tools');
+    expect(group.aggregateSummary).not.toMatch(/file/);
+  });
+
+  test.each([
+    ['delete_file', 'Used delete file'],
+    ['mkdir', 'Used mkdir'],
+    ['list_files', 'Used list files'],
+    ['Read', 'Used Read'],
+  ])('%s with no target never doubles its verb: "%s"', (toolName, label) => {
+    expect(settled(toolName, {}).summary).toBe(label);
+  });
+
+  test('a file verb with a notebook_path or filename keeps its verb', () => {
+    expect(settled('Read', { notebook_path: '/r/a.ipynb' }).summary).toBe(
+      'Read a.ipynb',
+    );
+    expect(settled('delete_file', { filename: 'b.txt' }).summary).toBe(
+      'Deleted b.txt',
+    );
+  });
+});
+
+describe('names that mention a delete without deleting (#3364 review)', () => {
+  test.each([
+    ['undo_delete', 'other'],
+    ['cancel_delete', 'other'],
+    ['restore_from_trash', 'other'],
+    ['undeleteFile', 'other'],
+    ['list_trash', 'read'],
+    ['list_deleted_items', 'read'],
+    ['mcp__trash__list_trash', 'read'],
+    ['remove_background', 'other'],
+    ['remove_watermark', 'other'],
+    ['model_del', 'other'],
+  ])('%s classifies as %s', (toolName, kind) => {
+    expect(classifyToolName(toolName)).toBe(kind);
+  });
+
+  test('none of them read "Deleted" even with a path', () => {
+    for (const toolName of [
+      'undo_delete',
+      'cancel_delete',
+      'restore_from_trash',
+      'list_trash',
+      'remove_background',
+      'model_del',
+    ]) {
+      const group = classifyFirstRun([
+        toolCall({ toolCallId: 'a', toolName, args: { path: '/r/photo.png' } }),
+      ]);
+      expect(group.summary).not.toMatch(/^Delet/);
+    }
+  });
+});
+
+describe('the unknown-tool target (#3364 review)', () => {
+  test('display text is shown as written, never with "on <target>"', () => {
+    expect(
+      callLabel('other', 'Fetch the docs page', { path: '/v1/docs' }, 'done'),
+    ).toBe('Used Fetch the docs page');
+  });
+
+  test.each([
+    ['notebook_path', '/r/a.ipynb', 'Used frobnicate on a.ipynb'],
+    ['filename', 'b.txt', 'Used frobnicate on b.txt'],
+  ])('a %s argument is the target', (key, value, label) => {
+    expect(callLabel('other', 'frobnicate', { [key]: value }, 'done')).toBe(
+      label,
+    );
+  });
+});
+
+describe('file targets beyond a single path (#3364 review round 2)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test('a leading list never outranks a real delete or write verb', () => {
+    for (const toolName of ['list_and_delete', 'ls_rm']) {
+      const group = settled(toolName, { path: '/r/app.tsx' });
+      expect(group.calls[0]!.kind).toBe('delete');
+      expect(group.summary).toBe('Deleted app.tsx');
+    }
+    expect(classifyToolName('list_and_move')).toBe('write');
+    expect(classifyToolName('list_trash')).toBe('read');
+  });
+
+  test("Codex apply_patch's change list is a write naming its files", () => {
+    // The shape `deriveToolArguments` builds for a `fileChange` item
+    // (src-server/providers/adapters/codex-adapter-events.ts).
+    const group = settled('apply_patch', {
+      changes: [{ path: '/r/a.ts' }, { path: '/r/b.ts' }],
+    });
+    expect(group.calls[0]!.kind).toBe('write');
+    expect(group.summary).toBe('Edited a.ts +1 more');
+  });
+
+  test('a raw string argument is a target', () => {
+    const group = settled('delete_file', '/tmp/x.txt');
+    expect(group.calls[0]!.kind).toBe('delete');
+    expect(group.summary).toBe('Deleted /tmp/x.txt');
+  });
+
+  test("OpenCode's patch {patchText} stays a write", () => {
+    expect(settled('patch', { patchText: 'some diff' }).summary).toBe(
+      'Edited patch',
+    );
+    const envelope =
+      '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** Add File: src/b.ts\n+z\n*** End Patch';
+    const group = settled('patch', { patchText: envelope });
+    expect(group.calls[0]!.kind).toBe('write');
+    expect(group.summary).toBe('Edited a.ts +1 more');
+  });
+
+  test('apply_patch with the envelope in input is a write naming its file', () => {
+    const group = settled('apply_patch', {
+      input: '*** Begin Patch\n*** Delete File: old.txt\n*** End Patch',
+    });
+    expect(group.calls[0]!.kind).toBe('write');
+    expect(group.summary).toBe('Edited old.txt');
+  });
+
+  test('an input that is not a patch envelope is not a file target', () => {
+    expect(settled('apply_patch', { input: 'hello' }).summary).toBe(
+      'Used apply patch',
+    );
+  });
+
+  test('source/destination keeps a move a write and names both ends', () => {
+    for (const toolName of ['move_file', 'copy_file']) {
+      const group = settled(toolName, {
+        source: '/r/a.txt',
+        destination: '/r/b.txt',
+      });
+      expect(group.calls[0]!.kind).toBe('write');
+      expect(group.summary).toBe('Edited a.txt → b.txt');
+    }
+  });
+
+  test('read_multiple_files {paths} stays a read naming its files', () => {
+    const group = settled('read_multiple_files', {
+      paths: ['/r/a.ts', '/r/b.ts', '/r/c.ts'],
+    });
+    expect(group.calls[0]!.kind).toBe('read');
+    expect(group.summary).toBe('Read a.ts +2 more');
+  });
+});
+
+describe('only file-like arguments are file targets (#3364 review round 3)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test('a source alone is no target, even beside a blank path', () => {
+    expect(settled('delete_agent', { source: 'github' }).summary).toBe(
+      'Used delete agent',
+    );
+    expect(
+      settled('delete_file', { path: '   ', source: '/x/y' }).summary,
+    ).toBe('Used delete file');
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'remove_source',
+        args: { source: 'a' },
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'remove_source',
+        args: { source: 'b' },
+      }),
+    ]);
+    expect(group.aggregateSummary).toBe('Used 2 tools');
+  });
+
+  test('a whitespace-only path is no target', () => {
+    expect(settled('delete_file', { path: '   ' }).summary).toBe(
+      'Used delete file',
+    );
+  });
+
+  test('ids in paths are not files; empty and non-string paths are skipped', () => {
+    expect(
+      settled('delete_documents', { paths: ['doc-1', 'doc-2'] }).summary,
+    ).toBe('Used delete documents');
+    expect(settled('read_multiple_files', { paths: [] }).summary).toBe(
+      'Used read multiple files',
+    );
+    expect(
+      settled('read_multiple_files', { paths: [1, null, '/r/z.ts'] }).summary,
+    ).toBe('Read z.ts');
+    expect(
+      settled('read_multiple_files', { paths: ['notes.md', 'b\\c.txt'] })
+        .summary,
+    ).toBe('Read notes.md +1 more');
+  });
+
+  test('blank patch headers are dropped', () => {
+    const group = settled('apply_patch', {
+      input:
+        '*** Begin Patch\n*** Update File:   \n*** Add File: b.ts\n+x\n*** End Patch',
+    });
+    expect(group.summary).toBe('Edited b.ts');
+  });
+
+  test('each end of a move is truncated so the destination survives', () => {
+    const longName = `${'a'.repeat(80)}.txt`;
+    const label = settled('move_file', {
+      source: `/r/${longName}`,
+      destination: '/r/dest.txt',
+    }).summary;
+    expect(label.endsWith(' → dest.txt')).toBe(true);
+    expect(label.length).toBeLessThanOrEqual('Edited '.length + 60);
+  });
+
+  test('bidi and control characters are stripped from shown names', () => {
+    const rlo = '‮';
+    const patch = settled('apply_patch', {
+      input: `*** Begin Patch\n*** Update File: ev${rlo}il\u0007.ts\n*** End Patch`,
+    }).summary;
+    expect(patch).toBe('Edited evil .ts');
+    const paths = settled('read_multiple_files', {
+      paths: [`/r/⁦a\u0085b.ts`],
+    }).summary;
+    expect(paths).toBe('Read a b.ts');
+  });
+
+  test("trash is a noun only as the listing verb's object", () => {
+    expect(classifyToolName('list_trash')).toBe('read');
+    expect(classifyToolName('list_trash_items')).toBe('read');
+    expect(classifyToolName('list_and_trash')).toBe('delete');
+    expect(settled('list_and_trash', { path: '/r/app.tsx' }).summary).toBe(
+      'Deleted app.tsx',
+    );
+  });
+});
+
+describe('displayed labels are sanitised and cut safely (#3364 review round 4)', () => {
+  const settled = (toolName: string, args: unknown, extra = {}) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args, ...extra })]);
+
+  test('a mixed paths list counts every named file', () => {
+    expect(
+      settled('delete_files', { paths: ['Makefile', 'src/a.ts'] }).summary,
+    ).toBe('Deleted Makefile +1 more');
+    expect(
+      settled(
+        'delete_files',
+        { paths: ['Makefile', 'src/a.ts'] },
+        {
+          state: 'call',
+          needsApproval: true,
+        },
+      ).summary,
+    ).toBe('Delete Makefile +1 more');
+    expect(
+      settled('read_multiple_files', {
+        paths: ['Makefile', 'src/a.ts', 'LICENSE'],
+      }).summary,
+    ).toBe('Read Makefile +2 more');
+  });
+
+  test('an RLO in a command never reaches the approval label', () => {
+    const label = callLabel(
+      'exec',
+      'Bash',
+      { command: 'echo \u202Etxt.exe' },
+      'proposed',
+    );
+    expect(label).toBe('Run echo txt.exe');
+  });
+
+  test('bidi marks are stripped from display titles and queries', () => {
+    expect(
+      callLabel('other', 'Fetch\u200F the\u061C docs\u200E', {}, 'done'),
+    ).toBe('Used Fetch the docs');
+    expect(
+      callLabel('search', 'Grep', { pattern: 'a\u2067b\u200Ec' }, 'done'),
+    ).toBe('Searched abc');
+  });
+
+  test('control characters become spaces, so words do not merge', () => {
+    expect(
+      callLabel('search', 'Grep', { pattern: 'hello\tworld' }, 'done'),
+    ).toBe('Searched hello world');
+  });
+
+  test('truncation never splits an emoji into a lone surrogate', () => {
+    const command = `${'a'.repeat(58)}\u{1F600}bbb`;
+    const label = callLabel('exec', 'Bash', { command }, 'done');
+    expect(label).toBe(`Ran ${'a'.repeat(58)}\u{1F600}…`);
+    expect(label).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
   });
 });

@@ -146,8 +146,16 @@ export class ApprovalPosture {
    * off what Station set; on a thread Station never set, the engine's own
    * configuration is already the default (#1950). Cleared when the session
    * exits, so a respawned engine starts clean.
+   *
+   * #2898: each entry also keeps the mode Station last passed and the
+   * confinement the engine was started under (`undefined` when this
+   * process did not start it), which `reconfinedMode` compares a turn's
+   * confinement against.
    */
-  private readonly stationApplied = new Set<string>();
+  private readonly stationApplied = new Map<
+    string,
+    { mode: ApprovalMode; startConfinement?: StationConfinement }
+  >();
 
   constructor(
     private readonly deps: {
@@ -322,6 +330,13 @@ export class ApprovalPosture {
    *   Station). A turn on a live session sends nothing: a default is the
    *   posture a session starts in, and re-requesting it would let an edit of
    *   the setting reconfigure a running chat (#2144 slice 6).
+   * - #2898 (owner decision 2026-09-27), the one exception to that: while
+   *   the session's confinement is not the one its engine was started under
+   *   (a device's full access was revoked, so its `host` stamp now applies
+   *   as `workspace`), the turn re-sends the mode Station last passed that
+   *   engine, applied under the confinement that holds now. It is the mode
+   *   the engine already runs, never a re-read default, so an edited default
+   *   still reconfigures nothing, and an ordinary turn still sends nothing.
    *
    * #2493: on an engine with no native sandbox, `never` in a `workspace`
    * session is applied as `auto`, so the engine is never spawned or turned
@@ -353,10 +368,17 @@ export class ApprovalPosture {
         concrete(carried) ??
         (input.phase === 'start'
           ? await this.defaultPosture(input)
-          : undefined);
+          : this.reconfinedMode(input.threadId, input.confinement));
     }
     if (!mode) return Object.keys(rest).length > 0 ? rest : undefined;
-    this.stationApplied.add(input.threadId);
+    const startConfinement =
+      input.phase === 'start'
+        ? input.confinement
+        : this.stationApplied.get(input.threadId)?.startConfinement;
+    this.stationApplied.set(input.threadId, {
+      mode,
+      ...(startConfinement ? { startConfinement } : {}),
+    });
     return {
       ...rest,
       approvalMode: applicableMode(mode, input.provider, input.confinement),
@@ -431,6 +453,30 @@ export class ApprovalPosture {
     const configured = await this.defaultPosture(input);
     if (configured) return configured;
     return this.stationApplied.has(input.threadId) ? 'ask' : undefined;
+  }
+
+  /**
+   * #2898: the mode a turn with nothing recorded or carried re-applies: the
+   * one Station last passed the engine, while the session's confinement
+   * differs from the one the engine started under. Otherwise `undefined`
+   * (#2144 slice 6).
+   *
+   * Sent on every such turn rather than once, so a turn that fails before
+   * its engine takes it cannot leave the engine at its start posture; both
+   * adapters treat a repeated mode as no change (Claude calls
+   * `setPermissionMode` only when the mode differs, Codex sends a sandbox
+   * policy only when it differs). Re-granting the scope makes the
+   * confinement match again: nothing is sent, and the engine stays at the
+   * confined mode until it restarts, which is never looser.
+   */
+  private reconfinedMode(
+    threadId: string,
+    confinement: StationConfinement,
+  ): ApprovalMode | undefined {
+    const applied = this.stationApplied.get(threadId);
+    return applied?.startConfinement && applied.startConfinement !== confinement
+      ? applied.mode
+      : undefined;
   }
 
   forgetThread(threadId: string): void {

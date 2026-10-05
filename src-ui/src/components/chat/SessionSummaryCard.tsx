@@ -130,24 +130,24 @@ export function SessionSummaryCard({
     // only way to summarize (archive#3310 — ACPChatPanel).
     if (hasSettingsEntryPoint) return null;
     return (
-      <aside className="session-summary" aria-label="Derived session summary">
+      <aside className="session-summary" aria-label="Derived chat summary">
         <button
           type="button"
           disabled={pending}
           onClick={() => generate.mutate({ agentSlug, conversationId })}
         >
-          Summarize session
+          Summarize chat
         </button>
       </aside>
     );
   }
 
   return (
-    <aside className="session-summary" aria-label="Derived session summary">
+    <aside className="session-summary" aria-label="Derived chat summary">
       {data ? (
         <>
           <div className="session-summary__header">
-            <strong>Session summary</strong>
+            <strong>Chat summary</strong>
             <span>Derived, not evidence</span>
             {data.stale && (
               <span className="session-summary__stale">

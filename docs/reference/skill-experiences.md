@@ -263,7 +263,8 @@ requests, turns, decisions and outputs remain canonical Session facts.
 
 An unsent chat retains source identity and scalar inputs in the existing scoped
 draft. Reload restores a bounded display preview, not author instructions or
-execution authority. SDK feature responses use the deferred canonical reader;
+execution authority. SDK feature responses are checked by the canonical reader, imported statically
+into the client entry;
 Send refetches installed inventory and checks the captured complete preparation
 after asynchronous composer work. A changed preparation is retained for review.
 

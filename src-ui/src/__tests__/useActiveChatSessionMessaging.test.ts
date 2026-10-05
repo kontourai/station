@@ -887,6 +887,23 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
+  it('marks a failed send as a send-failure notice, which the composer repeats', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new Error('temporarily unavailable'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'will fail');
+    });
+
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
+  });
+
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
@@ -1026,6 +1043,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.ephemeralMessages).toHaveLength(1);
     const notice = chat?.ephemeralMessages?.[0];
     expect(notice?.content).toBe('Full access was not applied.');
+    expect(notice?.sendFailure).toBe(true);
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.fullAccessRefusal).toMatchObject({
       outcome: 'message-not-sent',
@@ -1720,6 +1738,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
         expect(notice?.action?.label).toBe('Discard');
+        // The composer repeats this notice's Discard while a short dock hides
+        // the transcript; it finds the notice by this flag, which a send
+        // failure (the composer's other repeated line) must not carry.
+        expect(notice?.queuedRetry).toBe(true);
+        expect(notice?.sendFailure).toBeUndefined();
       } finally {
         delete (window.navigator as { onLine?: unknown }).onLine;
       }
@@ -1827,6 +1850,29 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
       'next',
     ]);
+  });
+
+  // A refused steer is a send that did not go, so the composer repeats it.
+  // A steer whose delivery cannot be confirmed is held, not failed (#3127).
+  it('a refused steer is a send-failure notice the composer repeats', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'no-active-turn',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'course correct');
+    });
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
   });
 
   it('holds ACP steering without interrupting a tool or guessing a safe boundary', async () => {

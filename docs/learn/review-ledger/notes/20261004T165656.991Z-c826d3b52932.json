@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"No impact: the change is an explicit additive compatibility change documented in docs/reference/contracts.md, as this file requires.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

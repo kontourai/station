@@ -461,7 +461,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     const filler = document.querySelector('.chat-messages--empty');
     expect(filler).toBeTruthy();
     expect(filler?.querySelector('.empty-state')).toBeTruthy();
-    expect(screen.getByText('Start a conversation')).toBeTruthy();
+    expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(screen.queryByText('No messages yet')).toBeNull();
   });
 });

@@ -96,6 +96,24 @@ export function PairedDevicesPanel({
     ],
   );
 
+  // #2898: "Stop now" on a session the revocation left running unconfined,
+  // with the same operator credential as the revocation itself.
+  const stopSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const response = await deviceAdminFetch('/api/orchestration/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'stopSession', threadId: sessionId }),
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    [deviceAdminFetch],
+  );
+
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     try {
@@ -159,7 +177,7 @@ export function PairedDevicesPanel({
             response.status === 401
               ? allowManualCredentials
                 ? 'Changing a device’s access requires this Station’s operator credential. Enter it below and try again.'
-                : `Changing a device’s access requires the operator credential managed by ${hostAppName ?? 'this native host'}. Update it there, then try again.`
+                : `${hostAppName ?? 'This native host'} can’t change a device’s access. Run \`station environment access scope <device> --add|--remove|--set\` on the host, then reopen this list.`
               : response.status === 409
                 ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
                 : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,
@@ -323,6 +341,7 @@ export function PairedDevicesPanel({
         <FullAccessRevocationNotice
           outcome={revocation}
           onDismiss={() => setRevocation(null)}
+          onStopSession={stopSession}
         />
       )}
 

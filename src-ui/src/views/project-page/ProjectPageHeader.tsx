@@ -3,7 +3,7 @@ import { Button } from '../../components/Button';
 import { GitBadge } from '../../components/badges/GitBadge';
 import { splitWorkingDirectoryPath } from '../../components/chat-dock/chat-dock-utils';
 import { EditGlyph, SettingsGlyph } from '../../components/icons/Glyph';
-import { LayoutIcon } from '../../components/icons/LayoutIcon';
+import { ProjectIcon } from '../../components/icons/ProjectIcon';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
@@ -76,7 +76,9 @@ export function ProjectPageHeader({
     <>
       <div className="project-page__header">
         <div className="project-page__identity">
-          <LayoutIcon layout={project} size={48} />
+          {/* Initials at 48px are legible, unlike in a row; the name is the
+              heading beside it, so the mark is decorative. */}
+          <ProjectIcon project={project} size={48} fallback="initials" />
           <div className="project-page__identity-info">
             <h2 className="project-page__name">{project.name}</h2>
             {!editingDir && (
@@ -86,7 +88,7 @@ export function ProjectPageHeader({
                   className="project-page__dir-display"
                   aria-label={
                     hasWorkingDirectory
-                      ? 'Edit working directory'
+                      ? `Edit working directory ${project.workingDirectory}`
                       : 'Set working directory'
                   }
                   onClick={() => {
@@ -95,19 +97,23 @@ export function ProjectPageHeader({
                   }}
                 >
                   {hasWorkingDirectory ? (
-                    <span className="project-page__dir-path">
-                      {/* rtl only for start-side ellipsis; the inner ltr
-                          isolate restores character order (same treatment as
-                          the chat dock's dir split — #304). */}
-                      <span className="project-page__dir-parent">
-                        <span
-                          dir="ltr"
-                          className="project-page__dir-parent-text"
-                        >
+                    <span
+                      className="project-page__dir-path"
+                      title={project.workingDirectory ?? undefined}
+                    >
+                      {/* rtl only for the start-side ellipsis; the ltr isolate
+                          restores character order (#304). Parent and leaf stay
+                          inline so the path's text is one string. The line
+                          sits inside the edit button and cannot be selected;
+                          the button's label and the title carry the path. */}
+                      <span dir="ltr" className="project-page__dir-path-text">
+                        <span className="project-page__dir-parent">
                           {parentPath}
                         </span>
+                        <span className="project-page__dir-leaf">
+                          {leafName}
+                        </span>
                       </span>
-                      <span className="project-page__dir-leaf">{leafName}</span>
                     </span>
                   ) : (
                     <span className="project-page__dir-path project-page__dir-path--unset">
@@ -130,7 +136,7 @@ export function ProjectPageHeader({
                       aria-label="Copy working directory path"
                       title={
                         copyState === 'failed'
-                          ? 'This browser refused clipboard access — select the path above to copy it manually.'
+                          ? 'This browser refused clipboard access — click the path to edit it, then copy it from the field.'
                           : 'Copy working directory path'
                       }
                       onClick={() => {
@@ -152,7 +158,7 @@ export function ProjectPageHeader({
                       {copyState === 'copied'
                         ? 'Working directory path copied.'
                         : copyState === 'failed'
-                          ? 'This browser refused clipboard access. Select the path to copy it manually.'
+                          ? 'This browser refused clipboard access. Click the path to edit it, then copy it from the field.'
                           : ''}
                     </span>
                   </>
@@ -219,7 +225,7 @@ export function MemberProjectHeader({
   return (
     <div className="project-page__header">
       <div className="project-page__identity">
-        <LayoutIcon layout={project} size={48} />
+        <ProjectIcon project={project} size={48} fallback="initials" />
         <div className="project-page__identity-info">
           <p>Shared Project</p>
           <h2 className="project-page__name">{project.name}</h2>

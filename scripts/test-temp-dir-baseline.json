@@ -218,7 +218,6 @@
     "scripts/__tests__/verify-android-aab-signature.test.ts": 1,
     "scripts/__tests__/verify-desktop-clean-checkout.test.ts": 1,
     "scripts/__tests__/verify-release-cohort.test.ts": 1,
-    "scripts/__tests__/veritas-readiness-evidence.test.ts": 1,
     "scripts/__tests__/version-packages-lock.test.ts": 2,
     "scripts/__tests__/vitest-resource-manifest.test.ts": 1,
     "scripts/__tests__/voice-realtime-live-smoke.test.ts": 3,

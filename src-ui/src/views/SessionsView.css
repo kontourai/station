@@ -150,11 +150,31 @@
   margin: var(--space-2) 0.75rem 0;
 }
 
+/* Inline, not inline-flex: an atomic inline box counts as one line to the
+   clamp above however many lines it wraps to, which let a long failure cause
+   push the row to three lines. */
 .activity-row-meta__state {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  vertical-align: bottom;
+  display: inline;
+}
+
+/* The status ladder's glyph and line, in the row's four tones
+   (InboxRow.css, C6). The glyph is drawn at the row's text size. */
+.activity-row-meta__state .inbox-row__status-glyph {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
+.activity-row-meta__state[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+.activity-row-meta__state[data-tone="caution"] {
+  color: var(--warning-text);
+}
+.activity-row-meta__state[data-tone="active"] {
+  color: var(--success-text);
+}
+.activity-row-meta__state[data-tone="broken"] {
+  color: var(--status-error);
 }
 
 /* The row's time, on its first line and outside the row button. Tabular so

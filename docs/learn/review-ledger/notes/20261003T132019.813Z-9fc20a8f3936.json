@@ -1,0 +1,9 @@
+{
+  "revision": "88ba4b51ab4cfa964b0a4cc9a60bee7d82ae24d6",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Re-recorded after the module map returned to its merge-base bytes (a module-map wording change was dropped from this branch). The Browser workspace index line still describes the guide accurately with browser_close and status paging. No prose change.","inputs":["docs/README.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-recorded after the module map returned to its merge-base bytes. Browser pane, live surface and control lease entries are unchanged by browser_close (it only reads the lease holder). No prose change.","inputs":["docs/glossary.md"]}
+  ]
+}

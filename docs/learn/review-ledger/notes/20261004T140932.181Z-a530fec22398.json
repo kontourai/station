@@ -1,0 +1,7 @@
+{
+  "revision": "bd738e9532700c9256b8434b95834e62a26a63d0",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"Reviewed against #3253: docs/reference/cli.md now states that stop signals only fingerprint-checked recorded PIDs, never port owners, and that start refuses overlapping registered port bands; no other claim here about stop, ports or instance liveness changes.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

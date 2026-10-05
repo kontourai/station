@@ -17,6 +17,7 @@ import {
   beforeEach,
   describe,
   expect,
+  onTestFinished,
   test,
   vi,
 } from 'vitest';
@@ -213,6 +214,83 @@ afterAll(() => {
 });
 
 describe('a turn ending settles the pending requests that name it (#3071)', () => {
+  test('a reloaded client learns the turn from the event window, so a live turn.aborted settles like a live client', async () => {
+    initChat('live');
+    initChat('reloaded');
+    const trace = abortedTurnTrace('live', { method: 'turn.aborted' });
+    foldLive(trace);
+
+    // The reload: the snapshot lists the request, and the chat has no turn
+    // binding for it until the event window is read.
+    const fetchWindow = vi.fn(async () =>
+      Response.json({
+        success: true,
+        data: {
+          protocolVersion: 1,
+          events: [
+            {
+              sequence: 1,
+              event: {
+                provider: 'claude',
+                threadId: 'reloaded',
+                createdAt,
+                eventId: 'reloaded-named',
+                method: 'request.opened',
+                turnId: 'turn-1',
+                requestId: 'named-request',
+                requestType: 'approval',
+                title: 'Allow Read',
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', fetchWindow);
+    onTestFinished(() => {
+      vi.stubGlobal('fetch', realFetch);
+    });
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'reloaded',
+            status: 'ready',
+            hasActiveTurn: true,
+            lastEventMethod: 'request.opened',
+            openRequestIds: ['named-request'],
+            blockingOpenRequestIds: ['named-request'],
+          },
+        ],
+      },
+      { apiBase },
+    );
+    await vi.waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot().reloaded?.pendingApprovalTurnIds,
+      ).toEqual({ 'named-request': 'turn-1' }),
+    );
+    // The hydration wrote the binding and nothing about the request's state.
+    expect(activeChatsStore.getSnapshot().reloaded?.pendingApprovals).toEqual([
+      'named-request',
+    ]);
+
+    handleTurnAbortedEvent({
+      ...(trace.at(-1) as Record<string, unknown>),
+      threadId: 'reloaded',
+      eventId: 'reloaded-terminal',
+    } as never);
+    expect(activeChatsStore.getSnapshot().reloaded?.pendingApprovals).toEqual(
+      [],
+    );
+    // A live client that heard the same events agrees on the named request.
+    expect(activeChatsStore.getSnapshot().live?.pendingApprovals).not.toContain(
+      'named-request',
+    );
+  });
+
   test('turn.aborted: live and snapshot clients agree — the named request is settled, the unnamed one stays', () => {
     initChat('live');
     initChat('snapshot');
@@ -234,6 +312,38 @@ describe('a turn ending settles the pending requests that name it (#3071)', () =
       'unnamed-request',
     ]);
     expect(live?.orchestrationStatus).toBe('aborted');
+  });
+
+  test('an "answered here" mark leaves with the request the turn end settled, live and by snapshot', () => {
+    initChat('live');
+    initChat('snapshot');
+    const answered = ['named-request', 'unnamed-request'];
+    // Both requests were answered from the queue before the turn ended.
+    for (const threadId of ['live', 'snapshot']) {
+      foldLive(
+        abortedTurnTrace(threadId, { method: 'turn.aborted' }).slice(0, -1),
+      );
+      activeChatsStore.updateChat(threadId, { answeredApprovals: answered });
+    }
+    foldSnapshot(
+      'snapshot',
+      abortedTurnTrace('snapshot', { method: 'turn.aborted' }),
+    );
+    handleTurnAbortedEvent(
+      abortedTurnTrace('live', { method: 'turn.aborted' }).at(-1) as never,
+    );
+
+    // The named request is settled and gone; the unnamed one is still open, so
+    // its mark stays (it is still answered, still awaiting `request.resolved`).
+    expect(activeChatsStore.getSnapshot().live?.pendingApprovals).toEqual([
+      'unnamed-request',
+    ]);
+    expect(activeChatsStore.getSnapshot().live?.answeredApprovals).toEqual([
+      'unnamed-request',
+    ]);
+    expect(activeChatsStore.getSnapshot().snapshot?.answeredApprovals).toEqual([
+      'unnamed-request',
+    ]);
   });
 
   test('turn.completed with finishReason cancelled settles the same way', () => {

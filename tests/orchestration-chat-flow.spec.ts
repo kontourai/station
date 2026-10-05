@@ -387,7 +387,7 @@ test.describe('Orchestration Chat Flow', () => {
     // approval" trigger over the pane. This request is bound to no transcript
     // row, so the pill has no card to reveal and opens the queue instead.
     const approvalQueue = page.getByRole('button', {
-      name: /^Approval needed/,
+      name: /^Needs approval/,
     });
     await expect(approvalQueue).toBeVisible();
     await expect(
