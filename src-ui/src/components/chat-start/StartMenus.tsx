@@ -293,7 +293,7 @@ export function StartProjectMenu({
 }
 
 /** The provider rail the Model picker shows, one row per connection. */
-export function modelPickerProviders(
+function modelPickerProviders(
   models: SelectableModel[],
   modelConnections: ConnectionConfig[],
 ): ModelProviderOption[] {

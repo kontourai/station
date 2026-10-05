@@ -50,7 +50,7 @@ export interface StartContextItem {
 const MODEL_NOT_REPORTED = 'Model not reported';
 
 /** Visible text of the Agent chip: "Agent · Model". */
-export function startAgentChipText(chip: StartAgentChip): string {
+function startAgentChipText(chip: StartAgentChip): string {
   if (chip.status === 'loading') return '';
   if (!chip.agent) return 'Choose an agent';
   return chip.modelLabel && chip.modelLabel !== MODEL_NOT_REPORTED

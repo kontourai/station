@@ -15,7 +15,7 @@ import { contextGlyph } from './ContextPickerOptions';
  * composer's Agent menu render this same row, so readiness, the model
  * trigger and the repair action read identically on both.
  */
-export function AgentPickerRow({
+function AgentPickerRow({
   agent,
   isSelected,
   selectedRef,

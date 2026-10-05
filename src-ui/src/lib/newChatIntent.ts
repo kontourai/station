@@ -15,7 +15,7 @@ export interface NewChatStartSelection {
 }
 
 /** The setup routes an Agent row can repair through (`AgentFixRoute`). */
-export const NEW_CHAT_HANDOFF_ROUTES = [
+const NEW_CHAT_HANDOFF_ROUTES = [
   'models',
   'enable',
   'engines',
