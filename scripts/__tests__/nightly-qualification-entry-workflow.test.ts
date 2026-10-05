@@ -127,13 +127,12 @@ describe('Main qualification: the qualified-Nightly entry point', () => {
 });
 
 describe('nightly.yml: entry points', () => {
-  it('keeps schedule and dispatch, and adds a call with the qualified source', () => {
+  it('leaves scheduling to qualification and retains manual recovery and the qualified call', () => {
     expect(Object.keys(nightly.on).sort()).toEqual([
-      'schedule',
       'workflow_call',
       'workflow_dispatch',
     ]);
-    expect(nightly.on.schedule).toEqual([{ cron: '43 6 * * *' }]);
+    expect(qualification.on.schedule).toEqual([{ cron: '17 */6 * * *' }]);
     expect(
       Object.keys(
         (nightly.on.workflow_dispatch as { inputs: object }).inputs,
@@ -154,7 +153,7 @@ describe('nightly.yml: entry points', () => {
     const job = nightly.jobs['full-regression'];
     expect(job.uses).toBe('./.github/workflows/full-regression.yml');
     expect(job.if).toContain("inputs.caller_qualification != 'success'");
-    // Reuse stays at its default (true) for the scheduled path.
+    // Reuse stays at its default (true) for manual recovery.
     expect(job.with).toEqual({
       source_sha: expr('needs.test-gate.outputs.source_sha'),
     });

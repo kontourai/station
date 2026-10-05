@@ -5,6 +5,7 @@ on:
     # Self-exclusion is by omission: watching this workflow would recurse.
     workflows:
       - Nightly
+      - Main qualification health
       - Container smoke
       - Secret Scan
       - Scheduled dependency advisory floor
