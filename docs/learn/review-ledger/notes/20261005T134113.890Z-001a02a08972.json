@@ -1,0 +1,7 @@
+{
+  "revision": "1b4d31720887852f077b588e840c417f12f535be",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#3355: GET /api/agents now states engineId/engineConnectionType come from the connection record and Adapter and survive a failed or timed-out inspection, while engineDisplayName and availability need the live read; checked against enriched-agents.ts buildAgentPayload and the binding route.","inputs":["docs/reference/api.md","src-server/routes/agents/enriched-agents.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}

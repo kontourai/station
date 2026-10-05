@@ -1,0 +1,7 @@
+{
+  "revision": "1b4d31720887852f077b588e840c417f12f535be",
+
+  "notes": [
+    {"path":"docs/third-party/provider-icons.md","note":"#3355: BrandIcon gains hasBundledEngineMark, an exported read of the existing exact engine-to-mark lookup; mark set, precedence and fallback rendering are unchanged, so the bundled-mark/initials claims remain accurate.","inputs":["docs/third-party/provider-icons.md","src-ui/src/components/icons/BrandIcon.tsx"]}
+  ]
+}
