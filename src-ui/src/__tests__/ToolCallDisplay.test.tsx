@@ -485,3 +485,23 @@ describe('ToolCallDisplay — image notes on object-shaped output', () => {
     );
   });
 });
+
+// #3364: the rendered row for the live `tool.started` shape of a delete.
+describe('ToolCallDisplay — a delete is never worded as a read (#3364)', () => {
+  test('a running delete_file reads "Deleting secret.txt"', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't1',
+          toolName: 'delete_file',
+          args: { path: 'secret.txt' },
+          state: 'running',
+        }}
+      />,
+    );
+    const row = document.querySelector('.tool-call__line')!;
+    expect(row.textContent).toContain('Deleting secret.txt');
+    expect(row.textContent).not.toMatch(/Reading/);
+  });
+});

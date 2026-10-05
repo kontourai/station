@@ -822,3 +822,118 @@ describe('classifyToolCallRun', () => {
     expect(group.key).toBe('tool-call-run:first-id');
   });
 });
+
+/**
+ * #3364: a destructive or unknown tool must never be labelled a read. These
+ * go through the production pipeline (`splitToolCallRuns` →
+ * `classifyToolCallRun`), so they reach the row label the transcript shows.
+ */
+describe('mutating and unknown tools are labelled by what they do (#3364)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test.each([
+    'delete_file',
+    'remove_file',
+    'rm',
+    'unlink',
+    'rmdir',
+    'fs/delete',
+    'trashItem',
+  ])('%s with a path is a delete: "Deleted secret.txt"', (toolName) => {
+    const group = settled(toolName, { path: '/repo/secret.txt' });
+    expect(group.calls[0]!.kind).toBe('delete');
+    expect(group.summary).toBe('Deleted secret.txt');
+  });
+
+  test('a delete in flight and one awaiting approval take their own tenses', () => {
+    const running = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'delete_file',
+        args: { path: 'secret.txt' },
+        state: 'running',
+      }),
+    ]);
+    expect(running.calls[0]!.label).toBe('Deleting secret.txt');
+    const proposed = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'delete_file',
+        args: { path: 'secret.txt' },
+        state: 'call',
+        needsApproval: true,
+      }),
+    ]);
+    expect(proposed.calls[0]!.label).toBe('Delete secret.txt');
+  });
+
+  test("an engine's own delete kind is a delete", () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Remove the old build output',
+        toolKind: 'delete',
+        args: { path: '/repo/dist' },
+      }),
+    ]);
+    expect(group.calls[0]!.kind).toBe('delete');
+    expect(group.summary).toBe('Deleted dist');
+  });
+
+  test('a batch of deletes counts them as deletions, not edits', () => {
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'rm', args: { path: 'a.txt' } }),
+      toolCall({ toolCallId: 'b', toolName: 'rm', args: { path: 'b.txt' } }),
+    ]);
+    expect(group.aggregateSummary).toBe('Deleted 2 files');
+  });
+
+  test.each(['move_file', 'rename_file', 'mv', 'copy_file', 'mkdir'])(
+    '%s with a path is a write, not a read',
+    (toolName) => {
+      const group = settled(toolName, { path: '/repo/notes.md' });
+      expect(group.calls[0]!.kind).toBe('write');
+      expect(group.summary).toBe('Edited notes.md');
+    },
+  );
+
+  test.each(['list_files', 'ls'])('%s with a path is a read', (toolName) => {
+    const group = settled(toolName, { path: '/repo/src' });
+    expect(group.calls[0]!.kind).toBe('read');
+    expect(group.summary).toBe('Read src');
+  });
+
+  test.each([
+    ['frobnicate', 'Used frobnicate on secret.txt'],
+    ['archive_item', 'Used archive item on secret.txt'],
+    ['sync-file', 'Used sync-file on secret.txt'],
+  ])(
+    'an unknown tool %s with only a path names the tool and its target, never a read',
+    (toolName, label) => {
+      for (const key of ['path', 'file_path', 'filePath', 'filepath']) {
+        const group = settled(toolName, { [key]: '/repo/secret.txt' });
+        expect(group.calls[0]!.kind).toBe('other');
+        expect(group.summary).toBe(label);
+        expect(group.summary).not.toMatch(/^Read/);
+      }
+    },
+  );
+
+  test('names are split into words, never substring-matched', () => {
+    // `readme` is not `read`; `remove` wins over it and is not `move`.
+    expect(classifyToolName('readme_remove')).toBe('delete');
+    expect(classifyToolName('readmeRemove')).toBe('delete');
+    expect(classifyToolName('remover_status')).toBe('other');
+    expect(classifyToolName('unread_count')).toBe('other');
+    expect(classifyToolName('format_disk')).toBe('other');
+    expect(settled('readme_sync', { path: 'README.md' }).summary).toBe(
+      'Used readme sync on README.md',
+    );
+  });
+
+  test('a delete or write word outranks a read word in the same name', () => {
+    expect(classifyToolName('read_and_delete')).toBe('delete');
+    expect(classifyToolName('view_edit')).toBe('write');
+  });
+});

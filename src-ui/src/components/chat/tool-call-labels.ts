@@ -21,7 +21,13 @@ import {
 } from '../../utils/chat-progress';
 import { toolDisplayView } from './tool-display-view';
 
-export type ToolCallKind = 'read' | 'write' | 'exec' | 'search' | 'other';
+export type ToolCallKind =
+  | 'read'
+  | 'write'
+  | 'delete'
+  | 'exec'
+  | 'search'
+  | 'other';
 
 interface KindVerbs {
   /** Sentence-initial past-tense verb, e.g. "Read". */
@@ -38,6 +44,11 @@ interface KindVerbs {
 const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
   read: { verb: 'Read', progressiveVerb: 'Reading', pendingVerb: 'Read' },
   write: { verb: 'Edited', progressiveVerb: 'Editing', pendingVerb: 'Edit' },
+  delete: {
+    verb: 'Deleted',
+    progressiveVerb: 'Deleting',
+    pendingVerb: 'Delete',
+  },
   exec: { verb: 'Ran', progressiveVerb: 'Running', pendingVerb: 'Run' },
   search: {
     verb: 'Searched',
@@ -135,8 +146,39 @@ export function isToolCallBatchPending(part: ToolCallPhaseInput): boolean {
   return part.cancelled === true || part.state === 'cancelled';
 }
 
-const READ_TOKENS = new Set(['read', 'cat', 'view']);
-const WRITE_TOKENS = new Set(['write', 'edit', 'patch']);
+const READ_TOKENS = new Set(['read', 'cat', 'view', 'list', 'ls']);
+/** Calls that change or move a file without deleting it. */
+const WRITE_TOKENS = new Set([
+  'write',
+  'edit',
+  'patch',
+  'move',
+  'mv',
+  'rename',
+  'copy',
+  'cp',
+  'mkdir',
+  'touch',
+  'append',
+  'insert',
+  'replace',
+  'overwrite',
+  'chmod',
+  'chown',
+]);
+/** Calls that destroy something. Labelled "Deleting", never as a read. */
+const DELETE_TOKENS = new Set([
+  'delete',
+  'del',
+  'remove',
+  'rm',
+  'rmdir',
+  'unlink',
+  'erase',
+  'trash',
+  'destroy',
+  'purge',
+]);
 const EXEC_TOKENS = new Set([
   'bash',
   'shell',
@@ -163,9 +205,13 @@ function baseToolName(toolName: string): string {
 
 export function classifyToolName(toolName: string | undefined): ToolCallKind {
   if (!toolName?.trim()) return 'other';
+  // Whole words only (`readme_remove` is a delete, not a read), and the
+  // destructive classes first: a name with both a read and a write word
+  // shown as a read is the unsafe direction.
   const tokens = tokenize(baseToolName(toolName));
-  if (tokens.some((t) => READ_TOKENS.has(t))) return 'read';
+  if (tokens.some((t) => DELETE_TOKENS.has(t))) return 'delete';
   if (tokens.some((t) => WRITE_TOKENS.has(t))) return 'write';
+  if (tokens.some((t) => READ_TOKENS.has(t))) return 'read';
   if (tokens.some((t) => EXEC_TOKENS.has(t))) return 'exec';
   if (tokens.some((t) => SEARCH_TOKENS.has(t))) return 'search';
   return 'other';
@@ -178,7 +224,7 @@ export function classifyToolName(toolName: string | undefined): ToolCallKind {
 const ENGINE_KIND: Readonly<Record<string, ToolCallKind>> = {
   read: 'read',
   edit: 'write',
-  delete: 'write',
+  delete: 'delete',
   move: 'write',
   search: 'search',
   execute: 'exec',
@@ -226,7 +272,9 @@ function classifyToolArgs(args: unknown): ToolCallKind {
   )
     return 'write';
   if (stringField(a, ['pattern', 'query', 'glob'])) return 'search';
-  if (path) return 'read';
+  // A path alone does not say what the call does to it (`delete_file
+  // {path}` has the same shape as a read), so the kind stays neutral and the
+  // label names the tool and its target.
   return 'other';
 }
 
@@ -345,7 +393,7 @@ function extractTarget(
   if (!args || typeof args !== 'object') return null;
   const a = args as Record<string, unknown>;
 
-  if (kind === 'read' || kind === 'write') {
+  if (kind === 'read' || kind === 'write' || kind === 'delete') {
     let pathValue =
       a.file_path ?? a.path ?? a.filePath ?? a.notebook_path ?? a.filename;
     if (
@@ -391,7 +439,14 @@ function extractTarget(
     return null;
   }
 
-  return null;
+  // An unrecognised tool: its path is the target, its name says what it did.
+  const pathValue = stringField(a, [
+    'file_path',
+    'filePath',
+    'filepath',
+    'path',
+  ]);
+  return pathValue ? basename(pathValue) : null;
 }
 
 /** e.g. "Read app.tsx" (done), "Running npm run build:ui" (in flight),
@@ -416,7 +471,16 @@ export function callLabel(
   // What a user is asked to allow is shown whole (see `commandTarget`).
   const trimEnv = resolved !== 'proposed';
   const target = extractTarget(kind, args, trimEnv);
-  if (target) return `${verb} ${target}`;
+  if (target && kind === 'other') {
+    // No verb is known, so the tool's own name carries it: "Used delete
+    // file on secret.txt", never a guessed "Read secret.txt". Display text
+    // (an ACP title) already names its target and is shown as written below.
+    if (isProgrammaticToolName(toolName)) {
+      return `${verb} ${formatToolName(toolName)} on ${target}`;
+    }
+  } else if (target) {
+    return `${verb} ${target}`;
+  }
   // No argument named a target, so the name is the target. Display text (an
   // ACP title: the command line, the path) is shown as the engine wrote it,
   // env-trimmed for a command exactly like an argument would be.
