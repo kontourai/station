@@ -1,0 +1,7 @@
+{
+  "revision": "4f356aa444c9465fb0240e129066985e51b2cb5b",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"The change only makes the home archive flush files through a writable handle on Windows (fsyncFileSync); this document's backup/restore claims are unaffected, checked.","inputs":["docs/guides/deployment.md","packages/shared/src/station-home-archive.ts"]}
+  ]
+}
