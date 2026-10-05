@@ -2331,12 +2331,16 @@ describe('native Device request-proof pilot over the production composition', ()
         username: guest.username,
         password: GUEST_PASSWORD,
       });
-      for (const [method, path] of [
-        ['PUT', '/api/relay-management'],
-        ['POST', '/api/relay-management/capabilities'],
-        ['GET', '/api/relay-management/unlisted'],
-        ['POST', '/api/pairing/devices'],
-        ['POST', '/api/relay-management/devices/not-an-enrollment/approve'],
+      for (const [method, path, code] of [
+        ['PUT', '/api/relay-management', 'insufficient_scope'],
+        ['POST', '/api/relay-management/capabilities', 'insufficient_scope'],
+        ['GET', '/api/relay-management/unlisted', 'insufficient_scope'],
+        ['POST', '/api/pairing/devices', 'native_device_proof_route_forbidden'],
+        [
+          'POST',
+          '/api/relay-management/devices/not-an-enrollment/approve',
+          'native_device_proof_route_forbidden',
+        ],
       ]) {
         const response = await peer.nativeFetch(
           new Request(`${ORIGIN}${path}`, {
@@ -2344,10 +2348,10 @@ describe('native Device request-proof pilot over the production composition', ()
             headers: await peer.session.headers(method, path),
           }),
         );
-        expect(response.status).toBe(403);
-        expect(await response.text()).toContain(
-          'native_device_proof_route_forbidden',
-        );
+        expect(response.status, `${method} ${path}`).toBe(403);
+        expect(await response.json(), `${method} ${path}`).toEqual({
+          error: { code },
+        });
       }
       expect(h.describeRelay).not.toHaveBeenCalled();
       expect(h.prepareRelay).not.toHaveBeenCalled();
