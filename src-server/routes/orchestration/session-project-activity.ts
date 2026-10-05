@@ -29,10 +29,12 @@
  * (`sessionLadderWord`, the same derivation the UI words a row with); the
  * digest is folded from recorded events only (`session-digest.ts`).
  */
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import {
   type HostedTenantRegistry,
+  type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
@@ -228,6 +230,99 @@ export function createSessionProjectActivityRoutes(
     return { visible: true, scope: target.scope };
   };
 
+  /** What the list and the digest both say about a Session. */
+  const identityOf = (
+    summary: OrchestrationSessionSummary,
+    title: string | undefined,
+  ) => ({
+    ...(title ? { title } : {}),
+    ...(summary.projectSlug ? { projectSlug: summary.projectSlug } : {}),
+    engine: summary.provider,
+    ...(summary.assignedAgentSlug
+      ? { agent: publicAgentIdFromRuntimeKey(summary.assignedAgentSlug) }
+      : {}),
+    status: sessionLadderWord(summary),
+  });
+
+  /** One conversation per row (its current Session), never another host, newest first. */
+  const activityRows = (sessions: readonly OrchestrationSessionSummary[]) =>
+    sessions
+      .filter(
+        (session) =>
+          (session.currentSessionId === undefined ||
+            session.currentSessionId === session.threadId) &&
+          !isRemote(session),
+      )
+      .map((session) => ({
+        session,
+        at: session.lastEventAt ?? session.updatedAt,
+      }))
+      .sort((a, b) =>
+        a.at === b.at
+          ? a.session.threadId < b.session.threadId
+            ? -1
+            : 1
+          : a.at < b.at
+            ? 1
+            : -1,
+      );
+
+  /**
+   * The scope rule is decided lazily, newest first, so a page costs the rows it
+   * walks and not the whole inventory. Every caller, bound or not, sees only
+   * its own Project (or the global space).
+   */
+  const visibleRowsPage = (
+    caller: StationControlCaller,
+    rows: ReturnType<typeof activityRows>,
+    cursor: ListCursor | undefined,
+    limit: number,
+  ) => {
+    const callerScope = stationControlSessionScope(caller);
+    const page: typeof rows = [];
+    for (const row of rows) {
+      const position = { at: row.at, id: row.session.threadId };
+      if (cursor && !isAfter(cursor, position)) continue;
+      const seen = visibleToCaller(caller, row.session.threadId);
+      if (!seen.visible || !seen.scope || !sameScope(callerScope, seen.scope))
+        continue;
+      // One visible row past the page proves there is more.
+      if (page.length === limit) return { page, more: true };
+      page.push(row);
+    }
+    return { page, more: false };
+  };
+
+  const listRow = (
+    caller: StationControlCaller,
+    { session, at }: ReturnType<typeof activityRows>[number],
+  ) => {
+    const title =
+      deps.eventStore.conversationTitle([
+        session.conversationId ?? session.threadId,
+        session.threadId,
+      ]) ?? session.displayTitle;
+    const worktree = recordedWorktree(
+      deps.orchestrationService.firstStartedMetadataOfThread(session.threadId),
+    );
+    const isCaller =
+      session.threadId === caller.sessionId ||
+      (caller.conversationId !== undefined &&
+        session.conversationId === caller.conversationId);
+    return {
+      sessionId: session.threadId,
+      ...(session.conversationId
+        ? { conversationId: session.conversationId }
+        : {}),
+      ...identityOf(session, title),
+      turnRunning: session.hasActiveTurn === true,
+      lastActivityAt: at,
+      ...(session.cwd ? { workingDirectory: session.cwd } : {}),
+      ...(worktree ? { worktree } : {}),
+      ...(isCaller ? { self: true as const } : {}),
+    };
+  };
+
   app.get('/', async (c) => {
     const caller = callerOf(c);
     if (caller instanceof Response) return caller;
@@ -252,92 +347,20 @@ export function createSessionProjectActivityRoutes(
         'project_activity_cursor_invalid',
       );
 
-    const callerScope = stationControlSessionScope(caller);
     const sessions = await deps.orchestrationService.listSessionReadModel(
       readAuthorityFor(c),
     );
-    const rows = sessions
-      .filter(
-        (session) =>
-          // One row per conversation: its current Session.
-          (session.currentSessionId === undefined ||
-            session.currentSessionId === session.threadId) &&
-          // Never another Station or a remote host.
-          !isRemote(session),
-      )
-      .map((session) => ({
-        session,
-        at: session.lastEventAt ?? session.updatedAt,
-      }))
-      .sort((a, b) =>
-        a.at === b.at
-          ? a.session.threadId < b.session.threadId
-            ? -1
-            : 1
-          : a.at < b.at
-            ? 1
-            : -1,
-      );
-
-    // The scope rule is decided lazily, newest first, so a page costs the
-    // rows it walks and not the whole inventory.
-    const page: typeof rows = [];
-    let more = false;
-    for (const row of rows) {
-      const position = { at: row.at, id: row.session.threadId };
-      if (cursor && !isAfter(cursor, position)) continue;
-      const seen = visibleToCaller(caller, row.session.threadId);
-      // The caller's own Project (or the global space), whoever the caller is.
-      if (!seen.visible || !seen.scope || !sameScope(callerScope, seen.scope))
-        continue;
-      if (page.length === limit) {
-        more = true;
-        break;
-      }
-      page.push(row);
-    }
+    const { page, more } = visibleRowsPage(
+      caller,
+      activityRows(sessions),
+      cursor,
+      limit,
+    );
     const last = page.at(-1);
     return c.json({
       success: true,
       data: {
-        sessions: page.map(({ session, at }) => {
-          const title =
-            deps.eventStore.conversationTitle([
-              session.conversationId ?? session.threadId,
-              session.threadId,
-            ]) ?? session.displayTitle;
-          const worktree = recordedWorktree(
-            deps.orchestrationService.firstStartedMetadataOfThread(
-              session.threadId,
-            ),
-          );
-          return {
-            sessionId: session.threadId,
-            ...(session.conversationId
-              ? { conversationId: session.conversationId }
-              : {}),
-            ...(title ? { title } : {}),
-            ...(session.projectSlug
-              ? { projectSlug: session.projectSlug }
-              : {}),
-            engine: session.provider,
-            ...(session.assignedAgentSlug
-              ? {
-                  agent: publicAgentIdFromRuntimeKey(session.assignedAgentSlug),
-                }
-              : {}),
-            status: sessionLadderWord(session),
-            turnRunning: session.hasActiveTurn === true,
-            lastActivityAt: at,
-            ...(session.cwd ? { workingDirectory: session.cwd } : {}),
-            ...(worktree ? { worktree } : {}),
-            ...(session.threadId === caller.sessionId ||
-            (caller.conversationId !== undefined &&
-              session.conversationId === caller.conversationId)
-              ? { self: true as const }
-              : {}),
-          };
-        }),
+        sessions: page.map((row) => listRow(caller, row)),
         nextCursor:
           more && last
             ? encodeListCursor({ at: last.at, id: last.session.threadId })
@@ -346,25 +369,78 @@ export function createSessionProjectActivityRoutes(
     });
   });
 
-  app.get('/:sessionId/digest', async (c) => {
-    const caller = callerOf(c);
-    if (caller instanceof Response) return caller;
-    const requestedId = c.req.param('sessionId');
-    if (!requestedId || requestedId.length > 512) return sessionNotFound(c);
-    const turnLimit = parseBoundedInteger(
-      c.req.query('turnLimit'),
-      SESSION_DIGEST_DEFAULT_TURNS,
-      SESSION_DIGEST_MAX_TURNS,
+  /**
+   * Delegated children: Sessions Station itself derived as launched from the
+   * conversation, read with the same owner-scoped read as the list and only
+   * those the caller may see (another Project's read as absent).
+   */
+  const delegatedChildren = async (
+    caller: StationControlCaller,
+    authority: SessionReadAuthority,
+    conversationId: string,
+  ) => {
+    const naming = deps.eventStore.listSessionsNamingParents(
+      [conversationId],
+      DIGEST_CHILDREN_READ_LIMIT,
     );
-    if (turnLimit === undefined)
-      return invalid(
-        c,
-        `turnLimit must be a whole number from 1 to ${SESSION_DIGEST_MAX_TURNS}.`,
-        'session_digest_limit_out_of_range',
-      );
+    const candidates = naming.sessions.filter(
+      (child) => child.binding === 'delegation-context' && child.stationDerived,
+    );
+    const summaries =
+      candidates.length === 0
+        ? []
+        : await deps.orchestrationService.listSessionReadModel(authority, {
+            threadIds: candidates.map((child) => child.threadId),
+          });
+    const children: Array<DigestDelegatedChild & { startedAt: string }> = [];
+    for (const child of summaries) {
+      if (isRemote(child) || !visibleToCaller(caller, child.threadId).visible)
+        continue;
+      const title =
+        deps.eventStore.conversationTitle([child.threadId]) ??
+        child.displayTitle;
+      children.push({
+        sessionId: child.threadId,
+        ...(title ? { title } : {}),
+        startedAt: child.createdAt,
+      });
+    }
+    return { children, incomplete: naming.truncated };
+  };
 
-    // Scope and read authority first, so a cursor or limit tells a caller
-    // nothing about a Session it may not see.
+  /** Each turn (newest first) with the children that started while it ran. */
+  const digestTurns = (
+    read: ReturnType<EventStore['readTurnDigestFacts']>,
+    children: readonly (DigestDelegatedChild & { startedAt: string })[],
+  ) =>
+    read.turns.map((facts, index) => {
+      // A turn ran until the next newer one began.
+      const end =
+        index === 0
+          ? read.newerTurnStartedAt
+          : read.turns[index - 1]!.startedAt;
+      return digestTurn(
+        facts,
+        children
+          .filter(
+            (child) =>
+              child.startedAt >= facts.startedAt &&
+              (end === undefined || child.startedAt < end),
+          )
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+      );
+    });
+
+  /**
+   * Scope and read authority, decided before anything about the Session is
+   * read, so a cursor or limit tells a caller nothing about a Session it may
+   * not see. A Session out of reach is `undefined`: it reads as absent.
+   */
+  const digestSubject = async (
+    c: Context,
+    caller: StationControlCaller,
+    requestedId: string,
+  ) => {
     const conversationId =
       deps.eventStore.conversationForSession(requestedId)?.conversationId ??
       requestedId;
@@ -386,85 +462,61 @@ export function createSessionProjectActivityRoutes(
       { kind: 'conversation', conversationId, remote: false },
       'view',
     );
-    if (!target || stationControlScopeRefusal(caller, target))
-      return sessionNotFound(c);
+    if (!target || stationControlScopeRefusal(caller, target)) return undefined;
     const authority = readAuthorityFor(c);
     if (!deps.orchestrationService.canUserReadSession(subjectId, authority))
-      return sessionNotFound(c);
+      return undefined;
     const [summary] = await deps.orchestrationService.listSessionReadModel(
       authority,
       { threadIds: [subjectId] },
     );
-    if (!summary || isRemote(summary)) return sessionNotFound(c);
+    if (!summary || isRemote(summary)) return undefined;
+    return { conversationId, lineage, subjectId, summary, authority };
+  };
+
+  app.get('/:sessionId/digest', async (c) => {
+    const caller = callerOf(c);
+    if (caller instanceof Response) return caller;
+    const requestedId = c.req.param('sessionId');
+    if (!requestedId || requestedId.length > 512) return sessionNotFound(c);
+    const turnLimit = parseBoundedInteger(
+      c.req.query('turnLimit'),
+      SESSION_DIGEST_DEFAULT_TURNS,
+      SESSION_DIGEST_MAX_TURNS,
+    );
+    if (turnLimit === undefined)
+      return invalid(
+        c,
+        `turnLimit must be a whole number from 1 to ${SESSION_DIGEST_MAX_TURNS}.`,
+        'session_digest_limit_out_of_range',
+      );
+    const subject = await digestSubject(c, caller, requestedId);
+    if (!subject) return sessionNotFound(c);
+    const { conversationId, lineage, subjectId, summary, authority } = subject;
 
     const cursorValue = c.req.query('cursor');
-    let beforeSequence: number | undefined;
-    if (cursorValue !== undefined) {
-      const cursor = decodeDigestCursor(cursorValue);
-      if (!cursor || cursor.conversationId !== conversationId)
-        return invalid(
-          c,
-          'cursor is not a cursor this digest returned for this Session. Omit it to start from the newest turn.',
-          'session_digest_cursor_invalid',
-        );
-      beforeSequence = cursor.before;
-    }
+    const cursor =
+      cursorValue === undefined ? undefined : decodeDigestCursor(cursorValue);
+    if (
+      cursorValue !== undefined &&
+      (!cursor || cursor.conversationId !== conversationId)
+    )
+      return invalid(
+        c,
+        'cursor is not a cursor this digest returned for this Session. Omit it to start from the newest turn.',
+        'session_digest_cursor_invalid',
+      );
 
     const read = deps.eventStore.readTurnDigestFacts(lineage, {
-      ...(beforeSequence !== undefined
-        ? { beforeGlobalSequence: beforeSequence }
-        : {}),
+      ...(cursor ? { beforeGlobalSequence: cursor.before } : {}),
       turnLimit,
     });
-
-    // Delegated children: Sessions Station itself derived as launched from
-    // this conversation, placed in the turn during which they started, and
-    // only those the caller may see (another Project's read as absent).
-    const naming = deps.eventStore.listSessionsNamingParents(
-      [conversationId],
-      DIGEST_CHILDREN_READ_LIMIT,
+    const { children, incomplete } = await delegatedChildren(
+      caller,
+      authority,
+      conversationId,
     );
-    const candidates = naming.sessions.filter(
-      (child) => child.binding === 'delegation-context' && child.stationDerived,
-    );
-    // The same read as the list: owner-scoped, so a child the caller's owner
-    // may not read is not in it.
-    const childSummaries =
-      candidates.length === 0
-        ? []
-        : await deps.orchestrationService.listSessionReadModel(authority, {
-            threadIds: candidates.map((child) => child.threadId),
-          });
-    const children: Array<DigestDelegatedChild & { startedAt: string }> = [];
-    for (const child of childSummaries) {
-      if (isRemote(child) || !visibleToCaller(caller, child.threadId).visible)
-        continue;
-      const title =
-        deps.eventStore.conversationTitle([child.threadId]) ??
-        child.displayTitle;
-      children.push({
-        sessionId: child.threadId,
-        ...(title ? { title } : {}),
-        startedAt: child.createdAt,
-      });
-    }
-    const turns = read.turns.map((facts, index) => {
-      // Turns are newest first: this turn ran until the next newer one began.
-      const end =
-        index === 0
-          ? read.newerTurnStartedAt
-          : read.turns[index - 1]!.startedAt;
-      return digestTurn(
-        facts,
-        children
-          .filter(
-            (child) =>
-              child.startedAt >= facts.startedAt &&
-              (end === undefined || child.startedAt < end),
-          )
-          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
-      );
-    });
+    const turns = digestTurns(read, children);
     const fitted = fitDigestPage(turns);
     // The turns that fit end the page; the rest wait behind the cursor, so a
     // page that fills early loses nothing.
@@ -481,18 +533,12 @@ export function createSessionProjectActivityRoutes(
         session: {
           sessionId: subjectId,
           conversationId,
-          ...(title ? { title } : {}),
-          ...(summary.projectSlug ? { projectSlug: summary.projectSlug } : {}),
-          engine: summary.provider,
-          ...(summary.assignedAgentSlug
-            ? { agent: publicAgentIdFromRuntimeKey(summary.assignedAgentSlug) }
-            : {}),
-          status: sessionLadderWord(summary),
+          ...identityOf(summary, title),
           turnCount: read.totalTurns,
           ...(worktree ? { worktree } : {}),
         },
         turns: fitted.turns,
-        ...(naming.truncated ? { delegatedChildrenIncomplete: true } : {}),
+        ...(incomplete ? { delegatedChildrenIncomplete: true } : {}),
         page: {
           turns: fitted.turns.length,
           bytes: fitted.bytes,

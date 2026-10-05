@@ -270,24 +270,22 @@ function encodeCursor(cursor: ReadCursor): string {
 
 function decodeCursor(value: string): ReadCursor | undefined {
   if (value.length > 2048 || !/^[A-Za-z0-9_-]+$/u.test(value)) return undefined;
+  let parsed: { v?: unknown; c?: unknown; o?: unknown; d?: unknown };
   try {
-    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-    if (
-      parsed?.v !== 1 ||
-      typeof parsed.c !== 'string' ||
-      !Number.isSafeInteger(parsed.o) ||
-      parsed.o < 0 ||
-      (parsed.d !== undefined && parsed.d !== 'back')
-    )
-      return undefined;
-    return {
-      conversationId: parsed.c,
-      offset: parsed.o,
-      ...(parsed.d === 'back' ? { direction: 'back' as const } : {}),
-    };
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
   } catch {
     return undefined;
   }
+  const { v, c, o, d } = parsed ?? {};
+  if (v !== 1 || typeof c !== 'string') return undefined;
+  if (typeof o !== 'number' || !Number.isSafeInteger(o) || o < 0)
+    return undefined;
+  if (d !== undefined && d !== 'back') return undefined;
+  return {
+    conversationId: c,
+    offset: o,
+    ...(d === 'back' ? { direction: d } : {}),
+  };
 }
 
 /** Parse `limit`: absent means the default; anything else must be 1..max. */

@@ -849,10 +849,11 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
 
     test('a raw token and a pooled child carry no caller: both leaves refuse', async () => {
       const { rawRequest } = await setup();
-      for (const extra of [
+      const extras: Record<string, string>[] = [
         {},
         { 'x-station-control-caller-binding': 'a'.repeat(43) },
-      ])
+      ];
+      for (const extra of extras)
         for (const path of [
           '/api/orchestration/session-activity',
           '/api/orchestration/session-activity/a-peer/digest',

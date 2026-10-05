@@ -4668,6 +4668,9 @@ export class EventStore {
    * turn of the previous page. One turn past `turnLimit` is read to say
    * whether older turns remain.
    */
+  // Called by the Project activity route through a `Pick<EventStore>`
+  // parameter, which the dead-code audit cannot trace to this class.
+  // fallow-ignore-next-line unused-class-member
   readTurnDigestFacts(
     threadIds: readonly string[],
     options: { beforeGlobalSequence?: number; turnLimit: number },
