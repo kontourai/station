@@ -88,6 +88,19 @@ describe('GrokSessionIndex', () => {
     ]);
   });
 
+  test('the newest group is read first, ahead of older ones past the budget', async () => {
+    const root = tree();
+    for (let item = 0; item < 15; item += 1)
+      folder(root, 'a-junk', `probe-${item}`);
+    const old = new Date(Date.now() - 86_400_000);
+    utimesSync(join(root, 'a-junk'), old, old);
+    folder(root, 'z-new', 'real-new');
+    const first = await poll(index({ maxEntries: 10 }), root);
+    expect(
+      first.sessions.map((session) => session.inspection.session!.sessionId),
+    ).toEqual(['real-new']);
+  });
+
   test('an unchanged group cut short by the budget is not read again', async () => {
     const root = tree();
     for (let item = 0; item < 60; item += 1)
