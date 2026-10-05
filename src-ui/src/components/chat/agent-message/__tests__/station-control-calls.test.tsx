@@ -102,6 +102,36 @@ describe('what the result says', () => {
     });
   });
 
+  test('reads the outcome out of the cut-short result the windowed transcript carries', () => {
+    // Recorded from the real app: the event window keeps a tool result's
+    // first 80 characters, so the JSON is never complete.
+    const cut = (outcome: string) =>
+      `{\n  "success": true,\n  "data": {\n    "outcome": "${outcome}",\n    "sessionId": "convers`;
+    expect(
+      describeStationControlCall(call({ result: cut('started') })),
+    ).toMatchObject({
+      outcome: 'started',
+      targetSessionId: 'recipient',
+    });
+    expect(
+      describeStationControlCall(call({ result: cut('steered') }))?.outcome,
+    ).toBe('steered');
+    expect(
+      describeStationControlCall(
+        call({
+          result:
+            '{\n  "success": false,\n  "code": "session_busy",\n  "error": "The Sess',
+        }),
+      ),
+    ).toMatchObject({ outcome: 'refused', reason: 'Session is busy' });
+    // Not claimed when the leading fields are not there.
+    expect(
+      describeStationControlCall(
+        call({ result: '{\n  "data": {\n    "outcome": "started' }),
+      )?.outcome,
+    ).toBe('unconfirmed');
+  });
+
   test('refusals, an unconfirmed delivery and a failed call are each said as what they are', () => {
     const outcome = (result: unknown, extra: Record<string, unknown> = {}) =>
       describeStationControlCall(call({ result, ...extra }))?.outcome;

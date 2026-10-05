@@ -99,6 +99,24 @@ function callArguments(args: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * The windowed transcript read cuts a tool result to its first ~80
+ * characters, which is never valid JSON, but the route puts `success`, `code`
+ * and `data.outcome` first. Read only those literal leading fields; anything
+ * not plainly there is not claimed.
+ */
+function truncatedEnvelope(text: string): Record<string, unknown> | undefined {
+  const success = /^\s*\{\s*"success"\s*:\s*(true|false)\b/u.exec(text)?.[1];
+  if (!success) return undefined;
+  const code = /"code"\s*:\s*"([a-z_]+)"/u.exec(text)?.[1];
+  const outcome = /"outcome"\s*:\s*"([a-z_]+)"/u.exec(text)?.[1];
+  return {
+    success: success === 'true',
+    ...(code ? { code } : {}),
+    ...(outcome ? { data: { outcome } } : {}),
+  };
+}
+
+/**
  * The route's JSON out of however an engine carried the tool result: the
  * text itself, MCP `content` blocks, or a `{text}` wrapper.
  */
@@ -107,7 +125,7 @@ function resultEnvelope(result: unknown): Record<string, unknown> | undefined {
     try {
       return resultEnvelope(JSON.parse(result));
     } catch {
-      return undefined;
+      return truncatedEnvelope(result);
     }
   }
   if (Array.isArray(result)) {
