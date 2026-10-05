@@ -1,0 +1,7 @@
+{
+  "revision": "bb7a857ef86301c916b1362d6a77a51710778141",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the merged contract reference and agent default list. The additive Knowledge server does not change the incoming PullRequestProvider checks/comment contract; both source-owner histories are retained.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

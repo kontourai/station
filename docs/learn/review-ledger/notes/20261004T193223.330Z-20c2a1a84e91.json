@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"inputOrigin derivation claim (session.started/session.configured metadata) still accurate: the new session.configured observation carries no taskId and does not change delegation or inputOrigin; attention inspection section unchanged.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

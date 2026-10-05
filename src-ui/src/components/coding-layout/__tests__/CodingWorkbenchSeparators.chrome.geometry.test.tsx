@@ -66,7 +66,8 @@ function inboxEdgeMarkup(needsYou: number) {
       <button
         type="button"
         className={`coding-workbench__inbox-edge${needsYou > 0 ? ' coding-workbench__inbox-edge--needs-you' : ''}`}
-        aria-label={name}
+        aria-hidden="true"
+        tabIndex={-1}
       >
         <span className="coding-workbench__inbox-edge-glyph" aria-hidden="true">
           ›
@@ -391,7 +392,7 @@ describe.skipIf(!chromiumAvailable)(
         expect(asked.radius).toBe('0px 0px 0px 0px');
         expect(asked.rule).toBe(asked.needsYou);
 
-        await page.getByRole('button', { name: /^Show inbox/ }).hover();
+        await page.locator('.coding-workbench__inbox-edge').hover();
         await expect
           .poll(async () => (await measure()).rule)
           .toBe(asked.accent);

@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDock.tsx change touches no app or Agent settings, config files, defaults or prompts; it only shares the inbox rows' git-location derivation and project accents. Config reference claims remain accurate.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
