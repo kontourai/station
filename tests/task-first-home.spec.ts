@@ -6,7 +6,10 @@ import type {
   BrowserPaneAccessView,
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import type { WorkspaceFilePreview } from '@kontourai/station-contracts/workspace-file-preview';
+import type {
+  WorkspaceFileChanges,
+  WorkspaceFilePreview,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
@@ -291,6 +294,35 @@ async function mockTaskFirstHome(
         content: 'export function App() {}\n',
       };
       await route.fulfill(json(preview));
+      return;
+    }
+    // A ready textual preview also reads that file's changes against HEAD
+    // (#3115) for the pane's Changes toggle. The file came from the active
+    // work's changed-files list, so the route answers `changed`, in the
+    // `{ success, data }` envelope the real route uses
+    // (src-server/routes/projects/workspace-pane-previews.ts).
+    // Only the previewed file's own read is declared; any other body falls
+    // through to the fixture audit and fails the test by name.
+    if (
+      path === '/api/projects/station/file-preview/changes' &&
+      route.request().method() === 'POST' &&
+      route.request().postData() ===
+        JSON.stringify({ path: 'src-ui/src/App.tsx' })
+    ) {
+      const changes: WorkspaceFileChanges = {
+        state: 'changed',
+        base: 'HEAD',
+        patch: [
+          'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx',
+          '--- a/src-ui/src/App.tsx',
+          '+++ b/src-ui/src/App.tsx',
+          '@@ -1 +1 @@',
+          '-export function App() { return null; }',
+          '+export function App() {}',
+          '',
+        ].join('\n'),
+      };
+      await route.fulfill(json(changes));
       return;
     }
     if (path === '/api/projects/station/layouts') {
@@ -1739,6 +1771,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
+    // The opened preview shows the file and has read its changes: the
+    // Changes toggle counts the declared patch's two changed lines. Waiting
+    // for it also settles the changes read inside the test rather than
+    // leaving it to race the test's end (#3365).
+    await expect(page.getByText('export function App() {}')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Changes vs HEAD, 2 changed lines' }),
+    ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();

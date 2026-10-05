@@ -195,11 +195,15 @@ async function seedRoutes(page: import('@playwright/test').Page) {
         body: JSON.stringify({ success: true, data: [] }),
       }),
     ),
+    // The real inventory route answers `{ plugins }`, not the envelope
+    // (src-server/routes/plugins/plugin-install-routes.ts). The envelope made
+    // the registry degrade and raise an "Extensions unavailable" notice over
+    // the phone's maximized dock header.
     page.route('**/api/plugins', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: [] }),
+        body: JSON.stringify({ plugins: [] }),
       }),
     ),
     page.route('**/api/branding', (r) =>
@@ -1100,22 +1104,30 @@ test.describe('Ambient chat dock host at 390x844', () => {
 
     await showRegionThroughOverflowMenu(page, 'Show Activity in the dock');
 
-    // One slot still, and Activity holds it: Chat's shell is not rendered at
-    // all, which is the phone fold rather than a hidden Chat.
+    // One slot still, and Activity holds it. Since #2549 (owner decision
+    // 2026-09-24, placement.md) a pane opens OVER Chat inside Chat's one
+    // folded slot — the same `#chat-dock` shell, now carrying Activity and
+    // its "Back to Chat" control — rather than replacing Chat's shell with a
+    // separate Activity one.
+    const slot = chatDockShell(page);
     await expect(page.locator('.chat-dock')).toHaveCount(1);
-    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
-      /chat-dock--bottom/,
-    );
-    await expect(chatDockShell(page)).toHaveCount(0);
+    await expect(slot).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      slot.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toBeVisible();
+    await expect(
+      slot.getByRole('button', { name: 'Back to Chat', exact: true }),
+    ).toBeVisible();
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the phone fold layers Activity over Chat; it does not mount a second shell',
+    ).toHaveCount(0);
+    await expect(page.getByTestId('chat-dock-mobile-header')).toHaveCount(0);
     expect(
       await documentFitsViewportWidth(page),
       'a docked non-chat pane must not push the phone document sideways',
     ).toBe(true);
-    await expectBoxWithinViewport(
-      page,
-      surfaceDockShell(page, 'Activity'),
-      'the docked pane',
-    );
+    await expectBoxWithinViewport(page, slot, 'the docked pane');
 
     // Hidden through the docked pane's OWN header control, which is what a
     // phone user reaches for and which writes the region's visibility
@@ -1123,16 +1135,22 @@ test.describe('Ambient chat dock host at 390x844', () => {
     // `setRegion({ visible: false })`). Still scoped to the pane, though the
     // ⋯ menu's row no longer shares this name: since #1386 it says "Hide
     // Activity from the dock".
-    await surfaceDockShell(page, 'Activity')
+    await slot
       .getByRole('button', { name: 'Hide Activity', exact: true })
       .click();
 
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(
-      chatDockShell(page),
+      slot,
       'hiding the placed pane must return the one phone dock slot to Chat',
     ).toHaveClass(/chat-dock--bottom/);
-    await expect(surfaceDockShell(page, 'Activity')).toHaveCount(0);
+    await expect(
+      slot.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      slot.getByRole('button', { name: 'Back to Chat', exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId('chat-dock-mobile-header')).toBeVisible();
     expect(
       await documentFitsViewportWidth(page),
       'returning the slot to Chat must not push the phone document sideways',
