@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
@@ -270,6 +271,15 @@ interface AttachedSessionFollowServiceOptions {
    * old behaviour of skipping it.
    */
   followUnattributed?: boolean;
+  /**
+   * #3386 review F1: the operator's setting
+   * (`AppConfig.attachedSessionsOutsideProjects`), read once per poll that
+   * finds such a session, so turning it off takes effect on the next poll
+   * without a restart. Applies only where `followUnattributed` allows them at
+   * all. Absent means on. Production passes
+   * {@link attachedSessionsOutsideProjectsEnabled} over the config loader.
+   */
+  outsideProjectsEnabled?: () => boolean | Promise<boolean>;
   /** For tests: how a folder's repository is found. One lookup per poll is built from it. */
   locateRepository?: RepositoryLookup;
 }
@@ -363,6 +373,13 @@ export class AttachedSessionFollowService {
     const repositories = createPollRepositoryLookup(
       this.options.locateRepository,
     );
+    const projectSlugs = new Set(projectRoots.map((project) => project.slug));
+    // Read only when a poll finds a session outside every project.
+    let outsideProjects: Promise<boolean> | undefined;
+    const followOutsideProjects = () =>
+      (outsideProjects ??= this.followUnattributed
+        ? Promise.resolve(this.options.outsideProjectsEnabled?.() ?? true)
+        : Promise.resolve(false));
     // #3386 review F2: one persisted-sessions read per poll, not per session.
     let snapshot: PollSessionSnapshot | undefined;
     const sessions = () =>
@@ -429,10 +446,20 @@ export class AttachedSessionFollowService {
         // An ambiguous attribution is still followed: the session is real and
         // dropping it would hide a live external session entirely. What it
         // does NOT get is a slug it hasn't earned (archive#1462). The same
-        // holds for an unattributed one (#3386), except on a hosted Station.
-        if (attribution.state === 'unattributed' && !this.followUnattributed)
+        // holds for an unattributed one (#3386), except on a hosted Station
+        // or when the operator turned it off.
+        if (
+          attribution.state === 'unattributed' &&
+          !(await followOutsideProjects())
+        )
           continue;
-        await this.follow(source, session, attribution, sessions());
+        await this.follow(
+          source,
+          session,
+          attribution,
+          sessions(),
+          projectSlugs,
+        );
         followedSessions += 1;
         // `follow()` performs synchronous EventStore reads and writes. Its
         // source calls can resolve immediately, which otherwise chains every
@@ -450,6 +477,7 @@ export class AttachedSessionFollowService {
     descriptor: AttachedSessionDescriptor,
     attribution: AttachedProjectAttribution,
     snapshot: PollSessionSnapshot,
+    projectSlugs: ReadonlySet<string>,
   ): Promise<void> {
     const persisted = snapshot.get(descriptor.threadId);
     // A stable Station thread id may outlive the configured source home (Claude
@@ -482,9 +510,12 @@ export class AttachedSessionFollowService {
     // already names. The common cause is a removed worktree, whose folder no
     // longer leads to its repository, and re-filing every such session under
     // No project would erase a correct attribution for a missing folder.
+    // Review F5: unless a project it names no longer exists — a deleted
+    // project's sessions move to No project.
     const keepsStoredAttribution =
       attribution.state === 'unattributed' &&
-      state.storedAttribution !== undefined;
+      state.storedAttribution !== undefined &&
+      storedProjectsStillExist(state.storedAttribution, projectSlugs);
     if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
       for (const event of attachedSessionEnvelope(
@@ -1034,6 +1065,22 @@ function validUsageAccumulator(value: unknown): boolean {
   );
 }
 
+/**
+ * #3386 review F1: whether the operator lets Activity follow conversations
+ * outside every project. Absent is on (`AppConfig.attachedSessionsOutsideProjects`);
+ * an unreadable configuration is OFF for this poll, so a broken file never
+ * widens what Station reads.
+ */
+export async function attachedSessionsOutsideProjectsEnabled(
+  loadAppConfig: () => Promise<AppConfig>,
+): Promise<boolean> {
+  try {
+    return (await loadAppConfig()).attachedSessionsOutsideProjects !== false;
+  } catch {
+    return false;
+  }
+}
+
 export function resolveAttachedSessionPollInterval(
   value = process.env.STATION_ATTACHED_SESSION_POLL_INTERVAL_MS,
 ): number {
@@ -1445,6 +1492,19 @@ function metadataAttributionFingerprint(
  * re-deriving an attribution is not session activity. So a correction is
  * dated no earlier than the newest event already on the thread, and no later.
  */
+/**
+ * Whether every project a stored fingerprint names is still configured. The
+ * stored "unattributed" names none, so it is trivially kept.
+ */
+function storedProjectsStillExist(
+  stored: string,
+  projectSlugs: ReadonlySet<string>,
+): boolean {
+  const [state, ...slugs] = stored.split('\u0000');
+  if (state !== 'attributed' && state !== 'ambiguous') return true;
+  return slugs.every((slug) => projectSlugs.has(slug));
+}
+
 function attributionFingerprint(
   attribution: AttachedProjectAttribution,
 ): string {

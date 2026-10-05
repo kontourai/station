@@ -78,6 +78,7 @@ import {
 } from '../../services/infra/resource-posture.js';
 import {
   AttachedSessionFollowService,
+  attachedSessionsOutsideProjectsEnabled,
   resolveAttachedProjectRoots,
 } from '../../services/orchestration/attached-session-follow-service.js';
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
@@ -712,6 +713,11 @@ export async function initializeRuntime(
     invalidateSessionOwner: (threadId) =>
       orchestrationService.invalidateSessionOwner(threadId),
     listProjects: () => storageAdapter.listProjects(),
+    // #3386: the operator's "Conversations outside projects" setting.
+    outsideProjectsEnabled: () =>
+      attachedSessionsOutsideProjectsEnabled(() =>
+        configLoader.loadAppConfig(),
+      ),
     resolveProjectRoots: () =>
       resolveAttachedProjectRoots(storageAdapter.listProjects(), (slug) =>
         resolveProjectWorkspacePath(slug, {

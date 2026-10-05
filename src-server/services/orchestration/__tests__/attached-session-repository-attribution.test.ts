@@ -7,16 +7,24 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  PAIRING_SCOPE_ORCHESTRATION_READ,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
+import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import {
   type AttachedProjectRoot,
   AttachedSessionFollowService,
+  attachedSessionsOutsideProjectsEnabled,
   resolveAttachedSessionProject,
 } from '../attached-session-follow-service.js';
 import {
@@ -494,19 +502,167 @@ describe('a session no project claims is followed under No project (#3386)', () 
     expect(summarize().projectSlug).toBe('scratch');
   });
 
-  test('losing its match never erases a project the log already names', async () => {
+  test('a removed worktree keeps the project the log already names', async () => {
+    const main = repository(join(dir, 'station'));
+    const lane = worktree(main, join(dir, 'station-worktrees', 'lane'), 'lane');
+    session = { ...session, cwd: lane };
+    const projects = () => [{ slug: 'station', workingDirectory: main }];
+    await follow(projects).pollNow();
+    expect(summarize().projectSlug).toBe('station');
+    const attributed = store.listEvents(session.threadId).length;
+
+    // Nothing leads from the folder to the repository any more.
+    git(main, 'worktree', 'remove', '--force', lane);
+    await follow(projects).pollNow();
+    await follow(projects).pollNow();
+
+    expect(summarize().projectSlug).toBe('station');
+    expect(store.listEvents(session.threadId)).toHaveLength(attributed);
+  });
+
+  // #3386 review F5.
+  test('a deleted project moves its sessions to No project', async () => {
     let projects: AttachedProjectRoot[] = [
       { slug: 'scratch', workingDirectory: session.cwd },
     ];
     await follow(() => projects).pollNow();
-    const attributed = store.listEvents(session.threadId).length;
+    expect(summarize().projectSlug).toBe('scratch');
 
-    // e.g. its worktree was removed, so nothing leads to the repository now.
     projects = [];
     await follow(() => projects).pollNow();
+    expect(summarize().projectSlug).toBeUndefined();
+    expect(summarize().projectAttribution).toBeUndefined();
+    // ...and it stays there across restarts without rewriting.
+    const settled = store.listEvents(session.threadId).length;
     await follow(() => projects).pollNow();
+    expect(store.listEvents(session.threadId)).toHaveLength(settled);
+  });
 
+  // #3386 review F1 (a): the operator's setting, read through the real
+  // configuration loader the runtime passes in.
+  test('turning off Conversations outside projects stops following them, live', async () => {
+    const loader = new ConfigLoader({ projectHomeDir: join(dir, 'home') });
+    const setOutside = async (value: boolean) =>
+      loader.saveAppConfig({
+        ...(await loader.loadAppConfig()),
+        attachedSessionsOutsideProjects: value,
+      });
+    await setOutside(false);
+    const from = source();
+    const service = new AttachedSessionFollowService({
+      sources: [from],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+      outsideProjectsEnabled: () =>
+        attachedSessionsOutsideProjectsEnabled(() => loader.loadAppConfig()),
+    });
+
+    await service.pollNow();
+    expect(from.read).not.toHaveBeenCalled();
+    expect(store.readSessions()).toEqual([]);
+
+    // A session inside a project is followed whatever the setting says.
+    const inside = new AttachedSessionFollowService({
+      sources: [source()],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [{ slug: 'scratch', workingDirectory: session.cwd }],
+      outsideProjectsEnabled: () =>
+        attachedSessionsOutsideProjectsEnabled(() => loader.loadAppConfig()),
+    });
+    await inside.pollNow();
     expect(summarize().projectSlug).toBe('scratch');
-    expect(store.listEvents(session.threadId)).toHaveLength(attributed);
+  });
+
+  test('turning the setting back on takes effect on the next poll', async () => {
+    const loader = new ConfigLoader({ projectHomeDir: join(dir, 'home') });
+    await loader.saveAppConfig({
+      ...(await loader.loadAppConfig()),
+      attachedSessionsOutsideProjects: false,
+    });
+    const from = source();
+    const service = new AttachedSessionFollowService({
+      sources: [from],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+      outsideProjectsEnabled: () =>
+        attachedSessionsOutsideProjectsEnabled(() => loader.loadAppConfig()),
+    });
+    await service.pollNow();
+    expect(from.read).not.toHaveBeenCalled();
+
+    await loader.saveAppConfig({
+      ...(await loader.loadAppConfig()),
+      attachedSessionsOutsideProjects: true,
+    });
+    await service.pollNow();
+    expect(from.read).toHaveBeenCalled();
+    expect(summarize().projectSlug).toBeUndefined();
+  });
+
+  test('an unreadable configuration never widens what is followed', async () => {
+    await expect(
+      attachedSessionsOutsideProjectsEnabled(() =>
+        Promise.reject(new Error('corrupt app.json')),
+      ),
+    ).resolves.toBe(false);
+  });
+
+  // #3386 review F1 (c): the documented reach — the operator's paired
+  // devices with Activity read access, through the real pairing registry and
+  // the same `personalConversationAccess` closures the runtime wires.
+  test('a paired device with orchestration read access can read a No project session; a revoked or unknown one cannot', async () => {
+    const pairingHome = join(dir, 'pairing-home');
+    mkdirSync(join(pairingHome, 'security'), { recursive: true, mode: 0o700 });
+    const pairing = new DevicePairingService({
+      homeDir: pairingHome,
+      environmentId: '11111111-1111-4111-8111-111111111111',
+    });
+    const offer = pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Phone',
+    });
+    pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const { device } = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    expect(
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_ORCHESTRATION_READ),
+    ).toBe(true);
+    const phone = humanPrincipal('device', device.id, 'Phone').id;
+
+    await follow(() => []).pollNow();
+    expect(summarize().projectSlug).toBeUndefined();
+
+    const authz = new SessionAuthorization({
+      eventStore: store,
+      // runtime-initialize.ts, via EnvironmentSecurityService's delegation.
+      personalConversationAccess: {
+        canRead: (requesterId, ownerId) =>
+          pairing.canSharePersonalConversation(requesterId, ownerId),
+        ownerIds: (requesterId) =>
+          pairing.personalConversationOwnerIds(requesterId),
+      },
+    });
+    const as = (userId: string) =>
+      sessionReadAuthorityFromRequest(userId, undefined, undefined);
+    expect(authz.canReadSession(session.threadId, as(phone))).toBe(true);
+    expect(
+      authz.canReadSession(session.threadId, as('human:device:unknown-device')),
+    ).toBe(false);
+
+    pairing.revokeDevice(device.id, 'operator-credential');
+    expect(authz.canReadSession(session.threadId, as(phone))).toBe(false);
   });
 });

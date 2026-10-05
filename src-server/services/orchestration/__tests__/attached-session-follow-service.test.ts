@@ -2901,7 +2901,7 @@ describe('AttachedSessionFollowService', () => {
     expect(source.read).not.toHaveBeenCalled();
   });
 
-  test('does not import an unmatched transcript and preserves prior transcript state when a source disappears', async () => {
+  test('preserves prior transcript state when a source disappears, and refiles it under No project when its project goes', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
       kind: 'claude-transcript',
@@ -2936,7 +2936,16 @@ describe('AttachedSessionFollowService', () => {
     });
     await unmatched.pollNow();
 
-    expect(store.listEvents(session.threadId)).toHaveLength(3);
+    // #3386 review F5: project `app` is gone, so the session moves to No
+    // project — one envelope pair, and no transcript event imported twice.
+    const after = store
+      .listEvents(session.threadId)
+      .map((item) => item.payload as unknown as CanonicalRuntimeEvent);
+    expect(after).toHaveLength(5);
+    expect(after.filter((item) => item.eventId === 'event-1')).toHaveLength(1);
+    expect(
+      after.slice(3).map((item) => item.metadata?.projectAttribution),
+    ).toEqual(['unattributed', 'unattributed']);
     expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ source: 'claude-transcript', outcome: 'ok' }),
