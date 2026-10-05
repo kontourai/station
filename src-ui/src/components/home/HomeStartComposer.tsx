@@ -139,7 +139,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     !projectsQuery.isPlaceholderData &&
     projectsQuery.data !== undefined;
   // The chip IS the dock's binding (the project chip writes it), so Home and
-  // the dock read one value; folderless projects cannot be chosen.
+  // the dock read one value; a folderless project runs in the home folder.
   const startContext = useNewChatStartContext(projects, projectsLoaded);
   const context = startContext ?? GLOBAL_CONTEXT;
   const contextPending = !startContext;
