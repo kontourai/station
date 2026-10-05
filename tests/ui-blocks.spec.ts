@@ -275,7 +275,7 @@ test.describe('Structured UI blocks', () => {
     await gateForm.getByLabel('Reviewer').fill('casey');
     await gateForm.getByText('Sign off').click();
     // The values must still be in the form when it is submitted. If the block
-    // re-mounted after the fill (seen once under heavy load while the stream
+    // re-mounted after the fill (reported under heavy load while the stream
     // was catching up), this fails here, naming the lost input, instead of
     // later as a missing "Submitted" button.
     await expect(gateForm.getByLabel('Reviewer')).toHaveValue('casey');
