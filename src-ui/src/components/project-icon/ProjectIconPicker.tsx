@@ -6,6 +6,7 @@ import {
   projectIconProblem,
 } from '@kontourai/station-contracts/project';
 import { useId, useRef, useState } from 'react';
+import { PlusGlyph } from '../icons/Glyph';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import './ProjectIconPicker.css';
 
@@ -19,6 +20,21 @@ export function projectIconInputProblem(icon: string): string | undefined {
   const problem = projectIconProblem(icon);
   return problem ? PROJECT_ICON_PROBLEM_MESSAGES[problem] : undefined;
 }
+
+/**
+ * What the file chooser offers: the allowed media types, the label a browser
+ * gives an ICO file (relabelled on read, below), and the extensions, since a
+ * platform picker may not map every type to its extension.
+ */
+const UPLOAD_ACCEPT = [
+  ...PROJECT_ICON_IMAGE_MEDIA_TYPES,
+  'image/vnd.microsoft.icon',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.ico',
+].join(',');
 
 /**
  * A browser names an ICO file `image/vnd.microsoft.icon`; the icon rule (and
@@ -115,12 +131,12 @@ export function ProjectIconPicker({
           <span id={hintId}>
             {fetching
               ? 'Looking for artwork in the project folder…'
-              : 'Optional. Without one, Station shows the project’s colour and initials.'}
+              : 'Optional. Without one, Station shows the project’s colour.'}
           </span>
         </div>
         <button
           type="button"
-          className="editor-btn editor-btn--small"
+          className="editor-btn editor-btn--small project-icon-picker__none"
           aria-pressed={value === ''}
           onClick={() => choose('')}
         >
@@ -160,9 +176,11 @@ export function ProjectIconPicker({
         <button
           type="button"
           className="project-icon-picker__artwork-choice project-icon-picker__upload"
+          aria-label="Upload image"
+          title="Upload image"
           onClick={() => fileInput.current?.click()}
         >
-          Upload…
+          <PlusGlyph />
         </button>
         <input
           ref={fileInput}
@@ -170,7 +188,7 @@ export function ProjectIconPicker({
           className="sr-only"
           tabIndex={-1}
           aria-hidden="true"
-          accept={PROJECT_ICON_IMAGE_MEDIA_TYPES.join(',')}
+          accept={UPLOAD_ACCEPT}
           data-testid={`${idPrefix}-upload`}
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -185,7 +203,10 @@ export function ProjectIconPicker({
           {uploadError}
         </p>
       )}
-      <label className="editor-label" htmlFor={`${idPrefix}-glyph`}>
+      <label
+        className="editor-label project-icon-picker__glyph-label"
+        htmlFor={`${idPrefix}-glyph`}
+      >
         Emoji or symbol <span className="editor-hint">optional</span>
       </label>
       <input

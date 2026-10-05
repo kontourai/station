@@ -322,6 +322,12 @@
 .project-settings__name-input {
   flex: 1;
 }
+
+.project-settings__icon-notice {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
 .project-settings__actions {
   margin-top: 16px;
   text-align: right;

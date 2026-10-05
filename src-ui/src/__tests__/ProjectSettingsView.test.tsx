@@ -1080,6 +1080,79 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
     expect(saveButton.disabled).toBe(false);
   });
 
+  test('an uploaded ICO the browser labels image/vnd.microsoft.icon is stored as image/x-icon', async () => {
+    renderProjectSettings();
+    openPicker();
+    const input = screen.getByTestId(
+      'project-settings-icon-upload',
+    ) as HTMLInputElement;
+    // The chooser offers ICO files under either label and by extension.
+    expect(input.accept.split(',')).toEqual(
+      expect.arrayContaining([
+        'image/x-icon',
+        'image/vnd.microsoft.icon',
+        '.ico',
+      ]),
+    );
+    // An ICO header (reserved 0, type 1) as a browser types it.
+    const ico = new File(
+      [new Uint8Array([0, 0, 1, 0, 1, 0, 16, 16])],
+      'favicon.ico',
+      {
+        type: 'image/vnd.microsoft.icon',
+      },
+    );
+    fireEvent.change(input, { target: { files: [ico] } });
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current image')).toBeTruthy(),
+    );
+    save();
+    await waitFor(() => expect(sdkMocks.updateProject).toHaveBeenCalled());
+    const { icon } = sdkMocks.updateProject.mock.calls[0][0];
+    expect(icon).toBe(
+      `data:image/x-icon;base64,${Buffer.from([0, 0, 1, 0, 1, 0, 16, 16]).toString('base64')}`,
+    );
+  });
+
+  test('a legacy link icon is named once, and the picker opens on no icon without an error', async () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      icon: 'https://example.com/legacy.png',
+    };
+    renderProjectSettings();
+    const notice =
+      'This project’s icon was a link Station no longer loads. Choose a new one.';
+    expect(screen.getByText(notice)).toBeTruthy();
+    openPicker();
+    const glyphInput = screen.getByLabelText(
+      /Emoji or symbol/,
+    ) as HTMLInputElement;
+    expect(glyphInput.value).toBe('');
+    expect(glyphInput.getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'No icon' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+
+    // Choosing a replacement retires the notice and saves the new icon.
+    fireEvent.change(glyphInput, { target: { value: '🧭' } });
+    expect(screen.queryByText(notice)).toBeNull();
+    save();
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', icon: '🧭' }),
+      ),
+    );
+  });
+
+  test('a project whose icon is allowed shows no legacy notice', () => {
+    sdkMocks.project = { ...projectFixture, icon: '🧭' };
+    renderProjectSettings();
+    expect(screen.queryByText(/no longer loads/)).toBeNull();
+  });
+
   test('a legacy icon the rule refuses neither blocks nor rides along on an unrelated save', async () => {
     sdkMocks.project = {
       ...projectFixture,

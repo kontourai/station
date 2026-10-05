@@ -12,7 +12,10 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
-import { ProjectIcon } from '../components/icons/ProjectIcon';
+import {
+  displayableProjectIcon,
+  ProjectIcon,
+} from '../components/icons/ProjectIcon';
 import { ModelSelector } from '../components/ModelSelector';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import {
@@ -296,6 +299,14 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     form.icon !== savedForm?.icon
       ? projectIconInputProblem(form.icon ?? '')
       : undefined;
+  // A stored icon the rule refuses (a link saved before the rule) and not
+  // yet replaced. Every surface already shows it as no icon; here it is
+  // named once, and the picker starts from "no icon" rather than putting
+  // the link in the emoji field with an error the user did not cause.
+  const legacyIcon =
+    !!savedForm?.icon &&
+    form.icon === savedForm.icon &&
+    displayableProjectIcon(savedForm.icon) === undefined;
 
   function setField<K extends keyof ProjectForm>(
     key: K,
@@ -497,11 +508,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   onChange={(e) => setField('name', e.target.value)}
                 />
               </div>
+              {legacyIcon && (
+                <p className="project-settings__icon-notice">
+                  This project’s icon was a link Station no longer loads. Choose
+                  a new one.
+                </p>
+              )}
               {iconPickerOpen && (
                 <ProjectIconPicker
                   idPrefix="project-settings-icon"
                   name={form.name}
-                  value={form.icon ?? ''}
+                  value={legacyIcon ? '' : (form.icon ?? '')}
                   onChange={(icon) => setField('icon', icon)}
                   candidates={iconCandidates.data ?? []}
                   fetching={iconCandidates.isFetching}

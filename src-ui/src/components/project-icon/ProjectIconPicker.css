@@ -21,6 +21,9 @@
 
 .project-icon-picker__header > div {
   display: flex;
+  /* Takes the row on a narrow dialog, so "No icon" wraps below the hint
+     instead of squeezing it. */
+  flex: 1 1 14rem;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-1);
@@ -81,8 +84,27 @@
   object-fit: contain;
 }
 
+.project-icon-picker__header > button {
+  flex: 0 0 auto;
+}
+
+.project-icon-picker__none[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--accent-primary) 24%, transparent);
+}
+
 .project-icon-picker__upload {
   border-style: dashed;
+  font-size: var(--text-xl);
+}
+
+.project-icon-picker__glyph-label {
+  /* Its own group, set apart from the tiles above it. */
+  margin-top: var(--space-2);
+  margin-bottom: 0;
 }
 
 .project-icon-picker__error {
