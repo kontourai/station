@@ -82,7 +82,7 @@ export function SessionPickerModal({
   return (
     <AutoSelectModal
       isOpen={isOpen}
-      title="Open Conversation"
+      title="Open chat"
       placeholder="Search conversations..."
       items={items}
       loading={inventoryQuery.isLoading}

@@ -34,9 +34,8 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   },
 }));
 
-const { hydrateOpenApprovalToasts } = await import(
-  '../hydrateOpenApprovalToasts'
-);
+const { hydrateOpenApprovalToasts, OLDER_PAGE_LIMIT, OLDER_PAGE_TURNS } =
+  await import('../hydrateOpenApprovalToasts');
 const { handleRequestOpenedEvent, settlePendingApprovalsOnTurnEnd } =
   await import('../approvalHandlers');
 
@@ -64,9 +63,20 @@ function afterReload() {
   };
 }
 
+// The route's window shape: an older page is named by `nextCursor`, and the
+// last page has neither it nor `hasMore`.
 const window = (...events: unknown[]) => ({
-  events: events.map((event) => ({ sequence: 1, event })),
+  protocolVersion: 1,
+  events: events.map((event, index) => ({ sequence: index + 1, event })),
+  hasMore: false,
+  watermark: 10,
 });
+const olderAvailable = (page: ReturnType<typeof window>, cursor: string) => ({
+  ...page,
+  hasMore: true,
+  nextCursor: cursor,
+});
+const place = () => new Map([['req-1', 'placeholder-toast']]);
 
 describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
   beforeEach(() => {
@@ -251,5 +261,96 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
     expect(showToolApproval).not.toHaveBeenCalled();
     expect(chat?.approvalToasts.get('req-1')).toBe('live-toast');
     expect(chat?.pendingApprovalTurnIds).toBeUndefined();
+  });
+
+  describe('an approval opened in an older turn', () => {
+    const otherTurn = (n: number) =>
+      requestOpened({
+        eventId: `evt-other-${n}`,
+        requestId: `answered-${n}`,
+        turnId: `turn-${n}`,
+      });
+
+    test('gets its real toast and turn binding from an older page', async () => {
+      fetchWindow
+        .mockResolvedValueOnce(olderAvailable(window(otherTurn(3)), 'cursor-1'))
+        .mockResolvedValueOnce(olderAvailable(window(otherTurn(2)), 'cursor-2'))
+        .mockResolvedValueOnce(window(requestOpened({ turnId: 'turn-1' })));
+      await hydrateOpenApprovalToasts('http://api', 'thread-1', place());
+
+      expect(fetchWindow).toHaveBeenCalledTimes(3);
+      expect(fetchWindow.mock.calls[0]![2]).toEqual({
+        turnLimit: 1,
+        direction: 'newest',
+      });
+      expect(fetchWindow.mock.calls[1]![2]).toEqual({
+        cursor: 'cursor-1',
+        turnLimit: OLDER_PAGE_TURNS,
+        direction: 'newest',
+      });
+      expect(fetchWindow.mock.calls[2]![2]).toMatchObject({
+        cursor: 'cursor-2',
+      });
+      expect(showToolApproval).toHaveBeenCalledOnce();
+      expect(showToolApproval.mock.calls[0]![0]).toMatchObject({
+        toolName: 'Bash',
+        toolPreview: 'git status',
+      });
+      expect(chat?.approvalToasts.get('req-1')).toBe('real-toast');
+      expect(chat?.pendingApprovalTurnIds).toEqual({ 'req-1': 'turn-1' });
+    });
+
+    test('stops at the page cap and keeps the placeholder beyond it', async () => {
+      let n = 0;
+      fetchWindow.mockImplementation(async () => {
+        n += 1;
+        return olderAvailable(window(otherTurn(n)), `cursor-${n}`);
+      });
+      await hydrateOpenApprovalToasts('http://api', 'thread-1', place());
+
+      expect(fetchWindow).toHaveBeenCalledTimes(1 + OLDER_PAGE_LIMIT);
+      expect(showToolApproval).not.toHaveBeenCalled();
+      expect(chat?.approvalToasts.get('req-1')).toBe('placeholder-toast');
+    });
+
+    test('stops when the window has no older page', async () => {
+      fetchWindow.mockResolvedValue(window(otherTurn(1)));
+      await hydrateOpenApprovalToasts('http://api', 'thread-1', place());
+      expect(fetchWindow).toHaveBeenCalledOnce();
+      expect(chat?.approvalToasts.get('req-1')).toBe('placeholder-toast');
+    });
+
+    test('reads no second page when the first resolved everything', async () => {
+      fetchWindow.mockResolvedValue(
+        olderAvailable(window(requestOpened({ turnId: 'turn-1' })), 'cursor-1'),
+      );
+      await hydrateOpenApprovalToasts('http://api', 'thread-1', place());
+      expect(fetchWindow).toHaveBeenCalledOnce();
+      expect(showToolApproval).toHaveBeenCalledOnce();
+    });
+
+    test('a failed older read keeps the placeholder', async () => {
+      fetchWindow
+        .mockResolvedValueOnce(olderAvailable(window(otherTurn(2)), 'cursor-1'))
+        .mockRejectedValueOnce(new Error('boom'));
+      await hydrateOpenApprovalToasts('http://api', 'thread-1', place());
+      expect(fetchWindow).toHaveBeenCalledTimes(2);
+      expect(chat?.approvalToasts.get('req-1')).toBe('placeholder-toast');
+    });
+
+    test('an answer arriving while older pages are read is not overwritten', async () => {
+      fetchWindow
+        .mockResolvedValueOnce(olderAvailable(window(otherTurn(2)), 'cursor-1'))
+        .mockImplementationOnce(async () => {
+          chat = { ...chat, pendingApprovals: [], approvalToasts: new Map() };
+          return window(requestOpened({ turnId: 'turn-1' }));
+        });
+      await hydrateOpenApprovalToasts('http://api', 'thread-1', place());
+      expect(fetchWindow).toHaveBeenCalledTimes(2);
+      expect(showToolApproval).not.toHaveBeenCalled();
+      expect(dismiss).not.toHaveBeenCalled();
+      expect(chat?.pendingApprovalTurnIds).toBeUndefined();
+      expect(chat?.approvalToasts.size).toBe(0);
+    });
   });
 });

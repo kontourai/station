@@ -1312,12 +1312,24 @@ export interface CurrentRuntimeRequestPrincipalSecurity {
 export function isRuntimeRequestPrincipalCurrent(
   request: Request,
   security: CurrentRuntimeRequestPrincipalSecurity,
-  /**
-   * Ask the question of another route: whether this request's principal is
-   * current for, and holds the pairing scope of, `method path`. Absent, the
-   * route the request itself reached.
-   */
-  route?: { method: string; path: string },
+): boolean {
+  return runtimeRequestPrincipalMayAccessHttpRoute(request, security, {
+    method: request.method,
+    path: new URL(request.url).pathname,
+  });
+}
+
+/**
+ * Whether THIS request's authenticated principal would pass the HTTP
+ * boundary for another route — the same credential authorization and
+ * pairing-scope gates ingress applies, evaluated for `route` instead of the
+ * request's own path. Used to decide whether a read may offer an affordance
+ * that posts to `route`. `route.path` must be a concrete path.
+ */
+export function runtimeRequestPrincipalMayAccessHttpRoute(
+  request: Request,
+  security: CurrentRuntimeRequestPrincipalSecurity,
+  route: { method: string; path: string },
 ): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
@@ -1325,14 +1337,9 @@ export function isRuntimeRequestPrincipalCurrent(
     return isTrustedInternalApiToken(
       request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
     );
-  const path = route?.path ?? new URL(request.url).pathname;
-  const method = route?.method ?? request.method;
-  if (
-    !security.authorizeCredential(principal.credential, {
-      method,
-      path,
-    })
-  ) {
+  const { path } = route;
+  const method = route.method;
+  if (!security.authorizeCredential(principal.credential, { method, path })) {
     return false;
   }
   // Match ingress exactly: an unmapped capability or a no-longer-granted

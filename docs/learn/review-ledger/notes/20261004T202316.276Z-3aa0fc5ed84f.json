@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked the pre-push, test:focused and transfer env claims (lines 365, 458, 528-531). STATION_TRANSFER_CAPTURE_TIMEOUT_MS remains the explicit bound; the host-pressure scale only multiplies the default. No prose change needed.","inputs":["docs/guides/development.md",".githooks/pre-push","package.json","scripts/run-focused-tests.mjs"]}
+  ]
+}

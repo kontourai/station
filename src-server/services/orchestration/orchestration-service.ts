@@ -334,6 +334,8 @@ import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  extractPeerPendingRequestObservation,
+  PEER_PENDING_REQUEST_METADATA_KEY,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
@@ -402,7 +404,10 @@ import {
   MAX_ASSISTANT_TURN_EVENTS,
   type SessionQueryModule,
 } from './session-query-module.js';
-import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
+import {
+  SessionRecoveryCoordinator,
+  type UsageLimitRecoveryActionResult,
+} from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -1025,6 +1030,24 @@ interface PeerDelegationActivityDispatch {
   target: { kind: 'agent'; id: string };
   projectSlug?: string;
   parentTaskId?: string;
+}
+
+/**
+ * Bounds on the paired Station's request fields this Station persists, in
+ * Unicode code points (`Array.from`), for the id and the title alike.
+ */
+export const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
+export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
+
+/**
+ * A display title past the bound is cut with a visible ellipsis, so a reader
+ * can tell it was shortened; the request id carries identity, not the title.
+ */
+function boundedPeerRequestTitle(title: string): string {
+  const characters = Array.from(title);
+  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
+    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
+    : title;
 }
 
 function peerDelegationActivityThreadId(
@@ -3724,6 +3747,112 @@ export class OrchestrationService {
     return threadId;
   }
 
+  /**
+   * Record the open request the PAIRED Station reported on its delegated-task
+   * status read (`pendingRequest`), or its absence (`null`). Appends one
+   * `session.configured` observation only when it differs from the last one,
+   * so a steady poll writes nothing. The request id names the paired
+   * Station's request; nothing here makes it answerable locally.
+   */
+  recordPeerDelegationPendingRequest(input: {
+    taskId: string;
+    environmentId: string;
+    pendingRequest: { id: string; type?: string; title?: string } | null;
+    /**
+     * Set when the paired Station has just answered `respond` for this
+     * request id: clear the observation only if it still names that request,
+     * so a newer request observed meanwhile is never erased.
+     */
+    resolvedRequestId?: string;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const session = this.sessionReadModel.get(threadId) ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = extractPeerPendingRequestObservation(events);
+    if (
+      input.resolvedRequestId !== undefined &&
+      current?.id !== input.resolvedRequestId
+    )
+      return false;
+    const rawId = input.pendingRequest?.id.trim();
+    // An id past the bound is refused, never truncated: a cut id would name
+    // a different (or no) request on the paired Station. Nothing usable is
+    // stored, so the inbox shows the note instead of a decision.
+    const idRefused =
+      rawId !== undefined &&
+      Array.from(rawId).length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
+    if (idRefused)
+      this.options.logger.warn(
+        'Refused a paired Station request id over the stored bound',
+        { threadId, length: rawId.length },
+      );
+    const id = idRefused ? undefined : rawId;
+    const title = input.pendingRequest?.title?.trim();
+    const next = id
+      ? {
+          id,
+          ...(input.pendingRequest?.type
+            ? { type: input.pendingRequest.type }
+            : {}),
+          ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          observedAt: new Date().toISOString(),
+        }
+      : null;
+    if (
+      next === null
+        ? current === null || current === undefined
+        : current?.id === next.id &&
+          current.type === next.type &&
+          current.title === next.title
+    )
+      return false;
+    this.projectAndPublishEvent({
+      eventId: `peer-pending-request:${threadId}:${crypto.randomUUID()}`,
+      provider: session.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { [PEER_PENDING_REQUEST_METADATA_KEY]: next },
+    });
+    return true;
+  }
+
+  /**
+   * The paired Stations this Station recorded as hosting `taskId`
+   * (`recordPeerDelegationActivityDispatch` writes one record per
+   * environment and task) among the records `authority` may read. Empty
+   * when no such record names the task.
+   */
+  async peerDelegationHostingEnvironmentIds(
+    taskId: string,
+    authority: SessionReadScope,
+  ): Promise<string[]> {
+    // Read with the caller's own authority: a record the caller cannot read
+    // names no host for it.
+    const sessions = await this.listSessionReadModel(authority);
+    return [
+      ...new Set(
+        sessions.flatMap((session) =>
+          session.delegation?.environmentKind === 'peer' &&
+          session.delegation.taskId === taskId &&
+          session.delegation.environmentId
+            ? [session.delegation.environmentId]
+            : [],
+        ),
+      ),
+    ];
+  }
+
   /** Advance a peer Activity record only from an observed peer lifecycle. */
   recordPeerDelegationActivityOutcome(input: {
     taskId: string;
@@ -4245,10 +4374,9 @@ export class OrchestrationService {
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
     // it run unattended now; the coordinator applies it only at the reset.
-    const recovery =
-      latestRecovery?.usageLimit && latestRecovery.outcome === 'armed'
-        ? await this.withUsageLimitAutoResume(latestRecovery)
-        : latestRecovery;
+    const recovery = latestRecovery
+      ? await this.projectRecovery(latestRecovery)
+      : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
@@ -4280,6 +4408,50 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  private async projectRecovery(
+    latest: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    return latest.usageLimit && latest.outcome === 'armed'
+      ? await this.withUsageLimitAutoResume(latest)
+      : latest;
+  }
+
+  /**
+   * #3157: the chat banner's own read of a Session's usage-limit recovery,
+   * without the Session's whole event list. `null` when the latest recovery
+   * for the Session is not a usage-limit stop. The caller authorizes the read.
+   */
+  async readUsageLimitRecovery(
+    threadId: string,
+  ): Promise<ConnectionRecoveryProjection | null> {
+    this.initialize();
+    const latest = this.recoveryCoordinator?.latestProjection(threadId);
+    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+  }
+
+  /**
+   * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
+   * authorizes the mutation. Each answers with what it did and the projection
+   * as it stands afterward, so a click on a banner that has since settled
+   * reads back the real state instead of acting.
+   */
+  async actOnUsageLimitRecovery(
+    threadId: string,
+    action: 'resume' | 'cancel',
+  ): Promise<{
+    result: UsageLimitRecoveryActionResult;
+    recovery: ConnectionRecoveryProjection | null;
+  }> {
+    this.initialize();
+    const coordinator = this.recoveryCoordinator;
+    const result: UsageLimitRecoveryActionResult = coordinator
+      ? action === 'resume'
+        ? await coordinator.resumeUsageLimitNow(threadId)
+        : await coordinator.cancelUsageLimitWaiting(threadId)
+      : { kind: 'not-waiting' };
+    return { result, recovery: await this.readUsageLimitRecovery(threadId) };
   }
 
   /**

@@ -1,0 +1,13 @@
+{
+  "revision": "5d74ba5b9a82457679c87e52ab9469364dd009ae",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Re-checked against #3157: docs/ui/responsive-action-surfaces.txt gained one covered entry for the usage-limit banner (src-ui/src/components/chat-dock/UsageLimitBanner.tsx), whose actions row inherits the shared [class*=\"__actions\"] phone floor already described by the inventory header; the entry follows the existing format and no statement here about the floor, the exception strategy or the ratchet changes.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-checked against #3157: docs/ui/responsive-action-surfaces.txt gained one covered entry for the usage-limit banner (src-ui/src/components/chat-dock/UsageLimitBanner.tsx), whose actions row inherits the shared [class*=\"__actions\"] phone floor already described by the inventory header; the entry follows the existing format and no statement here about the floor, the exception strategy or the ratchet changes.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-checked against #3157: docs/ui/responsive-action-surfaces.txt gained one covered entry for the usage-limit banner (src-ui/src/components/chat-dock/UsageLimitBanner.tsx), whose actions row inherits the shared [class*=\"__actions\"] phone floor already described by the inventory header; the entry follows the existing format and no statement here about the floor, the exception strategy or the ratchet changes.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-checked against #3157: docs/ui/responsive-action-surfaces.txt gained one covered entry for the usage-limit banner (src-ui/src/components/chat-dock/UsageLimitBanner.tsx), whose actions row inherits the shared [class*=\"__actions\"] phone floor already described by the inventory header; the entry follows the existing format and no statement here about the floor, the exception strategy or the ratchet changes.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

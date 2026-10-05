@@ -62,6 +62,8 @@ export type InstanceType = 'service' | 'sidecar' | 'worktree' | 'inline';
 export interface InstanceConfig {
   port: number;
   uiPort?: number;
+  /** Address the UI listener bound (`--host`); absent for older entries. */
+  host?: string;
   /** Consent-listener port (station#3677); producers default it to port + 3. */
   consentPort?: number;
   checkout?: string;
