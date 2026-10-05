@@ -76,15 +76,6 @@ process.stdin.on('data', (chunk) => {
         reply(id, capabilityAnswer(JSON.parse(fs.readFileSync(sessionFile(params.sessionId), 'utf8')).model));
         break;
       }
-      case 'session/list': {
-        // Ignores params.cwd on purpose: an agent may list every session.
-        const sessions = fs.readdirSync(storeDir).map((name) => ({
-          sessionId: name.replace(/\\.json$/, ''),
-          ...JSON.parse(fs.readFileSync(path.join(storeDir, name), 'utf8')),
-        }));
-        reply(id, { sessions });
-        break;
-      }
       case 'session/delete':
         fs.unlinkSync(sessionFile(params.sessionId));
         reply(id, {});
@@ -212,8 +203,9 @@ describe('#3411 capability probes do not leak agent sessions', () => {
     // ACPProbe with no in-memory session. It mints one session rather than
     // adopting a stored one: session/list cannot say how old a session is
     // (Grok bumps updatedAt on every resume), so a recovered session could
-    // carry a default model from arbitrarily long ago. This agent's list also
-    // ignores the cwd filter, so adopting from it could pick anything.
+    // carry a default model from arbitrarily long ago. The fake agent does not
+    // implement session/list, so the exact method log below also proves the
+    // probe never lists.
     const restarted = agent.newProbe();
     try {
       await probeTimes(restarted, 2);
