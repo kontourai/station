@@ -64,6 +64,7 @@
     "./usage-fold": "./src/usage-fold.ts",
     "./usage-measurement": "./src/usage-measurement.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./turn-provenance-fold": "./src/turn-provenance-fold.ts",
     "./lifecycle-events": "./src/lifecycle-events.ts",
     "./process-identity": "./src/process-identity.mjs",

@@ -54,3 +54,24 @@ test('New chat opens an unsent draft rather than submitting the Home goal', () =
     window.removeEventListener(OPEN_NEW_CHAT_EVENT, receive);
   }
 });
+// #3312: the compact form, shown above a page of work, still says which Agent
+// and Model Start will run on — beside Start, without the "Using" caption —
+// and describes the Start button with it.
+test('the compact form names the identity Start uses, beside Start', () => {
+  render(<HomeChatStartForm identity="Codex · gpt-5.3-codex" compact />);
+  const start = screen.getByRole('button', { name: 'Start a chat' });
+  expect(start.getAttribute('aria-describedby')).toBeTruthy();
+  const note = document.getElementById(
+    start.getAttribute('aria-describedby') ?? '',
+  );
+  expect(note?.textContent).toBe('Codex · gpt-5.3-codex');
+  expect(screen.queryByText(/^Using /)).toBeNull();
+  // One identity on the form, not a caption and a note.
+  expect(screen.getAllByText('Codex · gpt-5.3-codex')).toHaveLength(1);
+});
+test('the compact form advertises nothing when no Agent is ready', () => {
+  render(<HomeChatStartForm compact />);
+  const start = screen.getByRole('button', { name: 'Start a chat' });
+  expect(start.getAttribute('aria-describedby')).toBeNull();
+  expect(document.querySelector('.home-view__goal-identity')).toBeNull();
+});

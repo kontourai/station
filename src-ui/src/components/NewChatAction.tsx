@@ -1,22 +1,28 @@
+import { Tooltip } from '@kontourai/ui/react';
 import type { ComponentProps } from 'react';
 import { Button } from './Button';
 import { NewChatGlyph } from './icons/Glyph';
 import './NewChatAction.css';
 
-/**
- * The same creation action in dock, inbox, and mobile chrome. `toolbar-icon`
- * renders it as an icon-only control in the toolbar's own button family, so
- * it matches the header buttons beside it instead of a filled primary.
- */
+type NewChatActionProps = Omit<
+  ComponentProps<typeof Button>,
+  'children' | 'title'
+> & {
+  children?: string;
+  title?: string;
+  iconOnly?: boolean;
+  appearance?: 'button' | 'toolbar-icon';
+};
+
+/** Shared creation action for dock, inbox, mobile and Coding chrome. */
 export function NewChatAction({
   className = '',
   children = 'New chat',
+  iconOnly = false,
   appearance = 'button',
+  title,
   ...props
-}: Omit<ComponentProps<typeof Button>, 'children'> & {
-  children?: string;
-  appearance?: 'button' | 'toolbar-icon';
-}) {
+}: NewChatActionProps) {
   if (appearance === 'toolbar-icon') {
     const {
       variant: _variant,
@@ -31,11 +37,25 @@ export function NewChatAction({
         type="button"
         className={`app-toolbar__icon-btn new-chat-action new-chat-action--icon ${className}`}
         aria-label="New chat"
-        title="New chat"
+        title={title ?? 'New chat'}
         {...rest}
       >
         <NewChatGlyph />
       </button>
+    );
+  }
+  if (iconOnly) {
+    return (
+      <Tooltip label={title ?? 'New chat'} placement="bottom">
+        <Button
+          variant="ghost"
+          className={`new-chat-action new-chat-action--icon ${className}`}
+          aria-label="New chat"
+          {...props}
+        >
+          <NewChatGlyph />
+        </Button>
+      </Tooltip>
     );
   }
   return (
@@ -43,6 +63,7 @@ export function NewChatAction({
       variant="primary"
       className={`new-chat-action ${className}`}
       aria-label="New chat"
+      title={title}
       {...props}
     >
       <NewChatGlyph />

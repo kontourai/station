@@ -295,8 +295,10 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
     const returned = [
       ...source.matchAll(/return\s*\{\s*messages:\s*([^,}\n]+)/g),
     ].map((match) => match[1]!.trim());
-    // The store path, the runtime-projection path, and the empty answer.
-    expect(returned).toHaveLength(3);
+    // #3112: the lineage's Sessions are read (store, then runtime
+    // projection, each) into one list that is sanitized once; the other
+    // answer is the empty one.
+    expect(returned).toHaveLength(2);
     for (const value of returned)
       expect(
         value === '[]' || value.startsWith('sanitizeServedMessages('),

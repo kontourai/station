@@ -75,7 +75,7 @@ export function deriveChatStatus(
       kind: 'approval',
       tone: 'attention',
       glyph: 'approval',
-      label: 'Approval needed',
+      label: 'Needs approval',
       count: input.approvalCount > 1 ? input.approvalCount : undefined,
       details: [],
       action: 'reveal-approval',
@@ -145,11 +145,11 @@ export function deriveChatStatus(
   }
   const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
-    if (!running) label = 'Still waiting';
-    details.push({
-      text: 'No response from the engine for',
-      since: silentSince,
-    });
+    // The ladder's word for a quiet run, not a second one: the strip says
+    // "No progress" with the clock, and its detail reads exactly like the
+    // row, "No progress · 4m" (the pill appends " · <duration>").
+    if (!running) label = 'No progress';
+    details.push({ text: 'No progress', since: silentSince });
   }
   return {
     kind: 'working',

@@ -28,6 +28,7 @@ import {
   verifyNativeDeviceRequestProof,
 } from '../services/identity/native-device-proof-verifier.js';
 import {
+  isRelayManagementHttpLeaf,
   pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
 } from './pairing-route-scopes.js';
@@ -135,26 +136,17 @@ export function nativeDeviceProofPilotRoute(
   method: string,
   path: string,
 ): boolean {
+  if (isRelayManagementHttpLeaf({ method, path })) return true;
   if (
     (method === 'GET' || method === 'HEAD') &&
-    (path === '/api/relay-management' ||
-      path === '/api/relay-management/capabilities' ||
-      /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access$/u.test(path))
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access$/u.test(path)
   )
     return true;
   if (
     method === 'POST' &&
-    ([
-      '/api/relay-management/approvals',
-      '/api/relay-management/approvals/revoke',
-      '/api/relay-management/invitations',
-    ].includes(path) ||
-      /^\/api\/relay-management\/devices\/[A-Za-z0-9_-]{43}\/(?:approve|deny)$/u.test(
-        path,
-      ) ||
-      /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access\/(?:invitations(?:\/[A-Za-z0-9_-]{1,128}\/revoke)?|members|transfer)$/u.test(
-        path,
-      ))
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access\/(?:invitations(?:\/[A-Za-z0-9_-]{1,128}\/revoke)?|members|transfer)$/u.test(
+      path,
+    )
   )
     return true;
   if (method === 'POST')
