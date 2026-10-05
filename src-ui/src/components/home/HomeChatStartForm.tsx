@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import {
   type NewChatIntent,
   OPEN_NEW_CHAT_EVENT,
@@ -10,10 +10,22 @@ export function HomeChatStartForm({
   identity,
   compact = false,
 }: {
+  /**
+   * The Agent and Model "Start a chat" will run on: Home's `startIdentity`,
+   * the `useNewChatSelectionModel` default selection for the context the
+   * start path opens in (`useNewChatStartContext`, the dock's remembered
+   * project or global), which is what `startWorkingDefaults` starts. Absent
+   * when no Agent is ready or that context's project is still loading, so
+   * nothing is advertised that Start would not use.
+   */
   identity?: string;
-  /** One line, no identity caption: the form above a page of work. */
+  /**
+   * One line, the form above a page of work. The identity moves beside the
+   * Start button as a muted note instead of a caption under the field.
+   */
   compact?: boolean;
 }) {
+  const identityId = useId();
   const [prompt, setPrompt] = useState('');
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
@@ -58,9 +70,15 @@ export function HomeChatStartForm({
           disabled={!prompt.trim()}
           pending={pending}
           pendingLabel="Preparing…"
+          aria-describedby={identity && compact ? identityId : undefined}
         >
           Start a chat
         </Button>
+        {identity && compact ? (
+          <span id={identityId} className="home-view__goal-identity">
+            {identity}
+          </span>
+        ) : null}
         <NewChatAction
           variant="link"
           disabled={pending}

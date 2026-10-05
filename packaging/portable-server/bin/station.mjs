@@ -2,11 +2,13 @@
 // report this archive's release identity and the Node.js actually executing
 // (so a caller can confirm the bundled runtime, not a host Node.js, is in
 // use); every other invocation is the Station CLI.
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The version directory itself, with every link resolved: a launcher can
+// reach this file through the installer's `current` link.
+const root = realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const [first] = process.argv.slice(2);
 // .station-release.json exists only in an assembled archive.
 const release = JSON.parse(
@@ -43,6 +45,14 @@ if (first === '--version' || first === '-v') {
     process.exit(1);
   }
   process.env.STATION_CHANNEL = release.channel;
+  // The CLI takes its working directory as the code root, which must be the
+  // version directory itself (#2675 W2): an installed version is recognized
+  // by its `versions/<version>` parent. bin/station's `cd -P` resolves
+  // `current` before this runs; cmd.exe's `cd` in bin\station.cmd cannot
+  // resolve the `current` junction, so the same directory reached through
+  // the link becomes its real path here.
+  if (process.cwd() !== root && realpathSync(process.cwd()) === root)
+    process.chdir(root);
   // Imported rather than run as the entry script: packages/cli/src/cli.ts
   // runs itself when process.argv[1] is its own module URL, which inside the
   // bundle it would be, running every command twice.

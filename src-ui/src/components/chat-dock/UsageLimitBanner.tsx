@@ -7,6 +7,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useUsageLimitRecovery } from '../../hooks/useUsageLimitRecovery';
 import type { ChatSession } from '../../types';
+import { clockTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import './UsageLimitBanner.css';
 
@@ -47,18 +48,6 @@ function settledNotice(recovery: ConnectionRecoveryProjection): string | null {
     default:
       return null;
   }
-}
-
-/** The reset as a local time, with the weekday when it is not today. */
-function formatReset(iso: string, nowMs: number): string {
-  const at = new Date(iso);
-  const time = at.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  return at.toDateString() === new Date(nowMs).toDateString()
-    ? time
-    : `${at.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
 }
 
 const isWaiting = (recovery: ConnectionRecoveryProjection | null) =>
@@ -236,7 +225,7 @@ function UsageLimitBannerFor({
   const dueKnown = Number.isFinite(dueMs) && recovery?.dueAt !== undefined;
   const resetPassed = dueKnown && dueMs <= nowMs;
   const resetLabel = dueKnown
-    ? formatReset(recovery?.dueAt as string, nowMs)
+    ? clockTime(Date.parse(recovery?.dueAt as string), nowMs)
     : undefined;
   const autoOn = recovery?.outcome === 'armed' && recovery.autoResume === true;
   // The reset time is said once, in the title. Resume now is always offered:
