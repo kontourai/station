@@ -10,9 +10,6 @@
  * fixture (fetch stub), and paired-device credentials stand in for the
  * people's authenticated requests.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -23,6 +20,7 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const runtimeSupport = vi.hoisted(() => {
   const service = new Proxy({}, { get: () => () => undefined });
@@ -56,6 +54,9 @@ const { createMCPToolProvenanceGeneration } = await import(
 const { FileSecretBindingAdministration, SecretBindingIntegrationService } =
   await import('../../secrets/secret-binding-administration.js');
 const { MCPService } = await import('../mcp-service.js');
+
+// Created first so its after-hook removes the home after everything else.
+const makeTempDir = trackTempDirs();
 
 const SERVER = 'mail';
 const PORT = 43142;
@@ -396,7 +397,7 @@ async function consentUrl(app: Hono, credential: Credential, code: string) {
 
 test('two principals each reach the MCP server with their own token and cannot use each other’s credential or binding', async () => {
   const fixture = await startFixture();
-  const home = await mkdtemp(join(tmpdir(), 'station-connected-accounts-'));
+  const home = makeTempDir('station-connected-accounts-');
   const custody = new MCPLocalConnectionCustody();
   try {
     const loader = new ConfigLoader({ projectHomeDir: home });
@@ -759,6 +760,5 @@ test('two principals each reach the MCP server with their own token and cannot u
     expect((await custody.shutdown()).state).toBe('settled');
     await fixture.close();
     vi.unstubAllGlobals();
-    await rm(home, { recursive: true, force: true });
   }
 });

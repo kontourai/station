@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 import { normalizePersistedToolServerReason } from '../../../security/tool-server-reason.js';
 import {
@@ -348,13 +349,14 @@ describe('OAuth error persistence safety', () => {
 });
 
 describe('connected-account credential ownership (#3279)', () => {
+  const makeTempDir = trackTempDirs();
   const ALICE = 'human:tailscale-serve:alice';
   const BOB = 'human:tailscale-serve:bob';
   const RESOURCE = 'https://resource.example/mcp';
   const REDIRECT = 'http://127.0.0.1:3141/oauth/callback';
 
   test('an existing instance token record keeps working and is never visible to a person', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-oauth-owner-'));
+    const home = makeTempDir('station-oauth-owner-');
     // Written exactly as the pre-#3279 provider wrote it: bucket = server id.
     const legacy = new StationToolServerOAuthProvider(
       new ToolServerCredentialStore(home),
@@ -390,7 +392,7 @@ describe('connected-account credential ownership (#3279)', () => {
   });
 
   test('people get distinct buckets in their own document and the shared document is untouched', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-oauth-owner-'));
+    const home = makeTempDir('station-oauth-owner-');
     const providerFor = (principalId: string, projectSlug?: string) => {
       const owner = principalCredentialOwner(principalId, projectSlug);
       return new StationToolServerOAuthProvider(
