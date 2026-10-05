@@ -16,10 +16,7 @@ import {
   pairedDeviceMayNotChooseDirectory,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
-import {
-  grantedPairingScope,
-  type PairingScopeContextStore,
-} from '../../security/pairing-route-scopes.js';
+import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 
 /** A 403 when `target` names a plain folder this device may not choose. */
 export function refuseUngrantedDirectoryWorkspace(
@@ -27,12 +24,7 @@ export function refuseUngrantedDirectoryWorkspace(
   target: { readonly workspace?: { readonly kind: string } },
 ): Response | undefined {
   if (target.workspace?.kind !== 'directory') return undefined;
-  if (
-    !pairedDeviceMayNotChooseDirectory(
-      c.req.raw,
-      grantedPairingScope(c as unknown as PairingScopeContextStore),
-    )
-  )
+  if (!pairedDeviceMayNotChooseDirectory(c.req.raw, grantedPairingScope(c)))
     return undefined;
   return c.json(
     {

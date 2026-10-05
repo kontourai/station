@@ -10,8 +10,6 @@
  * routes; the dispatch seams are recorders, so "no session is created" is
  * "the recorder was never called".
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   PAIRING_SCOPE_CODING_EXEC,
@@ -21,18 +19,17 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 const REFUSAL = {
@@ -46,8 +43,7 @@ const HANDLE = { conversationId: 'c-1', providerTurnId: 'turn-1' };
 
 async function fixture() {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
-  const root = mkdtempSync(join(tmpdir(), 'station-directory-authority-'));
-  roots.push(root);
+  const root = makeTempDir('station-directory-authority-');
   const folder = join(root, 'a-folder');
   const security = new EnvironmentSecurityService({
     homeDir: join(root, 'home'),
