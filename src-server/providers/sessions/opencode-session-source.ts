@@ -285,7 +285,8 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (result.value.length > this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
       }
-      for (const row of result.value.slice(0, this.maxCandidates)) {
+      // Every database contributes its newest; the merged list is capped below.
+      for (const row of result.value) {
         const registration = this.registrationFor(
           database,
           sourceHome.affinity,
