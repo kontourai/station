@@ -430,7 +430,7 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
         timeoutMs: 50,
         fs,
       });
-      expect(locations.get('hung')).toMatchObject({ kind: 'unavailable' });
+      expect(locations.get('hung')).toMatchObject({ kind: 'unchecked' });
     }
 
     expect(exists).toHaveBeenCalledTimes(1);
@@ -469,7 +469,7 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     );
     expect(MAX_UNSETTLED_FOLDER_CHECKS).toBe(3);
     expect(
-      [...locations.values()].every(({ kind }) => kind === 'unavailable'),
+      [...locations.values()].every(({ kind }) => kind === 'unchecked'),
     ).toBe(true);
   });
 
@@ -530,7 +530,7 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     });
 
     expect(joined.get('twin')).toEqual({
-      kind: 'unavailable',
+      kind: 'unchecked',
       reason: RUN_LOCATION_BUSY_REASON,
     });
     await first;
@@ -556,13 +556,13 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     });
 
     expect(locations.get('d')).toEqual({
-      kind: 'unavailable',
+      kind: 'unchecked',
       reason: RUN_LOCATION_BUSY_REASON,
     });
     expect(hung).toHaveBeenCalledTimes(3);
   });
 
-  test('a folder that never answers reads as unavailable within the time box, and its neighbours still answer', async () => {
+  test('a folder that never answers reads as unchecked (not refused) within the time box, and its neighbours still answer', async () => {
     const harness = createHome();
     await saveProject(harness.adapter, {
       slug: 'hung',
@@ -581,7 +581,7 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
 
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(locations.get('hung')).toEqual({
-      kind: 'unavailable',
+      kind: 'unchecked',
       reason: RUN_LOCATION_TIMED_OUT_REASON,
     });
     expect(locations.get('notes')).toEqual({ kind: 'none' });

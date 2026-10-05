@@ -273,6 +273,9 @@ export function StartProjectMenu({
         <p className="start-menu__hint start-menu__hint--path">
           <span className="start-menu__hint-lead">Runs in</span>
           <CwdBreadcrumb path={workspaceHint.path} />
+          {workspaceHint.kind === 'unverified' && (
+            <span className="start-menu__hint-lead">(not checked yet)</span>
+          )}
         </p>
       ) : (
         <p className="start-menu__hint">{workspaceHintText(workspaceHint)}</p>

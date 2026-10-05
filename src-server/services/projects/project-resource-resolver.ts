@@ -261,6 +261,12 @@ export const RUN_LOCATION_TIMEOUT_MS = 1500;
 export const RUN_LOCATION_TIMED_OUT_REASON =
   "Station could not check this project's folder in time (it may be on a drive that is not responding).";
 
+/**
+ * The folder was not looked at, or did not answer: the list read does not
+ * know where the project resolves, which is not the same as a refusal.
+ */
+class FolderNotCheckedError extends Error {}
+
 export const RUN_LOCATION_BUSY_REASON =
   'Station is still waiting on other project folders, so it did not check this one yet. Try again shortly.';
 
@@ -274,7 +280,7 @@ export const RUN_LOCATION_BUSY_REASON =
  * So at most `MAX_UNSETTLED_FOLDER_CHECKS` checks are ever out at once —
  * stuck or not, one read or many — which always leaves a thread for the rest
  * of the server. Further checks wait their turn, first in first out, within
- * their project's time box; one that never gets a turn reads `unavailable`
+ * their project's time box; one that never gets a turn reads `unchecked`
  * with `RUN_LOCATION_BUSY_REASON`, since nothing checked it. A check of a
  * folder that is already out joins that check instead of queueing another.
  * Healthy folders answer in well under a millisecond, so the limit costs
@@ -362,7 +368,7 @@ function guardFolderChecks(
             const index = waitingFolderChecks.indexOf(begin);
             if (index >= 0) waitingFolderChecks.splice(index, 1);
             pendingFolderChecks.delete(key);
-            reject(new Error(RUN_LOCATION_BUSY_REASON));
+            reject(new FolderNotCheckedError(RUN_LOCATION_BUSY_REASON));
           }, timeoutMs);
           deadline.unref?.();
         });
@@ -391,7 +397,7 @@ async function withRunLocationTimeout(
     timer = setTimeout(() => {
       const neverChecked = [...awaited].some((check) => !check.started);
       resolve({
-        kind: 'unavailable',
+        kind: 'unchecked',
         reason: neverChecked
           ? RUN_LOCATION_BUSY_REASON
           : RUN_LOCATION_TIMED_OUT_REASON,
@@ -485,7 +491,7 @@ export class ProjectResourceResolver {
    * and manifest per project, one bindings read for all of them), touches the
    * project folders only through async `fs.promises`, runs the projects
    * concurrently, and gives each one `timeoutMs` before it reads as
-   * `unavailable` — "could not check the folder". A folder that does not
+   * `unchecked` — "could not check the folder", which is not a refusal. A folder that does not
    * answer still holds a threadpool thread until its mount does; see
    * `MAX_UNSETTLED_FOLDER_CHECKS` for the limit that keeps one free.
    *
@@ -555,6 +561,8 @@ export class ProjectResourceResolver {
       if (stored && resolvePath(expandTilde(stored)) !== root)
         stored = undefined;
     } catch (error) {
+      if (error instanceof FolderNotCheckedError)
+        return { kind: 'unchecked', reason: error.message };
       return {
         kind: 'unavailable',
         reason: error instanceof Error ? error.message : String(error),

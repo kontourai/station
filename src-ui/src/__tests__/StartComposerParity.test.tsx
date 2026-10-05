@@ -1476,6 +1476,46 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     ui.cleanupListener();
   }, 30_000);
 
+  test('a project whose folder was not checked is not marked as refused', async () => {
+    const reason =
+      'Station is still waiting on other project folders, so it did not check this one yet. Try again shortly.';
+    state.projects = [
+      {
+        id: 'p2',
+        slug: 'slow',
+        name: 'Slow',
+        workingDirectory: '/work/slow',
+        runsAt: { kind: 'unchecked', reason },
+      },
+    ] as ProjectMetadata[];
+    deviceSettingsStore.set('chatDockProjectSlug', 'slow');
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('title')).toBe(
+        'Runs in /work/slow (not checked yet)',
+      ),
+    );
+    fireEvent.click(projectChip(home));
+    const menu = await screen.findByRole(
+      'dialog',
+      { name: 'Choose project' },
+      { timeout: 15_000 },
+    );
+    const slow = menu.querySelector('[data-context-value="slow"]')!;
+    const badges = [
+      ...slow.querySelectorAll('.new-chat-modal__no-cwd-badge'),
+    ].map((badge) => badge.textContent);
+    expect(badges).toEqual(['Not checked']);
+    expect(slow.textContent).not.toContain("Can't start");
+    expect(
+      slow
+        .querySelector('.new-chat-modal__cwd-breadcrumb')
+        ?.getAttribute('aria-label'),
+    ).toBe('Working directory: /work/slow');
+    ui.cleanupListener();
+  }, 30_000);
+
   test('a project the server says cannot start names no folder', async () => {
     const reason =
       "Project 'gone' cannot start here (missing): its folder no longer exists.";

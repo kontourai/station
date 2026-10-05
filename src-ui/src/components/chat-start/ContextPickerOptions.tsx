@@ -77,6 +77,7 @@ export function ContextPickerOptions({
         const folderless =
           opt.value !== GLOBAL_CONTEXT &&
           !opt.unavailable &&
+          !opt.unchecked &&
           !opt.workingDirectory?.trim();
         const mark = renderMark?.(opt);
         return (
@@ -110,6 +111,14 @@ export function ContextPickerOptions({
                 title={opt.unavailable}
               >
                 Can't start
+              </span>
+            )}
+            {opt.unchecked && (
+              <span
+                className="new-chat-modal__no-cwd-badge"
+                title={opt.unchecked}
+              >
+                Not checked
               </span>
             )}
             {folderless && (

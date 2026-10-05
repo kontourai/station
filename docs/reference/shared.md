@@ -544,7 +544,8 @@ type ProjectRunsAt =
   | { kind: 'folder'; path: string }
   | { kind: 'execution-root'; path: string }
   | { kind: 'none' }
-  | { kind: 'unavailable'; reason: string };
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'unchecked'; reason: string };
 ```
 
 `runsAt` is the directory the project resolves to on this Station, from the
@@ -556,19 +557,22 @@ different repository still reads as its directory here, and the start refuses
 it. It is not where every chat runs either: a chat in a worktree-isolated
 project runs in its own worktree. `none` means the project has no directory,
 so the agent decides: the home folder, an ACP connection's folder, or a
-private folder Station makes. `unavailable` means a start would be refused,
-or the folder did not answer within the list read's per-project time limit;
-`reason` says which. The list reads folders asynchronously and answers
+private folder Station makes. `unavailable` means a start would be refused (a
+missing folder or binding, an execution root outside its checkout), and
+`reason` says why. `unchecked` means Station did not find out this time: the
+folder did not answer within the list read's per-project time limit, or other
+folders were still being checked. It is not a refusal. The start composer shows
+the stored folder as not checked yet and lets the start resolve it. The list reads folders asynchronously and answers
 within that limit even when a drive does not respond, but a read on a drive
 that does not respond still holds one of the server's four file-system threads
 until the drive answers. So Station never has more than three folder checks out
 at once, across every list read, which always leaves a thread for the rest of
 the server. A check of a folder that is already being checked joins it, and
 further checks wait their turn within their project's limit. A project whose
-folder never got a turn reads `unavailable` with a reason that says it was not
-checked yet. While three folders on drives that do not respond are still being
-checked, no other folder gets a turn, so every project with a folder reads that
-way until one of those drives answers. A `runsAt` sent back in a
+folder never got a turn reads `unchecked` with a reason that says so.
+While three folders on drives that do not respond are still being checked, no
+other folder gets a turn, so every project with a folder reads `unchecked`
+until one of those drives answers. A `runsAt` sent back in a
 project update is ignored.
 
 ---

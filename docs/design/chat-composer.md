@@ -48,7 +48,8 @@ its accent, then name, folder, No project; the folder is the server's
 execution root; a project with no folder can be chosen and runs where the
 server puts it: the home folder, or for an ACP engine its connection folder or
 a private Station-managed workspace, which the chip and list say; a project a
-start would refuse names no folder, only the reason), and, beside
+start would refuse names no folder, only the reason; a folder the server did
+not get to check shows as not checked yet and Start stays available), and, beside
 Start, an overflow for visual skills. Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says

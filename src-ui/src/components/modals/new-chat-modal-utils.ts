@@ -70,7 +70,14 @@ export type NewChatWorkspaceHint =
   | { kind: 'home' }
   | { kind: 'managed' }
   /** #3370: the server says a start here would be refused, and why. */
-  | { kind: 'unavailable'; reason: string };
+  | { kind: 'unavailable'; reason: string }
+  /**
+   * The server did not check the folder this time (`runsAt.kind ===
+   * 'unchecked'`): the stored folder, marked as not checked. Not a refusal.
+   */
+  | { kind: 'unverified'; path: string }
+  /** Not checked, and no stored folder to show: only the short reason. */
+  | { kind: 'unchecked'; reason: string };
 
 /** The hint as one sentence, for a chip's folder line and the menu. */
 export function workspaceHintText(hint: NewChatWorkspaceHint): string {
@@ -81,6 +88,10 @@ export function workspaceHintText(hint: NewChatWorkspaceHint): string {
       return 'Runs in a private folder Station makes for this chat';
     case 'unavailable':
       // The server's sentence already opens "Project 'x' cannot start here".
+      return hint.reason;
+    case 'unverified':
+      return `Runs in ${hint.path} (not checked yet)`;
+    case 'unchecked':
       return hint.reason;
     default:
       return `Runs in ${hint.path}`;
@@ -100,7 +111,9 @@ export function projectRunDirectory(
   project: Pick<ProjectMetadata, 'runsAt' | 'workingDirectory'>,
 ): string | undefined {
   const runsAt = project.runsAt;
-  if (!runsAt) return project.workingDirectory?.trim() || undefined;
+  // Not checked this time: the stored folder is the best statement there is.
+  if (!runsAt || runsAt.kind === 'unchecked')
+    return project.workingDirectory?.trim() || undefined;
   return runsAt.kind === 'folder' || runsAt.kind === 'execution-root'
     ? runsAt.path
     : undefined;
@@ -211,6 +224,12 @@ export function resolveNewChatWorkspaceHint({
   if (project?.runsAt?.kind === 'unavailable') {
     return { kind: 'unavailable', reason: project.runsAt.reason };
   }
+  if (project?.runsAt?.kind === 'unchecked') {
+    const stored = project.workingDirectory?.trim();
+    return stored
+      ? { kind: 'unverified', path: stored }
+      : { kind: 'unchecked', reason: project.runsAt.reason };
+  }
   const projectDirectory = project ? projectRunDirectory(project) : undefined;
   if (projectDirectory) return { kind: 'project', path: projectDirectory };
 
@@ -314,6 +333,8 @@ export interface NewChatModalContextOption {
   workingDirectory?: string;
   /** Why a chat cannot start in this project here (#3370); absent when it can. */
   unavailable?: string;
+  /** Why the folder was not checked this time; not a refusal. */
+  unchecked?: string;
 }
 
 interface NewChatModalAgentGroup {
@@ -425,6 +446,9 @@ export function buildContextOptions(
       workingDirectory: projectRunDirectory(project),
       ...(project.runsAt?.kind === 'unavailable'
         ? { unavailable: project.runsAt.reason }
+        : {}),
+      ...(project.runsAt?.kind === 'unchecked'
+        ? { unchecked: project.runsAt.reason }
         : {}),
     });
   }

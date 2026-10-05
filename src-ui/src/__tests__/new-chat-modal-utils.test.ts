@@ -1848,6 +1848,35 @@ describe('new-chat-modal-utils', () => {
         expect(workspaceHintText(hint)).toBe(reason);
       });
 
+      test('a folder the server did not check is not a refusal: the stored folder, marked unverified', () => {
+        const runsAt = { kind: 'unchecked', reason: 'busy' };
+        expect(
+          resolveNewChatWorkspaceHint({
+            agent: { slug: 'station' } as any,
+            project: { ...folderless(runsAt), workingDirectory: '/work/mono' },
+            acpConnections,
+          }),
+        ).toEqual({ kind: 'unverified', path: '/work/mono' });
+        expect(
+          workspaceHintText({ kind: 'unverified', path: '/work/mono' }),
+        ).toBe('Runs in /work/mono (not checked yet)');
+        expect(
+          resolveNewChatWorkspaceHint({
+            agent: { slug: 'station' } as any,
+            project: folderless(runsAt),
+            acpConnections,
+          }),
+        ).toEqual({ kind: 'unchecked', reason: 'busy' });
+        const [, row] = buildContextOptions([
+          { ...folderless(runsAt), workingDirectory: '/work/mono' },
+        ]);
+        expect(row).toMatchObject({
+          workingDirectory: '/work/mono',
+          unchecked: 'busy',
+        });
+        expect(row).not.toHaveProperty('unavailable');
+      });
+
       test('the menu rows carry the same directory, and a refused project says so', () => {
         const options = buildContextOptions([
           folderless({ kind: 'execution-root', path: '/work/mono/app' }),

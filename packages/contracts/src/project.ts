@@ -70,14 +70,18 @@ export interface ProjectMetadata {
  *   binding or its `executionRoot`; absolute.
  * - `none`: no directory; the agent decides (home, an ACP connection's
  *   folder, or a private Station-managed one).
- * - `unavailable`: a start would be refused, or the folder could not be
- *   checked in time; `reason` says which.
+ * - `unavailable`: a start would be refused (a missing folder or binding, an
+ *   execution root outside its checkout…); `reason` says why.
+ * - `unchecked`: Station did not find out this time, because the folder did
+ *   not answer in time or other folders were still being checked. Not a
+ *   refusal: the start resolves it for real. `reason` says which.
  */
 export type ProjectRunsAt =
   | { kind: 'folder'; path: string }
   | { kind: 'execution-root'; path: string }
   | { kind: 'none' }
-  | { kind: 'unavailable'; reason: string };
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'unchecked'; reason: string };
 
 export interface MemberProjectView {
   version: 'station.member-project/v1';
