@@ -1,0 +1,7 @@
+{
+  "revision": "28e5469b332d7cdc0f2860edd37119c24f9f0820",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated the project chip bullet against StartComposer.tsx, HomeStartComposer.tsx and new-chat-modal-utils.ts: icon or colour, a linked checkout's chosen folder from runsAt, and a refused project showing the reason instead of a folder. Folderless home/ACP wording unchanged and matches resolveNewChatWorkspaceHint.","inputs":["docs/user/getting-started.md","packages/contracts/src/project.ts","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

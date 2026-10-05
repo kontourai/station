@@ -1,0 +1,7 @@
+{
+  "revision": "28e5469b332d7cdc0f2860edd37119c24f9f0820",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the Project session directory section and the project route/resolver mentions against project-resource-resolver.ts and projects.ts: starts still resolve through resolveProjectExecutionRoot with the live identity check (identity defaults to verify). The new list-only describeProjectRunLocation/runsAt is documented in reference/shared.md; no module-map claim becomes inaccurate.","inputs":["docs/architecture/module-map.md","src-server/routes/projects/projects.ts","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}
