@@ -35,7 +35,11 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // Started in another app; this Station cannot answer in it.
   external: new Set(['Elsewhere']),
   // You owe this session something. Which thing you owe is the refinement;
-  // "Waiting on you" is the generic rung when no kind was recorded.
+  // "Waiting on you" is the generic rung when no kind was recorded. The
+  // ladder's "Queued to send" is also a Needs-you word, but it comes from a
+  // device-local chat fact (a send queued offline) that a session list never
+  // carries, so this walk cannot produce it and the test below would refuse
+  // it; `work-status.test.ts` pins its lane.
   needsYou: new Set([
     'Needs approval',
     'Needs answer',
@@ -397,12 +401,15 @@ const SURFACE_ROOTS = [
   'components/chat/PendingApprovalStrip.tsx',
   'components/chat/TurnActivityProgress.tsx',
   'components/chat/ChatEmptyState.tsx',
+  // The transcript's approval marker sits beside the status pill (#3312).
+  'components/chat/ToolCallDisplay.tsx',
+  'components/chat/ToolCallBatch.tsx',
 ];
 
 /**
  * Retired words, each paired with the one that replaced it, so the failure
- * says what to write. Matched case-sensitively against string literals and
- * JSX text once comments are gone.
+ * says what to write. Matched case-blind against the source once comments
+ * are gone.
  */
 const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Review pending', 'Needs approval'],
@@ -454,6 +461,9 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
 const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   // The banner's one sentence form of the ladder's "No progress · Nm".
   ['components/home/ProgressSilenceObservation.tsx', 'No progress for'],
+  // A sentence about a refused decision reply ("The engine is still waiting
+  // for an answer."), not the retired "Still waiting" status label.
+  ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
   ['components/home/HomeActionSection.tsx', 'Model not reported'],
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
@@ -510,6 +520,8 @@ describe('one vocabulary on the work surfaces', () => {
       'components/chat-dock/ChatDockHeader.tsx',
       'components/home/HomeRecentWorkSection.tsx',
       'components/flow/WorkflowPlanPanel.tsx',
+      'components/chat/ToolCallDisplay.tsx',
+      'components/chat/ToolCallBatch.tsx',
     ]) {
       expect(names).toContain(guarded);
     }
@@ -521,8 +533,11 @@ describe('one vocabulary on the work surfaces', () => {
     for (const file of files) {
       const name = relative(SRC_ROOT, file);
       const source = withoutComments(readFileSync(file, 'utf8'));
+      // Case-blind: a retired word is retired at the start of a label and
+      // mid-sentence alike ("Awaiting approval", "2 awaiting approval").
+      const folded = source.toLowerCase();
       for (const [retired, use] of RETIRED) {
-        if (!source.includes(retired)) continue;
+        if (!folded.includes(retired.toLowerCase())) continue;
         if (RETIRED_ALLOWED.some(([f, r]) => f === name && r === retired))
           continue;
         offenders.push(`${name}: "${retired}" — write "${use}"`);

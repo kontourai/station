@@ -1139,7 +1139,7 @@ export function isDurableActiveChat(chat: {
  * Whether a chat is WORK — whether anything has been put into it.
  *
  * #1582 B9: a chat created and never typed into counted as "1 open chat" and
- * produced a "Continue most recent work" card, and a reload made both
+ * produced a Continue card on Home, and a reload made both
  * disappear. It was a draft the store admits to its live map and never writes.
  * The count and the card read the raw map; only the write path applied a
  * predicate, so the two surfaces disagreed about the same chat.

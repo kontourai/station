@@ -148,3 +148,90 @@ describe('NativeDeclaredPullRequestResolver', () => {
     await expect(subject.read(request)).resolves.toBeNull();
   });
 });
+
+// #3161: the same exact read for a caller that names a pull request by the
+// link store's identity and has no provider-native id.
+describe('NativeDeclaredPullRequestResolver.readIdentity', () => {
+  const named = {
+    provider: 'github',
+    host: 'github.com',
+    owner: 'kontourai',
+    repository: 'station',
+    ref: '44',
+    workingDirectory: '/workspace',
+  };
+  const exact = pullRequest({
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'kontourai', name: 'station' },
+    ref: '44',
+    nativeId: '9044',
+  });
+
+  test('returns the provider-observed identity, native id included', async () => {
+    const { resolver: subject } = resolver(exact);
+    await expect(subject.readIdentity(named)).resolves.toEqual({
+      kind: 'pull-request',
+      provider: 'github',
+      host: 'github.com',
+      repository: { owner: 'kontourai', name: 'station' },
+      ref: '44',
+      nativeId: '9044',
+    });
+  });
+
+  test('names differing only in case are the same repository; the provider casing is returned', async () => {
+    const { resolver: subject } = resolver(exact);
+    await expect(
+      subject.readIdentity({
+        ...named,
+        owner: 'Kontourai',
+        repository: 'STATION',
+      }),
+    ).resolves.toMatchObject({
+      repository: { owner: 'kontourai', name: 'station' },
+    });
+  });
+
+  // The native declaration tool keeps its exact comparison.
+  test('the native read stays exact about case', async () => {
+    const { resolver: subject } = resolver(exact);
+    await expect(
+      subject.read({ ...request, owner: 'Kontourai', nativeId: '9044' }),
+    ).resolves.toBeNull();
+  });
+
+  // `station-2` is not `station`: the workspace's repository is compared as
+  // its own owner and name, so a longer name sharing a prefix is refused
+  // before any provider is asked.
+  test.each([
+    [
+      'a repository whose name extends the workspace repository',
+      { repository: 'station-2' },
+    ],
+    [
+      'a repository whose name is a prefix of the workspace repository',
+      { repository: 'stat' },
+    ],
+    ['another owner', { owner: 'kontourai-2' }],
+  ])('refuses %s without reading the provider', async (_case, change) => {
+    const { resolver: subject, getPullRequestByIdentity } = resolver(exact);
+    await expect(
+      subject.readIdentity({ ...named, ...change }),
+    ).resolves.toBeNull();
+    expect(getPullRequestByIdentity).not.toHaveBeenCalled();
+  });
+
+  // The provider's own answer is checked too: each case changes one field.
+  test.each([
+    ['another pull request number', { ref: '45' }],
+    [
+      'another repository',
+      { repository: { owner: 'kontourai', name: 'station-2' } },
+    ],
+    ['another provider', { provider: 'gitlab' }],
+  ])('refuses a provider answer for %s', async (_case, change) => {
+    const { resolver: subject } = resolver({ ...exact, ...change });
+    await expect(subject.readIdentity(named)).resolves.toBeNull();
+  });
+});

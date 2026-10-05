@@ -35,7 +35,10 @@ const refetchSessions = vi.fn().mockResolvedValue(undefined);
 const useLiveActivityQuery = vi.hoisted(() =>
   vi.fn(() => ({ data: undefined })),
 );
-let sessions: Array<Record<string, unknown>> = [];
+// The mocked list payload. Most tests hand-build loose fixtures; the
+// cross-surface block below feeds typed summaries, since it also passes them
+// to `buildOrchestrationItems` / `buildWorkFacts` directly.
+let sessions: Array<Record<string, unknown> | OrchestrationSessionSummary> = [];
 
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
@@ -136,6 +139,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { createRef } from 'react';
 import { renderWithIsolatedConnections } from '../../../__tests__/renderWithIsolatedConnections';
@@ -858,13 +862,71 @@ describe('Home, the dock and Activity agree on one item', () => {
       matches: false,
       removeEventListener: vi.fn(),
     }));
-    sessions = [];
+    summaries = [];
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
+
+  /** What this block's surfaces read, typed in full: the list mock, Home and
+   *  the dock all receive these exact summaries. */
+  let summaries: OrchestrationSessionSummary[] = [];
+
+  function summary(
+    threadId: string,
+    overrides: Partial<OrchestrationSessionSummary> = {},
+  ): OrchestrationSessionSummary {
+    return {
+      provider: 'claude',
+      threadId,
+      status: 'ready',
+      controlMode: 'station-owned',
+      lifecycleState: 'completed',
+      hasActiveTurn: false,
+      model: 'claude-sonnet',
+      answerability: { answerable: true },
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 3,
+      createdAt: minutesAgo(3),
+      updatedAt: minutesAgo(3),
+      displayTitle: threadId,
+      ...overrides,
+    };
+  }
+
+  /** `runningChat()`, typed: one open turn started at `startedAt`. */
+  function runningSummary(startedAt: string): OrchestrationSessionSummary {
+    return summary('Refactor the parser', {
+      lifecycleState: 'running',
+      hasActiveTurn: true,
+      projectSlug: 'station',
+      assignedAgentSlug: agentId('reviewer'),
+      conversationId: 'conv-parser',
+      turnOrigin: {
+        latest: {
+          version: 1,
+          actor: { kind: 'operator' },
+          reported: { version: 1, surface: 'cli', build: null },
+        },
+        hasOtherOrigins: false,
+      },
+      conversationActivity: {
+        conversationId: 'conv-parser',
+        asOfSequence: 4,
+        openTurn: {
+          turnId: 'turn-1',
+          threadId: 'Refactor the parser',
+          startedAt,
+        },
+        runningTools: [
+          { name: 'Bash', callId: 'call-1', startedAt: minutesAgo(1) },
+        ],
+      },
+    });
+  }
 
   function homeModel(items: ReturnType<typeof buildOrchestrationItems>) {
     return {
@@ -874,7 +936,7 @@ describe('Home, the dock and Activity agree on one item', () => {
       workItems: items,
       workFacts: buildWorkFacts({
         items,
-        sessions: sessions as unknown as OrchestrationSessionSummary[],
+        sessions: summaries,
       }),
       workLoading: false,
       workDegraded: false,
@@ -890,14 +952,9 @@ describe('Home, the dock and Activity agree on one item', () => {
   }
 
   function surfaces() {
-    const items = buildOrchestrationItems(
-      sessions as unknown as OrchestrationSessionSummary[],
-      [],
-    );
-    const workFacts = buildWorkFacts({
-      items,
-      sessions: sessions as unknown as OrchestrationSessionSummary[],
-    });
+    sessions = summaries;
+    const items = buildOrchestrationItems(summaries, []);
+    const workFacts = buildWorkFacts({ items, sessions: summaries });
     const activity = renderView().container;
     const home = render(
       <HomeSurface
@@ -947,20 +1004,7 @@ describe('Home, the dock and Activity agree on one item', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime(NOW);
     const startedAt = new Date(NOW - 5_000).toISOString();
-    const chat = runningChat();
-    sessions = [
-      {
-        ...chat,
-        conversationActivity: {
-          ...(chat.conversationActivity as Record<string, unknown>),
-          openTurn: {
-            turnId: 'turn-1',
-            threadId: 'Refactor the parser',
-            startedAt,
-          },
-        },
-      },
-    ];
+    summaries = [runningSummary(startedAt)];
     const { activity, home, dock } = surfaces();
     const read = () => ({
       home: home.querySelector('.inbox-row__elapsed')?.textContent,
@@ -989,8 +1033,8 @@ describe('Home, the dock and Activity agree on one item', () => {
   test('a group heading reads "Needs you · 1" wherever a count shows, as visible text in the UI face', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
-    sessions = [
-      session('Answer my question', { lifecycleState: 'needs_input' }),
+    summaries = [
+      summary('Answer my question', { lifecycleState: 'needs_input' }),
     ];
     const { activity, home, dock, sheet } = surfaces();
     const needsYouLabel = (root: HTMLElement) => {

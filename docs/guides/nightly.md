@@ -94,8 +94,9 @@ artifacts.
 This is the platform-array schema v2 manifest. On macOS and Linux, `install.sh`
 selects the host's archive, verifies its signed size and digest, and installs
 it under `versions/<version>` with its bundled Node.js and a forwarding
-launcher. On Windows, `install.ps1` so far only stages a verified version
-(`STATION_INSTALL_STAGE_ONLY=1`). Set `STATION_CHANNEL=nightly` and
+launcher. On Windows, `install.ps1` installs it the same way under a
+`current` junction with a `station-nightly.cmd` launcher (see
+[Windows archive installs](release-channel-ports.md#windows-archive-installs)). Set `STATION_CHANNEL=nightly` and
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to an available signed Nightly manifest.
 Installer support does not establish that publication is enabled or that a
 release has been installed successfully; see the
