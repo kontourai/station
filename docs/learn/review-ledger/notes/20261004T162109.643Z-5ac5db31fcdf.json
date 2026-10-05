@@ -1,0 +1,7 @@
+{
+  "revision": "6c93f742ee06f2d58b4d51b0ab7ba3d2c2c38893",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Touch-floor paragraph re-checked. The index.css (hover: none) block still holds the send-blocked Remove attachments rule. The Diff head tools declare their floor in DiffPanel.css under (hover: none) because that lazy chunk loads after the entry sheet and wins a same-specificity tie. A Chromium cascade test in a hasTouch context measures 44px boxes with no overlap. No other claim in the guide changed.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

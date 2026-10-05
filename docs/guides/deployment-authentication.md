@@ -239,7 +239,12 @@ the shared-work list, history, document and publication receipt. Shared work is 
 entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
 admits those specific paths; the
 [shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts)
-independently require current membership and publication. Protected reads set
+independently require current membership and publication. A member's
+publication read returns the same summary the shared-work list gives for a Task
+currently shared into that Project incarnation. An unshared, stale, unknown or
+other-scope Task gets the routes' uniform not-found response, so a member cannot
+tell them apart. Only the operator sees the `unshared` review state, and sharing
+and unsharing stay operator-only. Protected reads set
 `Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below are the only
@@ -624,7 +629,9 @@ exchange and revoke, plus `/api/account-auth/accept-invitation`. GET/HEAD admits
 `publication` leaves at `/api/projects/:slug/shared-work/:taskId/`. Neutral
 handshake/status/identity observations may use Device proof alone when no
 account material is supplied; account-bearing requests and Project reads retain
-current account verification. Everything else — pairing, consent, terminal,
+current account verification. The status exception requires verified native
+Device proof; an ordinary account-bound Device with an account session still
+cannot read `/api/system/status`. Everything else — pairing, consent, terminal,
 plugin, operator and admin surfaces — refuses proof authority even for a broadly
 scoped Device. Each request re-proves: the JWS is verified against the exact
 received bytes and private peer provenance, the JTI is consumed once, and the

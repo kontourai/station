@@ -1,0 +1,7 @@
+{
+  "revision": "a7c4261add7c6a1ec7f976b77f0954f40e2b1af7",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Re-reviewed after merge of origin/main. Only source change is docs/reference/sdk.md (SDK refusal helper adoption, x-station-envelope header, shared-task publication read). AGENTS.md only points to the SDK reference, forbids app-internal imports and routes to gate:for; all three statements still hold and nothing in it duplicates the changed prose.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

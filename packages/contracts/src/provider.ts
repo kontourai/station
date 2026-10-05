@@ -245,6 +245,28 @@ export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
   'stationConfinementGrantor';
 
 /**
+ * #3323: how Station came by the delegation context a dispatch route stamped
+ * on the session it started (or on a paired-Station dispatch record):
+ *
+ * - `caller-derived`: from the verified station-control caller's own session
+ *   records (`createRequestDelegationResolver`).
+ * - `runtime-attested`: a claim Station's own runtime attested
+ *   (`delegation-attestation.ts`), e.g. its own engine's pooled child.
+ * - `direct-claim`: passed through from a request outside this Station's
+ *   process (a peer Station, an operator, device or hosted-user credential),
+ *   which this Station cannot verify.
+ *
+ * Absent on a session no dispatch route started with a context. Reserved: a
+ * caller-supplied value is stripped before the route's own value is written.
+ */
+export const DELEGATION_PROVENANCE_METADATA_KEY = 'stationDelegationProvenance';
+
+export type DelegationProvenance =
+  | 'caller-derived'
+  | 'runtime-attested'
+  | 'direct-claim';
+
+/**
  * Complete set of orchestration evidence fields a public caller may never
  * provide. Keep this list aligned with session-summary model projections:
  * launch plan, typed receipt, requested/effective selector and options, and
@@ -273,6 +295,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  DELEGATION_PROVENANCE_METADATA_KEY,
 ] as const;
 
 /**

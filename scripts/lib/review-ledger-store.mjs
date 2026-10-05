@@ -1,37 +1,24 @@
-// Storage layout of the documentation review ledger (#2936).
-//
-// GitHub computes mergeability on the server with the default text merge; it
-// never runs local merge drivers. The layout is therefore chosen so that the
-// default merge separates independent reviews and still collides on a genuine
-// same-input clash:
-//
-//   docs/learn/review-ledger/ledger.json            { version, coverageBaseline }
-//   docs/learn/review-ledger/records/<doc>.json     one reviewed document
-//   docs/learn/review-ledger/captures/<png>.json    one capture's source review
-//   docs/learn/review-ledger/notes/<time>-<hash>.json  one recording run's notes
-//
-// - Each document or source binding is one line holding its digest and the
-//   commit that contains those bytes, and every mutable line is separated by
-//   an unchanged blank line. Git conflicts on adjacent changed lines, so the
-//   separator is what lets two branches refresh different sources of one
-//   record. Refreshing the same source on two branches changes the same line
-//   and conflicts.
-// - Review notes are append-only files named by time and content hash. Two
-//   branches add different files, which never conflict; editing an existing
-//   note changes its hash and is refused.
-// - `checks` and `reviewNotes` inside a record or capture file are the notes
-//   recorded before this layout. They are never appended to.
-//
-// Every consumer reads the compiled form through this module:
-// `readReviewState` for the working tree and `readReviewStateAt` for a commit,
-// which also reads the single-file layout that preceded this one.
+// Human review decisions and append-only notes; freshness is derived from Git.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import nodePath from 'node:path';
 import {
   createLearningSourceReader,
   isLearningSourcePath,
 } from './learning-source-reader.mjs';
 import { isBindingPath } from './review-binding.mjs';
+import { readGitObjects } from './review-git.mjs';
+
+export { readGitObjects } from './review-git.mjs';
+
+import { deriveReviewHistory } from './review-history.mjs';
 
 export const REVIEW_LEDGER_DIR = 'docs/learn/review-ledger';
 export const REVIEW_LEDGER_INDEX = `${REVIEW_LEDGER_DIR}/ledger.json`;
@@ -40,6 +27,15 @@ export const LEGACY_REVIEW_LEDGER = 'docs/learn/review-ledger.json';
 /** Capture metadata; the capture reviews live in the ledger directory. */
 export const LEARNING_MEDIA_MANIFEST = 'docs/learn/media.json';
 export const REVIEW_LEDGER_VERSION = 2;
+
+/**
+ * Longest repo-relative ledger file path accepted (#3036). Windows MAX_PATH is
+ * 260 including the terminating NUL, so 259 usable characters; an 80-character
+ * checkout root and one separator leave 178. On c1d07db19c the longest record
+ * file is 137 characters and the longest capture file 87, so this is a ceiling
+ * that only a pathological document path reaches, not a ratchet to maintain.
+ */
+export const REVIEW_LEDGER_PATH_BUDGET = 178;
 
 const RECORDS = `${REVIEW_LEDGER_DIR}/records/`;
 const CAPTURES = `${REVIEW_LEDGER_DIR}/captures/`;
@@ -92,10 +88,24 @@ function serializeMembers(members) {
   return `{\n${blocks.join(',\n\n')}\n}\n`;
 }
 
-const binding = ({ path, digest, revision }) => ({ path, digest, revision });
+const binding = (source) =>
+  typeof source === 'string' ? { path: source } : source;
 
-/** @param {{ path: string, kind: string, state: string, summary: string, limits: string, document: { digest: string, revision: string }, sources: { path: string, digest: string, revision: string }[], checks: string[] }} record */
+/** @param {{ path: string, kind: string, state: string, summary: string, limits: string, document?: { digest: string, revision: string }, sources: (string | { path: string, digest: string, revision: string })[], checks: string[] }} record */
 export function serializeRecordFile(record) {
+  if (!record.document)
+    return serializeMembers(
+      ['path', 'kind', 'state', 'summary', 'limits', 'sources', 'checks'].map(
+        (key) => [
+          key,
+          key === 'sources'
+            ? record.sources.map((source) =>
+                typeof source === 'string' ? source : source.path,
+              )
+            : record[key],
+        ],
+      ),
+    );
   return serializeMembers([
     ['path', record.path],
     ['kind', record.kind],
@@ -115,7 +125,16 @@ export function serializeRecordFile(record) {
 export function serializeCaptureReviewFile(capture) {
   return serializeMembers([
     ['path', capture.path],
-    ['sources', capture.sources.map(binding)],
+    [
+      'sources',
+      capture.sources.map((source) =>
+        typeof source === 'string'
+          ? source
+          : source.digest
+            ? source
+            : source.path,
+      ),
+    ],
     ['reviewNotes', capture.reviewNotes],
   ]);
 }
@@ -124,14 +143,21 @@ export function serializeCaptureReviewFile(capture) {
 export function serializeNotesFile(run) {
   return serializeMembers([
     ['revision', run.revision],
-    ['notes', run.notes.map(({ path, note }) => ({ path, note }))],
+    [
+      'notes',
+      run.notes.map(({ path, note, inputs }) => ({
+        path,
+        note,
+        ...(inputs === undefined ? {} : { inputs }),
+      })),
+    ],
   ]);
 }
 
-/** @param {{ coverageBaseline?: string }} index */
+/** @param {{ version?: number, coverageBaseline?: string | null }} index */
 export function serializeLedgerIndex(index) {
   return serializeMembers([
-    ['version', REVIEW_LEDGER_VERSION],
+    ['version', index.version ?? REVIEW_LEDGER_VERSION],
     ['coverageBaseline', index.coverageBaseline ?? null],
   ]);
 }
@@ -201,10 +227,19 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
     throw reviewError('invalid-shape', 'Unknown review record layout mode', {
       file,
     });
+  // parseCanonical reports malformed JSON; this read only picks the layout.
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {}
+  const keys =
+    parsed && typeof parsed === 'object' && Object.hasOwn(parsed, 'document')
+      ? RECORD_KEYS
+      : RECORD_KEYS.filter((key) => key !== 'document');
   const record = parseCanonical(
     file,
     text,
-    RECORD_KEYS,
+    keys,
     serializeRecordFile,
     recordLayout === 'canonical',
   );
@@ -214,32 +249,38 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
       `Review record is not stored at its path: ${file}`,
       { file },
     );
-  exactKeys(record.document, ['digest', 'revision'], file);
   const validIdentity = (value) =>
     typeof value.digest === 'string' &&
     typeof value.revision === 'string' &&
     /^[a-f0-9]{64}$/.test(value.digest) &&
     /^[a-f0-9]{40}$/.test(value.revision);
-  if (!validIdentity(record.document))
-    throw reviewError(
-      'invalid-shape',
-      `Invalid review document binding: ${file}`,
-      { file },
-    );
+  // A path-only record names its sources; the older layout binds the document
+  // and each source to digests. One record never mixes the two.
+  const pathOnly = !Object.hasOwn(record, 'document');
+  if (!pathOnly) {
+    exactKeys(record.document, ['digest', 'revision'], file);
+    if (!validIdentity(record.document))
+      throw reviewError(
+        'invalid-shape',
+        `Invalid review document binding: ${file}`,
+        { file },
+      );
+  }
   const seen = new Set();
   for (const source of record.sources) {
-    exactKeys(source, ['path', 'digest', 'revision'], file);
+    if (!pathOnly) exactKeys(source, ['path', 'digest', 'revision'], file);
+    const path = pathOnly ? source : source.path;
     if (
-      !isBindingPath(source.path) ||
-      seen.has(source.path) ||
-      !validIdentity(source)
+      (pathOnly ? typeof source !== 'string' : !validIdentity(source)) ||
+      !isBindingPath(path) ||
+      seen.has(path)
     )
       throw reviewError(
         'invalid-shape',
         `Invalid review source binding: ${file}`,
         { file },
       );
-    seen.add(source.path);
+    seen.add(path);
   }
   return record;
 }
@@ -285,7 +326,24 @@ function parseNotesFile(file, text) {
       { file },
     );
   for (const entry of run.notes) {
-    exactKeys(entry, ['path', 'note'], file);
+    exactKeys(
+      entry,
+      Object.hasOwn(entry, 'inputs')
+        ? ['path', 'note', 'inputs']
+        : ['path', 'note'],
+      file,
+    );
+    if (
+      entry.inputs !== undefined &&
+      (!Array.isArray(entry.inputs) ||
+        entry.inputs.some(
+          (input) => !isLearningSourcePath(input.split('#')[0]),
+        ) ||
+        new Set(entry.inputs).size !== entry.inputs.length)
+    )
+      throw reviewError('invalid-shape', `Invalid covered inputs in ${file}`, {
+        file,
+      });
     if (
       !isLearningSourcePath(entry.path) ||
       typeof entry.note !== 'string' ||
@@ -304,7 +362,7 @@ function parseNotesFile(file, text) {
  */
 export function parseReviewLedgerFiles(
   files,
-  { recordLayout = 'canonical' } = {},
+  { recordLayout = 'canonical', enforcePathBudget = true } = {},
 ) {
   const indexText = files.get(REVIEW_LEDGER_INDEX);
   if (indexText === undefined)
@@ -318,7 +376,7 @@ export function parseReviewLedgerFiles(
     INDEX_KEYS,
     serializeLedgerIndex,
   );
-  if (index.version !== REVIEW_LEDGER_VERSION)
+  if (![2, 3].includes(index.version))
     throw reviewError(
       'unsupported-version',
       `Documentation review ledger requires version ${REVIEW_LEDGER_VERSION}.`,
@@ -328,6 +386,13 @@ export function parseReviewLedgerFiles(
   /** @type {Map<string, { file: string, data: any }>} */
   const captures = new Map();
   const notes = [];
+  for (const file of files.keys())
+    if (enforcePathBudget && file.length > REVIEW_LEDGER_PATH_BUDGET)
+      throw reviewError(
+        'path-too-long',
+        `Review ledger path is ${file.length} characters, over the ${REVIEW_LEDGER_PATH_BUDGET} budget that keeps checkouts under the Windows 260-character limit: ${file}; shorten or move the document`,
+        { file },
+      );
   for (const [file, text] of [...files].sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0,
   )) {
@@ -354,15 +419,23 @@ export function parseReviewLedgerFiles(
 function notesByPath(notes) {
   const byPath = new Map();
   for (const { file, data } of notes)
-    for (const { path, note } of data.notes) {
+    for (const { path, note, inputs } of data.notes) {
       const list = byPath.get(path) ?? [];
-      list.push({ file, revision: data.revision, note });
+      list.push({
+        file,
+        revision: data.revision,
+        note,
+        ...(inputs === undefined ? {} : { inputs }),
+      });
       byPath.set(path, list);
     }
   return byPath;
 }
 
-/** The compiled record every consumer evaluates. */
+/**
+ * The shared compiled record: old byte bindings or derived history metadata.
+ * @returns {{ path: string, kind: string, state: string, summary: string, limits: string, documentDigest?: string, documentRevision?: string, historyChanges?: string[], reviewBaseline?: string, historyUnavailable?: string, sources: { path: string, digest?: string, revision?: string }[], checks: string[], notes: { file: string, revision: string, note: string, inputs?: string[] }[] }}
+ */
 function compileRecord(data, notes = []) {
   return {
     path: data.path,
@@ -370,18 +443,27 @@ function compileRecord(data, notes = []) {
     state: data.state,
     summary: data.summary,
     limits: data.limits,
-    documentDigest: data.document.digest,
-    documentRevision: data.document.revision,
+    ...(data.document
+      ? {
+          documentDigest: data.document.digest,
+          documentRevision: data.document.revision,
+        }
+      : { historyChanges: [] }),
     sources: data.sources.map(binding),
-    checks: [...data.checks, ...notes.map(({ note }) => note)],
+    checks: [...new Set([...data.checks, ...notes.map(({ note }) => note)])],
     notes,
   };
 }
 
 function compileCaptureReview(data, notes = []) {
   return {
+    ...(data.sources.every((source) => typeof source === 'string')
+      ? { historyChanges: [] }
+      : {}),
     sources: data.sources.map(binding),
-    reviewNotes: [...data.reviewNotes, ...notes.map(({ note }) => note)],
+    reviewNotes: [
+      ...new Set([...data.reviewNotes, ...notes.map(({ note }) => note)]),
+    ],
     notes,
   };
 }
@@ -430,6 +512,7 @@ function joinLearningMedia(manifest, reviews) {
  * Compile parsed ledger files (and optionally the capture manifest).
  * @param {ReturnType<typeof parseReviewLedgerFiles>} parsed
  * @param {any} [manifest] parsed media.json, when tracked
+ * @returns {{ ledger: { version: number, coverageBaseline?: string, layoutVersion?: number, historyUnavailable?: string, records: ReturnType<typeof compileRecord>[] }, media: ReturnType<typeof joinLearningMedia> | undefined }}
  */
 export function compileReviewState(parsed, manifest) {
   const byPath = notesByPath(parsed.notes);
@@ -451,6 +534,7 @@ export function compileReviewState(parsed, manifest) {
     ledger: {
       version: REVIEW_LEDGER_VERSION,
       coverageBaseline: parsed.index.coverageBaseline ?? undefined,
+      ...(parsed.index.version === 3 ? { layoutVersion: 3 } : {}),
       records,
     },
     media:
@@ -525,6 +609,61 @@ function git(root, args, input) {
   });
 }
 
+/**
+ * Note files (repo-relative) at a commit.
+ * @param {string} root
+ * @param {string} ref
+ */
+export function listReviewNoteFilesAt(root, ref) {
+  return git(root, ['ls-tree', '-r', '-z', '--name-only', ref, '--', NOTES])
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean);
+}
+
+/**
+ * Write a batch of ledger files, rolling every change back if one write fails
+ * (#3036). Existing files get their prior bytes back and files this call
+ * created are removed; anything that cannot be restored is listed.
+ * @param {string} root
+ * @param {Map<string, string>} after repo-relative file -> new text
+ * @param {Map<string, string>} before repo-relative file -> prior text
+ * @returns {string[]} files written
+ */
+export function writeReviewFiles(root, after, before) {
+  const touched = [];
+  try {
+    for (const [file, text] of after) {
+      if (before.get(file) === text) continue;
+      const target = nodePath.join(root, file);
+      const prior = existsSync(target) ? readFileSync(target) : undefined;
+      mkdirSync(nodePath.dirname(target), { recursive: true });
+      touched.push({ file, target, prior });
+      writeFileSync(target, text);
+    }
+  } catch (cause) {
+    const unrestored = [];
+    for (const { file, target, prior } of [...touched].reverse()) {
+      try {
+        if (prior === undefined) rmSync(target, { force: true });
+        else writeFileSync(target, prior);
+      } catch {
+        unrestored.push(file);
+      }
+    }
+    throw reviewError(
+      'write-failed',
+      `Writing the review ledger failed (${cause instanceof Error ? cause.message : String(cause)}); ${
+        unrestored.length
+          ? `could not restore: ${unrestored.join(', ')}`
+          : 'every file written so far was restored'
+      }`,
+      { unrestored, cause },
+    );
+  }
+  return touched.map(({ file }) => file);
+}
+
 /** Working-tree ledger files, tracked or not yet added. */
 export function listReviewLedgerFiles(root) {
   const reader = createLearningSourceReader(root);
@@ -569,36 +708,11 @@ export function readReviewFiles(root) {
  * The compiled ledger and capture manifest of a working tree.
  * @param {string} root
  */
-export function readReviewState(root) {
+export function readReviewState(root, { history = true } = {}) {
   const { parsed, manifest } = readReviewFiles(root);
-  return compileReviewState(parsed, manifest);
-}
-
-/**
- * Read `<revision>:<path>` objects in one `git cat-file --batch`; an absent
- * object (unknown revision or path) is undefined.
- * @param {string} root
- * @param {string[]} specs
- * @returns {(Buffer | undefined)[]}
- */
-export function readGitObjects(root, specs) {
-  if (!specs.length) return [];
-  const output = git(
-    root,
-    ['cat-file', '--batch'],
-    specs.map((spec) => `${spec}\n`).join(''),
-  );
-  let offset = 0;
-  return specs.map(() => {
-    const end = output.indexOf(10, offset);
-    const header = output.subarray(offset, end).toString('utf8');
-    offset = end + 1;
-    if (/ (missing|ambiguous)$/.test(header)) return undefined;
-    const size = Number(header.split(' ')[2]);
-    const bytes = output.subarray(offset, offset + size);
-    offset += size + 1;
-    return bytes;
-  });
+  const state = compileReviewState(parsed, manifest);
+  if (history && parsed.index.version === 3) deriveReviewHistory(root, state);
+  return state;
 }
 
 function readBlobsAt(root, ref, paths) {
@@ -645,6 +759,10 @@ export function readReviewStateAt(root, ref, { purpose } = {}) {
       parseReviewLedgerFiles(
         new Map(files.map((file) => [file, blobs.get(file).toString('utf8')])),
         {
+          // History and base reads must still parse a ledger that carries an
+          // over-budget path, or no PR could delete it. The budget guards the
+          // working tree (readReviewFiles) and what the record command writes.
+          enforcePathBudget: false,
           recordLayout:
             purpose === 'advisory-dependency-history'
               ? 'advisory-dependency-history'

@@ -221,7 +221,11 @@ afterEach(() => {
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: vi.fn().mockReturnValue({ matches: false }),
+    value: vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
   });
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -377,12 +381,12 @@ describe('NewChatModal engine chips', () => {
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe(
         '/connections/models',
       ),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   test('leaves agent configuration and unknown unavailable states with an editor action, not a guessed fix', async () => {
@@ -425,12 +429,12 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: 'Edit agent Custom configuration' }),
     );
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe(
         '/agents/custom-config-agent',
       ),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });
 

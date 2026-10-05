@@ -16,6 +16,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
+- `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
@@ -144,7 +145,7 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
@@ -487,6 +488,7 @@ interface ProjectConfig {
   workingDirectory?: string;
   defaultProviderId?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;
@@ -497,6 +499,23 @@ interface ProjectConfig {
   updatedAt: string;
 }
 ```
+
+`defaultAgent` supplies the new-chat choice when there is no remembered Agent
+for that Station access and project. The remembered choice takes precedence;
+No project has its own remembered choice. Create/update requests accept `null`
+to clear `defaultAgent`; stored and read configuration omit the cleared field.
+
+`icon` is either a short glyph (an emoji or symbol of at most 16 UTF-16 code
+units, with at least one visible character; no `/`, `\`, `:`, control
+character, bidirectional control or unpaired surrogate; and no leading `~`) or
+a base64 PNG, JPEG, WebP or ICO `data:` URL whose bytes match its type and
+number at most 128 KiB. [`projectIconProblem`](../../packages/contracts/src/project.ts)
+is that rule; `POST /api/projects` and `PUT /api/projects/:slug` refuse any
+other value with 400, so a path or remote URL is never stored, and
+`ProjectService` applies it to a new icon from any other caller. `''` or `null`
+in a request clears the icon, and the stored record then omits it. An update
+that does not name `icon` leaves the stored one alone, including an older value
+the rule now refuses; the UI does not draw such a value.
 
 `agents` is optional by design: `undefined` means the project can use all
 known agents, while an explicit empty array means the project exposes no agents.

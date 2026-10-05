@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import { MessageGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
@@ -16,14 +16,6 @@ const loadSessionInventoryEntryPoint = () =>
   import('./SessionInventoryEntryPoint').then((module) => ({
     default: module.SessionInventoryEntryPoint,
   }));
-
-function NewChatGlyph() {
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 16 16">
-      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
 
 /**
  * The session inventory's host: the authority-scoped registration the store
@@ -82,36 +74,37 @@ export function ChatDockSessionInventoryHost({
   );
 }
 
+/**
+ * The bar's ONE labelled action (design round 2026-10, B1/B2): New. "Open"
+ * sat beside it as a second labelled button for the same noun; it is a row
+ * of the ⋯ menu now ("Open chat…", with its chord), where the rest of the
+ * dock's commands already live.
+ */
 export function ChatDockWorkspaceActions({
-  onOpenConversation,
   onNewChat,
-}: Pick<Controls, 'onOpenConversation' | 'onNewChat'>) {
-  const openShortcut = useShortcutDisplay('dock.openConversation');
+  iconOnly = false,
+}: Pick<Controls, 'onNewChat'> & {
+  /**
+   * Icon-only, named and tipped (#3046): in a bar that names the pane (the
+   * Coding workbench), New keeps its glyph and gives up its word, so the
+   * title keeps the width. There is no Open here either: the inbox sits
+   * beside Chat and lists the chats to open.
+   */
+  iconOnly?: boolean;
+}) {
   const newShortcut = useShortcutDisplay('dock.newChat');
   return (
-    <div className="chat-dock__tab-actions">
-      <button
-        type="button"
-        className="chat-dock__new chat-dock__open"
-        onClick={onOpenConversation}
-        title={withShortcutHint(
-          'Open Conversation',
-          'dock.openConversation',
-          () => openShortcut,
-        )}
-      >
-        <MessageGlyph />
-        <span className="chat-dock__new-label">Open</span>
-      </button>
-      <button
-        type="button"
-        className="chat-dock__new"
+    <div
+      className={`chat-dock__tab-actions${iconOnly ? ' chat-dock__tab-actions--icons' : ''}`}
+    >
+      <NewChatAction
+        className={`chat-dock__new${iconOnly ? ' chat-dock__new--icon' : ''}`}
+        iconOnly={iconOnly}
         onClick={onNewChat}
-        title={withShortcutHint('New Chat', 'dock.newChat', () => newShortcut)}
+        title={withShortcutHint('New chat', 'dock.newChat', () => newShortcut)}
       >
-        <NewChatGlyph />
-        <span className="chat-dock__new-label">New</span>
-      </button>
+        New
+      </NewChatAction>
     </div>
   );
 }

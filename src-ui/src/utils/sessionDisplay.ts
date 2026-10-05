@@ -5,7 +5,6 @@ import {
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { isSessionUnanswerable } from './answerability';
 
 /**
  * A turn is mid-flight. archive#1073: gated on the summary's turn-level fold, not
@@ -397,11 +396,11 @@ export function displayEnvironment(
  * (`{completed}`: no transition out at all; `failed` and `canceled` are both
  * retryable). archive#3244 replaced the hand-written list that used to sit
  * here — the same drift class archive#1548 deleted server-side — with the
- * derivation, keeping the members identical. Callers gate ranking
- * (`delegatedTaskPriority`) and the Activity row menu's Stop… on it, which
- * are stopped-semantics questions. (The delegated-work coordinator card that
- * also gated its follow-up composer on it was removed from Activity; the
- * session detail's composer follows the terminal predicate, archive#3244.)
+ * derivation, keeping the members identical. The Activity row menu's Stop…
+ * gates on it, a stopped-semantics question. (The delegated-work coordinator
+ * card and its task ranking, which also read it, were removed from Activity;
+ * the session detail's composer follows the terminal predicate,
+ * archive#3244.)
  */
 export function isTerminalSession(
   session: OrchestrationSessionSummary,
@@ -431,44 +430,3 @@ export function isTerminalSession(
  * live retry path, archive#1090), and a `needs_input` session whose provider
  * adapter is gone is non-terminal yet unanswerable.
  */
-
-/**
- * Rank for the delegated-task list. Lower wins, and the list is never
- * filtered — an unanswerable task is DE-PRIORITIZED, not deleted, so the
- * annotation on its card is still reachable (ADR 0012: consumers annotate,
- * they do not silently filter).
- *
- * Rank 3 is archive#1781's addition. Before it, a dead session's sticky
- * `review_pending`/`pendingReview` returned rank 0 — the highest — and the
- * (since removed) delegated-work coordinator card rendered `tasks[0]` only,
- * so one stranded task occupied its single slot indefinitely while live work
- * sat behind it. It ranks above `terminal` because a session that has not
- * finished is still more interesting than one that has. Activity itself now
- * orders delegated work by the shared state lanes, not by this rank.
- */
-export function delegatedTaskPriority(
-  session: OrchestrationSessionSummary,
-): number {
-  const unanswerable = isSessionUnanswerable(session);
-  if (
-    !unanswerable &&
-    (session.pendingReview || session.lifecycleState === 'review_pending')
-  ) {
-    return 0;
-  }
-  if (!unanswerable && isStreamingSession(session)) return 1;
-  if (!isTerminalSession(session)) return unanswerable ? 3 : 2;
-  return 4;
-}
-
-export function prioritizedDelegatedTasks(
-  sessions: OrchestrationSessionSummary[],
-): OrchestrationSessionSummary[] {
-  return sessions
-    .filter((session) => Boolean(session.delegation))
-    .sort((a, b) => {
-      const priority = delegatedTaskPriority(a) - delegatedTaskPriority(b);
-      if (priority !== 0) return priority;
-      return b.updatedAt.localeCompare(a.updatedAt);
-    });
-}

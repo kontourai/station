@@ -9,14 +9,12 @@
 
   "limits": "Preserved intentionally minimal fixture text. Focused selector tests verify fixture consumption, not global changed-test completeness.",
 
-  "document": {"digest":"558526e5704b5514422d0f3edcf456ff6a87d424079ed291e6432224ce290af0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
   "sources": [
-    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
+    "scripts/__tests__/changed-verification.test.ts",
 
-    {"path":"scripts/__tests__/fixtures/changed-verification/scenarios.json","digest":"2907f43f933ad105cbd3d77eb4c41bbc4883115e8cbc233ff9f6eb5867a17b48","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "scripts/__tests__/fixtures/changed-verification/scenarios.json",
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"}
+    "scripts/run-changed-verification.mjs"
   ],
 
   "checks": [

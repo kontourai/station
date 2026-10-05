@@ -214,6 +214,35 @@ describe('persistUserTurnIfMissing (#797)', () => {
     expect(memoryAdapter.addMessage).not.toHaveBeenCalled();
   });
 
+  test.each([
+    ['no parts', []],
+    [
+      'only a step boundary and blank text',
+      [{ type: 'step-start' }, { type: 'text', text: '  ' }],
+    ],
+  ])(
+    'an empty response placeholder after the prompt is not an answer (#3112) — %s',
+    async (_label, parts) => {
+      const memoryAdapter = {
+        addMessage: vi.fn().mockResolvedValue(undefined),
+        getMessages: vi.fn().mockResolvedValue([
+          { role: 'user', parts: [{ type: 'text', text: 'failed turn' }] },
+          { role: 'assistant', parts },
+        ]),
+      };
+
+      const persisted = await persistUserTurnIfMissing({
+        memoryAdapter,
+        conversationId: 'conv-1',
+        userId: 'user-1',
+        input: 'failed turn',
+      });
+
+      expect(persisted).toBe(false);
+      expect(memoryAdapter.addMessage).not.toHaveBeenCalled();
+    },
+  );
+
   test('keeps attachment parts from a structured input', async () => {
     const memoryAdapter = {
       addMessage: vi.fn().mockResolvedValue(undefined),

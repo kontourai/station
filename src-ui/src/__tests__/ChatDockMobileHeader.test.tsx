@@ -14,6 +14,18 @@ import {
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 // The sheet's project picker and connection control mount inside this bar's
 // tree; `useIsMobile`/`useNavigation` are mocked so neither needs a real
 // `matchMedia` breakpoint or router.
@@ -267,7 +279,7 @@ describe('mobile conversation focus', () => {
   test('chat overflow is chats and dock chrome, not Profile or a second conversation list', async () => {
     renderHeader();
     await openActions();
-    expect(screen.getByRole('menuitem', { name: 'Chats' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Inbox' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Profile' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
@@ -306,17 +318,16 @@ describe('mobile conversation focus', () => {
     expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
     expect(onSwitchProject).not.toHaveBeenCalled();
   });
-  test('shows live connection state and a visible management label on request', async () => {
-    renderHeader();
+  test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
+    const onNewChat = vi.fn();
+    renderHeader({ onNewChat, showConnection: false });
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(onNewChat).toHaveBeenCalledOnce();
     await openActions();
-    const indicator = screen.getByTestId('chat-dock-mobile-connection');
-    expect(indicator.dataset.connectionState).toBeTruthy();
-    expect(indicator.textContent).toBeTruthy();
-    const listener = vi.fn();
-    window.addEventListener('station:open-connections-modal', listener);
-    fireEvent.click(indicator);
-    expect(listener).toHaveBeenCalledOnce();
-    window.removeEventListener('station:open-connections-modal', listener);
+    expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
+    expect(
+      screen.getByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeTruthy();
   });
   test('does not duplicate connection management while the app toolbar owns it', async () => {
     renderHeader({ showConnection: false });

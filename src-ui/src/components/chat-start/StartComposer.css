@@ -1,0 +1,237 @@
+/* The start composer (Home, inline, and the dock's draft). No viewport
+   query: the bar is one flex line that wraps. On a desktop the chips and
+   [⋯ Start] share one line. When they do not fit (a phone), the chips keep
+   row one, on one line, each shrinking to an ellipsis, and [⋯ … Start]
+   takes row two. Every target is 44px. */
+.start-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  width: 100%;
+  min-width: 0;
+}
+.start-composer__input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: calc(var(--k-space-6) * 3);
+  resize: vertical;
+}
+.start-composer--compact .start-composer__input {
+  min-height: 44px;
+}
+.start-composer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+.start-composer__chips,
+.start-composer__context {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.start-composer__chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  /* Grows far more than the actions, so on a shared line the actions keep
+     their own width and sit together at the end. */
+  flex: 1000 1 auto;
+}
+.start-composer__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  /* Alone on row two it takes the width: ⋯ at the start, Start at the end. */
+  flex: 1 0 auto;
+}
+.start-composer__actions > :first-child {
+  margin-right: auto;
+}
+.start-composer__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.start-composer__chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-composer__chip svg {
+  flex: none;
+}
+.start-composer__chip--loading {
+  padding: 0 var(--k-space-3);
+}
+.start-composer__chip--attention {
+  border-color: var(--k-caution);
+}
+.start-composer__chip--skill {
+  padding-left: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  font-size: var(--k-text-sm);
+}
+.start-composer__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+.start-composer__chip-remove:focus-visible,
+.start-composer__context-chip:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.start-composer__swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 999px;
+}
+.start-composer__start {
+  min-height: 44px;
+}
+.start-composer__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.start-composer__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.start-composer__context-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 44px;
+  max-width: 100%;
+  padding: var(--k-space-1) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.start-composer__context-chip[aria-pressed="false"] {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.start-composer__context-label {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+.start-composer__context-detail {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--k-text-sm);
+}
+
+/* The chip menus (lazy): one panel shape for the Agent list and the project
+   list, on top of the shared composer popover shell. */
+.start-menu__panel {
+  --composer-popover-width: 440px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(70dvh, 560px);
+}
+.start-menu__search {
+  margin: var(--k-space-2) var(--k-space-3);
+}
+.start-menu__list {
+  overflow-y: auto;
+  min-height: 0;
+  /* The list, not the panel, scrolls: the phone sheet lifts the shared
+     panel's height cap, and the filter and header must stay in view. */
+  max-height: min(55dvh, 440px);
+  padding-bottom: var(--k-space-2);
+}
+.start-menu__hint {
+  margin: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.start-menu__search {
+  width: auto;
+  box-sizing: border-box;
+}
+/* The overflow beside Start: a 44px square drawn like the chips, not the
+   quiet bordered glyph the shared trigger is elsewhere (which read as
+   disabled here). */
+.start-composer__actions > .start-composer__more {
+  width: 44px;
+  height: 44px;
+  border-color: var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+/* Every project row is a 44px target, on every pointer. */
+.start-menu__list .new-chat-modal__dropdown-item {
+  min-height: 44px;
+}
+/* In the Agent menu a row keeps its Model beside the name at every width:
+   the sheet is the row's whole width, so the phone list's stacked row (the
+   Model pill alone on a second line) only cost height here. */
+.start-menu__list .new-chat-modal__agent-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.start-menu__list .new-chat-modal__agent-side {
+  flex-wrap: nowrap;
+  padding: 6px 12px 6px 4px;
+}
+.start-menu__list .new-chat-modal__model-trigger {
+  max-width: min(40vw, 200px);
+}
+/* When the two chips do not fit, the Agent chip (the longer text) gives up
+   the width: the project chip keeps its whole name up to half the row, so a
+   short name ("No project") is never cut while a long one still is. */
+.start-composer__chip--project {
+  flex-shrink: 0;
+  max-width: 50%;
+}
+/* A draft that came back while the field held other text. */
+.start-composer__held {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.start-composer__held-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+/* A Start that cannot start reads as disabled in both themes: the shared
+   primary's faded fill stayed close to its enabled colour on a dark page. */
+.start-composer__start:disabled:not([aria-busy="true"]) {
+  border-color: var(--k-line);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  opacity: 1;
+}

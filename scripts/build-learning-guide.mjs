@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +7,9 @@ import {
   assertMarkdownLinks,
   findBrokenRenderedMarkdownLinks,
 } from './check-markdown-links.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
+  assertDocumentationFresh,
   formatFreshnessAdvisory,
   freshnessRequirement,
   resolveDocumentationFreshness,
@@ -35,7 +36,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const moduleMap = 'docs/architecture/module-map.md';
 
 function git(args, cwd = root) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd,
     encoding: 'utf8',
     windowsHide: true,
@@ -111,8 +112,17 @@ export async function buildLearningGuide({
   const policy = check
     ? (freshness ?? resolveDocumentationFreshness({ root: inputRoot }))
     : undefined;
+  if (policy?.sourceDrops?.length)
+    assertDocumentationFresh({ policy, blocking: policy.sourceDrops });
   // One read of the ledger directory and capture manifest (#2936).
   const reviewState = readReviewState(inputRoot);
+  if (reviewState.ledger.historyUnavailable) {
+    if (policy?.mode === 'strict')
+      throw new Error(
+        `Strict documentation freshness cannot judge freshness. ${reviewState.ledger.historyUnavailable}`,
+      );
+    console.warn(reviewState.ledger.historyUnavailable);
+  }
   const media = reviewState.media
     ? await compileLearningMedia(
         reviewState.media,

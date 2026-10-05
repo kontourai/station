@@ -73,6 +73,9 @@ const DECISION_2_OPERATOR_READS = [
 const DECISION_2_PRINCIPAL_READS = [
   'list_conversations',
   'get_conversation_messages',
+  // #3159: the route further limits it to the caller's conversation, its
+  // scope, and conversations a person referenced there.
+  'read_conversation',
   'board_read',
   'get_basis',
   'get_task_basis',
@@ -87,6 +90,8 @@ const DECISION_2_PRINCIPAL_READS = [
   'get_review_request',
   'list_review_receipts',
   'get_review_receipt',
+  // #3160: an owner-scoped read of a Session the owner may read.
+  'wait_session',
 ];
 // Decision 3: answering a worker's request needs bound + Project approve;
 // until slice C adds the Project path, only the bound operator.
@@ -522,11 +527,14 @@ describe('station-control authority: route matching and refusals', () => {
           mode,
         }),
       ).toBe('station_control_assurance_insufficient');
-    // Other commands keep the dispatch policy (slice C); steerTurn has its
-    // own rule (below).
+    // Slice C3: the thread commands are held to the scope rule (below), so
+    // an interrupt whose thread the guard could not read is refused.
     expect(
-      decide(CALLERS['bearer-operator'] ?? null, { type: 'interruptTurn' }),
-    ).toBeUndefined();
+      decide(CALLERS['bearer-operator'] ?? null, {
+        type: 'interruptTurn',
+        threadId: 't',
+      }),
+    ).toBe('station_control_assurance_insufficient');
     // The dedicated respond leaf is the bound operator's too.
     expect(
       authorizeStationControlRequest(
@@ -657,10 +665,14 @@ describe('station-control authority: route matching and refusals', () => {
       'station_control_caller_required',
     );
 
-    // The steer and adopt leaf applies the same rule.
+    // The thread commands on `/commands` apply the same rule (slices C1
+    // and C3).
     for (const body of [
       { type: 'steerTurn', threadId: 't', input: 'go' },
       { type: 'adoptSession', sourceThreadId: 't' },
+      { type: 'interruptTurn', threadId: 't' },
+      { type: 'stopSession', threadId: 't' },
+      { type: 'discardDraft', threadId: 't' },
     ]) {
       const command = (commandThread?: StationControlDispatchTarget) =>
         authorizeStationControlRequest('POST', '/api/orchestration/commands', {
@@ -702,5 +714,93 @@ describe('station-control authority: route matching and refusals', () => {
       })?.code;
     expect(decide(true)).toBe('station_control_person_only');
     expect(decide(false)).toBeUndefined();
+  });
+});
+
+// #3161: `declare_pull_request` and the Task close-out opt-in.
+describe('station-control authority table: declare_pull_request and Task close-out', () => {
+  const LEAF = '/api/orchestration/station-control/declare-pull-request';
+
+  // Written out here, independently of the table.
+  test('declare_pull_request: any verified caller with a recorded owner, mutating, never bounded-write, never person-only', () => {
+    const policy = STATION_CONTROL_TOOL_POLICY.declare_pull_request;
+    expect({
+      assurance: policy.assurance,
+      role: policy.role,
+      toolClass: policy.toolClass,
+      personOnly: policy.personOnly,
+    }).toEqual({
+      assurance: 'any',
+      role: 'self',
+      toolClass: 'mutating',
+      personOnly: 'never',
+    });
+    // It writes a durable session record, so it keeps the mutating approval:
+    // only `notify_user` is auto-approved as a bounded write.
+    expect(
+      TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
+        ([name]) => name,
+      ),
+    ).toEqual(['notify_user']);
+  });
+
+  test('declare_pull_request owns exactly its own leaf, and no other tool reaches it', () => {
+    expect(STATION_CONTROL_TOOL_POLICY.declare_pull_request.routes).toEqual([
+      { method: 'POST', path: LEAF },
+    ]);
+    const match = matchStationControlRoute('POST', LEAF);
+    expect(match?.owners).toEqual(['declare_pull_request']);
+    expect(match?.rules).toEqual([]);
+    // It never widens the commands route: that leaf's owners do not include it.
+    expect(
+      matchStationControlRoute('POST', '/api/orchestration/commands')?.owners,
+    ).not.toContain('declare_pull_request');
+  });
+
+  test('a caller with a recorded owner is admitted at any assurance; one without is refused', () => {
+    for (const caller of [
+      CALLERS['bound-operator'],
+      CALLERS['bound-other-person'],
+      CALLERS['delegated-operator'],
+      CALLERS['bearer-operator'],
+    ])
+      expect(
+        authorizeStationControlRequest('POST', LEAF, {
+          caller,
+          isOperatorPrincipal,
+        }),
+      ).toBeUndefined();
+    expect(
+      authorizeStationControlRequest('POST', LEAF, {
+        caller: { assurance: 'bound' },
+        isOperatorPrincipal,
+      })?.code,
+    ).toBe('station_control_role_required');
+    expect(
+      authorizeStationControlRequest('POST', LEAF, {
+        caller: null,
+        isOperatorPrincipal,
+      })?.code,
+    ).toBe('station_control_caller_required');
+  });
+
+  // The opt-in is a person's. No tool names the route, so the guard answers
+  // every internal request to it, whoever sent it, with the unmapped refusal.
+  test('no tool reaches the route a person opts a Task in with', () => {
+    const route = '/api/tasks/task-1/close-on-merge';
+    expect(matchStationControlRoute('PUT', route)).toBeUndefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('PUT', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
+    for (const [name, policy] of TABLE)
+      expect([
+        name,
+        policy.routes.some((entry) => entry.path.includes('close-on-merge')),
+      ]).toEqual([name, false]);
   });
 });

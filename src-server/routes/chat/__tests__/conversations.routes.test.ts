@@ -1698,6 +1698,67 @@ describe('Conversation Routes', () => {
     expect(eventStore.appendConversationForkIfAbsent).toHaveBeenCalledOnce();
   });
 
+  test('fork of a conversation with an oversized stored title succeeds with a bounded seed heading (#3164)', async () => {
+    const source = createMockAdapter();
+    // Rename accepts a title of any length; a stored 8k-emoji title must not
+    // make the seed builder refuse its heading.
+    source.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'agent:default',
+      title: '\u{1F642}'.repeat(8_000),
+      metadata: {},
+    });
+    source.getMessages.mockResolvedValue([
+      { id: 'u1', role: 'user', content: 'first' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'first answer',
+        metadata: { turnId: 'turn-1', answerEligible: true },
+      },
+    ]);
+    const target = createMockAdapter();
+    target.getConversation.mockResolvedValue(null);
+    const eventStore = {
+      appendConversationFork: vi.fn(),
+      appendConversationForkIfAbsent: vi.fn(() => true),
+      readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+    };
+    const app = createConversationRoutes(
+      new Map([
+        ['default', source],
+        ['codex', target],
+      ]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'fork-user',
+      undefined,
+      undefined,
+      eventStore,
+      () => true,
+    );
+
+    const response = await app.request('/station/conversations/c1/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex' }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(200);
+    const heading = (body.data.seed as string).split('\n')[0]!;
+    expect(heading).toContain('\u2026, on station)');
+    expect(Buffer.byteLength(heading, 'utf8')).toBeLessThan(1_000);
+    expect(body.data.seed).toContain('Assistant: first answer');
+    expect(target.addMessages).toHaveBeenCalledOnce();
+  });
+
   test('DELETE /:slug/conversations/:id deletes its owner-scoped derived summary', async () => {
     const adapter = createMockAdapter();
     const adapters = new Map([['default', adapter]]);
@@ -3047,6 +3108,45 @@ describe('Global Conversation Routes', () => {
       alphaAuthority(),
     );
   });
+
+  // #176: `rename_session` stamps `titleSource: 'agent'`; an inventory that
+  // dropped it would show the title as having no provenance at all.
+  test.each(['user', 'generated', 'provider', 'prompt', 'agent'])(
+    'GET / carries the %s titleSource of a store conversation',
+    async (titleSource) => {
+      const adapter = createMockAdapter();
+      adapter.queryConversations.mockResolvedValue([
+        {
+          id: 'store-1',
+          userId: 'agent:default',
+          resourceId: 'default',
+          title: 'Store Chat',
+          createdAt: '2026-07-20T00:00:00Z',
+          updatedAt: '2026-07-20T00:01:00Z',
+          metadata: { titleSource },
+        },
+      ]);
+      const app = createGlobalConversationRoutes(
+        new Map([['default', adapter]]) as any,
+        { getConversation: vi.fn().mockReturnValue(null) } as any,
+        mockLogger,
+        undefined,
+        {
+          readSessionConversation: vi.fn(),
+          listConversationHistoryPage: vi
+            .fn()
+            .mockResolvedValue({ hasMore: false, items: [] }),
+        },
+        () => 'bound-user',
+      );
+
+      const body = await json(await app.request('/'));
+
+      expect(body.data.items).toEqual([
+        expect.objectContaining({ id: 'store-1', titleSource }),
+      ]);
+    },
+  );
 
   // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered

@@ -507,6 +507,7 @@ export function useSendMessage(
           removeClaim();
           addEphemeralMessage(sessionId, {
             role: 'system',
+            sendFailure: true,
             content: steerRefusalMessage(result),
           });
           const latest = activeChatsStore.getSnapshot()[sessionId];
@@ -739,6 +740,7 @@ export function useSendMessage(
           );
           addEphemeralMessage(sessionId, {
             role: 'system',
+            sendFailure: true,
             content: FULL_ACCESS_REFUSAL_SUMMARY,
             fullAccessRefusal: {
               ...fullAccessRefusalNotice(error, 'message-not-sent'),
@@ -871,6 +873,7 @@ export function useSendMessage(
           // the completion-notice comment above for why that matters.
           addEphemeralMessage(sessionId, {
             role: 'system',
+            queuedRetry: true,
             // archive#3686. Neither line asserts a network condition or a
             // moment of recovery, because this device observes neither.
             //
@@ -1015,6 +1018,7 @@ export function useSendMessage(
         clearEphemeralMessages(sessionId);
         addEphemeralMessage(sessionId, {
           role: 'system',
+          sendFailure: true,
           // Title on its own line, as `formatChatErrorDisplay` shapes the
           // transcript's error markers: "Error: thread … Provider session…"
           // ran the label into the engine's text.

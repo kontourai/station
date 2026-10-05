@@ -1,0 +1,7 @@
+{
+  "revision": "f028fb5ea753a0f7c830077c4d1fade00079a9ac",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Re-read for #3350: the ChatDockBody change only rewords the refused-reply decision notice ('The engine still needs an answer.'); config.md documents settings, not that notice, so no claim changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

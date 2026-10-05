@@ -1,0 +1,59 @@
+{
+  "revision": "52982b10d017a24966d01167cd33e7c042ecb69b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/architecture.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/guides/acp.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 C3b review round: corrected the guide to say a new Session runs with its Agent's saved default while a follow-up keeps the conversation's recorded mode (approval-posture.ts decision precedence); the refusal message says the same. Checked the handoff route now applies the same posture refusal.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/user/concepts.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/user/workspace-checkpoints.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 C3b review-round delta reviewed: refusal message wording (new Session vs follow-up), the posture check added to the handoff route (not reachable by station-control tools today), and test additions. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

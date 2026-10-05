@@ -81,7 +81,6 @@ export {
   type ForegroundMessageReceipt,
   getConversationHandoffStatus,
   handoffExecutionMessage,
-  sendExecutionMessage,
 } from '../client/execution';
 export {
   type ApiRequestScope,
@@ -103,6 +102,7 @@ export {
   type RespondToRequestResult,
   respondToRequest,
 } from '../client/orchestration';
+export { sendExecutionMessage } from '../client/send-execution-message';
 export {
   inspectSessionOutput,
   listSessionOutputs,

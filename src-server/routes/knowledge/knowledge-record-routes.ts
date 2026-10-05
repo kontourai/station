@@ -76,6 +76,11 @@ import { projectKnowledgePersistenceError } from './knowledge-persistence-errors
 
 interface KnowledgeRecordRouteDeps {
   store: KnowledgeStoreProvider;
+  mayUseRoot?: (
+    request: Request,
+    rootId: string,
+    action: 'view' | 'edit',
+  ) => Promise<boolean>;
 }
 
 /** All `KitRecordType`s — mirrors `sqlite-vec-index-provider.ts`'s own
@@ -182,6 +187,22 @@ interface LinkRecordBody {
 
 export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
   const app = new Hono();
+  app.use('/roots/:rootId/*', async (c, next) => {
+    if (
+      deps.mayUseRoot &&
+      !(await deps.mayUseRoot(
+        c.req.raw,
+        c.req.param('rootId'),
+        c.req.method === 'GET' ? 'view' : 'edit',
+      ))
+    ) {
+      return c.json(
+        { success: false, error: 'Knowledge store access denied.' },
+        403,
+      );
+    }
+    return next();
+  });
 
   // POST /roots/:rootId/records — body: CreateInput (store-contract.md §6.1).
   app.post('/roots/:rootId/records', async (c) => {

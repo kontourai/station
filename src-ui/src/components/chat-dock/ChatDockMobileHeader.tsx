@@ -7,6 +7,7 @@ import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -242,33 +243,42 @@ export function ChatDockMobileHeader({
           )}
         </span>
       </button>
-      <button
-        ref={chatActionsTriggerRef}
-        type="button"
-        className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-        aria-haspopup="dialog"
-        aria-expanded={isOverflowOpen}
-        aria-label="Chat actions"
-        aria-describedby={activitySummary ? activityDescriptionId : undefined}
-        title={
-          activitySummary ? `Chat actions — ${activitySummary}` : undefined
-        }
-        data-no-dock-drag=""
-        onClick={() => setIsOverflowOpen((open) => !open)}
-      >
-        <span aria-hidden="true">⋯</span>
-        {activitySummary && (
-          <>
-            <span
-              className="chat-dock__mobile-activity-dot"
-              aria-hidden="true"
-            />
-            <span id={activityDescriptionId} className="sr-only">
-              {activitySummary}
-            </span>
-          </>
-        )}
-      </button>
+      <div className="chat-dock__mobile-actions">
+        <button
+          ref={chatActionsTriggerRef}
+          type="button"
+          className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+          aria-haspopup="dialog"
+          aria-expanded={isOverflowOpen}
+          aria-label="Chat actions"
+          aria-describedby={activitySummary ? activityDescriptionId : undefined}
+          title={
+            activitySummary ? `Chat actions — ${activitySummary}` : undefined
+          }
+          data-no-dock-drag=""
+          onClick={() => setIsOverflowOpen((open) => !open)}
+        >
+          <span aria-hidden="true">⋯</span>
+          {activitySummary && (
+            <>
+              <span
+                className="chat-dock__mobile-activity-dot"
+                aria-hidden="true"
+              />
+              <span id={activityDescriptionId} className="sr-only">
+                {activitySummary}
+              </span>
+            </>
+          )}
+        </button>
+        <NewChatAction
+          className="chat-dock__mobile-new"
+          data-no-dock-drag=""
+          onClick={onNewChat}
+        >
+          New
+        </NewChatAction>
+      </div>
       {isOverflowOpen && (
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}

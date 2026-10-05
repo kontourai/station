@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Re-recorded after a main merge reset the record. This lane: the action-surface inventory lost PullRequestsPanel.tsx and ConversationPullRequestLinks.tsx (no action class left for the ratchet to find) and re-describes BranchToolbar.tsx and PullRequestReviewPanel.tsx (one-row icon bar, Approve + Merge menu, 44px hit areas apart, the 390px Chromium hit-target audit); ActionOverflowMenu gained the additive exclusive/separatorBefore row options; the DiffPanel row left the button-cap baseline; the mobile CSS ratchet count is unchanged. The guide's account of these gates matches how they were used. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml","src-server/security/pairing-route-scopes.ts","src-ui/src/components/ActionOverflowMenu.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

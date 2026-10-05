@@ -512,7 +512,7 @@ it. The strip lives in the region's chrome bar (`RegionChromeBar`, in the
 placement grab, the strip, maximize and visibility, and the click surface
 that collapses the bar — and carries two slots the selected pane's own
 toolbar renders into: `ChatDockHeader` is Chat's toolbar now (identity,
-context meter, project context, chat-list toggle, session counter, More menu) and portals into
+context meter, project context, chat-list toggle, More menu) and portals into
 the bar, so a dock still has ONE chrome bar (#1064, #3309); `ActivityDockPane`
 has no bar of its own. The pane host's `dock` presentation mounts the
 selected pane as the strip's `tabpanel` and nothing else — a pane behind a
@@ -541,7 +541,8 @@ The five decisions of the 2a plan, as taken (each reversible on its own):
   at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
-  collapsed-state affordances ("Start a chat", #800).
+  collapsed-state affordance (#800): the icon-only New chat action, the one
+  way into the start composer.
 - **D2 — folded menu (bottom-only devices): rows per region.** Each
   occupied dock region contributes its panes in tab order: the selected
   pane's row is the region's Hide/Show, a pane behind a tab gets a Show row
@@ -1533,8 +1534,10 @@ into from it.
   rail on the trailing edge with the current one solid, the Diff badged with a
   changed-file count the layout already knows, the Browser launcher and the
   pane catalog last. Back and Forward are the browser's and the stack's
-  chords (⌘[ ⌘] on macOS, Alt+← Alt+→ elsewhere); Escape is left to the
-  composer. The navigation store remembers the locations of the entries it
+  chords (⌘[ ⌘] on macOS, Alt+← Alt+→ elsewhere); Escape is the layout's
+  own "up" (a drill-in returns to the conversation, a panel beside Chat
+  closes; see the audit round below) and inside a field it is the field's.
+  The navigation store remembers the locations of the entries it
   has seen (`adjacentLocation`, bounded to 64, in memory) so a chord can tell
   whether the adjacent entry is this layout's.
 - **Both pages stay mounted.** The inactive page is hidden (`visibility`) and
@@ -1594,6 +1597,235 @@ whose catalog issues no drill-in pane mounts no host (the rail then offers no
 dock, so state the Chat pane keeps locally (an unsent draft not yet saved to
 the session, scroll position, an open panel) is not carried across; the
 session and its saved draft are.
+
+## Past the wide fold, tools open beside Chat (2026-10-01)
+
+**#3040 and #3051, the next slice of the coding-layout revamp (#3039).
+Amends the stack above for a viewport at or past 1280px: the drill-in page
+becomes a side panel, the Terminal a lower panel, and both are remembered
+per conversation.** Below the fold nothing above changes.
+
+- **The fold is a viewport query, 1280px**
+  (`CODING_WIDE_MEDIA_QUERY`, [codingPanels.ts](../../src-ui/src/components/coding-layout/codingPanels.ts)).
+  Chat beside a tool needs both at their floors plus what the shell takes
+  around them: Chat 480px (the inbox's 240px floor and a transcript column no
+  narrower than the dock's own Chat), a tool 320px (a unified diff with its
+  gutter, a file tree with real names), the 8px separator, the 44px rail and
+  the 240px Project sidebar — 1092px; 1280px is the next conventional step
+  and leaves Chat 650px with the sidebar open rather than exactly its floor.
+  A query rather than a measurement of the workbench because the layout host
+  and the workbench must agree on it (the host decides where the Terminal
+  renders by it) and a measured fold would move as the panels it governs
+  open. It applies only where the centre has Chat: a bottom-only device at
+  any width keeps the drill-in, as does every viewport below the fold.
+- **The side panel is the same `?pane=`, written in place.** A rail pick
+  past the fold calls `updateParams` (a `replaceState`), never
+  `setActiveWorkspacePane` (a push): opening, switching and closing a tool
+  beside Chat are not history entries, so Back still leaves the layout or
+  the session. The pane host follows the URL exactly as for a drill-in
+  (`navigationSelection="explicit"`), so a reload or a shared link restores
+  the open tool at no extra cost, and crossing the fold in either direction
+  keeps the pane: a drill-in pushed below the fold is the side panel above
+  it (that one entry, pushed as a page, still pops as one), and a side panel
+  is the drill-in below. Chat is always the page past the fold — the crumbs
+  stay Inbox / conversation, the composer stays on screen and in the
+  foreground — and the drill-in `section` is the same DOM node either way,
+  so Chat is one mounted instance across a panel's open, switch and close
+  and across the fold (`CodingWorkbench.test.tsx` counts its mounts).
+- **The Terminal is the lower panel, and no URL at all.** Its open state is
+  a per-session fact of the device setting below; the host hands the pane
+  host nothing for the Terminal instance while wide and the workbench draws
+  it in the lower panel through the same `renderCodingPane`, so one terminal
+  is never mounted twice. A URL that names the Terminal past the fold (a
+  drill-in from below it, a reload on one) opens it below and clears the
+  side. It is mounted on first open and hidden (collapsed to no height,
+  inert) after, and unmounted below the fold where the pane host owns it.
+- **Per-session memory is one device setting** (`codingPanels`,
+  [device-settings.ts](../../packages/contracts/src/device-settings.ts);
+  record logic in [coding-panels-record.ts](../../src-ui/src/lib/coding-panels-record.ts)):
+  `{ version: 1, sessions: { [conversation]: { side, sideWidth, terminalOpen,
+  terminalHeight, at } } }`, keyed by `activeChat` (`~` with none), bounded
+  to 32 sessions by evicting the entry touched longest ago, validated on
+  import by its own parser as `regionArrangement` is, and classified as
+  direct manipulation (not restored by "Restore device defaults"). Arrival
+  past the fold takes the URL as the fact when it names a tool and remembers
+  it, else restores the session's memory; a change of session (the inbox's
+  replace) restores that session's own panels and a session with no entry
+  starts closed. There is no per-session Diff scope to remember: the Diff
+  pane has no scope concept today, so #3051's mention of one is left until
+  #3049 gives it one.
+- **Sizes.** The side panel is 440px by default, never under 320px and never
+  wider than leaves Chat 480px of the row (the rail and separator excluded);
+  the lower panel three tenths of the room, never under 160px and never
+  taller than leaves Chat 240px. Each edge is a real `role="separator"` (`aria-orientation`,
+  `aria-valuenow/min/max`, focusable): a drag drafts every frame and commits
+  once on release, the arrows along its axis nudge 16px (Shift 64px), Home
+  and End go to the bounds, Enter or a double-click returns the default. The
+  CSS carries the same floors as `min-width`/`max-width`, so a room too
+  small for both never folds Chat.
+- **Quiet chrome.** The rail is unchanged in shape: past the fold its items
+  are toggles (`aria-pressed`, `aria-controls` naming the panel) with the
+  open ones solid, the Terminal's among them; below it they keep
+  `aria-current`. Each panel has one 40px head — its name as the panel's one
+  heading, focusable, the pane's own controls in the head's slots, the
+  drill-in ⋯ where it has one, an icon-only close — and no labelled button,
+  so the button cap is untouched. Opening from the keyboard
+  moves focus to the panel's heading and closing returns it to the rail
+  item; a pointer leaves focus alone; nothing traps it. The side panel
+  enters with the stack's push slide, which reduced motion collapses as it
+  does the page slide. All of it lives in the workbench's own stylesheet in
+  the lazily loaded layout chunk, not the entry CSS.
+
+- **A pane opened by a pane lands beside Chat the same way.** Past the fold
+  the host runs with `navigationSelection="replace"`: its own named opens
+  (a File Preview from Files) correct the entry in place like a rail pick,
+  so Back never steps through side-panel changes. The Files row selection
+  itself (`setLayout` with a preview intent for the layout already on
+  screen) is written in place in both modes — choosing a file is not a page
+  — which also removes the second entry a file click used to push below the
+  fold before the drill-in's own. The Files pane's row write names itself
+  (`openFilePreviewIntentFrom: 'pane'`, in the navigation store's memory
+  for the parse its write causes), and the Chat position leaves such an
+  intent to the pane that wrote it; every other intent — a transcript link,
+  a session panel's file, a shared or reloaded URL — the position opens
+  whatever tool is beside Chat, showing an already-open preview of that
+  path (the rail names each preview's path) rather than opening a second
+  occurrence.
+- **The transcript keeps 640px beside a tool** (`CODING_TRANSCRIPT_MIN_WIDTH`,
+  derived from the transcript's own rules: the column's 20px gutters, the
+  bubble's 80% of the row and its 48px padding leave 432px of text, the
+  ~60-character measure). A tool
+  that would leave the transcript narrower folds the inbox (`inboxOpen`
+  false) for its stay and unfolds it when the tool closes, measuring the
+  inbox as rendered or by its own 240–360px rule. A fold or unfold the
+  reader makes by hand while a tool is open is remembered for the session
+  (`inbox: true | false` in the record) and never overridden: no fold, no
+  restore, and the choice applied again when the session arrives or
+  returns. The crumb's Inbox and the edge strip are such choices. Who
+  folded it is the record's too (`inbox: 'layout'`), so a reload or a
+  return on a folded inbox unfolds it when the tool closes, as it would
+  have without the reload.
+- **One bar (#3046).** The breadcrumb names the conversation, and Chat's
+  own toolbar renders into the bar's two slots beside it through
+  `RegionChromeSlots` with `namesPane` — the full-screen Chat joins a bar
+  that names it and ignores a region's bar as before — omitting its identity
+  (the crumb is the title) and keeping its one verb, New, icon-only: the
+  shared `NewChatAction` with `iconOnly`, named "New chat" and tipped with
+  its chord (`ChatDockWorkspaceActions iconOnly`). There is no Open in this
+  bar: the inbox sits beside Chat and lists the chats to open. The dock's own
+  Chat header elsewhere is unchanged. On a drill-in page the bar is the
+  pane's again (the slots are not offered).
+- **One head per panel.** The side and lower panel heads offer
+  `PaneHeadSlots` (`workspace-panes/PaneHeadSlots.tsx`): Files renders its
+  "+" into the head's trailing slot and no title row; the Terminal renders
+  its tab strip and "+" into the leading slot and no bar of its own. A pane
+  on its own (a drill-in page, a region) keeps its own rows. A strip with one
+  terminal tab still shows it: the tab is where its rename, close and mode
+  toggle live, and hiding it would hide them.
+- **Rail names (#3047).** A File Preview item is named by its file; its
+  tooltip, and the panel head's title, carry the full path
+  (`filePreviewPanePresentationPath`). The lower panel opens at three tenths
+  of the room (`CODING_LOWER_DEFAULT_FRACTION`), between 160px and Chat's
+  240px floor, and is remembered and resizable as before.
+- **The Terminal across the fold.** Past it the pane host is handed nothing
+  for the Terminal (`hostRendersCodingPane`) and the lower panel draws it;
+  below it the host draws it as a drill-in. Crossing from wide to narrow
+  with the lower panel open makes the Terminal the page in place (the
+  reader did not navigate), so it does not vanish; crossing back opens the
+  lower panel. Either way the Terminal remounts: its tabs and their
+  server-side processes carry across (the tab list is the pane's own
+  session storage and the socket reconnects within the server's grace
+  window), while xterm's local scrollback and selection do not.
+- **Geometry stays out of Chat.** The centre's Chat is memoised on its own
+  props (the bar's slot elements, whether it is on screen, two stable
+  setters); a separator drag writes the room's custom properties directly
+  and commits once on release, so a drag, a room measurement or an
+  announcement renders the workbench but not Station's one Chat controller.
+- **Diff's head.** Beside Chat the Diff pane draws no row of its own: its
+  stats join the head after the name, and its four icon tools (Collapse
+  all, Expand all, and Split view and Wrap lines as pressed toggles) sit
+  before the close. They are the same tools the pane draws as its own row
+  elsewhere. The pane has no overflow, so the head keeps its own ⋯ for Pop
+  out and Remove pane. The head's tools are 32px beside the 32px close, and
+  44px boxes on a pointer that cannot hover, since the side panel opens by
+  width alone. A pull request review inside the pane fences its own
+  changed-files diff from the head, so the head always speaks for the Diff
+  pane. File Preview's head is left for the per-file Changes rework in
+  flight to build on.
+
+- **The folded inbox's edge.** While the inbox is folded past the fold (by
+  the layout or by hand) on a fine pointer, the Chat column's left edge
+  carries a slim strip — 6px with a 3px accent bar and a small chevron at
+  rest, 24px with its glyph brought up on hover, full height, with a
+  tooltip — whose click opens the inbox as the reader's own choice (the
+  session remembers it). It is a pointer-only shortcut (`aria-hidden`, out
+  of the tab order): the bar's inbox toggle is the one keyboard and
+  screen-reader control, so the folded inbox is never two controls with one
+  name. Both carry the inbox's "Needs you" count, published by Chat from
+  the same partition the inbox panel renders (`needsYouCount`,
+  `onInboxNeedsYouChange`): the strip as its badge and tooltip, the toggle
+  in its name and tooltip ("Show inbox, 3 need you",
+  `inbox-toggle-label.ts`), so a fold never hides that something is
+  waiting. A coarse pointer has no hover to widen it and gets
+  none; below the fold the inbox is not folded by the layout. Hover-peek (the
+  inbox as an overlay while hovering) was not built: the inbox panel takes
+  the dock's whole handler set and lazy chunk, so a second mount for a peek
+  is not cheap, and the strip's click is one move away.
+- **The fold is judged again when the room changes.** The measured room
+  settles for 150ms before the fold is re-evaluated, so a window being
+  dragged is judged at rest: narrower folds the inbox, and wider brings back
+  an inbox the layout folded once the transcript would clear its floor by
+  24px (hysteresis, so a width on the line does not flap). A fold or unfold
+  the reader made is never revisited by a resize.
+- **No session count.** Under the naming bar there is no "N sessions" text
+  and no count badge: the inbox beside Chat enumerates the chats. The
+  Terminal's head "+"
+  appears once a terminal exists (the empty state's own "New Terminal" says
+  it first), and a file row truncates with an ellipsis and a full-name title
+  rather than widening its panel.
+
+- **The design audit round (2026-10-02).** The Browser launcher flyout
+  renders on the body, fixed beside its rail trigger, since the rail
+  clipped it (the rail no longer scrolls, so its tooltips, placed to the
+  left, are whole too). Escape never leaves the layout: the workbench
+  registers it above the app's route-level "up", closes the panel the
+  reader is in (focus back to its rail item), returns a drill-in to the
+  conversation, and consumes it otherwise; the bar starts with a
+  visually-hidden "Skip to views" control, since the rail is last in the
+  tab order (bar, Chat, the open panel, the rail). A File Preview beside
+  Chat has a back arrow to Files in its head. The bar and every panel head
+  are one 40px row with 12px side padding, a 13px semibold title and the
+  same 32px close. The Terminal: with the shell the only kind of terminal
+  (no agent connections), an open empty panel opens a shell and "+" opens
+  another, no picker; its chrome — tabs, "+", the empty state, the picker
+  — is on the app's tokens and face in both themes, and only the xterm
+  viewport keeps the terminal's dark ground and monospace. The bar's New
+  chat is a compose mark, not a "+", beside the rail's "Add pane" "+". A
+  second Browser on the rail is "Browser 2" (`browserPreviewPaneOrdinal`);
+  the stored Browser state holds a session id, not a URL, so a URL tooltip
+  was not built. One ⋯ per head: the host's own rows for the pane beside
+  Chat (Pop out, Remove pane) go to the pane through `PaneHeadSlots`
+  (`hostActions`); a pane with an overflow of its own merges them and says
+  so (`takeHostActions`), and the head draws its own ⋯ only for a pane that
+  has none; the head's × hides the panel, "Remove pane" takes the pane out of
+  the workspace. Escape acts only from inside the side or lower panel (or on
+  its rail item); elsewhere it is consumed and nothing moves. A session
+  arriving with a remembered tool keeps its fold through the arrival rather
+  than unfolding and folding again. The rail scrolls when a workspace holds
+  more panes than the window shows; its tooltips are drawn on the body like
+  the flyout. The Terminal remembers that the reader closed the last
+  terminal (beside its tab list) so a remount does not open another. The
+  folded edge's bar is neutral at rest and accent on hover, focus or a
+  Needs-you count.
+
+Limits: the lower panel is the Terminal's alone (no other pane docks below);
+the fold ignores whether the Project sidebar is collapsed; a shared link that
+names both a pane and a preview intent opens the pane, and the Chat position
+opens the preview beside it (the review round's M1: a link's intent is the
+Chat position's; only the Files pane's own row write is left to it); the
+inbox fold is judged when a tool opens, is
+resized or restored and when the room rests after a resize, with the inbox's
+measured width at fold time deciding the unfold.
 
 ## Failure shapes this design is meant to prevent
 

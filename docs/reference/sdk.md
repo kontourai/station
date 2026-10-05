@@ -28,7 +28,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -115,6 +115,25 @@ Use hooks inside the host's React provider tree. Query hooks return a React
 Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
+
+### Immutable output review
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`appendProjectTaskRoomOutputFeedback(apiBase, input, options?)` and
+`useAppendProjectTaskRoomOutputFeedbackMutation(taskId, taskCreatedAt, scope)`.
+The client input contains `taskId`, `proposalId`, `occurredAt` and a
+`ProjectTaskRoomOutputFeedback` body. Preserve all fields for an uncertain
+retry; mutation retries are disabled. The hook requires captured connection
+authority and matching Task incarnation before sending, refuses stale late
+settlement, and invalidates room history only under current authority.
+
+`useProjectTaskRoomDiscoveryQuery(taskId, {requestScope, taskCreatedAt})` and
+`useTaskOutputsQuery(taskId, {requestScope, taskCreatedAt})` partition reads by
+connection authority and Task incarnation and refuse stale settlement.
+The optional scoped configuration is used by Station's output review surface;
+legacy unscoped callers keep their existing behavior. See the
+[review HTTP contract](api.md#review-an-immutable-task-output) for authority,
+idempotency, compatibility and the meaning of reviewer acceptance.
 
 ### Task room agent requests
 
@@ -872,6 +891,15 @@ Fetches app configuration.
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined.
+
+### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
+
+Fetches the conversation's usage with its children (`getConversationUsageTree`,
+[`GET /api/orchestration/conversations/:conversationId/usage-tree`](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)).
+Enabled by default; disabled for an empty id or `config.enabled: false`. It
+polls only when `config.refetchInterval` is set. A 404 (no conversation you
+can read) and a 422 (a tree past its bound) reject with `StationHttpError`,
+are not retried, and stop the poll.
 
 ### `useUsageQuery(config?)`
 
@@ -1751,6 +1779,12 @@ fields. The current server reports an incomplete history page as `unavailable`.
 Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
 unavailable and too-large results retain their named states. None is an empty
 complete history, and none permits inferring private records.
+`getProjectSharedTaskPublication(...)` gives a member
+`{ kind: 'shared', publication }`, where `publication` is the same summary the
+list returns for that Task. An unshared, stale, unknown or other-scope Task
+refuses with the same not-found error, so a member cannot tell those cases
+apart. Member pages read history and document only after that publication
+matches the listed item.
 
 These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
@@ -1760,7 +1794,8 @@ does not publish every Task. Project owner/admin publication remains pending;
 the initial management surface requires current Station operator authority.
 
 Operators can use `getProjectSharedTaskPublication`, `shareProjectTask`, and
-`unshareProjectTask` from the same SDK subpath. Capture one `ApiRequestScope`
+`unshareProjectTask` from the same SDK subpath. Only an operator's publication
+review also reports `unshared`; sharing and unsharing stay operator-only. Capture one `ApiRequestScope`
 before review and pass it to the read and mutation. The review returns the full
 Station/local/portable Project scope plus the exact Task id and creation time.
 Send that identity back unchanged when publishing or revoking; revocation also
@@ -2289,8 +2324,9 @@ manifest's field name (`skills`).
 `fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
 from `@kontourai/station-sdk/client`. Both validate the returned inventory or
 session projection before exposing it and preserve HTTP failure details. The
-canonical reader loads after a successful feature response; a reader failure
-remains an error.
+canonical reader is a static import of the client entry, so it adds the shared
+validator to that bundle, and it runs only after a successful feature response;
+a reader failure remains an error.
 `useSkillExperienceInventoryQuery(config?)` and
 `useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
 the SDK root. The session hook remains disabled until a canonical thread exists.
@@ -2301,6 +2337,11 @@ An inventory entry is a preview. Starting requires `executionContract: '1.0'`
 and an exact current source identity. `sendExecutionMessage` accepts the optional
 `skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
 field and refetches the installed inventory before its foreground POST.
+`sendExecutionMessageWithInventory(apiBase, input, readInventory, options?)`
+performs the same preflight with a caller-supplied inventory reader;
+`sendExecutionMessage` passes `fetchSkillExperienceInventory`. The two live in
+separate modules, so a bundle that imports only the rest of the execution
+client does not also carry the validator.
 `inputs` holds scalar text/choice values; attachment role arrays contain indices
 into the canonical chat attachments, after supervised staging. Native role choices use
 composer client IDs until the sender maps them against the actual outgoing
@@ -3190,10 +3231,32 @@ throws this error for a non-2xx response or a missing/false `success` value.
 It checks truthiness, not a literal-boolean schema, and does not validate the
 returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
-2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
-throw their own errors — some a `StationHttpError` without `details`, some a
-plain `Error` or a family-specific subclass — and move onto the same fields
-in later releases, keeping their subclasses (#2708).
+2xx it is a protocol failure and throws a plain `Error`.
+
+Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
+builds it through the same helper (#2708); the plugin command-effect client
+returns business refusals as values instead. The account, application-session,
+authority-observation, checkpoint-restore, conversation pull-request link,
+fleet-routing receipt, learning-source, personal Board and Project layout
+delete, pull-request review, quote-source, runs and setup-import fetchers
+throw a `StationHttpError` where some threw a plain `Error` before. Their
+family subclasses stay and gain the refusal's fields:
+
+| Class | Base | Gains on a refusal |
+|---|---|---|
+| `BoardResponseError`, `BoardProvenanceRefusedError` | `StationHttpError` | `details`, `retryAfterMs`; the provenance refusal keeps its observed status |
+| `DelegationApiError` | `Error` | `status`, `retryAfterMs` (it already carried `code`, `retryable`, `details`) |
+| `AnswerSupportRequestError` | `Error` | `code`, `details`, `retryAfterMs` |
+| `ActionOperationProtocolError`, `LiveActivityProtocolError` | `Error` | `status`, `code`, `details`, `retryAfterMs`; absent on a malformed response |
+| `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
+
+Each keeps its earlier constructor; the new form takes the helper's
+`StationHttpError`. A delegation response whose body is not JSON throws a
+`StationHttpError`, not a `DelegationApiError`: a page is not Station's
+refusal. `getAuthorityObservation` keeps its own two sentences and reports the
+refusal's `status` and `code`; branch on `status === 401`, not on the
+sentence. Fetchers outside `client/` (the React query domains) are not yet on
+the helper.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
@@ -3209,11 +3272,21 @@ Host-action execution deliberately returns `indeterminate` after any failed or
 unreadable response; it does not expose the helper's exception to the caller.
 
 `ChatHttpError`, thrown by execution fetchers, now extends `StationHttpError`;
-`serverMessage` retains the helper's message. Execution fetchers derive
-`stationEnvelope` from a boolean `success` field or an object `error` with a
-string `code`. An HTML proxy response keeps its HTTP status but sets this flag
+`serverMessage` retains the helper's message. The execution, attachment
+staging, orchestration-command, steer-command and chat-stream producers set
+`stationEnvelope`
+to say whether Station itself answered. The body must have Station's shape (a
+boolean `success` field, or an object `error` with a string `code`), and the
+response must carry the `x-station-envelope` header a current Station puts on
+every JSON body it writes. An HTML proxy response, or gateway JSON in
+Station's shape without the header, keeps its HTTP status but sets this flag
 to `false`, so status alone must not be treated as a definitive Station
-refusal. This shape check is not independent proof of the responder's identity.
+refusal. A Station older than the header never sends it: until an origin has
+sent the header once in this process (on any response the SDK's request
+functions return), the shape alone decides, as before. That fallback is not
+independent proof of the responder's identity. The desktop native transport
+does not yet pass the header to the renderer, so requests it carries stay on
+the fallback.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
 
@@ -3227,6 +3300,8 @@ with a fixed generic message. The Task and Session reference reads use
 `TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
 `TaskBasisRequestError`, `SessionOutputsRequestError` and
 `SessionInventoryRequestError`, which remain plain `Error` subclasses.
+The answer Basis, answer narrative, gate-evaluation and quote-source reads,
+and the action-operation list and watch, are opaque in the same way.
 These opaque errors retain the observed `status`, supplied `code` and
 `retryAfterMs`, without `details`. A status of `0` is a local failure marker,
 not an HTTP response status; callers must not interpret it as a server refusal.
@@ -3546,6 +3621,18 @@ but do not load their bundles or enable their actions. The server sets
 uses `installation-pending` or `installation-unavailable` diagnostics, separate
 from distribution-policy disablement. Readiness notifications refresh the
 Project Pane and host-action catalogs as well as the installed-plugin list.
+
+For a `ready` row, `listPlugins` also reports the plugin's validated palette
+`commands` (an empty array when it declares none), an opaque
+`installationGeneration` that a command request echoes back, and
+`commandsRejected: { reason }` when Station dropped invalid declarations.
+Pending and unavailable rows omit all three. The generation is not authority:
+Station admits each command effect against the installed declaration (see
+[Plugin Command Effects](api.md#plugin-command-effects)). `listPlugins` rejects
+a response whose `installationGeneration` is not bounded text or whose
+`commands` is not an array. Station's palette admits and settles effects
+through `@kontourai/station-sdk/client/plugin-command-effects`
+(`admitPluginCommandEffect`, `settlePluginCommandEffects`).
 
 `listPlugins` includes optional `retainedOnRemoval` metadata for packages using
 retained code generations. Normal package updates keep their stable data
@@ -3910,6 +3997,9 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
+A refresh that observes a pull request merged also lets Station reconcile the
+Tasks a person opted in to closing on merge when the caller holds the operate tier;
+it changes nothing in what the read returns (see the [API reference](api.md#keep-a-declared-output)).
 
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)

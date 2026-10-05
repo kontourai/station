@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Re-recorded after a main merge reset the record. This lane imports contract types from their domain subpaths and adds no runtime helper to the package; the client-side reference parser lives in src-ui. No prose change.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]}
+  ]
+}

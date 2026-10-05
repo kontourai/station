@@ -1,0 +1,7 @@
+{
+  "revision": "b4f9d6090ab55af6bcab4e1805fbe8316ef1659a",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed against the codingPanels record gaining an inbox field (the reader's own fold or unfold for a session); nothing in Starter Work names device settings.","inputs":["docs/guides/starter-work.md","docs/learn/media.json","packages/contracts/src/device-settings.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/session-detail/AttachedSessionDetail.tsx","src-ui/src/index.css","src-ui/src/views/HomeView.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

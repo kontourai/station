@@ -46,6 +46,8 @@ const css = [
   '../../chat/chat.css',
   '../../chat-dock/ChatDockInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
+  '../../icons/BrandIcon.css',
+  '../../icons/ProjectIcon.css',
   '../InboxRow.css',
 ]
   .map((path) => resolveCssImports(resolve(import.meta.dirname, path)))
@@ -69,6 +71,7 @@ function item(over: Partial<HomeWorkItem> & { id: string }): HomeWorkItem {
     kindLabel: 'Direct chat',
     title: `${over.id} with a title long enough that it has to be truncated in a rail`,
     projectLabel: 'station',
+    projectSlug: 'station',
     agentLabel: 'Claude Code',
     modelLabel: 'Opus',
     updatedAt: NOW - 120_000,
@@ -121,10 +124,16 @@ function seed() {
   writeSnooze('snoozed', NOW + 3_600_000, NOW);
 }
 
-function panelMarkup(): string {
+/** Pass `accents` to paint the rows' project swatches, `icons` their icons. */
+function panelMarkup(
+  accents?: ReadonlyMap<string, string>,
+  icons?: ReadonlyMap<string, string>,
+): string {
   seed();
   const { container, unmount } = render(
     <ChatDockInboxPanel
+      projectAccentBySlug={accents}
+      projectIconBySlug={icons}
       items={ITEMS}
       activeChatSessionId={null}
       openChatSessionIds={ITEMS.map((entry) => entry.id)}
@@ -149,10 +158,15 @@ function panelMarkup(): string {
   return markup;
 }
 
-function sheetMarkup(): string {
+function sheetMarkup(
+  accents?: ReadonlyMap<string, string>,
+  icons?: ReadonlyMap<string, string>,
+): string {
   seed();
   const { unmount } = render(
     <MobileTaskSwitcher
+      projectAccentBySlug={accents}
+      projectIconBySlug={icons}
       open
       tasks={ITEMS}
       activeChatSessionId={null}
@@ -253,6 +267,143 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           expect((await measure(index + 1)).top).toBe(below);
         }
       }
+    } finally {
+      await pg.close();
+    }
+  });
+
+  test("a project swatch changes no row's height, in the panel or the phone sheet", async () => {
+    const accents = new Map([['station', 'var(--event-tool-call)']]);
+    const cases = [
+      {
+        label: 'panel',
+        plain: panelMarkup(),
+        painted: panelMarkup(accents),
+        viewport: { width: 1280, height: 900 },
+      },
+      {
+        label: 'sheet',
+        plain: sheetMarkup(),
+        painted: sheetMarkup(accents),
+        viewport: { width: 390, height: 844 },
+      },
+    ];
+    for (const { label, plain, painted, viewport } of cases) {
+      // The fixture must contain what it claims to compare.
+      expect(plain, label).not.toContain('inbox-row__project-accent');
+      expect(painted, label).toContain('inbox-row__project-accent');
+      const pg = await browser.newPage({ viewport });
+      try {
+        const measure = async (markup: string) => {
+          await pg.setContent(page(markup));
+          await settle(pg);
+          return pg
+            .locator('[data-testid="inbox-row"]')
+            .evaluateAll((rows) =>
+              rows.map((row) => row.getBoundingClientRect().height),
+            );
+        };
+        const plainHeights = await measure(plain);
+        const paintedHeights = await measure(painted);
+        // The swatch is drawn, not just present in the markup.
+        const swatch = await pg
+          .locator('.inbox-row__project-accent')
+          .first()
+          .boundingBox();
+        expect(swatch?.width, `${label} swatch drawn`).toBeGreaterThan(0);
+        expect(plainHeights.length, label).toBe(ITEMS.length);
+        expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
+      } finally {
+        await pg.close();
+      }
+    }
+  });
+
+  test("a project icon changes no row's height either, and is drawn at its size", async () => {
+    // A real 1x1 PNG, so the image loads rather than falling back.
+    const icons = new Map([
+      [
+        'station',
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      ],
+    ]);
+    const accents = new Map([['station', 'var(--event-tool-call)']]);
+    const cases = [
+      {
+        label: 'panel',
+        plain: panelMarkup(accents),
+        painted: panelMarkup(accents, icons),
+        viewport: { width: 1280, height: 900 },
+      },
+      {
+        label: 'sheet',
+        plain: sheetMarkup(accents),
+        painted: sheetMarkup(accents, icons),
+        viewport: { width: 390, height: 844 },
+      },
+    ];
+    for (const { label, plain, painted, viewport } of cases) {
+      // The fixture must contain what it claims to compare.
+      expect(plain, label).not.toContain('project-icon--icon');
+      expect(painted, label).toContain('project-icon--icon');
+      const pg = await browser.newPage({ viewport });
+      try {
+        const measure = async (markup: string) => {
+          await pg.setContent(page(markup));
+          await settle(pg);
+          return pg
+            .locator('[data-testid="inbox-row"]')
+            .evaluateAll((rows) =>
+              rows.map((row) => row.getBoundingClientRect().height),
+            );
+        };
+        const plainHeights = await measure(plain);
+        const paintedHeights = await measure(painted);
+        const icon = await pg
+          .locator('.inbox-row__project-accent.project-icon--icon')
+          .first()
+          .boundingBox();
+        expect(icon?.width, `${label} icon width`).toBe(12);
+        expect(icon?.height, `${label} icon height`).toBe(12);
+        expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
+      } finally {
+        await pg.close();
+      }
+    }
+  });
+
+  test('the hover card paints above a docked region, not under it', async () => {
+    // A Home row beside a right-docked chat opens its card over that region;
+    // the dock sits at --layer-dock, so a card on the page popover layer is
+    // covered by it. Measured through the real cascade, against the tokens.
+    const pg = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      await pg.setContent(
+        page(
+          '<div class="chat-dock-inbox-hover-card" data-testid="card">card</div>',
+        ),
+      );
+      const layers = await pg.evaluate(() => {
+        const token = (name: string) =>
+          Number.parseInt(
+            getComputedStyle(document.documentElement).getPropertyValue(name),
+            10,
+          );
+        const card = document.querySelector('[data-testid="card"]');
+        if (!card) throw new Error('card not rendered');
+        return {
+          card: Number.parseInt(getComputedStyle(card).zIndex, 10),
+          dock: token('--layer-dock'),
+          navigation: token('--layer-navigation'),
+        };
+      });
+      expect(Number.isFinite(layers.dock)).toBe(true);
+      expect(layers.card).toBeGreaterThan(layers.dock);
+      // Below the navigation layer: the phone's sidebar drawer still covers
+      // a card left open behind it.
+      expect(layers.card).toBeLessThan(layers.navigation);
     } finally {
       await pg.close();
     }
@@ -414,8 +565,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     });
   });
 
-  /** Every touch-chrome action is 44x44, beside its row, never wrapped under
-   *  it, and the row's title keeps a readable width. */
+  /** Every touch-chrome action is 44x44, inside its row's box (the picker
+   *  pins its one ⋯ to the row's corner, #3144), never spilling below or
+   *  past it, and the row's title keeps a readable width. */
   async function auditTouchRows(
     pg: import('@playwright/test').Page,
     minimumTitleWidth: number,
@@ -436,9 +588,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
     const rows = await pg.evaluate(() =>
       [...document.querySelectorAll('.inbox-row--touch')].map((row) => {
-        const open = row
-          .querySelector('.inbox-row__open')!
-          .getBoundingClientRect();
+        const rowBox = row.getBoundingClientRect();
         const actionsBox = row
           .querySelector('.inbox-row__actions')
           ?.getBoundingClientRect();
@@ -447,10 +597,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           targets: row.querySelectorAll('.inbox-row__action').length,
           title: row.querySelector('.inbox-row__title')!.getBoundingClientRect()
             .width,
-          right: row.getBoundingClientRect().right,
+          right: rowBox.right,
           wrapped: actionsBox
-            ? actionsBox.left < open.right - 0.5 ||
-              actionsBox.top >= open.bottom
+            ? actionsBox.right > rowBox.right + 0.5 ||
+              actionsBox.bottom > rowBox.bottom + 0.5 ||
+              actionsBox.top < rowBox.top - 0.5
             : false,
         };
       }),
@@ -469,11 +620,14 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     return rows;
   }
 
+  // #3144's phone picker owns a card layout: the single Details action sits
+  // inside the card, with space reserved beside the two-line title/metadata.
+  // The coarse-pointer dock panel above still owns the beside-the-row layout.
   test.each([
     [390, 200],
     [320, 160],
   ])(
-    'touch chrome at %ipx: 44px actions beside the row and a title of at least %ipx',
+    'phone cards at %ipx: one unobscured 44px Details target and a two-line title of at least %ipx',
     async (width, minimumTitleWidth) => {
       const markup = sheetMarkup();
       const pg = await browser.newPage({
@@ -484,9 +638,129 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       try {
         await pg.setContent(page(markup));
         await settle(pg);
-        const rows = await auditTouchRows(pg, minimumTitleWidth);
-        for (const row of rows) {
-          expect(row.right, `${row.key} right edge`).toBeLessThanOrEqual(width);
+        const rows = pg.locator(
+          '.mobile-task-switcher__list .inbox-row--touch',
+        );
+        expect(await rows.count()).toBe(ITEMS.length);
+        for (let index = 0; index < ITEMS.length; index += 1) {
+          const row = rows.nth(index);
+          await row.scrollIntoViewIfNeeded();
+          const measured = await row.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const title = element.querySelector('.inbox-row__title');
+            if (!title) throw new Error('missing title');
+            const titleBox = title.getBoundingClientRect();
+            const titleStyle = getComputedStyle(title);
+            const actions = [...element.querySelectorAll('.inbox-row__action')];
+            const textBoxes = [
+              '.inbox-row__meta',
+              '.inbox-row__title',
+              '.inbox-row__status',
+              '.inbox-row__slim-status',
+              '.inbox-row__slim-word',
+              '.inbox-row__project-context',
+              '.inbox-row__chips',
+            ].flatMap((selector) => {
+              const text = element.querySelector(selector);
+              if (!text) return [];
+              const rect = text.getBoundingClientRect();
+              const style = getComputedStyle(text);
+              return [
+                {
+                  selector,
+                  left: rect.left + Number.parseFloat(style.paddingLeft),
+                  right: rect.right - Number.parseFloat(style.paddingRight),
+                  top: rect.top,
+                  bottom: rect.bottom,
+                },
+              ];
+            });
+            return {
+              key: element.getAttribute('data-row-key'),
+              row: {
+                left: box.left,
+                right: box.right,
+                top: box.top,
+                bottom: box.bottom,
+              },
+              title: {
+                width:
+                  titleBox.width -
+                  Number.parseFloat(titleStyle.paddingLeft) -
+                  Number.parseFloat(titleStyle.paddingRight),
+                height: titleBox.height,
+                fontSize: Number.parseFloat(titleStyle.fontSize),
+                lineHeight: Number.parseFloat(titleStyle.lineHeight),
+              },
+              targets: actions.map((action) => {
+                const rect = action.getBoundingClientRect();
+                const hits = [
+                  [rect.left + rect.width / 2, rect.top + 1],
+                  [rect.left + rect.width / 2, rect.bottom - 1],
+                  [rect.left + 1, rect.top + rect.height / 2],
+                  [rect.right - 1, rect.top + rect.height / 2],
+                  [rect.left + rect.width / 2, rect.top + rect.height / 2],
+                ].map(
+                  ([x, y]) =>
+                    document
+                      .elementFromPoint(x, y)
+                      ?.closest('.inbox-row__action') === action,
+                );
+                return {
+                  label: action.getAttribute('aria-label'),
+                  width: rect.width,
+                  height: rect.height,
+                  left: rect.left,
+                  right: rect.right,
+                  top: rect.top,
+                  bottom: rect.bottom,
+                  hits,
+                  overlaps: textBoxes
+                    .filter(
+                      (text) =>
+                        text.left < rect.right - 0.5 &&
+                        text.right > rect.left + 0.5 &&
+                        text.top < rect.bottom - 0.5 &&
+                        text.bottom > rect.top + 0.5,
+                    )
+                    .map((text) => text.selector),
+                };
+              }),
+            };
+          });
+          expect(
+            measured.targets,
+            `${measured.key} has one Details action`,
+          ).toHaveLength(1);
+          expect(
+            measured.row.right,
+            `${measured.key} right edge`,
+          ).toBeLessThanOrEqual(width);
+          expect(
+            measured.title.width,
+            `${measured.key} readable title width`,
+          ).toBeGreaterThanOrEqual(minimumTitleWidth);
+          expect(measured.title.fontSize).toBe(18);
+          expect(measured.title.height).toBeLessThanOrEqual(
+            measured.title.lineHeight * 2 + 1,
+          );
+          for (const target of measured.targets) {
+            expect(target.label).toMatch(/^Details for /);
+            expect(target.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+            expect(target.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+            expect(target.left).toBeGreaterThanOrEqual(measured.row.left);
+            expect(target.right).toBeLessThanOrEqual(measured.row.right);
+            expect(target.top).toBeGreaterThanOrEqual(measured.row.top);
+            expect(target.bottom).toBeLessThanOrEqual(measured.row.bottom);
+            expect(
+              target.hits,
+              `${measured.key} Details target hit testing`,
+            ).toEqual([true, true, true, true, true]);
+            expect(
+              target.overlaps,
+              `${measured.key} Details target covers text`,
+            ).toEqual([]);
+          }
         }
       } finally {
         await pg.close();
@@ -505,7 +779,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           isOpenChat
           now={NOW}
           chrome="touch"
-          snoozeMenuOnly
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
           onCloseChat={vi.fn()}

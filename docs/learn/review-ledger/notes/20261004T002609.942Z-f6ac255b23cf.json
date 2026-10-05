@@ -1,0 +1,19 @@
+{
+  "revision": "47dade37280a196923c37f2ed62019112f3e9cc8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#2377 C3b wording delta reviewed: refusal message and helper comment now name the posture precedence (recorded mode, Agent default, Station default); test comment only. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2377 C3b wording delta reviewed: refusal message and helper comment now name the posture precedence (recorded mode, Agent default, Station default); test comment only. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 C3b wording delta reviewed: refusal message and helper comment now name the posture precedence (recorded mode, Agent default, Station default); test comment only. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 C3b delta review: the guide now says that without an approval mode the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default, matching ApprovalPosture.resolve (recorded decision at every start and turn, then Agent then Station default at start).","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2377 C3b wording delta reviewed: refusal message and helper comment now name the posture precedence (recorded mode, Agent default, Station default); test comment only. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 C3b wording delta reviewed: refusal message and helper comment now name the posture precedence (recorded mode, Agent default, Station default); test comment only. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 C3b wording delta reviewed: refusal message and helper comment now name the posture precedence (recorded mode, Agent default, Station default); test comment only. This document makes no claim about station-control callers' approval posture; no prose change needed.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

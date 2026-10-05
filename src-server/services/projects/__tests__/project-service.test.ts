@@ -1,11 +1,13 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -30,7 +32,9 @@ vi.mock('@kontourai/station-contracts/knowledge', async (importOriginal) => {
   };
 });
 
-const { ProjectService } = await import('../project-service.js');
+const { ProjectService, ProjectIconRefusedError } = await import(
+  '../project-service.js'
+);
 const { FileStorageAdapter, compareProjectListOrder } = await import(
   '../../../domain/file-storage-adapter.js'
 );
@@ -74,6 +78,7 @@ function createMockStorageAdapter() {
 }
 
 const tmpHomes: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
   while (tmpHomes.length > 0) {
@@ -326,6 +331,62 @@ describe('ProjectService', () => {
     expect(result.updatedAt).toBeDefined();
     const revision = adapter.projectRevision.mock.results[0]?.value;
     expect(revision.replace).toHaveBeenCalled();
+  });
+
+  describe('the icon rule holds for callers that skip the routes', () => {
+    const LEGACY = 'https://example.com/legacy.png';
+    const storedWithIcon = (icon: string) => {
+      const adapter = createMockStorageAdapter();
+      adapter.getProject.mockReturnValue({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Old',
+        icon,
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+      });
+      return adapter;
+    };
+
+    test('createProject refuses an icon the rule refuses and writes nothing', async () => {
+      const adapter = createMockStorageAdapter();
+      const svc = new ProjectService(adapter as any);
+      await expect(
+        svc.createProject({ name: 'Test', slug: 'test', icon: LEGACY } as any),
+      ).rejects.toThrow(ProjectIconRefusedError);
+      expect(adapter.createProject).not.toHaveBeenCalled();
+      const created = await svc.createProject({
+        name: 'Glyph',
+        slug: 'glyph',
+        icon: '🚀',
+      } as any);
+      expect(created.icon).toBe('🚀');
+    });
+
+    test('updateProject refuses a changed icon the rule refuses and writes nothing', async () => {
+      const adapter = storedWithIcon('🧭');
+      const svc = new ProjectService(adapter as any);
+      await expect(svc.updateProject('test', { icon: LEGACY })).rejects.toThrow(
+        ProjectIconRefusedError,
+      );
+      const revision = adapter.projectRevision.mock.results[0]?.value;
+      expect(revision.replace).not.toHaveBeenCalled();
+    });
+
+    test('an update that resends or omits a legacy stored icon is not refused for it', async () => {
+      const adapter = storedWithIcon(LEGACY);
+      const svc = new ProjectService(adapter as any);
+      expect((await svc.updateProject('test', { name: 'New' })).name).toBe(
+        'New',
+      );
+      expect(
+        (await svc.updateProject('test', { name: 'Newer', icon: LEGACY })).name,
+      ).toBe('Newer');
+      // Clearing the legacy icon is how the user replaces it.
+      expect(
+        await svc.updateProject('test', { icon: null }),
+      ).not.toHaveProperty('icon');
+    });
   });
 
   test('persists a project default workspace isolation through updates', async () => {
@@ -814,4 +875,38 @@ describe('ProjectService', () => {
     );
     expect(svc.listProjects()[0]?.position).toBeUndefined();
   });
+});
+
+test('a project default Agent survives a file-backed reload, an unrelated update, and explicit clearing', async () => {
+  const home = makeTempDir('station-project-default-agent-');
+  const adapter = new FileStorageAdapter(home);
+  const service = new ProjectService(adapter);
+  await service.createProject({
+    name: 'Default agent',
+    slug: 'default-agent',
+    workingDirectory: home,
+    defaultAgent: agentId('codex'),
+  });
+  const reloaded = new ProjectService(new FileStorageAdapter(home));
+  expect((await reloaded.getProject('default-agent')).defaultAgent).toBe(
+    'codex',
+  );
+  await reloaded.updateProject('default-agent', { name: 'Renamed' });
+  expect((await reloaded.getProject('default-agent')).defaultAgent).toBe(
+    'codex',
+  );
+  await reloaded.updateProject('default-agent', {
+    defaultAgent: agentId('claude'),
+  });
+  expect((await reloaded.getProject('default-agent')).defaultAgent).toBe(
+    'claude',
+  );
+  await reloaded.updateProject('default-agent', { defaultAgent: null });
+  expect(
+    (
+      await new ProjectService(new FileStorageAdapter(home)).getProject(
+        'default-agent',
+      )
+    ).defaultAgent,
+  ).toBeUndefined();
 });

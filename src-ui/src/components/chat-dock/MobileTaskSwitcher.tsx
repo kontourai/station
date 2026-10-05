@@ -23,7 +23,7 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { registerDialogHistory } from '../dialog-history';
-import { PickerCreateAction } from '../PickerCreateAction';
+import { NewChatAction } from '../NewChatAction';
 import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import {
@@ -64,6 +64,8 @@ export function MobileTaskSwitcher({
   agents,
   workFacts,
   gitLocationByThreadId,
+  projectAccentBySlug,
+  projectIconBySlug,
   pending = false,
   loadError = false,
   onRetryLoad,
@@ -108,6 +110,8 @@ export function MobileTaskSwitcher({
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
   workFacts?: InboxGroupListProps['workFacts'];
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
+  projectAccentBySlug?: InboxGroupListProps['projectAccentBySlug'];
+  projectIconBySlug?: InboxGroupListProps['projectIconBySlug'];
   /** True until every read contributing rows has settled. */
   pending?: boolean;
   loadError?: boolean;
@@ -300,8 +304,9 @@ export function MobileTaskSwitcher({
             agents={agents}
             workFacts={workFacts}
             gitLocationByThreadId={gitLocationByThreadId}
+            projectAccentBySlug={projectAccentBySlug}
+            projectIconBySlug={projectIconBySlug}
             showGroupCounts
-            snoozeMenuOnly
             chrome="touch"
             actionsInDetails
             onActivate={(task) => {
@@ -358,8 +363,8 @@ export function MobileTaskSwitcher({
           />
         </div>
         {onNewChat && (
-          <PickerCreateAction
-            label="New chat"
+          <NewChatAction
+            className="chat-start__inbox-action"
             onClick={() => {
               closeAndRestoreFocus();
               onNewChat();
