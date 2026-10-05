@@ -19,6 +19,7 @@ export function SkillExperiencePicker({
   onChange,
   onRemove,
   onBrowse,
+  startHint = 'Choose an Agent below to prepare this skill in its chat composer. Attach required files there, then send explicitly.',
 }: {
   query: {
     data?: SkillExperienceInventoryV1;
@@ -33,6 +34,8 @@ export function SkillExperiencePicker({
   onChange: (inputs: Record<string, string>) => void;
   onRemove: () => void;
   onBrowse: () => void;
+  /** What starting does with the chosen skill, in the host's words. */
+  startHint?: string;
 }) {
   return (
     <section className="skill-experience-cards" aria-label="Visual skills">
@@ -90,10 +93,7 @@ export function SkillExperiencePicker({
               your inputs are retained.
             </p>
           )}
-          <p>
-            Choose an Agent below to prepare this skill in its chat composer.
-            Attach required files there, then send explicitly.
-          </p>
+          <p>{startHint}</p>
           <Button onClick={onRemove}>Use ordinary chat</Button>
         </>
       )}

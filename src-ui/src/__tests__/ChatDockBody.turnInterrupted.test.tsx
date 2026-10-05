@@ -258,7 +258,7 @@ describe('ChatDockBody unacknowledged-decision notice (#2880)', () => {
   const NOTICE =
     'Your decision is recorded, but the engine has not acknowledged it yet. Station has not re-sent it.';
   const REFUSED =
-    'Your decision is recorded, but Station did not send it because the engine would not accept that reply. The engine is still waiting for an answer.';
+    'Your decision is recorded, but Station did not send it because the engine would not accept that reply. The engine still needs an answer.';
 
   function noticeText() {
     const notice = document.querySelector(

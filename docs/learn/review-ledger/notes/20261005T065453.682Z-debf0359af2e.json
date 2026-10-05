@@ -1,0 +1,7 @@
+{
+  "revision": "6d5c66731d7c64ea022fa36d0fbb8d008c2c4514",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Round 3: project-chip sentence now reflects the per-engine folderless hint (home, or for ACP its connection folder or a private Station-managed workspace); hand-off sentence covers dismissed Starts, the polite announcement, and sessionStorage persistence (reload, not tab close), replacing the overclaim 'no ordering loses text'. NewChatModal change is the shared hint helper.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f891786eebfb74100a956f1f7243fe52c32c2802",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDock change threads a client-side draft callback; no configuration or device setting changed (chatDockProjectSlug unchanged). No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

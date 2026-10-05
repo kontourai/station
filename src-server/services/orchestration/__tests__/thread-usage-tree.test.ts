@@ -416,6 +416,128 @@ describe('conversation usage tree', () => {
     store.close();
   });
 
+  test('#3323: an unreadable peer dispatch whose link Station derived makes the total partial; a claimed one is ignored', () => {
+    const store = fixtureStore();
+    start(store, 'conv-codex', 'codex');
+    usage(store, 'conv-codex', 1);
+    const svc = service(store);
+    const dispatch = (
+      taskId: string,
+      provenance: 'caller-derived' | 'direct-claim',
+    ) =>
+      svc.recordPeerDelegationActivityDispatch({
+        taskId,
+        conversationId: taskId,
+        prompt: `Secret ${taskId}`,
+        // In hosted mode Station's own requests act as the operator.
+        userId: 'station-operator',
+        environment: { id: 'env-peer', name: 'Lab', kind: 'peer' },
+        target: { kind: 'agent', id: 'agent-x' },
+        parentConversationId: 'conv-codex',
+        delegationProvenance: provenance,
+      });
+    const claimed = dispatch('remote-claimed', 'direct-claim');
+    let outcome = svc.readThreadUsageTree('conv-codex', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.total.tokens.complete).toBe(true);
+    expect(outcome.tree.total.partialReasons).toEqual([]);
+
+    const derived = dispatch('remote-derived', 'caller-derived');
+    outcome = svc.readThreadUsageTree('conv-codex', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.root.children).toEqual([]);
+    expect(outcome.tree.total.tokens).toMatchObject({
+      totalTokens: 11,
+      complete: false,
+    });
+    expect(outcome.tree.total.partialReasons).toEqual([
+      "1 delegated task runs under an owner you can't read, so its usage is not counted.",
+    ]);
+    const text = JSON.stringify(outcome.tree);
+    for (const hidden of [claimed, derived, 'Secret'])
+      expect(text).not.toContain(hidden);
+    store.close();
+  });
+
+  test('#3323: a provenance stamp counts only on the start that names the parent, never on a later configuration', () => {
+    const store = fixtureStore();
+    start(store, 'conv-codex', 'codex');
+    const context = createChildDelegationContext({
+      agentSlug: 'coder',
+      conversationId: 'conv-codex',
+    });
+    // Started with a claimed context, then a configuration carrying the
+    // stamp: a start is the only row a dispatch route stamps.
+    start(
+      store,
+      'claimed-task',
+      'codex',
+      { taskId: 'claimed-task', delegation: context },
+      'someone-else',
+    );
+    store.appendEvent({
+      eventId: 'claimed-task:configured',
+      threadId: 'claimed-task',
+      sessionId: 'claimed-task',
+      provider: 'codex',
+      method: 'session.configured',
+      createdAt: '2026-09-23T00:00:02.000Z',
+      metadata: {
+        delegation: context,
+        stationDelegationProvenance: 'runtime-attested',
+      },
+    } as CanonicalRuntimeEvent);
+    // Stamped on its start, but naming another conversation there (and
+    // claiming this one by parentTaskId); a later configuration names this
+    // one. The other id sorts first, so the link the read picks is this
+    // conversation's, which the stamp never vouched for.
+    start(
+      store,
+      'other-parent',
+      'codex',
+      {
+        taskId: 'other-parent',
+        parentTaskId: 'conv-codex',
+        delegation: createChildDelegationContext({
+          agentSlug: 'coder',
+          conversationId: 'conv-a-elsewhere',
+        }),
+        stationDelegationProvenance: 'runtime-attested',
+      },
+      'someone-else',
+    );
+    store.appendEvent({
+      eventId: 'other-parent:configured',
+      threadId: 'other-parent',
+      sessionId: 'other-parent',
+      provider: 'codex',
+      method: 'session.configured',
+      createdAt: '2026-09-23T00:00:02.000Z',
+      metadata: { parentConversationId: 'conv-codex' },
+    } as CanonicalRuntimeEvent);
+    const outcome = service(store).readThreadUsageTree('conv-codex', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.total.tokens.complete).toBe(true);
+    expect(outcome.tree.total.partialReasons).toEqual([]);
+    // Control: the same unreadable start, stamped where it names the parent.
+    start(
+      store,
+      'attested-task',
+      'codex',
+      {
+        taskId: 'attested-task',
+        delegation: context,
+        stationDelegationProvenance: 'runtime-attested',
+      },
+      'someone-else',
+    );
+    const control = service(store).readThreadUsageTree('conv-codex', as(OWNER));
+    if (control.status !== 'found') throw new Error(control.status);
+    expect(control.tree.total.tokens.complete).toBe(false);
+    expect(control.tree.total.partialReasons).toHaveLength(1);
+    store.close();
+  });
+
   test('unreadable sessions naming the conversation never crowd out a readable delegate', () => {
     const store = fixtureStore();
     start(store, 'conv-h', 'codex');

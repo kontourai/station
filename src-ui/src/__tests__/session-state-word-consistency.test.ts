@@ -386,6 +386,9 @@ const SRC_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** The surfaces the vocabulary governs. */
 const SURFACE_ROOTS = [
   'components/home',
+  // The start composer (Home and the dock's draft) and its dock host.
+  'components/chat-start',
+  'components/modals/NewChatModal.tsx',
   'components/inbox-row',
   'components/chat-dock',
   'components/project-sidebar',
@@ -461,14 +464,10 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
 const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   // The banner's one sentence form of the ladder's "No progress · Nm".
   ['components/home/ProgressSilenceObservation.tsx', 'No progress for'],
-  // A sentence about a refused decision reply ("The engine is still waiting
-  // for an answer."), not the retired "Still waiting" status label.
-  ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
-  ['components/home/HomeActionSection.tsx', 'Model not reported'],
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
+  ['components/chat-start/StartComposer.tsx', 'Model not reported'],
   ['components/chat-dock/command-launcher-model.ts', 'Model not reported'],
-  ['views/home/useHomeViewModel.ts', 'Model not reported'],
   ['views/home/home-view-model.ts', 'Model not reported'],
 ];
 

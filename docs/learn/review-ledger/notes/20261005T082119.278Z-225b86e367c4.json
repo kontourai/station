@@ -1,0 +1,7 @@
+{
+  "revision": "8f269bba9cc30d11caa10d1c077d5049338781ee",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal change is the shared modelPickerProviders helper only; no setup-helper or setup-return claim changed. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}
