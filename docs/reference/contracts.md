@@ -99,6 +99,12 @@ is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
 
+`ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
+not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
+chat banner reads it through the Session API's
+[usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
 updates liveness without advancing the event replay cursor.
@@ -200,9 +206,8 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) names the turn's engine ("No response from Claude
-Code for …") and shows the stall notice with a Stop button, and the user
-decides. On the exec fallback, Stop signals the
+`progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
+Stop button, and the user decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).

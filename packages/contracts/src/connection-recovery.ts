@@ -207,8 +207,8 @@ export interface ConnectionRecoveryProjection {
 /**
  * #3157: why a usage-limit intent did not resume on its own. A `manual`
  * intent carries `auto-resume-off`. A `canceled` intent carries
- * `superseded`, `request-pending` or `session-ended` when one of those
- * retired it; other cancellations (a Stop, shutdown) carry no reason.
+ * `superseded`, `request-pending`, `session-ended` or `user-canceled` when one
+ * of those retired it; other cancellations (a Stop, shutdown) carry no reason.
  */
 export type ConnectionRecoveryOutcomeReason =
   /** The user has not turned on automatic resume after usage limits. */
@@ -218,7 +218,9 @@ export type ConnectionRecoveryOutcomeReason =
   /** The Session was waiting on an open request when the resume was due. */
   | 'request-pending'
   /** The Session closed or no longer exists. */
-  | 'session-ended';
+  | 'session-ended'
+  /** The user chose Cancel auto-resume on the banner while it waited. */
+  | 'user-canceled';
 
 /**
  * #3157: `runtime.error` details an engine adapter attaches when the provider

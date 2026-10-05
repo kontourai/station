@@ -305,7 +305,7 @@ describe('#3157 usage-limit resume', () => {
     second.store.close();
   });
 
-  test('a usage-limit stop with no reset is fenced at shutdown like any manual intent', async () => {
+  test('a usage-limit stop with no reset is spared at shutdown and stays with the user (#3157 banner)', async () => {
     vi.useFakeTimers({ now: STOPPED_AT });
     const first = openStore();
     const before = coordinatorFor(first.store, () => true);
@@ -318,9 +318,13 @@ describe('#3157 usage-limit resume', () => {
     const second = openStore(first.path);
     const after = coordinatorFor(second.store, () => true);
     after.coordinator.reconcile();
+    // Never dispatched on its own, so there is nothing for the fence to stop;
+    // its banner still offers Resume now.
     expect(after.coordinator.latestProjection(THREAD)).toMatchObject({
-      outcome: 'canceled',
+      outcome: 'manual',
+      usageLimit: true,
     });
+    expect(after.dispatch).not.toHaveBeenCalled();
     await after.coordinator.dispose();
     second.store.close();
   });
