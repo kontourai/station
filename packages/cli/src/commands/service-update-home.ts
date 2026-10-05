@@ -15,6 +15,26 @@ import {
  * nonzero, which is what the launcher acts on.
  */
 export function runServiceUpdateHome(args: string[], homeDir: string): void {
+  try {
+    runUpdateHome(args, homeDir);
+  } catch (error) {
+    // The launcher logs one line of this; it must name the cause (a
+    // Windows backup failed with only "backup could not be created").
+    throw new Error(describeWithCauses(error));
+  }
+}
+
+function describeWithCauses(error: unknown): string {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; current !== undefined && depth < 5; depth += 1) {
+    parts.push(current instanceof Error ? current.message : String(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return parts.join(': ');
+}
+
+function runUpdateHome(args: string[], homeDir: string): void {
   const [verb] = args;
   const backupDir = args
     .find((arg) => arg.startsWith('--backup-dir='))
