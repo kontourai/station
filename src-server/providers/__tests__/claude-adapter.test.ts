@@ -2178,13 +2178,35 @@ describe('ClaudeAdapter', () => {
         preToolPolicy?: StagedPreToolPolicyEvaluator;
         /** Deliver the built-in in-process station-browser server. */
         stationBrowser?: boolean;
+        /** The `mcp_servers` the engine's init message reports (none: no init). */
+        initMcpServers?: Array<{
+          name: string;
+          status: string;
+          source?: string;
+        }>;
         logger?: {
           info: (...args: any[]) => void;
           warn: (...args: any[]) => void;
         };
       } = {},
     ) {
-      const query = options.query ?? createMockQuery([]);
+      const query =
+        options.query ??
+        createMockQuery(
+          options.initMcpServers
+            ? [
+                {
+                  type: 'system',
+                  subtype: 'init',
+                  session_id: `${threadId}-engine`,
+                  cwd: '/workspace/project',
+                  model: 'claude-sonnet-4-6',
+                  tools: [],
+                  mcp_servers: options.initMcpServers,
+                },
+              ]
+            : [],
+        );
       mockQuery.mockReturnValue(query);
       const { preToolPolicy } = options;
       const adapter = new ClaudeAdapter({
@@ -2211,6 +2233,8 @@ describe('ClaudeAdapter', () => {
       });
       await iterator.next();
       await iterator.next();
+      // The engine's init publishes its own session.configured.
+      if (options.initMcpServers) await iterator.next();
       const queryOptions =
         mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options;
       const canUseTool = queryOptions.canUseTool;
@@ -4743,9 +4767,14 @@ describe('ClaudeAdapter', () => {
     });
 
     describe('the server-wide Station browser session grant', () => {
+      const SDK_ONLY = [
+        { name: 'station-browser', status: 'connected', source: 'sdk' },
+        { name: 'github', status: 'connected', source: 'user' },
+      ];
       const browserAgent = (extra: Record<string, unknown> = {}) => ({
         agent: { slug: 'browser-agent', ...extra },
         stationBrowser: true,
+        initMcpServers: SDK_ONLY,
       });
       const SERVER = { sessionGrantScope: 'server' as const };
 
@@ -4878,6 +4907,7 @@ describe('ClaudeAdapter', () => {
       test('an authored tool server squatting on the id is never offered the grant', async () => {
         const { adapter, ask } = await grantHarness('thread-browser-squat', {
           stationBrowser: true,
+          initMcpServers: SDK_ONLY,
           agent: {
             slug: 'squatted',
             toolServers: [
@@ -4895,10 +4925,56 @@ describe('ClaudeAdapter', () => {
         await adapter.stopSession('thread-browser-squat');
       });
 
+      test.each([
+        ['no init report yet', undefined],
+        [
+          'an init that omits the source (an older engine)',
+          [{ name: 'station-browser', status: 'connected' }],
+        ],
+        [
+          'a discovered server of the same name',
+          [{ name: 'station-browser', status: 'connected', source: 'project' }],
+        ],
+        [
+          'a second server of the same name beside the in-process one',
+          [
+            { name: 'station-browser', status: 'connected', source: 'sdk' },
+            { name: 'station-browser', status: 'connected', source: 'user' },
+          ],
+        ],
+        [
+          'an init that lists no station-browser',
+          [{ name: 'github', status: 'connected', source: 'user' }],
+        ],
+      ])(
+        'fails closed: %s is never offered or honoured the grant',
+        async (_label, initMcpServers) => {
+          const { adapter, ask } = await grantHarness(
+            'thread-browser-unverified',
+            {
+              agent: { slug: 'discovery' },
+              stationBrowser: true,
+              ...(initMcpServers ? { initMcpServers } : {}),
+            },
+          );
+          const first = await ask('mcp__station-browser__browser_click', {});
+          if (first.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(first.event.payload).not.toHaveProperty(
+            'stationBrowserServer',
+          );
+          await first.answer('acceptForSession', SERVER);
+          const second = await ask('mcp__station-browser__browser_open', {});
+          expect(second.kind).toBe('prompted');
+          if (second.kind === 'prompted') await second.answer('decline');
+          await adapter.stopSession('thread-browser-unverified');
+        },
+      );
+
       test('a session not delivered the in-process server is never offered the grant', async () => {
         const { adapter, ask } = await grantHarness(
           'thread-browser-undelivered',
           {
+            initMcpServers: SDK_ONLY,
             agent: { slug: 'no-browser' },
           },
         );

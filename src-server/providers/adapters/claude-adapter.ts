@@ -715,6 +715,17 @@ type ClaudeSessionRecord = {
    * authored server of that id. The server grant's authenticity needs it.
    */
   stationBrowserDelivered: boolean;
+  /**
+   * Set from each `init` report (`stationBrowserVerifiedByInit`): exactly one
+   * server is named `station-browser` and the engine reports its source as
+   * `sdk`, an in-process server only this host can register. Unset until the
+   * first init, so the server grant is neither offered nor honoured before it
+   * (fail closed). With no `strictMcpConfig` for agents that author no tool
+   * servers, Claude's own discovery (`.mcp.json`, user config) can add servers,
+   * and which one wins a shared name lives in the compiled CLI, not in the
+   * installed SDK; the name alone therefore proves nothing.
+   */
+  stationBrowserVerified: boolean;
   /** Model controls confirmed at spawn or by a successful SDK control call. */
   currentModelOptions: ClaudeAppliedModelOptions;
   /**
@@ -1563,6 +1574,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       pendingRequests: new Map(),
       approvedTools: new Set(),
       serverGrants: new Set(),
+      stationBrowserVerified: false,
       stationBrowserDelivered:
         builtinServers?.[STATION_BROWSER_MCP_SERVER_ID] !== undefined,
       lastSessionState: 'idle',
@@ -3126,7 +3138,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           // The Agent SDK generates this name from the actual mcpServers
           // config key, in Station's own process.
           'authentic',
-          record.stationBrowserDelivered,
+          record.stationBrowserDelivered && record.stationBrowserVerified,
         );
         const request: ToolRequestGrantInput = {
           ...(authenticStationBrowser ? { authenticStationBrowser } : {}),
