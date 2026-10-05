@@ -2854,6 +2854,13 @@ describe('CI verification workflow contracts', () => {
       steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
     };
     expect(floorJob.if).toBeUndefined();
+    const resourceStaging = floorJob.steps.find(
+      (step) => step.name === 'Verify desktop resource staging',
+    );
+    expect(resourceStaging?.run).toBe(
+      'npm run test:focused -- scripts/__tests__/verify-desktop-clean-checkout.test.ts',
+    );
+    expect(resourceStaging?.if).toBeUndefined();
     const relevance = floorJob.steps.find(
       (step) => step.id === 'rust_relevance',
     );
