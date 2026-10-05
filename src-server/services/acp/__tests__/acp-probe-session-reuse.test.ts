@@ -59,7 +59,8 @@ process.stdin.on('data', (chunk) => {
     log(method, params);
     switch (method) {
       case 'initialize':
-        reply(id, { protocolVersion: 1, agentCapabilities: caps, agentInfo: { name: 'fake-agent', version: setting('version', '1.0.0') } });
+        // Grok Build sends no agentInfo at all; _meta.noAgentInfo mimics it.
+        reply(id, { protocolVersion: 1, agentCapabilities: caps, ...(caps._meta && caps._meta.noAgentInfo ? {} : { agentInfo: { name: 'fake-agent', version: setting('version', '1.0.0') } }) });
         break;
       case 'session/new': {
         const sessionId = 'sess-' + process.pid + '-' + ++counter;
@@ -335,6 +336,25 @@ describe('#3411 capability probes do not leak agent sessions', () => {
         'session/resume',
       ]);
       expect(agent.storedSessions()).toHaveLength(2);
+    }, 30_000);
+
+    test('an agent that reports no agentInfo (as Grok Build does) is still reattached by the background sweep', async () => {
+      const agent = fakeAgent({
+        sessionCapabilities: { resume: {} },
+        _meta: { noAgentInfo: true },
+      });
+      const probe = agent.newProbe();
+      try {
+        await probeTimes(probe, 3);
+      } finally {
+        await probe.dispose();
+      }
+      expect(agent.methods()).toEqual([
+        'session/new',
+        'session/resume',
+        'session/resume',
+      ]);
+      expect(agent.storedSessions()).toHaveLength(1);
     }, 30_000);
 
     test('a changed agent version mints a fresh session', async () => {
