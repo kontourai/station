@@ -1,0 +1,7 @@
+{
+  "revision": "fed7d14336a7270578e7e17e53892b76d8c10cfa",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Followed the link to connections.md, whose member Project icon sentence changed. This guide only names member Project reads (line ~53) and defers setup to connections.md; it makes no icon claim, so it stays accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

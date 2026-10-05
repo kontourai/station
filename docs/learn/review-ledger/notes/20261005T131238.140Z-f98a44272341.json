@@ -1,0 +1,7 @@
+{
+  "revision": "fed7d14336a7270578e7e17e53892b76d8c10cfa",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Rewrote the member Project icon sentence to match MemberProjectPage.tsx: it now applies displayableProjectIcon (projectIconProblem), which refuses URLs and paths (no raw image request outside the broker) and draws a validated base64 PNG/JPEG/WebP/ICO data URL. Pinned by ProjectPage.test.tsx (uploaded image draws, https link does not). Rest of the paragraph unchanged.","inputs":["docs/guides/connections.md"]}
+  ]
+}
