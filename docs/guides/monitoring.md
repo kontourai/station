@@ -233,7 +233,8 @@ live provider invoice, every plan, or historical usage recovery.
 
 The Profile page keeps receipts, milestones, diagnostics, and detailed activity
 history in expandable sections. **About these totals** explains the summary
-without repeating it above every chart. Access and refresh failures remain visible.
+without repeating it above every chart. Main usage refresh failures remain visible; each expanded section shows its own
+access or read failure.
 
 ## Quick Start
 

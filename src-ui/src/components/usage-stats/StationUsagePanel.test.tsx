@@ -68,6 +68,7 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
   };
   const view = render(<StationUsagePanel />);
   fireEvent.click(screen.getByRole('button', { name: 'View station usage' }));
+  fireEvent.click(screen.getByText('Tokens & costs'));
   const provider = screen.getByRole('row', { name: /^codex/ });
   expect(
     within(provider)
@@ -88,11 +89,17 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
   state.error = new StationHttpError(403, 'denied');
   view.rerender(<StationUsagePanel />);
   expect(screen.queryByRole('table')).toBeNull();
+  expect(
+    screen.queryByRole('list', { name: 'Recorded activity breakdown' }),
+  ).toBeNull();
   expect(screen.getByText(/Local operator access is required/)).toBeTruthy();
   state.error = null;
   state.current = false;
   view.rerender(<StationUsagePanel />);
   expect(screen.queryByRole('table')).toBeNull();
+  expect(
+    screen.queryByRole('list', { name: 'Recorded activity breakdown' }),
+  ).toBeNull();
   view.unmount();
   state.current = true;
   state.data = undefined;
