@@ -200,6 +200,8 @@
 /* Every project row is a 44px target, on every pointer. */
 .start-menu__list .new-chat-modal__dropdown-item {
   min-height: 44px;
+  /* A row's badge never touches its folder. */
+  gap: var(--k-space-2);
 }
 /* The name keeps its width and the folder gives way: a long folder used to
    squeeze the name's box below its text, which then drew over the folder. */
