@@ -1358,7 +1358,10 @@ before #3279, which keep their behavior), `principal`, or `principal-project`. T
 owner id is an existing human `PrincipalRef.id` from request resolution; a paired
 device without a person, a non-human principal, or a hosted request owns none
 ([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
-List, get, replace, revoke, and integration bind/unbind (including the grant and
+`create` currently refuses any owner but `instance` (`owner: "self"` on
+`POST /api/secret-bindings` returns a typed 400, "Person-owned secret bindings are not
+available yet."), because no consumer can use one; the rules below govern person-owned
+records that already exist and the future single-principal consumer. List, get, replace, revoke, and integration bind/unbind (including the grant and
 ungrant inside them) take the request principal as viewer. One typed not-found refusal
 covers a missing binding and another person's, and `/api/secret-bindings` returns it as
 the same 404 body on get, replace, revoke, bind, and unbind; request validation that
@@ -1369,7 +1372,9 @@ stored-env migration, sees and grants only instance bindings. Resolution refuses
 person-owned binding with `owner_mismatch` unless the invocation names that principal
 (and Project). Stdio MCP children and ACP providers are shared and name none, so
 `grant` refuses a person-owned binding for either consumer (a typed 400, checked after
-the not-found lookup) until a child can serve a single principal. New integration env
+the not-found lookup) until a child can serve a single principal; integration bind
+always goes through `grant` for such a binding, even when a grant is already on
+record. New integration env
 references therefore name only instance bindings, and the integration binding
 projection lists every reference, unfiltered, for every caller.
 

@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SecretRunner } from '@kontourai/station-contracts/datum-secret-reference';
+import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 
@@ -44,6 +45,7 @@ import {
   SecretBindingConflictError,
   SecretBindingIntegrationService,
   SecretBindingNotFoundError,
+  SecretBindingPersonCreateError,
   SecretBindingPersonGrantError,
   SecretBindingResolutionError,
 } from '../secret-binding-administration.js';
@@ -714,6 +716,23 @@ describe('secret binding ownership (#3279)', () => {
    * document written before that refusal or edited by hand. Add one to the
    * record exactly as the writer persisted it.
    */
+  /**
+   * `create` refuses a person owner for now, so a person-owned record exists
+   * only in a document written earlier or edited by hand. Create the record
+   * through the real writer, then set the owner it would have persisted.
+   */
+  const seedPersonOwned = async (
+    service: InstanceType<typeof FileSecretBindingAdministration>,
+    root: string,
+    input: { id: string; name: string; authRef: { env: string } },
+    owner: CredentialOwner,
+  ) => {
+    await service.create(input);
+    const path = join(root, 'security', 'secret-bindings.json');
+    const document = JSON.parse(await readFile(path, 'utf8'));
+    document.bindings[input.id].owner = owner;
+    await writeFile(path, JSON.stringify(document), { mode: 0o600 });
+  };
   const seedLegacyGrant = async (
     root: string,
     id: string,
@@ -789,15 +808,22 @@ describe('secret binding ownership (#3279)', () => {
     const service = new FileSecretBindingAdministration(root, {
       environment: { ALICE_TOKEN: 'alice-value' },
     });
-    await expect(
-      service.create({
-        id: 'forged',
-        name: 'Forged',
-        authRef: { env: 'ALICE_TOKEN' },
-        owner: { kind: 'principal', principalId: ALICE },
-        viewer: { principalId: BOB },
-      }),
-    ).rejects.toThrow('owned only by its creator');
+    // Nothing can consume a person's binding yet, so none can be created,
+    // even by its would-be owner; a malformed owner is still invalid.
+    for (const owner of [
+      { kind: 'principal', principalId: ALICE },
+      { kind: 'principal-project', principalId: ALICE, projectSlug: 'sales' },
+    ] as const) {
+      await expect(
+        service.create({
+          id: 'alice-new',
+          name: 'Alice new',
+          authRef: { env: 'ALICE_TOKEN' },
+          owner,
+          viewer: { principalId: ALICE },
+        }),
+      ).rejects.toBeInstanceOf(SecretBindingPersonCreateError);
+    }
     await expect(
       service.create({
         id: 'device-owned',
@@ -807,14 +833,16 @@ describe('secret binding ownership (#3279)', () => {
         viewer: { principalId: 'not-a-principal' },
       }),
     ).rejects.toThrow('Invalid secret binding owner');
-    const created = await service.create({
-      id: 'alice-mail',
-      name: 'Alice mail',
-      authRef: { env: 'ALICE_TOKEN' },
-      owner: { kind: 'principal', principalId: ALICE },
-      viewer: { principalId: ALICE },
-    });
-    expect(created.owner).toEqual({ kind: 'principal', principalId: ALICE });
+    expect(await service.list({ principalId: ALICE })).toEqual([]);
+    await seedPersonOwned(
+      service,
+      root,
+      { id: 'alice-mail', name: 'Alice mail', authRef: { env: 'ALICE_TOKEN' } },
+      { kind: 'principal', principalId: ALICE },
+    );
+    expect(
+      (await service.get('alice-mail', { principalId: ALICE }))?.owner,
+    ).toEqual({ kind: 'principal', principalId: ALICE });
     expect(await service.list({ principalId: BOB })).toEqual([]);
     expect(await service.list()).toEqual([]);
     expect(await service.get('alice-mail', { principalId: BOB })).toBeNull();
@@ -885,17 +913,12 @@ describe('secret binding ownership (#3279)', () => {
     const service = new FileSecretBindingAdministration(root, {
       environment: { CRM: 'crm-value' },
     });
-    await service.create({
-      id: 'alice-crm',
-      name: 'Alice CRM',
-      authRef: { env: 'CRM' },
-      owner: {
-        kind: 'principal-project',
-        principalId: ALICE,
-        projectSlug: 'sales',
-      },
-      viewer: { principalId: ALICE },
-    });
+    await seedPersonOwned(
+      service,
+      root,
+      { id: 'alice-crm', name: 'Alice CRM', authRef: { env: 'CRM' } },
+      { kind: 'principal-project', principalId: ALICE, projectSlug: 'sales' },
+    );
     await seedLegacyGrant(root, 'alice-crm', {
       integrationId: 'crm',
       envName: 'K',

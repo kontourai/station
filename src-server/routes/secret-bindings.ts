@@ -9,9 +9,11 @@ import type {
 import {
   SECRET_BINDING_CONFLICT_MESSAGE,
   SECRET_BINDING_NOT_FOUND_MESSAGE,
+  SECRET_BINDING_PERSON_CREATE_MESSAGE,
   SECRET_BINDING_PERSON_GRANT_MESSAGE,
   SecretBindingConflictError,
   SecretBindingNotFoundError,
+  SecretBindingPersonCreateError,
   SecretBindingPersonGrantError,
 } from '../services/secrets/secret-binding-administration.js';
 
@@ -286,5 +288,7 @@ function secretBindingRouteFailure(error: unknown): {
     return { status: 404, error: SECRET_BINDING_NOT_FOUND_MESSAGE };
   if (error instanceof SecretBindingPersonGrantError)
     return { status: 400, error: SECRET_BINDING_PERSON_GRANT_MESSAGE };
+  if (error instanceof SecretBindingPersonCreateError)
+    return { status: 400, error: SECRET_BINDING_PERSON_CREATE_MESSAGE };
   return { status: 400, error: 'Invalid secret binding request.' };
 }

@@ -88,6 +88,22 @@ export class SecretBindingPersonGrantError extends Error {
   }
 }
 
+/** Stable refusal copy for creating a person-owned binding. */
+export const SECRET_BINDING_PERSON_CREATE_MESSAGE =
+  'Person-owned secret bindings are not available yet.';
+
+/**
+ * #3279: no consumer can use a person-owned binding yet (`grant` refuses
+ * every shared child), so creating one would store a state nothing
+ * computes. Reads, visibility and resolution still handle existing records.
+ */
+export class SecretBindingPersonCreateError extends Error {
+  constructor() {
+    super(SECRET_BINDING_PERSON_CREATE_MESSAGE);
+    this.name = 'SecretBindingPersonCreateError';
+  }
+}
+
 /** Stable, non-Datum diagnostic that is safe to show outside the secret seam. */
 export class SecretBindingResolutionError extends Error {
   constructor(
@@ -138,7 +154,7 @@ export interface SecretBindingAdministration {
     id: string;
     name: string;
     authRef: unknown;
-    /** Absent means `instance`. A person-owned binding needs its owner as viewer. */
+    /** Absent means `instance`; any other owner is refused for now (#3279). */
     owner?: CredentialOwner;
     viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView>;
@@ -658,10 +674,8 @@ export class FileSecretBindingAdministration
       assertBindingId(input.id);
       const name = validName(input.name);
       const authRef = parseAuthRef(input.authRef);
-      const owner = parseOwner(input.owner);
-      // A person may create a binding only for themselves.
-      if (owner && owner.principalId !== input.viewer?.principalId)
-        throw new Error('A secret binding can be owned only by its creator.');
+      // Only `instance` (or no owner) is accepted; see the error's comment.
+      if (parseOwner(input.owner)) throw new SecretBindingPersonCreateError();
       const created = await this.#store.mutate((document) => {
         if (document.bindings[input.id]) {
           throw new Error('A secret binding with this id already exists.');
@@ -674,7 +688,6 @@ export class FileSecretBindingAdministration
           id: input.id,
           name,
           authRef,
-          ...(owner ? { owner } : {}),
           revision: 1,
           grants: [],
           createdAt: timestamp,

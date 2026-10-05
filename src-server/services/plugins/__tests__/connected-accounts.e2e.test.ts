@@ -10,6 +10,9 @@
  * fixture (fetch stub), and paired-device credentials stand in for the
  * people's authenticated requests.
  */
+
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -579,7 +582,37 @@ test('two principals each reach the MCP server with their own token and cannot u
       value: 'alice-after-bob-left',
     });
 
-    // Secret bindings: a person's binding is listed and readable only by them.
+    // Secret bindings: nothing can consume a person-owned binding yet, so
+    // the route refuses to create one, for the caller themselves too.
+    for (const extra of [{}, { projectSlug: 'sales' }]) {
+      expect(
+        await raw(app, 'POST', '/api/secret-bindings', 'alice-credential', {
+          id: 'alice-mail',
+          name: 'Alice mail',
+          authRef: { env: 'ALICE_MAIL_TOKEN' },
+          owner: 'self',
+          ...extra,
+        }),
+      ).toEqual({
+        status: 400,
+        body: JSON.stringify({
+          success: false,
+          error: 'Person-owned secret bindings are not available yet.',
+        }),
+      });
+    }
+    // A person-owned record can still exist (written earlier or by hand):
+    // create it through the real writer, then give it the owner it would
+    // have persisted. It is listed and readable only by its owner.
+    const bindingsFile = join(home, 'security', 'secret-bindings.json');
+    const editBinding = async (
+      id: string,
+      edit: (binding: Record<string, unknown>) => void,
+    ) => {
+      const document = JSON.parse(await readFile(bindingsFile, 'utf8'));
+      edit(document.bindings[id]);
+      await writeFile(bindingsFile, JSON.stringify(document), { mode: 0o600 });
+    };
     const aliceBinding = await post(
       app,
       '/api/secret-bindings',
@@ -588,14 +621,16 @@ test('two principals each reach the MCP server with their own token and cannot u
         id: 'alice-mail',
         name: 'Alice mail',
         authRef: { env: 'ALICE_MAIL_TOKEN' },
-        owner: 'self',
       },
     );
     expect(aliceBinding.status, JSON.stringify(aliceBinding.body)).toBe(201);
-    expect(aliceBinding.body.data.owner).toEqual({
-      kind: 'principal',
-      principalId: ALICE,
+    await editBinding('alice-mail', (binding) => {
+      binding.owner = { kind: 'principal', principalId: ALICE };
     });
+    expect(
+      (await get(app, '/api/secret-bindings/alice-mail', 'alice-credential'))
+        .body.data.owner,
+    ).toEqual({ kind: 'principal', principalId: ALICE });
     const shared = await post(app, '/api/secret-bindings', 'bob-credential', {
       id: 'shared-crm',
       name: 'Shared CRM',
@@ -716,6 +751,27 @@ test('two principals each reach the MCP server with their own token and cannot u
     ).body.data;
     expect(aliceAfter).toMatchObject({ revision: 1, grants: [] });
     expect(aliceAfter.acpProviderHeaderGrants).toBeUndefined();
+    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toBeUndefined();
+    // A grant already on record (written before the refusal) does not let
+    // bind skip `grant` and write the reference.
+    await editBinding('alice-mail', (binding) => {
+      binding.grants = [
+        {
+          kind: 'mcp-integration-env',
+          integrationId: LOCAL,
+          envName: 'MAIL_TOKEN',
+        },
+      ];
+    });
+    expect(
+      await raw(
+        app,
+        'POST',
+        '/api/secret-bindings/alice-mail/bind',
+        'alice-credential',
+        consumer('MAIL_TOKEN', 1),
+      ),
+    ).toEqual(PERSON_GRANT);
     expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toBeUndefined();
 
     // An instance binding binds exactly as before, for anyone.
