@@ -21,7 +21,7 @@
 
 import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import type { Context } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import {
   COMMAND_NOT_GRANTED_CODE,
   refusesWorkingDirectoryChoice,
@@ -104,7 +104,17 @@ export function refuseUngrantedCommandChoice(c: Context): Response | undefined {
   );
 }
 
-/** Whether `body` sets any of `keys` to a value other than `current`'s. */
+/** An empty value is the same as an absent one: `[]`, `''`, `null`. */
+function normalized(value: unknown): unknown {
+  if (value === null || value === '') return undefined;
+  if (Array.isArray(value) && value.length === 0) return undefined;
+  return value;
+}
+
+/**
+ * Whether `body` sets any of `keys` to a value other than `current`'s. An
+ * empty value (`[]`, `''`, `null`) and an absent one are the same.
+ */
 export function changesAny(
   body: object,
   current: object | undefined,
@@ -114,8 +124,36 @@ export function changesAny(
     (key) =>
       Object.hasOwn(body, key) &&
       !isDeepStrictEqual(
-        Reflect.get(body, key),
-        current === undefined ? undefined : Reflect.get(current, key),
+        normalized(Reflect.get(body, key)),
+        normalized(
+          current === undefined ? undefined : Reflect.get(current, key),
+        ),
       ),
   );
 }
+
+/** Whether `body` submits any value for any of the named map fields. */
+export function submitsAnyEntry(
+  body: object,
+  keys: readonly string[],
+): boolean {
+  return keys.some((key) => {
+    const value = Reflect.get(body, key);
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      Object.keys(value).length > 0
+    );
+  });
+}
+
+/**
+ * {@link refuseUngrantedCommandChoice} as route middleware, for a route that
+ * fetches or runs code (a plugin install or update): registered after the
+ * route's own person check, ahead of body validation.
+ */
+export const commandChoiceOnly: MiddlewareHandler = async (c, next) => {
+  const refused = refuseUngrantedCommandChoice(c);
+  if (refused) return refused;
+  await next();
+};

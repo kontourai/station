@@ -75,6 +75,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { refuseUngrantedCommandChoice } from '../working-directory-authority.js';
 import {
   operatorOnly,
   type PluginPrincipalResolution,
@@ -698,6 +699,10 @@ export function createRegistryRoutes(
     '/integrations/install',
     validate(registryInstallSchema),
     async (c) => {
+      // A registry entry is stored as a tool server with the command its
+      // manifest names (a marketplace source can be a device's choice).
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
@@ -1215,6 +1220,10 @@ export function createRegistryRoutes(
     // person-only refusal lives here rather than on each route.
     const refused = refuseInternalControlCaller(c, 'install a plugin');
     if (refused) return refused;
+    // Installing runs the package's code: the person check above is not the
+    // authority to run commands.
+    const commandRefused = refuseUngrantedCommandChoice(c);
+    if (commandRefused) return commandRefused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {
       id,

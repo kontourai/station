@@ -54,6 +54,7 @@ import {
 import {
   changesAny,
   refuseUngrantedCommandChoice,
+  submitsAnyEntry,
 } from '../working-directory-authority.js';
 
 /**
@@ -193,6 +194,20 @@ function integrationReadProjection(
         Object.keys(secretEnvRefs ?? {}).length > 0,
     ),
   };
+}
+
+/** The fields whose values reach a launched tool server's environment. */
+const ENV_FIELDS = ['env', 'secretEnv'] as const;
+
+/** Whether a tool server record launches its `command` (stdio). */
+function launchesCommand(def: {
+  transport?: string;
+  command?: string;
+}): boolean {
+  return (
+    def.transport === 'stdio' ||
+    (def.transport === undefined && Boolean(def.command))
+  );
 }
 
 export function createToolRoutes(
@@ -352,8 +367,20 @@ export function createToolRoutes(
   app.post('/', validate(integrationSchema), async (c) => {
     try {
       const input = getBody(c) as ToolDef;
-      // A tool server's command and arguments are what Station will spawn.
-      if (changesAny(input, undefined, ['command', 'args'])) {
+      // A tool server's command, arguments and environment decide what
+      // Station will spawn and with what in its environment (the child gets
+      // `env` and the resolved secret env, mcp-manager.ts
+      // `withResolvedMCPEnvironment`), so setting any of them takes the
+      // authority to choose a command. No key list: any value can steer a
+      // launched program (NODE_OPTIONS, PATH, LD_PRELOAD, ...).
+      const stored = await mcpService
+        .getIntegration(input.id)
+        .catch(() => undefined);
+      if (
+        changesAny(input, undefined, ['command', 'args']) ||
+        (submitsAnyEntry(input, ENV_FIELDS) &&
+          launchesCommand({ ...stored, ...input }))
+      ) {
         const commandRefused = refuseUngrantedCommandChoice(c);
         if (commandRefused) return commandRefused;
       }
@@ -749,7 +776,14 @@ export function createToolRoutes(
         delete update.env;
       }
       const existing = await mcpService.getIntegration(id);
-      if (changesAny(update, existing, ['command', 'args'])) {
+      const next = { ...existing, ...update };
+      if (
+        changesAny(update, existing, ['command', 'args']) ||
+        // A record that holds a command but did not launch it (a URL
+        // transport) starts launching it: that is choosing the command.
+        (launchesCommand(next) && !launchesCommand(existing)) ||
+        (submitsAnyEntry(update, ENV_FIELDS) && launchesCommand(next))
+      ) {
         const commandRefused = refuseUngrantedCommandChoice(c);
         if (commandRefused) return commandRefused;
       }

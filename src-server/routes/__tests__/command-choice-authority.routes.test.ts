@@ -19,12 +19,16 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../utils/logger.js';
 import { createToolRoutes } from '../agents/tools.js';
 import { createACPRoutes } from '../connections/acp.js';
 import { createFlowRunRoutes } from '../evidence/flow-runs.js';
+import { TEST_OPERATOR_PRINCIPAL } from '../plugins/__tests__/plugin-visibility-test-support.js';
+import { createPluginRoutes } from '../plugins/plugins.js';
+import { createRegistryRoutes } from '../plugins/registry.js';
 import { createConfigRoutes } from '../system/config.js';
 
 const makeTempDir = trackTempDirs();
@@ -75,6 +79,14 @@ async function fixture() {
         icon: 'x',
         enabled: true,
       },
+      // No `args` and no `cwd` at all, as an older record is stored.
+      {
+        id: 'plain',
+        name: 'Plain',
+        command: 'engine',
+        icon: 'x',
+        enabled: true,
+      },
     ] as Array<Record<string, unknown>>,
   };
   const saveACPConfig = vi.fn(async () => undefined);
@@ -100,13 +112,32 @@ async function fixture() {
   const saveIntegration = vi.fn(async () => undefined);
   const mcpService = {
     saveIntegration,
-    getIntegration: vi.fn(async () => ({
-      id: 'tool-1',
-      name: 'Tool',
-      type: 'stdio',
-      command: 'server',
-      args: ['--x'],
-    })),
+    getIntegration: vi.fn(async (id: string) => {
+      if (id === 'url-tool')
+        return {
+          id,
+          name: 'Remote',
+          transport: 'streamable-http',
+          endpoint: 'https://tools.example.test/mcp',
+        };
+      if (id === 'url-with-command')
+        return {
+          id,
+          name: 'Flip',
+          transport: 'sse',
+          endpoint: 'https://tools.example.test/sse',
+          command: 'server',
+        };
+      if (id === 'tool-1')
+        return {
+          id,
+          name: 'Tool',
+          type: 'stdio',
+          command: 'server',
+          args: ['--x'],
+        };
+      throw new Error('not found');
+    }),
     listIntegrations: vi.fn(async () => []),
     getToolAgentMap: vi.fn(async () => ({})),
   };
@@ -146,6 +177,10 @@ async function fixture() {
         security.credentialLocality(candidate),
       resolveCredentialMintKind: (candidate) =>
         security.credentialMintKind(candidate),
+      resolveCredentialDeviceKind: (candidate) => {
+        const kind = security.identifyDevice(candidate)?.kind;
+        return kind === 'delegation' || kind === 'device' ? kind : undefined;
+      },
       allowedOrigins: [],
     },
   });
@@ -163,13 +198,42 @@ async function fixture() {
       } as never,
     ),
   );
+  const pluginHome = join(root, 'plugin-home');
   app.route(
-    '/config',
-    createConfigRoutes(
-      configLoader as never,
-      createLogger({ name: 'c', level: 'error' }),
+    '/api/plugins',
+    createPluginRoutes(
+      pluginHome,
+      createLogger({ name: 'p', level: 'error' }),
+      undefined,
+      {
+        visibility: {
+          service: { canSee: () => true } as never,
+          resolvePrincipal: () => TEST_OPERATOR_PRINCIPAL,
+          listKnownPrincipals: () => [],
+        },
+        applyConfigurationMutation: undefined as never,
+        settleProviderAdapterRetirements: async () => {},
+      },
     ),
   );
+  app.route(
+    '/api/registry',
+    createRegistryRoutes(
+      {
+        getProjectHomeDir: () => pluginHome,
+        loadIntegration: vi.fn(async () => {
+          throw new Error('none');
+        }),
+        saveIntegration: vi.fn(async () => undefined),
+      } as never,
+      async () => undefined,
+    ),
+  );
+  const configRoutes = createConfigRoutes(
+    configLoader as never,
+    createLogger({ name: 'c', level: 'error' }),
+  );
+  app.route('/config', configRoutes);
 
   const send = async (
     credential: string,
@@ -191,6 +255,7 @@ async function fixture() {
     operator,
     pair,
     send,
+    configRoutes,
     recorders: {
       saveACPConfig,
       saveIntegration,
@@ -247,6 +312,62 @@ const CHOICES = [
     name: 'PUT /integrations/:id changing the command',
     recorder: 'saveIntegration',
     request: () => ['PUT', '/integrations/tool-1', { command: 'sh' }] as const,
+  },
+  {
+    name: 'POST /integrations with env on a command-launching server',
+    recorder: 'saveIntegration',
+    request: () =>
+      [
+        'POST',
+        '/integrations',
+        {
+          id: 'env-tool',
+          name: 'E',
+          transport: 'stdio',
+          env: { NODE_OPTIONS: '--import=x' },
+        },
+      ] as const,
+  },
+  {
+    name: 'POST /integrations with secretEnv on a command-launching server',
+    recorder: 'saveIntegration',
+    request: () =>
+      [
+        'POST',
+        '/integrations',
+        {
+          id: 'env-tool',
+          name: 'E',
+          transport: 'stdio',
+          secretEnv: { PATH: '/tmp/x' },
+        },
+      ] as const,
+  },
+  {
+    name: 'PUT /integrations/:id with env on a stored command',
+    recorder: 'saveIntegration',
+    request: () =>
+      ['PUT', '/integrations/tool-1', { env: { BASH_ENV: '/tmp/x' } }] as const,
+  },
+  {
+    name: 'PUT /integrations/:id with secretEnv on a stored command',
+    recorder: 'saveIntegration',
+    request: () =>
+      [
+        'PUT',
+        '/integrations/tool-1',
+        { secretEnv: { LD_PRELOAD: '/tmp/x' } },
+      ] as const,
+  },
+  {
+    name: 'PUT /integrations/:id flipping a URL record that holds a command to stdio',
+    recorder: 'saveIntegration',
+    request: () =>
+      [
+        'PUT',
+        '/integrations/url-with-command',
+        { transport: 'stdio' },
+      ] as const,
   },
   {
     name: 'POST /flow/runs/:runId/evidence/command',
@@ -362,5 +483,159 @@ describe('what a device may still do without choosing a command', () => {
         })
       ).status,
     ).toBeLessThan(300);
+  });
+});
+
+describe('what stays allowed for a device', () => {
+  test('env on a tool server that launches nothing (a URL transport)', async () => {
+    const f = await fixture();
+    const device = f.pair('delegation');
+    const created = await f.send(device, 'POST', '/integrations', {
+      id: 'remote-tool',
+      name: 'Remote',
+      transport: 'streamable-http',
+      endpoint: 'https://tools.example.test/mcp',
+      env: { API_KEY: 'k' },
+    });
+    expect(created.status).toBeLessThan(300);
+    const updated = await f.send(device, 'PUT', '/integrations/url-tool', {
+      env: { API_KEY: 'k2' },
+    });
+    expect(updated.status).toBeLessThan(300);
+    expect(f.recorders.saveIntegration).toHaveBeenCalledTimes(2);
+  });
+
+  test('an empty env submission, which changes nothing, on a command-launching server', async () => {
+    const f = await fixture();
+    const res = await f.send(
+      f.pair('delegation'),
+      'PUT',
+      '/integrations/tool-1',
+      {
+        env: {},
+        name: 'Renamed',
+      },
+    );
+    expect(res.status).toBeLessThan(300);
+  });
+
+  test('an empty args or folder is the same as none on an ACP connection', async () => {
+    const f = await fixture();
+    const device = f.pair('delegation');
+    expect(
+      (await f.send(device, 'PUT', '/acp/connections/plain', { args: [] }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await f.send(device, 'PUT', '/acp/connections/plain', { cwd: '' }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await f.send(device, 'PUT', '/acp/connections/plain', {
+          args: [],
+          cwd: '',
+          name: 'Plain 2',
+        })
+      ).status,
+    ).toBe(200);
+    // ...while a real change to the same connection is still refused.
+    expect(
+      (await f.send(device, 'PUT', '/acp/connections/plain', { args: ['--x'] }))
+        .status,
+    ).toBe(403);
+  });
+});
+
+const CODE_ROUTES = [
+  {
+    name: 'POST /api/plugins/install',
+    method: 'POST',
+    path: '/api/plugins/install',
+    body: { source: '/nonexistent/plugin' },
+  },
+  {
+    name: 'POST /api/plugins/:name/update',
+    method: 'POST',
+    path: '/api/plugins/demo/update',
+    body: {},
+  },
+  {
+    name: 'POST /api/plugins/:name/recover',
+    method: 'POST',
+    path: '/api/plugins/demo/recover',
+    body: {},
+  },
+  {
+    name: 'POST /api/registry/plugins/install',
+    method: 'POST',
+    path: '/api/registry/plugins/install',
+    body: { id: 'demo' },
+  },
+  {
+    name: 'POST /api/registry/integrations/install',
+    method: 'POST',
+    path: '/api/registry/integrations/install',
+    body: { id: 'demo' },
+  },
+] as const;
+
+describe.each(CODE_ROUTES)('$name (fetches and runs code)', (route) => {
+  test('refuses a person device without coding:exec, ahead of any install work', async () => {
+    const f = await fixture();
+    const res = await f.send(
+      f.pair('standard'),
+      route.method,
+      route.path,
+      route.body,
+    );
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(CODE);
+  });
+
+  test('does not refuse a granted device or the operator on this ground', async () => {
+    const f = await fixture();
+    const granted = await f.send(
+      f.pair('standard', [PAIRING_SCOPE_CODING_EXEC]),
+      route.method,
+      route.path,
+      route.body,
+    );
+    expect(granted.body?.code).not.toBe(CODE);
+    const operator = await f.send(
+      f.operator.credential,
+      route.method,
+      route.path,
+      route.body,
+    );
+    expect(operator.body?.code).not.toBe(CODE);
+  });
+});
+
+describe('an agent changing the terminal shell (Station-internal principal)', () => {
+  test('is refused by the route, and other settings are not', async () => {
+    const f = await fixture();
+    const agentApp = new Hono();
+    agentApp.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'internal',
+        credential: 'internal-token',
+        authority: undefined,
+        source: 'bearer',
+      });
+      await next();
+    });
+    agentApp.route('/config', f.configRoutes);
+    const send = (body: unknown) =>
+      agentApp.request('/config/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const refused = await send({ terminalShell: '/tmp/evil' });
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { code: string }).code).toBe(CODE);
+    expect(f.recorders.updateAppConfig).not.toHaveBeenCalled();
+    expect((await send({ defaultModel: 'm' })).status).toBeLessThan(300);
   });
 });

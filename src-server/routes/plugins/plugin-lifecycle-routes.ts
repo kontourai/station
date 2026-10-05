@@ -93,6 +93,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { commandChoiceOnly } from '../working-directory-authority.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
   operatorOnly,
@@ -488,6 +489,9 @@ export function registerPluginLifecycleRoutes(
     };
   };
 
+  // Updating pulls and runs new code: the person check on the route, and the
+  // authority to choose a command ahead of it.
+  app.use('/:name/update', commandChoiceOnly);
   app.post('/:name/update', personOnly('update a plugin'), async (c) => {
     const name = param(c, 'name');
     try {
