@@ -30,12 +30,16 @@ export async function checkQualificationHealth(
   const retained = marker ? JSON.parse(marker[1]) : null;
   if (
     retained &&
-    (!Number.isSafeInteger(retained.id) ||
-      retained.id <= 0 ||
-      !Number.isFinite(Date.parse(retained.at)) ||
-      !Array.isArray(retained.legs) ||
-      !retained.legs.length ||
-      retained.legs.some((leg) => !['native', 'cli'].includes(leg)))
+    (!Array.isArray(retained.failures) ||
+      retained.failures.some(
+        (failure) =>
+          !Number.isSafeInteger(failure.id) ||
+          failure.id <= 0 ||
+          !Number.isFinite(Date.parse(failure.at)) ||
+          !Array.isArray(failure.legs) ||
+          !failure.legs.length ||
+          failure.legs.some((leg) => !['native', 'cli'].includes(leg)),
+      ))
   )
     throw new Error('Invalid retained delivery incident');
   const since = new Date(now - 48 * HOUR).toISOString();
@@ -116,9 +120,7 @@ export async function checkQualificationHealth(
     });
   if (failures.some((item) => !Number.isFinite(Date.parse(item.at))))
     throw new Error('Invalid failed delivery timestamp');
-  const failedDelivery = [...failures, ...(retained ? [retained] : [])].sort(
-    (a, b) => Date.parse(b.at) - Date.parse(a.at),
-  )[0];
+  const incidents = [...failures, ...(retained?.failures ?? [])];
   const manualRuns = await listGithub(
     `actions/workflows/nightly.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
     'workflow_runs',
@@ -145,12 +147,17 @@ export async function checkQualificationHealth(
     (item) =>
       item.run.status === 'completed' && item.run.conclusion === 'success',
   );
-  const recovered = failedDelivery?.legs.every((leg) =>
-    successfulDeliveries.some(
+  const pending = [];
+  for (const leg of ['native', 'cli']) {
+    const failed = incidents
+      .filter((failure) => failure.legs.includes(leg))
+      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+    if (!failed) continue;
+    const recovered = successfulDeliveries.some(
       (item) =>
         Number.isFinite(Date.parse(item.run.updated_at)) &&
         Date.parse(item.run.updated_at) <= now &&
-        Date.parse(item.run.updated_at) > Date.parse(failedDelivery.at) &&
+        Date.parse(item.run.updated_at) > Date.parse(failed.at) &&
         item.jobs.some((job) =>
           leg === 'native'
             ? job.name.endsWith(
@@ -165,9 +172,10 @@ export async function checkQualificationHealth(
                   step.conclusion === 'success',
               ),
         ),
-    ),
-  );
-  const pendingDelivery = recovered ? null : failedDelivery;
+    );
+    if (!recovered) pending.push({ ...failed, legs: [leg] });
+  }
+  const pendingDelivery = pending.length ? { failures: pending } : null;
   const green = observed
     .filter((item) => item.passed)
     .sort((a, b) => b.completed - a.completed)[0];
@@ -215,7 +223,7 @@ export async function checkQualificationHealth(
       ? `Latest passing gate: ${green.run.html_url}, source \`${green.run.head_sha}\`, completed ${new Date(green.completed).toISOString()}.`
       : 'No passing qualification gate found in the last 48 hours.',
     pendingDelivery
-      ? `Unresolved qualified delivery run: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${pendingDelivery.id}. A later skipped publication does not resolve it.`
+      ? `Unresolved qualified delivery: ${pendingDelivery.failures.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
       : 'No failed qualified delivery run found in the last 48 hours.',
     '',
     'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run ' +

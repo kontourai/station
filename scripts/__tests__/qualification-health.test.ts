@@ -246,7 +246,7 @@ describe('qualification health through the GitHub API', () => {
       issues: [
         {
           ...issue,
-          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]} -->',
+          body: '<!-- station-qualification-health:{"failures":[{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]}]} -->',
         },
       ],
     });
@@ -259,7 +259,7 @@ describe('qualification health through the GitHub API', () => {
       issues: [
         {
           ...issue,
-          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]} -->',
+          body: '<!-- station-qualification-health:{"failures":[{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]}]} -->',
         },
       ],
       manualRuns: [
@@ -311,6 +311,39 @@ describe('qualification health through the GitHub API', () => {
       },
     });
     expect(result.healthy).toBe(true);
+  });
+
+  it('retains an older CLI failure when newer native failure alone recovers', async () => {
+    const { result, writes } = await observe({
+      issues: [
+        {
+          ...issue,
+          body: '<!-- station-qualification-health:{"failures":[{"id":99,"at":"2026-10-01T01:00:00Z","legs":["cli"]}]} -->',
+        },
+      ],
+      runs: [run(1, 2, { conclusion: 'failure' })],
+      manualRuns: [
+        run(2, 1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'workflow_dispatch',
+        }),
+      ],
+      jobs: {
+        1: [gate()],
+        2: [
+          gate({
+            name: '3 · Publish native cohort / Record ledger and markers',
+          }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(false);
+    expect(writes[0].body.body).toContain(
+      'cli https://github.com/owner/repo/actions/runs/99',
+    );
+    expect(writes[0].body.body).not.toContain(
+      'native https://github.com/owner/repo/actions/runs/1',
+    );
   });
 
   it('ignores foreign repositories and green events outside canonical main', async () => {
