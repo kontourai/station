@@ -396,7 +396,9 @@
 
     "src-server/runtime/bootstrap/account-bound-device-gate.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "src-server/runtime/bootstrap/agent-audience-gate.ts"
   ],
 
   "checks": [

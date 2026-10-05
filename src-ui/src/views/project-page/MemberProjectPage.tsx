@@ -2,6 +2,7 @@ import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { displayableProjectIcon } from '../../components/icons/ProjectIcon';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import {
@@ -13,17 +14,6 @@ import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
 
 type RequestScope = ReturnType<typeof useHostRequestAuthorityScope>;
-
-function memberSafeProjectIcon(icon: string | undefined): string | undefined {
-  if (
-    icon?.startsWith('http://') ||
-    icon?.startsWith('https://') ||
-    icon?.startsWith('/') ||
-    icon?.startsWith('data:image/')
-  )
-    return undefined;
-  return icon;
-}
 
 export function MemberProjectPage({
   project,
@@ -46,8 +36,14 @@ export function MemberProjectPage({
   return (
     <div className="project-page">
       <div className="project-page__inner">
+        {/* The one icon rule every surface uses. It refuses a URL or a path,
+            so the native relay view never issues a raw image request outside
+            the broker; a validated data: image is inline bytes and draws.
+            `ProjectIcon` applies the same rule; it is stated again here
+            because this is the broker boundary, so a header that stopped
+            using `ProjectIcon` could not start loading remote images. */}
         <MemberProjectHeader
-          project={{ ...project, icon: memberSafeProjectIcon(project.icon) }}
+          project={{ ...project, icon: displayableProjectIcon(project.icon) }}
           onRefresh={() => void sharedWork.refetch()}
           refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
         />

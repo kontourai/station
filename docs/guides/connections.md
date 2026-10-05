@@ -391,8 +391,10 @@ stay hidden while publication is being rechecked, after it is unshared, or when
 the current request scope is unavailable. The member detail view does not load
 operator layouts, Git status, knowledge, or workspace panes; an operator
 Project response does not mount those Project detail panels. Member Project
-icons that point to URLs are omitted so the native relay view does not issue
-raw image requests outside the broker.
+icons follow the same icon rule as every other surface: one that points to a
+URL or a path is omitted, so the native relay view does not issue raw image
+requests outside the broker, while an uploaded image icon is inline data and
+is shown.
 
 The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
 [Project detail](../../src-ui/src/views/ProjectPage.tsx), and the

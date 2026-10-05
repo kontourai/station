@@ -404,7 +404,8 @@ export function createFixture(
                 ? ''
                 : 'success',
         event: ci === 'pr-only' ? 'pull_request' : 'push',
-        workflowName: ci === 'wrong-workflow' ? 'Publish Packages' : 'CI',
+        workflowName:
+          ci === 'wrong-workflow' ? 'Main: Publish packages' : 'PR: CI',
         url: 'https://github.example/runs/42',
       };
       return result(

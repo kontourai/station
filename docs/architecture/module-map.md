@@ -1418,6 +1418,12 @@ Adapters, app/ACP configuration readers, public identity mapping, and clock, the
 `ConnectionInspector` private to its inventory publication path. A non-`inspected`
 outcome rejects publication with an explicit retry-before-publish error; routes receive
 the resulting projection rather than classify inspection facts themselves.
+Engine attribution does not depend on that publication: the inspection is total, so one
+failing Adapter or a timed-out read would erase every connection's engine.
+`listEngineConnectionIdentities` derives each registered connection's `engineId` from the
+Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
+readiness keeps the live read (#3355).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims

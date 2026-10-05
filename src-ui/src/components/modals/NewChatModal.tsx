@@ -35,7 +35,10 @@ import type {
 } from '../../lib/newChatIntent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { userFacingErrorMessage } from '../../utils/errorText';
-import { type EffectiveModelSource } from '../../utils/execution';
+import {
+  type EffectiveModelSource,
+  modelSourceLabel,
+} from '../../utils/execution';
 import {
   type NewChatModelChoice,
   sanitizeRuntimeOptionsForModel,
@@ -2009,7 +2012,6 @@ export function NewChatModal({
               modelConnections={modelConnections}
               choice={start.modelChoiceFor(chipMenuAgent)}
               defaultModel={defaultEffectiveModelForAgent(chipMenuAgent)}
-              defaultSourceLabel={start.modelFor(chipMenuAgent).source}
               onSelect={(model) => start.chooseModel(chipMenuAgent, model)}
               onReset={() => start.resetModel(chipMenuAgent)}
               onRuntimeOptionChange={(key, value) =>
@@ -2050,36 +2052,52 @@ export function NewChatModal({
                 }
                 currentModel={pickerChoiceFor(modelPickerAgent)?.modelId}
                 defaultModel={modelPickerDefault?.id ?? undefined}
-                defaultSourceLabel={modelFor(modelPickerAgent).source}
+                // Names what reset restores: a fork's preferred Agent returns
+                // to the source turn's Model, not the Agent default.
+                defaultSourceLabel={
+                  mode?.kind === 'fork' &&
+                  modelPickerAgent.slug === mode.preferredAgentSlug &&
+                  mode.sourceModel
+                    ? 'source turn'
+                    : (modelPickerDefault?.source &&
+                        modelSourceLabel(
+                          modelPickerDefault.source,
+                        ).toLowerCase()) ||
+                      'default model'
+                }
                 runtimeOptions={
                   pickerChoiceFor(modelPickerAgent)?.providerOptions
                 }
-                onSelect={(model) =>
+                onSelect={(model) => {
                   // The composer's choices are remembered wherever they are
                   // made; a fork's list keeps its choice local.
-                  showStart
-                    ? start.chooseModel(modelPickerAgent, model)
-                    : updateModelChoice(modelPickerAgent, (current) => ({
-                        ...current,
-                        modelId: model.id,
-                        providerId: model.providerId,
-                        providerType: model.providerType,
-                        providerOptions: sanitizeRuntimeOptionsForModel(
-                          model,
-                          current.providerOptions,
-                        ),
-                      }))
-                }
+                  if (showStart) {
+                    start.chooseModel(modelPickerAgent, model);
+                  } else {
+                    updateModelChoice(modelPickerAgent, (current) => ({
+                      ...current,
+                      modelId: model.id,
+                      providerId: model.providerId,
+                      providerType: model.providerType,
+                      providerOptions: sanitizeRuntimeOptionsForModel(
+                        model,
+                        current.providerOptions,
+                      ),
+                    }));
+                  }
+                  setModelPickerAgent(null);
+                }}
                 onReset={() => {
                   if (showStart) {
                     start.resetModel(modelPickerAgent);
-                    return;
+                  } else {
+                    const key = modelChoiceKey(modelPickerAgent);
+                    setModelChoices((current) => {
+                      const { [key]: _removed, ...rest } = current;
+                      return rest;
+                    });
                   }
-                  const key = modelChoiceKey(modelPickerAgent);
-                  setModelChoices((current) => {
-                    const { [key]: _removed, ...rest } = current;
-                    return rest;
-                  });
+                  setModelPickerAgent(null);
                 }}
                 onRuntimeOptionChange={(key, value) =>
                   showStart
