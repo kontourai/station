@@ -1114,9 +1114,8 @@ export async function resolveAttachedSessionProject(
   let place: string | undefined;
   let candidates: string[] = [];
   for (const project of projects) {
-    const root = project.workingDirectory
-      ? canonicalPath(project.workingDirectory)
-      : undefined;
+    if (!project.workingDirectory) continue;
+    const root = canonicalPath(project.workingDirectory);
     if (!root) continue;
     const repository = await repositories(root);
     if (
