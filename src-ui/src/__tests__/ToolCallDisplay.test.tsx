@@ -921,3 +921,27 @@ describe('ToolCallDisplay — review round (#3382)', () => {
     );
   });
 });
+
+test('#3382: the label and the Tool line isolate right-to-left words the way the details do', () => {
+  render(
+    <ToolCallDisplay
+      toolCall={{
+        type: 'tool-invocation',
+        toolCallId: 'rtl-label',
+        name: `cp ${HEBREW_HELLO} ${HEBREW_WORLD}`,
+        state: 'call',
+        needsApproval: true,
+        approvalId: 'rtl-label-req',
+        args: { command: `cp ${HEBREW_HELLO} ${HEBREW_WORLD}` },
+      }}
+      onApprove={vi.fn()}
+    />,
+  );
+  const label = document.querySelector('.tool-call__label')!;
+  expect(
+    Array.from(label.querySelectorAll('bdi')).map((bdi) => bdi.textContent),
+  ).toEqual([HEBREW_HELLO, HEBREW_WORLD]);
+  fireEvent.click(document.querySelector('button.tool-call__line')!);
+  const tool = document.querySelector('.tool-call__meta code[dir="ltr"]')!;
+  expect(tool.querySelectorAll('bdi')).toHaveLength(2);
+});

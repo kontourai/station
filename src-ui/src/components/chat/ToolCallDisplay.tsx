@@ -233,7 +233,9 @@ function ToolCallDisplayComponent({
       <span className="tool-call__glyph" aria-hidden="true">
         <Glyph />
       </span>
-      <span className="tool-call__label">{label}</span>
+      {/* Right-to-left words isolated, as in the details, so the label and
+          the details show the same word order. */}
+      <span className="tool-call__label">{isolateRightToLeft(label, 0)}</span>
       {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
       {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
@@ -653,7 +655,8 @@ function ToolCallDetails({
         )}
         {toolName && (
           <span>
-            <strong>Tool:</strong> <code>{toolName}</code>
+            <strong>Tool:</strong>{' '}
+            <code dir="ltr">{isolateRightToLeft(toolName, 0)}</code>
           </span>
         )}
         {originalName && originalName !== `${server}_${toolName}` && (
