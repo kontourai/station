@@ -1,0 +1,7 @@
+{
+  "revision": "655ad12edfadd46a5d4abe8642a9b571d5be7f3a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read after #3284 changed packages/sdk/src/query-domains/agentAdmin.ts only inside runAgentMcpPrompt: the response body read now passes a request deadline on (unlessDeadline) instead of mapping it to the generic failure. Searched this document for runAgentMcpPrompt, the mcp-prompts routes, agentAdmin, deadline and body-read claims; none describe this function's error handling, and the agentAdmin links (query-hook reuse, useAgentToolsQuery) are unchanged. No prose change.","inputs":["docs/reference/api.md","packages/sdk/src/query-domains/agentAdmin.ts"]}
+  ]
+}
