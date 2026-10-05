@@ -159,6 +159,7 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
@@ -177,7 +178,6 @@ import {
   scopeDispatch,
   withCanonicalCwd,
 } from './dispatch-scope.js';
-import { refuseUngrantedDirectoryWorkspace } from './workspace-authority.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a

@@ -117,20 +117,19 @@ export function mayChooseWorkingDirectory(
 }
 
 /**
- * Whether a session start that names a plain folder must be refused: the
- * caller is a paired device that may not choose one. Callers that are not
- * paired devices (the operator, Station's own server code, and a
- * station-control tool call, which `scopeDispatch` confines) keep their own
- * rules, and a Project target never reaches this because it is already
- * confined to the Project's folder.
+ * Whether a request that names a folder must be refused. Fail closed: it is
+ * refused unless the caller is Station's own server code (a station-control
+ * tool call is confined by `scopeDispatch`) or
+ * {@link mayChooseWorkingDirectory} passes (the operator in person, or a
+ * device holding `coding:exec`). A caller of any other kind, including one
+ * added later, is refused.
  */
-export function pairedDeviceMayNotChooseDirectory(
+export function refusesWorkingDirectoryChoice(
   request: Request,
   grantedScope: string | undefined,
 ): boolean {
-  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-  // Station's own internal principal carries no credential authority.
-  if (principal?.authority !== 'device-credential') return false;
+  if (getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal')
+    return false;
   return !mayChooseWorkingDirectory(request, grantedScope);
 }
 

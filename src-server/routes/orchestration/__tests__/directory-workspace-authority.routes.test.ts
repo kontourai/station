@@ -21,7 +21,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
-import { pairedDeviceMayNotChooseDirectory } from '../../../security/coding-authority.js';
+import { refusesWorkingDirectoryChoice } from '../../../security/coding-authority.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -38,7 +38,7 @@ const REFUSAL = {
   success: false,
   code: 'working-directory-not-granted',
   error:
-    "Only this Station's operator, or a device the operator allowed to run commands, can choose a working folder. Nothing was started.",
+    "Only this Station's operator, or a device the operator allowed to run commands (the coding:exec grant), can choose a working folder. Nothing was started. A Project's folder needs no grant: name a Project instead (--project).",
 };
 
 const HANDLE = { conversationId: 'c-1', providerTurnId: 'turn-1' };
@@ -294,43 +294,54 @@ describe.each(ROUTES)('$name', (route) => {
   });
 });
 
-describe('pairedDeviceMayNotChooseDirectory, for callers no route reaches', () => {
+describe('refusesWorkingDirectoryChoice fails closed', () => {
   const requestFor = (
-    principal: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
+    principal:
+      | Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1]
+      | undefined,
   ) => {
     const request = new Request('http://station.test/api/orchestration/chat');
     if (principal) setRuntimeAuthenticatedRequestPrincipal(request, principal);
     return request;
   };
+  const device = {
+    credential: 'c',
+    authority: 'device-credential' as const,
+    deviceId: 'd',
+  };
+  const granted = `orchestration:operate ${PAIRING_SCOPE_CODING_EXEC}`;
 
-  test('only a paired device without the grant is refused', () => {
-    const device = requestFor({
-      credential: 'c',
-      authority: 'device-credential',
-      deviceId: 'd',
-      source: 'bearer',
-    });
-    expect(
-      pairedDeviceMayNotChooseDirectory(device, 'orchestration:operate'),
-    ).toBe(true);
-    expect(
-      pairedDeviceMayNotChooseDirectory(
-        device,
-        `orchestration:operate ${PAIRING_SCOPE_CODING_EXEC}`,
-      ),
-    ).toBe(false);
+  test('a paired device is decided by its grant, whether bearer or session cookie', () => {
+    for (const source of ['bearer', 'session'] as const) {
+      const request = requestFor({ ...device, source });
+      expect(
+        refusesWorkingDirectoryChoice(request, 'orchestration:operate'),
+      ).toBe(true);
+      expect(refusesWorkingDirectoryChoice(request, granted)).toBe(false);
+    }
   });
 
-  test('Station-internal and principal-less requests are not decided here', () => {
+  test('a caller of any kind it does not know, or none, is refused', () => {
+    const future = requestFor({
+      credential: 'c',
+      authority: 'some-future-authority' as never,
+      source: 'bearer',
+    });
+    expect(refusesWorkingDirectoryChoice(future, 'orchestration:operate')).toBe(
+      true,
+    );
+    expect(
+      refusesWorkingDirectoryChoice(requestFor(undefined), undefined),
+    ).toBe(true);
+  });
+
+  test("Station's own internal principal is not decided here", () => {
     const internal = requestFor({
       kind: 'internal',
       credential: 'internal-token',
       authority: undefined,
       source: 'bearer',
     });
-    expect(pairedDeviceMayNotChooseDirectory(internal, undefined)).toBe(false);
-    expect(
-      pairedDeviceMayNotChooseDirectory(requestFor(undefined), undefined),
-    ).toBe(false);
+    expect(refusesWorkingDirectoryChoice(internal, undefined)).toBe(false);
   });
 });

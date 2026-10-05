@@ -18,6 +18,7 @@ import {
   requestedApprovalMode,
 } from './orchestration/approval-authority.js';
 import { getBody, validate } from './schemas/schemas.js';
+import { refuseUngrantedRuntimeCwd } from './working-directory-authority.js';
 
 const taskReferenceSchema = z
   .object({
@@ -180,6 +181,8 @@ export function createStarterWorkRoutes(
      * resolved throws here and never launches.
      */
     ownerForRequest: (c: Context) => SessionOwnerStamp;
+    /** A Project's own folder, as stored; naming it is not a folder choice. */
+    projectFolder?: (projectId: string) => string | undefined;
   },
 ) {
   const app = new Hono();
@@ -255,6 +258,15 @@ export function createStarterWorkRoutes(
           ),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        // A folder other than the Task Project's own takes the authority to
+        // choose a working folder, decided before the Task is created.
+        const startTask = body as z.infer<typeof startTaskLaunchSchema>;
+        const cwdRefused = refuseUngrantedRuntimeCwd(
+          c,
+          startTask.dispatch?.runtimeConfig?.cwd,
+          options.projectFolder?.(startTask.task.projectId),
+        );
+        if (cwdRefused) return cwdRefused;
       }
       const result =
         starterId === 'continue-session'
