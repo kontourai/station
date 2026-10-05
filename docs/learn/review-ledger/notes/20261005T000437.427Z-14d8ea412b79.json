@@ -1,0 +1,7 @@
+{
+  "revision": "05548e53e0d1c37af772dcbe59e60a01ed0fd5e5",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"#3149 adds native-platform:ratchet to the ci:fast static list and its verification-policy-gate mirror; the page's claims (ci:fast has its own bounded invariant list, readiness runs through ci:fast and the statics job) are unchanged.","inputs":[".veritas/README.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}
