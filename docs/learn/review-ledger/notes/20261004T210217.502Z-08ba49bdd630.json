@@ -1,0 +1,7 @@
+{
+  "revision": "07018494bb59d7fcd07c22771ff742194f7ef46e",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Updated the #3303 readiness sentence to the 2.1.41 gate; checked against the adapter probe and detectClaudeAuthState.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/auth/claude-auth.ts"]}
+  ]
+}

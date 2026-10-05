@@ -41,6 +41,7 @@ interface RecordedCall {
 function stubHost(options: {
   devices: PairedDevice[];
   revokeStatus?: number;
+  scopeStatus?: number;
   revokeBody?: unknown;
 }) {
   const calls: RecordedCall[] = [];
@@ -52,6 +53,9 @@ function stubHost(options: {
         method,
         auth: new Headers(init?.headers).get('Authorization'),
       });
+      if (method === 'POST' && String(input).endsWith('/scope')) {
+        return new Response(null, { status: options.scopeStatus ?? 204 });
+      }
       if (method === 'DELETE') {
         return options.revokeBody === undefined
           ? new Response(null, { status: options.revokeStatus ?? 204 })
@@ -542,6 +546,34 @@ describe('PairedDevicesPanel', () => {
         auth: null,
       });
     });
+  });
+
+  test('points a native host at the CLI when the host credential is refused for a scope change', async () => {
+    stubHost({
+      devices: [
+        device({
+          id: 'abc',
+          name: 'Pixel 9',
+          scope: 'orchestration:read orchestration:operate',
+        }),
+      ],
+      scopeStatus: 401,
+    });
+    renderPanel({
+      allowManualCredentials: false,
+      hostAppName: 'Station Desktop',
+    });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Change access for Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Station Desktop can’t change a device’s access. Run `station environment access scope <device> --add|--remove|--set` on the host, then reopen this list.',
+    );
+    expect(alert.textContent).not.toContain('managed by');
   });
 
   test('explains that an unauthorized device needs review and reconnection', async () => {

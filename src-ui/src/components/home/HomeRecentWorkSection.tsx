@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -203,6 +204,7 @@ function HomeWorkContent({
   // The same row facts the dock's inbox reads, from the same derivations.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
+  const projectIconBySlug = useProjectIcons();
   if (workLoading && !workDegraded) {
     return (
       <SkeletonList count={3} withIcon={false} label="Loading recent work" />
@@ -230,6 +232,7 @@ function HomeWorkContent({
           chrome: coarsePointer ? 'touch' : 'hover',
           gitLocationByThreadId,
           projectAccentBySlug,
+          projectIconBySlug,
         }}
         onOpen={onOpen}
       />

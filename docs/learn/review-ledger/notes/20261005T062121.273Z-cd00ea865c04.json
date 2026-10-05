@@ -1,0 +1,7 @@
+{
+  "revision": "f24710bf1963e2cd50547942485081ae6381b117",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Second fix round: project chip sentence now says folderless projects are choosable and run in the home folder (ContextPickerOptions, new-chat-modal-utils); hand-off sentence now describes HomeStartComposer's held drafts (empty-field restore, Restore/Discard swap, only the sent text cleared); added HomeSurface's listEmpty rule (no Recent work, View Activity beside Continue). ChatDock and NewChatModal changes are the draft callback, Project: labels and Runs in folder text, consistent with the page.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

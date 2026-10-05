@@ -60,6 +60,9 @@ example does not grant one implicitly.
   status) refreshes the Conversation's pull-request links, so nothing reconciles
   without such a viewer. No agent tool sets the opt-in, and an older Station
   build refuses a Task store that carries it, so clear it before a rollback.
+- `send_to_session`, `interrupt_session`, and `wait_session` to message,
+  interrupt, and wait on another Session in the caller's Project
+  ([Session control](#session-control))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -229,6 +232,63 @@ defines the rule.
 
 `get_conversation_messages` is separate. It reads any conversation the
 session's owner owns, keyed by Agent, and is not limited by references.
+
+### Session control
+
+`send_to_session`, `interrupt_session`, and `wait_session` act on an existing
+Session by its `sessionId`, without creating a task.
+
+- `send_to_session` takes `mode`: `auto` (default) steers a running Session or
+  starts a turn on an idle one; `start` only starts, answering `session_busy`
+  while a turn runs; `steer` only adds to a running turn, answering
+  `no_active_turn` when idle. Steering is delivered once, through the engine's
+  mid-turn input, and an engine without it answers `session_busy`. The result
+  carries the Session's `sessionId`, the `turnId`, and an `eventCursor`.
+- `interrupt_session` stops the running turn of the Session (optionally a named
+  `turnId`) and answers `no-active-turn` when nothing runs.
+- `wait_session` observes for at most 50 seconds until `turn-settled` (a turn
+  finished after `afterEventCursor`, or the turn running now) or `idle`. It
+  never interrupts: a timeout leaves the Session running, and the caller calls
+  again. Wait with the `sessionId` and `eventCursor` that `send_to_session`
+  returned. A calling Session may hold at most 4 waits at once, and Station 256.
+- Send and interrupt carry a `requestKey`. Repeating a call that delivered or
+  interrupted, with the same key and arguments, returns the first answer
+  (`replayed: true`) without acting again; the same key with different arguments
+  is `request_key_conflict`. A refusal that did nothing (`session_busy`,
+  `no_active_turn`) frees the key, so the same call may be repeated once the
+  Session is ready. Keys belong to the verified calling Session and expire after
+  seven days. A calling Session keeps at most 300 keys: past that its own oldest
+  completed keys are dropped (they no longer replay), and it is refused
+  (`request_key_caller_capacity`) only while every one of its keys is an
+  unresolved `indeterminate` request. An `indeterminate` answer means the
+  message may have been delivered, so repeat the same call to re-check rather
+  than sending under a new key. A re-driven request keeps the branch (steer or
+  start) and Session its first attempt chose, even if the re-drive is refused.
+  Two limits are accepted: once a completed key has been dropped (more than 300
+  later sends from that session) a retry under it is not guaranteed to be
+  deduplicated downstream, because the chat-turn claim table holds 2,000 entries
+  Station-wide and a retry from another branch of the work is not caught at all;
+  and unresolved claims are never dropped, so 300 stuck ones leave that session
+  unable to use new requestKeys until the seven-day expiry. A re-driven attempt
+  that is refused answers with `pinned: true`; its key stays tied to its first
+  attempt, so check the Session before using a new key. A re-driven interrupt
+  that finds nothing running also keeps its claim, so a later re-drive could
+  interrupt a newer turn; that is rare (it follows a crash) and accepted.
+- `wait_session` watches exactly the Session it is given. When a newer Session
+  now serves that Session's conversation the answer carries `superseded: true`
+  and `currentSessionId`, so the caller can wait on the current one.
+
+Send and interrupt use the dispatch scope above for their target Session: the
+same owner, in the caller's Project (or both global), never a conversation that
+runs unconfined and never on another Station, unless the caller is a bound
+operator, with the owner's Project `execute` action. `wait_session` is an
+owner-scoped read of any Session the owner can read. The tool inputs are strict
+and carry no approval mode, model, or Environment: the receiving Session runs
+under its own Agent's saved settings, so a call cannot widen what the Session may
+do. A request without a verified station-control caller is refused. The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) and the
+[delivery seam](../../src-server/services/orchestration/session-message-delivery.ts)
+own these rules.
 
 ## Recommended setup pattern
 
@@ -431,6 +491,13 @@ Give such work to a top-level conversation instead of a delegated child.
   denials, `denyApprovals`) or label it (parent and root ids). A claimed
   `maxDepth` does not raise the depth limit of that session's own children,
   and no server or UI code routes on the parent or root ids.
+
+The dispatch route records which of these produced the stamped context, in
+the reserved start metadata key `stationDelegationProvenance`
+(`caller-derived`, `runtime-attested` or `direct-claim`); a request can't set
+it. The [conversation usage tree](../reference/session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)
+reads it: a session you can't read makes your total partial only when its
+link to your conversation was derived or attested, never for a claim.
 
 ### Forwarding to a saved Environment
 

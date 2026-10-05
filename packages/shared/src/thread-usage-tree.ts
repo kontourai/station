@@ -148,6 +148,12 @@ export interface ThreadUsageConversationSource {
    * longer holds (the fold keeps the newest settled ones per session).
    */
   omittedSubagentCount?: number;
+  /**
+   * Delegates Station launched from this conversation that run under an
+   * owner the reader cannot read (#3323). Never read, named or figured; the
+   * total is partial by them.
+   */
+  unreadableDelegateCount?: number;
 }
 
 export type ThreadUsageDelegateSource =
@@ -433,6 +439,7 @@ function addCostToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {
 export function rollUpThreadUsage(
   root: ThreadUsageNode,
   omittedSubagents = 0,
+  unreadableDelegates = 0,
 ): ThreadUsageTotal {
   const tokenProviders = new Set<string>();
   const total: ThreadUsageTotal = {
@@ -486,6 +493,13 @@ export function rollUpThreadUsage(
       `${omittedSubagents} earlier ${omittedSubagents === 1 ? 'subagent is' : 'subagents are'} past the kept history and not shown.`,
     );
   }
+  if (unreadableDelegates > 0) {
+    total.tokens.complete = false;
+    total.cost.complete = false;
+    total.partialReasons.push(
+      `${unreadableDelegates} delegated ${unreadableDelegates === 1 ? 'task runs' : 'tasks run'} under an owner you can't read, so ${unreadableDelegates === 1 ? 'its' : 'their'} usage is not counted.`,
+    );
+  }
   return total;
 }
 
@@ -516,6 +530,7 @@ export function buildThreadUsageTree(
     total: rollUpThreadUsage(
       root,
       sumOverTree(source, (item) => item.omittedSubagentCount),
+      sumOverTree(source, (item) => item.unreadableDelegateCount),
     ),
     nodeCount: countNodes(root),
   };

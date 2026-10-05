@@ -56,6 +56,11 @@ const KIND_PHRASES: Record<
     running: (n) => `Editing ${plural(n, 'file', 'files')}`,
     pending: (n) => plural(n, 'file edit', 'file edits'),
   },
+  delete: {
+    done: (n) => `Deleted ${plural(n, 'file', 'files')}`,
+    running: (n) => `Deleting ${plural(n, 'file', 'files')}`,
+    pending: (n) => plural(n, 'file deletion', 'file deletions'),
+  },
   exec: {
     done: (n) => `Ran ${plural(n, 'command', 'commands')}`,
     running: (n) => `Running ${plural(n, 'command', 'commands')}`,
@@ -75,7 +80,14 @@ const KIND_PHRASES: Record<
 
 /** Fixed rendering order for multi-kind summaries — stable output, not
  * insertion order (which would make the summary depend on call order). */
-const KIND_ORDER: ToolCallKind[] = ['read', 'write', 'exec', 'search', 'other'];
+const KIND_ORDER: ToolCallKind[] = [
+  'read',
+  'write',
+  'delete',
+  'exec',
+  'search',
+  'other',
+];
 
 function toolNameOf(part: ToolCallLike): string {
   return toolDisplayView(part).toolName;

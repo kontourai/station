@@ -177,7 +177,7 @@ export function PairedDevicesPanel({
             response.status === 401
               ? allowManualCredentials
                 ? 'Changing a device’s access requires this Station’s operator credential. Enter it below and try again.'
-                : `Changing a device’s access requires the operator credential managed by ${hostAppName ?? 'this native host'}. Update it there, then try again.`
+                : `${hostAppName ?? 'This native host'} can’t change a device’s access. Run \`station environment access scope <device> --add|--remove|--set\` on the host, then reopen this list.`
               : response.status === 409
                 ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
                 : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,

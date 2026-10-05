@@ -26,7 +26,11 @@ const summary = {
   projectSlug: 'station',
 } satisfies OrchestrationSessionSummary as OrchestrationSessionSummary;
 
-function swatchFor(task: HomeWorkItem): HTMLElement | null {
+/** The row's project mark (icon or colour swatch), if it draws one. */
+function markFor(
+  task: HomeWorkItem,
+  icons: ReadonlyMap<string, string> = new Map(),
+): HTMLElement | null {
   const sessions = [summary];
   const items = buildHomeWorkItems({ chats: {}, agents: [], sessions });
   const { container } = render(
@@ -43,6 +47,7 @@ function swatchFor(task: HomeWorkItem): HTMLElement | null {
           setDetailsFor: () => {},
           chrome: 'hover',
           projectAccentBySlug: new Map([['station', 'var(--accent-orange)']]),
+          projectIconBySlug: icons,
         },
       })}
     </ul>,
@@ -50,28 +55,47 @@ function swatchFor(task: HomeWorkItem): HTMLElement | null {
   return container.querySelector<HTMLElement>('.inbox-row__project-accent');
 }
 
-describe("Home rows take a project's colour only for this Station's projects", () => {
+describe("Home rows take a project's colour and icon only for this Station's projects", () => {
   afterEach(cleanup);
 
+  const icons = new Map([['station', '🚀']]);
   const [local] = buildHomeWorkItems({
     chats: {},
     agents: [],
     sessions: [summary],
   });
+  // The same thread, read from a peer Station: built by the real writer so
+  // the remote item has exactly the shape Home renders.
+  const remote = buildHomeWorkItems({
+    chats: {},
+    agents: [],
+    sessions: [],
+    remoteEnvironments: [
+      {
+        environmentId: 'peer-1',
+        environmentName: 'Peer Station',
+        sessions: [summary],
+      },
+    ],
+  }).find((item) => item.environmentId === 'peer-1');
 
   test('a local row whose project is known wears its colour', () => {
     expect(local.projectSlug).toBe('station');
-    expect(swatchFor(local)).not.toBeNull();
+    const mark = markFor(local);
+    expect(mark?.dataset.projectIcon).toBe('dot');
   });
 
-  test("a remote row with the same slug names another Station's project, so it has no colour", () => {
-    const remote: HomeWorkItem = {
-      ...local,
-      id: 'remote:peer-1:accent-row',
-      orchestrationThreadId: undefined,
-      environmentId: 'peer-1',
-      environmentLabel: 'Peer Station',
-    };
-    expect(swatchFor(remote)).toBeNull();
+  test('a local row whose project has an icon wears the icon', () => {
+    const mark = markFor(local, icons);
+    expect(mark).not.toBeNull();
+    expect(mark?.classList.contains('project-icon--icon')).toBe(true);
+    expect(mark?.textContent).toContain('🚀');
+  });
+
+  test("a remote row with the same slug names another Station's project, so it has neither colour nor icon", () => {
+    expect(remote).toBeDefined();
+    expect(remote?.projectSlug).toBe('station');
+    expect(remote?.environmentId).toBe('peer-1');
+    expect(markFor(remote as HomeWorkItem, icons)).toBeNull();
   });
 });
