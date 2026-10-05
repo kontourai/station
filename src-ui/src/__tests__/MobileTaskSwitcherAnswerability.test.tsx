@@ -90,9 +90,11 @@ describe('MobileTaskSwitcher answerability basis', () => {
     expect(calls).toEqual(['close', 'new']);
   });
 
+  // The ladder's own words, unshortened: the picker row says what the dock
+  // row says for the same chat (one vocabulary, design round 2026-10).
   test.each([
-    { attention: 'answer' as const, label: 'Input' },
-    { attention: 'approval' as const, label: 'Approval' },
+    { attention: 'answer' as const, label: 'Needs answer' },
+    { attention: 'approval' as const, label: 'Needs approval' },
   ])(
     'shows $label only for its recorded attention kind',
     ({ attention, label }) => {
@@ -161,7 +163,7 @@ describe('MobileTaskSwitcher answerability basis', () => {
 
   test('translates the label instead of leaking the wire enum', () => {
     renderSheet([task()]);
-    expect(screen.getByText("Can't answer here")).toBeTruthy();
+    expect(screen.getByText('Elsewhere')).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();
   });
 

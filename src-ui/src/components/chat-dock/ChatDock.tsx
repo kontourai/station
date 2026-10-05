@@ -59,6 +59,7 @@ import {
 import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardShortcuts';
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -91,6 +92,7 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { durableMentionAuthority } from '../chat/composer-mentions';
+import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
@@ -144,6 +146,7 @@ import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
+import { useInboxNeedsYouCount } from './useInboxGroups';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -366,6 +369,7 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
         shellChrome: DockShellChrome;
         ownsDockShortcuts?: never;
         onPresentationTitleChange?: never;
+        onInboxNeedsYouChange?: never;
         conversationScope?: never;
         onScreen?: never;
       }
@@ -381,6 +385,12 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
         ownsDockShortcuts?: boolean;
         /** The title a host's breadcrumb shows for the conversation on screen. */
         onPresentationTitleChange?: (title: string) => void;
+        /**
+         * How many conversations need the reader (the inbox's own "Needs
+         * you" lane), published to a host that folds the inbox and must
+         * still show that something is waiting (#3046 round).
+         */
+        onInboxNeedsYouChange?: (count: number) => void;
         /**
          * `project` (the default): the Chat layout's pane belongs to its
          * Project — its inbox lists that Project's conversations and a chat of
@@ -443,6 +453,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Get data from contexts
   const { apiBase } = useApiBase();
   const requestAuthority = useHostRequestAuthorityScope();
+  // #3159: inbox rows drag a conversation reference under this scope;
+  // stable across renders for the inbox panel's `memo()`.
   const [pendingGoalSend, setPendingGoalSend] = useState<{
     sessionId: string;
     prompt: string;
@@ -629,6 +641,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [inventory.data],
   );
+  // #3159: publish which conversations a message may reference (the
+  // inventory's `referenceEligibility`) for this Station, so Activity and
+  // inbox rows can offer themselves as drag sources onto a composer.
+  const referenceApiBase = requestAuthority?.apiBase;
+  useEffect(() => {
+    if (referenceApiBase === undefined) return;
+    publishReferenceableConversations({
+      apiBase: referenceApiBase,
+      ids: new Set(
+        [...inventoryById.values()]
+          .filter((conversation) => conversation.referenceEligibility?.eligible)
+          .map((conversation) => conversation.id),
+      ),
+    });
+    return () => publishReferenceableConversations(null);
+  }, [referenceApiBase, inventoryById]);
   // The chats open in this tab as the inbox lists them, for the context
   // meter's membership check.
   const openChatRows = useMemo(
@@ -1083,7 +1111,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     : sessionProjectMismatchLabel;
   const importedTitle = importedSession
     ? sessionTitle(importedSession)
-    : 'Conversation';
+    : 'Chat';
   const importedOrigin = importedSession
     ? `Started in ${displayProvider(importedSession)}`
     : 'Started in another app';
@@ -1096,6 +1124,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     onPresentationTitleChange?.(presentationTitle);
   }, [onPresentationTitleChange, presentationTitle]);
+  // The inbox's "Needs you" count, from the same live groups the inbox
+  // panel renders (`useInboxGroups`: held lifecycles, live snoozes, one
+  // coarse clock): named on the inbox toggle while the inbox is hidden, and
+  // handed to a host that folds the inbox (the Coding edge's tooltip).
+  const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
+  const inboxClock = useCoarseNow();
+  const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock);
+  useEffect(() => {
+    onInboxNeedsYouChange?.(inboxNeedsYou);
+  }, [inboxNeedsYou, onInboxNeedsYouChange]);
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,
@@ -1193,7 +1231,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * #1536 F: rows whose subject is the active CONVERSATION rather than the
    * dock's chrome, so the header takes them as data instead of deriving them.
    *
-   * "Open code layout" is here because the project-context row lost the
+   * "Open in Coding" is here because the project-context row lost the
    * start-truncated path it used to hang that link off — the path was eating
    * the conversation title, and deleting the link with it would have removed
    * the dock's only route to a session's coding layout when the shell is not
@@ -1214,7 +1252,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'conversation-history',
-            label: 'Conversation history',
+            label: 'History',
             onSelect: openConversationHistory,
           },
         ]
@@ -1233,7 +1271,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'open-code-layout',
-            label: 'Open code layout',
+            label: 'Open in Coding',
             onSelect: () => {
               handleOpenLayout(
                 activeSession.projectSlug as string,
@@ -1597,9 +1635,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     await openConversationForDock(conversationOpenRecovery.conversation);
   }, [conversationOpenRecovery, openConversationForDock]);
   const startNewFromConversationRecovery = useCallback(() => {
-    // Direct-new creates and selects a replacement synchronously. If a picker
-    // is required it creates nothing, so keep the failed recovery visible
-    // until the user has actually selected a replacement there.
+    // New opens the picker and creates nothing synchronously (#3170), so keep
+    // the failed recovery visible until the user has actually selected a
+    // replacement there.
     const before = new Set(Object.keys(activeChatsStore.getSnapshot()));
     openNewChatDirect();
     if (
@@ -2301,7 +2339,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       title: importedTitle,
                       agentName: importedSession
                         ? displayProvider(importedSession)
-                        : 'Conversation',
+                        : 'Chat',
                     }}
                     originLabel={importedOrigin}
                     originProvider={importedSession?.provider}
@@ -2313,7 +2351,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   />
                 ) : activeSession ? (
                   <ChatDockActiveIdentity
-                    session={activeSession}
+                    // D3: a reopened chat's tab is titled "New chat" until its
+                    // transcript lands; the server's own title for the
+                    // conversation is already in the inventory read, so the
+                    // bar names the chat from the first frame.
+                    session={
+                      activeSession.title === 'New chat' &&
+                      activeOrchestrationSession?.displayTitle
+                        ? {
+                            ...activeSession,
+                            title: activeOrchestrationSession.displayTitle,
+                          }
+                        : activeSession
+                    }
                     agent={activeChatAgent}
                     modelLabel={activeChatModelLabel}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}
@@ -2406,6 +2456,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         isFullscreenPlacement,
                       }),
                       isInboxOpen,
+                      inboxNeedsYouCount: inboxNeedsYou,
                       onToggleInbox: toggleInbox,
                       backgroundTasksTriggerRef,
                       backgroundTasksRunningCount: importedSessionId
@@ -2571,9 +2622,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           isCurrent: () => boolean,
                         ) => openConversationForDock(id, isCurrent, true),
                       }}
-                      pending={
-                        <SkeletonBlock count={1} label="Opening conversation" />
-                      }
+                      pending={<SkeletonBlock count={1} label="Opening chat" />}
                     />
                   ) : null}
                   {!conversationOpenRecovery && !importedSessionId ? (
@@ -2986,8 +3035,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // header agrees with the chat that's about to open instead of
             // the new session immediately diverging from a stale badge.
             // Never CLEARS the binding: a modal chat started with no project
-            // chosen leaves it exactly where it was (the same "new chats
-            // preserve the binding" contract `openNewChatDirect` follows).
+            // chosen leaves it exactly where it was.
             const sessionId = openChatForAgentInScopedPane(
               agent,
               projectSlug,
@@ -3160,7 +3208,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             cancelFork();
           },
           onCloseSettings: () => setShowChatSettings(() => false),
-          // #3310: "Summarize session" demoted out of the transcript — this
+          // #3310: "Summarize chat" demoted out of the transcript — this
           // gear panel is the entry point; the card renders only once a
           // summary exists, generation is in flight, or generation failed.
           sessionSummary:

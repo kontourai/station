@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const DESKTOP_DIR = 'src-desktop';
@@ -23,7 +23,7 @@ export const TAURI_BUILD_COMMAND = [
 ];
 
 function run(repoRoot, command, args, options = {}) {
-  return spawnSync(command, args, {
+  return spawnSyncBounded(command, args, {
     cwd: repoRoot,
     windowsHide: true,
     ...options,

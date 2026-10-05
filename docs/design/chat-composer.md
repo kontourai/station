@@ -63,8 +63,8 @@ right of the Agent, Model, and Approval controls. Scroll to bottom appears
 immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Collapse chat list /
-Expand chat list directly, with its current state available to assistive technology.
+without enlarging its target. The desktop header exposes Hide inbox /
+Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with
@@ -228,8 +228,8 @@ Activity is engine-reported. Claude Code SDK API retries supply attempt and dela
 with a bounded reason category; Codex's `willRetry` reports retry intent without
 attempt or delay. OpenCode 1.18.28 has internal retry status, but its
 [ACP translator](https://github.com/anomalyco/opencode/blob/v1.18.28/packages/opencode/src/acp/event.ts#L93-L106)
-does not forward it. Station therefore reports **No response from OpenCode for …
-Still waiting** from its server silence observation. Elapsed silence never
+does not forward it. Station therefore reports **No progress from OpenCode for
+…** from its server silence observation, in the status ladder's word. Elapsed silence never
 establishes a retry. New text, reasoning, tool progress and terminal events clear
 transient waiting/retry status; raw logs and engine error payloads are not chat
 activity labels.
@@ -284,9 +284,19 @@ simple per-device preference rather than claiming to detect an attached keyboard
   as one line: a refused or failed send or steer, a dropped queued message or a
   blocked send; slash-command output and status notices are not repeated, and
   a later accepted send clears it. A message queued to retry automatically is
-  not a failure and is not repeated; its notice and Discard stay in the
-  transcript, which a short dock hides, while the queued turn and its Retry
-  stay in the dock body), the chip strip drops to one scrolling row, and only then does
+  not a failure, so its notice is not repeated. The queue panel in the dock
+  body already lists the queued turn with a "×" (**Delete message**) that
+  discards it, so discarding was never impossible; but that control is an
+  unlabelled icon, and the notice it explained stayed in the transcript. The
+  notice's own **Discard** sits in that hidden transcript, so while the chat is
+  still queued and the dock gives the composer priority, the controls row
+  repeats a labelled **Discard**: a 44px touch target that adds no height (the
+  row is already a touch row), described by the notice's words, doing what the
+  transcript's Discard does. Both controls leave the same state: the turn is
+  discarded and, when none remains, the stale notice is dropped. The
+  transcript's Discard, like every transcript notice action, is also 44px on a
+  phone or touch screen. The queued turn and its Retry stay in
+  the dock body), the chip strip drops to one scrolling row, and only then does
   the draft shrink below two lines — scrolling, never overlapped, with Send
   always on screen. The transcript is never taken out of the layout, and the
   composer re-measures whenever a sibling in the dock appears, leaves or
@@ -336,9 +346,10 @@ right, outside the scrolling list. Its accessible name and hover label are
 **New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project, and a right-aligned status/time. Unresolved Agents retain their
-name. **Input** and **Approval** are compact presentations of the existing
-answer/approval states. Running time uses the recorded open-turn start; without
-one, the displayed time is labelled as last activity. One ellipsis opens the
+name. The status line is the ladder's own words (`Needs answer`, `Needs
+approval`, …, the same words the dock row prints). Running time uses the
+recorded open-turn start; without one, the row's compact time trails the status
+line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
 The **Projects** picker uses the same **+** component, named **New project**,

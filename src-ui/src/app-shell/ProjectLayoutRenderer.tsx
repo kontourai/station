@@ -59,6 +59,10 @@ import {
 } from 'react';
 import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
 import {
+  hostRendersCodingPane,
+  useCodingWide,
+} from '../components/coding-layout/codingPanels';
+import {
   resolveCodingStackLocation,
   useCodingStackSelection,
 } from '../components/coding-layout/codingStackPage';
@@ -74,6 +78,7 @@ import {
 import { LayoutView } from '../views/LayoutView';
 import {
   admitRestoredBrowserPreviewPaneInstance,
+  browserPreviewPaneOrdinal,
   browserPreviewPanePresentationLabel,
   removeRemovedBrowserPreviewPaneState,
 } from '../workspace-panes/browserPreviewPaneInstance';
@@ -94,12 +99,14 @@ import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspac
 import {
   admitRestoredFilePreviewPaneInstance,
   filePreviewPanePresentationLabel,
+  filePreviewPanePresentationPath,
   removeRemovedFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneInstance';
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
 import { PluginWorkspacePaneSDKBoundary } from '../workspace-panes/PluginWorkspacePaneSDKBoundary';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
+import { WorkspacePaneFrame } from '../workspace-panes/WorkspacePaneFrame';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
 import type {
   WorkspacePaneHostCatalogRequest,
@@ -108,6 +115,7 @@ import type {
   WorkspacePaneHostPopOutRequestResult,
 } from '../workspace-panes/WorkspacePaneHostCommands';
 import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePaneHostOpenContext';
+import type { WorkspacePaneHostPanePresentation } from '../workspace-panes/WorkspacePaneHostTabs';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import {
@@ -415,6 +423,17 @@ function retainWorkspacePaneHostDocument(
 }
 
 /** The one admitted current-layout bridge: exact builtin catalog identity only. */
+/**
+ * The lower panel is one occupant with no tabs and no geometry of its own,
+ * the same standing the chromeless host gives a pane: inline is the only
+ * display mode, and the pane is told so.
+ */
+const LOWER_PANE_PRESENTATION: WorkspacePaneHostPanePresentation = {
+  displayMode: 'inline',
+  availableDisplayModes: ['inline'],
+  requestDisplayMode: (mode) => mode === 'inline',
+};
+
 function BuiltinCodingLayoutHost({
   projectSlug,
   layoutSlug,
@@ -501,6 +520,9 @@ function BuiltinCodingLayoutHost({
   const bottomOnly = useDockFoldsToOneRegion();
   const centerChat =
     resolveLayoutChatPlacement({ type: 'coding' }, { bottomOnly }) === 'center';
+  // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
+  // where the centre HAS Chat; a bottom-only device keeps the drill-in.
+  const wide = useCodingWide() && centerChat;
   /**
    * The host's panes render once the reader has drilled in during this mount,
    * and stay mounted (hidden) after, so a pane keeps its state across the
@@ -908,6 +930,7 @@ function BuiltinCodingLayoutHost({
       projectId={projectId ?? ''}
       projectSlug={projectSlug}
       centerChat={centerChat}
+      wide={wide}
       // While the catalog loads, a deep link's drill-in is the page it names
       // (the pane arrives with the host); a state with no host to come is the
       // Chat page.
@@ -1253,20 +1276,262 @@ function BuiltinCodingLayoutHost({
   );
   if (location.page === 'drill-in' && !drillInVisited) setDrillInVisited(true);
   const renderPanes = drillInVisited || location.page === 'drill-in';
-  const stackPaneLabel = (instance: WorkspacePaneInstance) =>
-    presentationLabel(instance) ??
-    builtinWorkspacePaneName(instance.descriptorId) ??
-    'Pane';
+  /**
+   * One pane, drawn: the renderer the catalog resolves for its descriptor
+   * (built-in, plugin or MCP), or the state that stands in for one. The
+   * pane host draws every pane with it; past the wide fold the Terminal is
+   * drawn with it by the workbench's lower panel instead (`terminal`), and
+   * the host is handed nothing for that instance, so one terminal is never
+   * mounted twice.
+   */
+  const renderCodingPane = (
+    instance: WorkspacePaneInstance,
+    presentation: WorkspacePaneHostPanePresentation,
+  ): ReactNode => {
+    // #2465: a dock-only pane (the host-global Device pane) is not
+    // another Project's — it is no Project's. Say where it lives. The
+    // same predicate keeps the picker from offering it.
+    const dockOnly = catalog.entries.find(
+      (candidate) =>
+        candidate.descriptor.id === instance.descriptorId &&
+        !isProjectPlaceableWorkspacePane(candidate.descriptor),
+    )?.descriptor;
+    if (dockOnly) {
+      const remove =
+        hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
+          ? hostOpen.close
+          : undefined;
+      return (
+        <DockOnlyWorkspacePaneNotice
+          descriptor={dockOnly}
+          {...(remove
+            ? { onRemove: () => void remove(instance.instanceId) }
+            : {})}
+        />
+      );
+    }
+    if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
+      return (
+        <Empty
+          label="Workspace pane unavailable"
+          description="This pane belongs to a different Project."
+        />
+      );
+    }
+    const paneEntry = catalog.entries.find(
+      (candidate) =>
+        candidate.instance?.instanceId === instance.instanceId &&
+        candidate.descriptor.id === instance.descriptorId,
+    );
+    const codeIssuedBasisMcp =
+      isCanonicalBasisMcpWorkspacePaneInstance(instance);
+    const descriptor =
+      paneEntry?.descriptor ??
+      (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
+        ? WORKSPACE_BASIS_PANE_DESCRIPTOR
+        : instance.descriptorId === entry.descriptor.id
+          ? entry.descriptor
+          : instance.descriptorId === fileBrowserEntry?.descriptor.id
+            ? fileBrowserEntry?.descriptor
+            : instance.descriptorId === diffEntry?.descriptor.id
+              ? diffEntry?.descriptor
+              : instance.descriptorId === terminalEntry?.descriptor.id
+                ? terminalEntry?.descriptor
+                : instance.descriptorId === planEntry?.descriptor.id
+                  ? planEntry?.descriptor
+                  : instance.descriptorId === readinessEntry?.descriptor.id
+                    ? readinessEntry?.descriptor
+                    : instance.descriptorId === trustEntry?.descriptor.id
+                      ? trustEntry?.descriptor
+                      : instance.descriptorId ===
+                          filePreviewEntry?.descriptor.id
+                        ? filePreviewEntry?.descriptor
+                        : instance.descriptorId ===
+                            browserPreviewEntry?.descriptor.id
+                          ? browserPreviewEntry.descriptor
+                          : null);
+    const Pane =
+      descriptor &&
+      getBuiltinWorkspacePaneRenderer(
+        descriptor,
+        instance.descriptorId === entry.descriptor.id ? instance : undefined,
+      );
+    if (paneEntry && paneEntry.availability.state !== 'available') {
+      const presentation = presentWorkspacePaneAvailability(
+        paneEntry.availability,
+        paneEntry.rendererGate,
+        paneEntry.rendererResolution,
+      );
+      return (
+        <Empty
+          label={`${paneEntry.descriptor.name} unavailable`}
+          description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
+        />
+      );
+    }
+    const mcpRenderer =
+      paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
+        ? paneEntry.selectedRenderer.renderer
+        : null;
+    const pluginRenderer =
+      paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
+        ? paneEntry.selectedRenderer
+        : null;
+    const pluginComponent =
+      pluginRenderer?.renderer.kind === 'plugin-component'
+        ? pluginRenderer.renderer
+        : null;
+    const trustedPluginLayout =
+      pluginRenderer && pluginComponent && descriptor
+        ? resolveClientTrustedPluginLayout(descriptor, pluginRenderer, instance)
+        : null;
+    if (codeIssuedBasisMcp) {
+      return (
+        <LazyBoundary
+          load={loadProjectBasisMcpWorkspacePane}
+          componentProps={{ instance, presentation }}
+          pending={<SkeletonList count={1} label="Loading Basis App" />}
+        />
+      );
+    }
+    if (mcpRenderer && descriptor) {
+      const selectedTab = {
+        id: instance.instanceId,
+        label: descriptor.name,
+        description: descriptor.description,
+        component: mcpRenderer,
+        actions: descriptor.actions,
+      };
+      return (
+        <LayoutRenderer
+          componentId={mcpRenderer}
+          layout={{
+            name: descriptor.name,
+            slug: instance.instanceId,
+            tabs: [selectedTab],
+          }}
+          activeTab={selectedTab}
+          activeTabId={selectedTab.id}
+          mcpUiPaneIdentity={{
+            descriptorId: instance.descriptorId,
+            instanceId: instance.instanceId,
+            stateKey: instance.stateKey,
+          }}
+          mcpUiDisplayMode={presentation.displayMode}
+          mcpUiHostAvailableDisplayModes={presentation.availableDisplayModes}
+          onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
+          onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
+        />
+      );
+    }
+    if (
+      trustedPluginLayout &&
+      pluginRenderer &&
+      pluginComponent &&
+      descriptor
+    ) {
+      const pluginName =
+        instance.boundContext?.contribution?.provenance.origin === 'plugin'
+          ? instance.boundContext.contribution.provenance.pluginId
+          : undefined;
+      if (!pluginName || !catalog.projectSlug) {
+        return (
+          <Empty
+            label="Workspace pane unavailable"
+            description="Station could not bind this plugin pane to its owning Project and plugin."
+          />
+        );
+      }
+      const selectedTab = {
+        id: instance.instanceId,
+        label: descriptor.name,
+        description: descriptor.description,
+        component: pluginComponent,
+        actions: descriptor.actions,
+      };
+      const paneLayout = {
+        name: descriptor.name,
+        slug: instance.instanceId,
+        tabs: [selectedTab],
+      };
+      return (
+        <PluginWorkspacePaneSDKBoundary
+          layout={paneLayout}
+          projectSlug={catalog.projectSlug}
+          pluginName={pluginName}
+        >
+          <LayoutRenderer
+            componentId={pluginComponent}
+            trustedPluginLayout={trustedPluginLayout}
+            layout={paneLayout}
+            activeTab={selectedTab}
+            activeTabId={selectedTab.id}
+          />
+        </PluginWorkspacePaneSDKBoundary>
+      );
+    }
+    return Pane ? (
+      <Pane
+        descriptor={descriptor}
+        instance={instance}
+        browserPreviewAvailability={browserPreviewEntry?.availability}
+      />
+    ) : null;
+  };
+  // A File Preview is named by its file (#3047): the rail item says the
+  // name, its tooltip and the panel head's title the whole path.
+  const stackPaneDetail = (instance: WorkspacePaneInstance) =>
+    projectId
+      ? filePreviewPanePresentationPath(
+          projectId,
+          projectSlug,
+          instance,
+          window.localStorage,
+        )
+      : null;
+  const stackPaneLabel = (instance: WorkspacePaneInstance) => {
+    const path = stackPaneDetail(instance);
+    if (path) return path.slice(path.lastIndexOf('/') + 1) || path;
+    const name =
+      presentationLabel(instance) ??
+      builtinWorkspacePaneName(instance.descriptorId) ??
+      'Pane';
+    // A second Browser is "Browser 2": two identical globes on the rail
+    // told the reader nothing (design audit D8).
+    const ordinal = browserPreviewPaneOrdinal(
+      hostInstances ?? document?.instances ?? [],
+      instance,
+    );
+    return ordinal === null ? name : `${name} ${ordinal}`;
+  };
   return (
     <CodingWorkbench
       projectId={projectId}
       projectSlug={projectSlug}
       centerChat={centerChat}
+      wide={wide}
       location={location}
       scope={hostScope}
       instances={hostInstances ?? document?.instances ?? []}
       hostDocument={() => liveHostDocument.current ?? document!}
+      terminal={
+        terminalInstance
+          ? {
+              instance: terminalInstance,
+              render: () => (
+                <WorkspacePaneFrame
+                  instanceId={terminalInstance.instanceId}
+                  paneName={stackPaneLabel(terminalInstance)}
+                  onRetry={() => true}
+                >
+                  {renderCodingPane(terminalInstance, LOWER_PANE_PRESENTATION)}
+                </WorkspacePaneFrame>
+              ),
+            }
+          : undefined
+      }
       paneLabel={stackPaneLabel}
+      paneDetail={stackPaneDetail}
       hostOpen={hostOpen}
       onOpenCatalog={requestCatalog}
       browserPreviewAvailability={browserPreviewEntry?.availability}
@@ -1299,7 +1564,10 @@ function BuiltinCodingLayoutHost({
           document={document}
           runtime={workspacePaneRuntime.current}
           compact={compact}
-          navigationSelection="explicit"
+          // Past the wide fold a pane the host opens itself (a File Preview
+          // from Files) lands beside Chat like a rail pick: the entry is
+          // corrected in place, never pushed (#3040).
+          navigationSelection={wide ? 'replace' : 'explicit'}
           // A drill-in is its page: the pane and nothing else. No tab strip, no
           // save notice, no pane-actions chrome — the stack's breadcrumb, rail
           // and ⋯ carry what the reader needs (`CodingWorkbench`).
@@ -1315,209 +1583,16 @@ function BuiltinCodingLayoutHost({
           admitOpenInstance={admitOpenInstance}
           onInstanceRemoved={onInstanceRemoved}
           presentationLabel={presentationLabel}
-          renderPane={(instance, presentation) => {
-            if (!renderPanes) return null;
-            // #2465: a dock-only pane (the host-global Device pane) is not
-            // another Project's — it is no Project's. Say where it lives. The
-            // same predicate keeps the picker from offering it.
-            const dockOnly = catalog.entries.find(
-              (candidate) =>
-                candidate.descriptor.id === instance.descriptorId &&
-                !isProjectPlaceableWorkspacePane(candidate.descriptor),
-            )?.descriptor;
-            if (dockOnly) {
-              const remove =
-                hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
-                  ? hostOpen.close
-                  : undefined;
-              return (
-                <DockOnlyWorkspacePaneNotice
-                  descriptor={dockOnly}
-                  {...(remove
-                    ? { onRemove: () => void remove(instance.instanceId) }
-                    : {})}
-                />
-              );
-            }
-            if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
-              return (
-                <Empty
-                  label="Workspace pane unavailable"
-                  description="This pane belongs to a different Project."
-                />
-              );
-            }
-            const paneEntry = catalog.entries.find(
-              (candidate) =>
-                candidate.instance?.instanceId === instance.instanceId &&
-                candidate.descriptor.id === instance.descriptorId,
-            );
-            const codeIssuedBasisMcp =
-              isCanonicalBasisMcpWorkspacePaneInstance(instance);
-            const descriptor =
-              paneEntry?.descriptor ??
-              (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
-                ? WORKSPACE_BASIS_PANE_DESCRIPTOR
-                : instance.descriptorId === entry.descriptor.id
-                  ? entry.descriptor
-                  : instance.descriptorId === fileBrowserEntry?.descriptor.id
-                    ? fileBrowserEntry?.descriptor
-                    : instance.descriptorId === diffEntry?.descriptor.id
-                      ? diffEntry?.descriptor
-                      : instance.descriptorId === terminalEntry?.descriptor.id
-                        ? terminalEntry?.descriptor
-                        : instance.descriptorId === planEntry?.descriptor.id
-                          ? planEntry?.descriptor
-                          : instance.descriptorId ===
-                              readinessEntry?.descriptor.id
-                            ? readinessEntry?.descriptor
-                            : instance.descriptorId ===
-                                trustEntry?.descriptor.id
-                              ? trustEntry?.descriptor
-                              : instance.descriptorId ===
-                                  filePreviewEntry?.descriptor.id
-                                ? filePreviewEntry?.descriptor
-                                : instance.descriptorId ===
-                                    browserPreviewEntry?.descriptor.id
-                                  ? browserPreviewEntry.descriptor
-                                  : null);
-            const Pane =
-              descriptor &&
-              getBuiltinWorkspacePaneRenderer(
-                descriptor,
-                instance.descriptorId === entry.descriptor.id
-                  ? instance
-                  : undefined,
-              );
-            if (paneEntry && paneEntry.availability.state !== 'available') {
-              const presentation = presentWorkspacePaneAvailability(
-                paneEntry.availability,
-                paneEntry.rendererGate,
-                paneEntry.rendererResolution,
-              );
-              return (
-                <Empty
-                  label={`${paneEntry.descriptor.name} unavailable`}
-                  description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
-                />
-              );
-            }
-            const mcpRenderer =
-              paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
-                ? paneEntry.selectedRenderer.renderer
-                : null;
-            const pluginRenderer =
-              paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
-                ? paneEntry.selectedRenderer
-                : null;
-            const pluginComponent =
-              pluginRenderer?.renderer.kind === 'plugin-component'
-                ? pluginRenderer.renderer
-                : null;
-            const trustedPluginLayout =
-              pluginRenderer && pluginComponent && descriptor
-                ? resolveClientTrustedPluginLayout(
-                    descriptor,
-                    pluginRenderer,
-                    instance,
-                  )
-                : null;
-            if (codeIssuedBasisMcp) {
-              return (
-                <LazyBoundary
-                  load={loadProjectBasisMcpWorkspacePane}
-                  componentProps={{ instance, presentation }}
-                  pending={<SkeletonList count={1} label="Loading Basis App" />}
-                />
-              );
-            }
-            if (mcpRenderer && descriptor) {
-              const selectedTab = {
-                id: instance.instanceId,
-                label: descriptor.name,
-                description: descriptor.description,
-                component: mcpRenderer,
-                actions: descriptor.actions,
-              };
-              return (
-                <LayoutRenderer
-                  componentId={mcpRenderer}
-                  layout={{
-                    name: descriptor.name,
-                    slug: instance.instanceId,
-                    tabs: [selectedTab],
-                  }}
-                  activeTab={selectedTab}
-                  activeTabId={selectedTab.id}
-                  mcpUiPaneIdentity={{
-                    descriptorId: instance.descriptorId,
-                    instanceId: instance.instanceId,
-                    stateKey: instance.stateKey,
-                  }}
-                  mcpUiDisplayMode={presentation.displayMode}
-                  mcpUiHostAvailableDisplayModes={
-                    presentation.availableDisplayModes
-                  }
-                  onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
-                  onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
-                />
-              );
-            }
-            if (
-              trustedPluginLayout &&
-              pluginRenderer &&
-              pluginComponent &&
-              descriptor
-            ) {
-              const pluginName =
-                instance.boundContext?.contribution?.provenance.origin ===
-                'plugin'
-                  ? instance.boundContext.contribution.provenance.pluginId
-                  : undefined;
-              if (!pluginName || !catalog.projectSlug) {
-                return (
-                  <Empty
-                    label="Workspace pane unavailable"
-                    description="Station could not bind this plugin pane to its owning Project and plugin."
-                  />
-                );
-              }
-              const selectedTab = {
-                id: instance.instanceId,
-                label: descriptor.name,
-                description: descriptor.description,
-                component: pluginComponent,
-                actions: descriptor.actions,
-              };
-              const paneLayout = {
-                name: descriptor.name,
-                slug: instance.instanceId,
-                tabs: [selectedTab],
-              };
-              return (
-                <PluginWorkspacePaneSDKBoundary
-                  layout={paneLayout}
-                  projectSlug={catalog.projectSlug}
-                  pluginName={pluginName}
-                >
-                  <LayoutRenderer
-                    componentId={pluginComponent}
-                    trustedPluginLayout={trustedPluginLayout}
-                    layout={paneLayout}
-                    activeTab={selectedTab}
-                    activeTabId={selectedTab.id}
-                  />
-                </PluginWorkspacePaneSDKBoundary>
-              );
-            }
-            return Pane ? (
-              <Pane
-                descriptor={descriptor}
-                instance={instance}
-                browserPreviewAvailability={browserPreviewEntry?.availability}
-              />
-            ) : null;
-          }}
+          renderPane={(instance, presentation) =>
+            hostRendersCodingPane(
+              wide,
+              renderPanes,
+              instance.instanceId,
+              terminalInstance?.instanceId ?? null,
+            )
+              ? renderCodingPane(instance, presentation)
+              : null
+          }
         />
       ) : null}
       <ProjectWorkspacePaneModal

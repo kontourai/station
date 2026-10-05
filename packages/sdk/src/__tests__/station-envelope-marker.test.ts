@@ -7,16 +7,14 @@ import {
   xhrAttachmentStageUpload,
 } from '../client/attachment-staging';
 import { ChatHttpError } from '../client/chatHttpError';
-import {
-  getConversationHandoffStatus,
-  sendExecutionMessage,
-} from '../client/execution';
+import { getConversationHandoffStatus } from '../client/execution';
 import {
   getJson,
   notifyCredentialChanged,
   setClientCredentialResolver,
 } from '../client/http';
 import { steerTurn } from '../client/orchestration';
+import { sendExecutionMessage } from '../client/send-execution-message';
 import {
   isStationAnswer,
   observeStationResponse,

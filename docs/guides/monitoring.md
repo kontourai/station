@@ -61,7 +61,8 @@ rounding differences.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
-| Claude engine and imported transcripts | Input/output/cache tokens and provider-reported USD cost | Token events are per turn; reported cost is session cumulative |
+| Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is cumulative within each engine process; a restart begins another cost epoch |
+| Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
@@ -80,6 +81,22 @@ observations, including split observations already persisted before this fix.
 Codex session-cumulative observations still use the latest snapshot. This
 repairs [#581](https://github.com/kontourai/station/issues/581); it does not
 expand the window's event or byte limits.
+
+The receipt panel reads an aggregate separately from its drilldown page. Local
+aggregate reads select at most 500 observations; a page selects at most 100.
+Reaching the aggregate limit produces partial coverage. Paired transfer applies
+replacement and deduplication before its separate 500-receipt limit, preserving
+explicit dropped-material coverage instead of failing the entire peer read.
+
+A context-only ACP observation produces no empty token receipt and does not
+count as a consumed-usage report. Codex token snapshots retain one identity
+across engine-process restarts; Claude cost snapshots keep separate process
+epochs. Durable event sequence resolves equal Station-observation timestamps,
+and sparse cumulative updates preserve previously reported components.
+Combined counter estimates remain unpriced when their model, price snapshot,
+or inherited component evidence does not support one estimate. These receipts
+are observations; their latest cumulative snapshot is not a per-day consumption
+delta or an exact mixed-model allocation.
 
 These are implementation and captured-wire/fixture boundaries, not a new live
 billing reconciliation across every account and model. The scope declarations

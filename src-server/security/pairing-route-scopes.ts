@@ -1929,6 +1929,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:station-knowledge',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/station-knowledge',
+      match: 'exact',
+      capability: 'mcp-token',
+      reason:
+        'per-session Knowledge MCP token; loopback and server purpose verified by the MCP router',
+    },
+    {
       id: 'mcp-token:station-control',
       transport: 'http',
       method: '*',
@@ -2684,10 +2694,21 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and transcript facts as the ordinary conversation surface and performs
     // no mutation, so it inherits `orchestration:read`.
     { method: 'GET', path: '/api/conversations/:id/open' },
+    // #3159: a paged, bounded read of one conversation's transcript under
+    // the request's own authority (station-control callers are further
+    // limited to what their conversation may read). No mutation and nothing
+    // beyond this Station, so it inherits `orchestration:read`.
+    { method: 'GET', path: '/api/conversations/:id/read' },
     // Records the caller's own rendered conversation version. It does not
     // expose another Station's data, so the conversations family's normal
     // mutating `orchestration:operate` scope applies.
     { method: 'POST', path: '/api/conversations/:id/acknowledgement' },
+    // `rename_session`'s leaf. It writes one conversation title, so the
+    // family's mutating `orchestration:operate` scope applies. The handler
+    // answers only a station-control tool call with a verified caller (it
+    // stamps `titleSource: 'agent'`), so a paired device that reaches it is
+    // refused there; the scope is the floor, not the gate.
+    { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
@@ -2902,6 +2923,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
     },
+    // #3157: the usage-limit banner's recovery read and its two person-owned
+    // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
+    // the GET returns only the Session's recovery projection under the same
+    // session-read gate as its siblings; the POSTs resume or retire a stop on a
+    // Session the caller already owns (`canUserMutateSession`), the same
+    // authority as sending the next turn, so they take the operate tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/usage-limit',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound
@@ -2967,6 +3006,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/basis',
+    },
+    // #3163: one engine subagent's own transcript, a bounded read-only page.
+    // Deliberate family inheritance, considered: it never mutates, and it
+    // re-checks the Session read ACL and the request principal before AND
+    // after the engine read, so it reaches nothing a read credential could
+    // not already reach in that Session. The transcript is located from the
+    // child-work facts this Station persisted for the thread (no request
+    // input becomes a path) and read from this Station's own host, so it
+    // carries no other environment's or Station's data. Its content (the
+    // subagent's messages and tool calls, inline image data redacted, text
+    // cut) is the same kind the `messages` and `tool-results` leaves at this
+    // tier already return for the whole Session, a level deeper in the same
+    // work, so read tier is the right scope and no override is needed.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/child-work/:childId/transcript',
     },
     { method: 'GET', path: '/api/orchestration/sessions/loaded' },
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },

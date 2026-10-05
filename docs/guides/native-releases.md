@@ -314,8 +314,11 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is the scheduled Nightly build, which fires daily at 06:43 UTC,
-uses the current workflow event SHA, and skips native staging only when the
+Normal operation is a Nightly started by a passing main qualification run for
+the commit it qualified, at most about once a day, or the scheduled Nightly
+build, which fires daily at 06:43 UTC. Either uses its run's workflow event
+SHA, never stages a source its published markers already contain, and skips
+native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior
 manually, leave the optional field empty:

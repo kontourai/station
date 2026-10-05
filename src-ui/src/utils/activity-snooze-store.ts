@@ -20,6 +20,32 @@
 
 const SNOOZE_STORAGE_KEY = 'station.activity.snoozed';
 
+/**
+ * Bumped on every write in this tab, so a surface that reads the map (the
+ * inbox panel, the inbox toggle's Needs-you count) re-reads it at once
+ * rather than holding the copy it read at mount.
+ */
+let version = 0;
+const listeners = new Set<() => void>();
+
+function changed() {
+  version += 1;
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to snooze writes in this tab; returns the unsubscribe. */
+export function subscribeSnoozes(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Changes whenever a snooze is written, cleared or re-keyed. */
+export function snoozesVersion(): number {
+  return version;
+}
+
 /** Snoozed item id -> epoch ms at which the snooze lapses. */
 export type SnoozeMap = Record<string, number>;
 
@@ -51,6 +77,7 @@ export function writeSnooze(id: string, until: number, now: number): SnoozeMap {
   } catch {
     /* ignore — snooze is a convenience, not state worth failing over */
   }
+  changed();
   return next;
 }
 
@@ -62,6 +89,7 @@ export function clearSnooze(id: string, now: number): SnoozeMap {
   } catch {
     /* ignore */
   }
+  changed();
   return next;
 }
 
@@ -94,5 +122,6 @@ export function migrateSnoozeKey(
   } catch {
     /* ignore — snooze is a convenience, not state worth failing over */
   }
+  changed();
   return current;
 }

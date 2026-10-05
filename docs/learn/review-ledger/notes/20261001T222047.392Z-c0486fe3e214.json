@@ -1,0 +1,7 @@
+{
+  "revision": "b4f9d6090ab55af6bcab4e1805fbe8316ef1659a",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Reviewed against navigation-store.setLayout's in-place preview-field write: project navigation still flows through the canonical setLayout seam (the seam now replaces rather than pushes for a same-layout file choice); the guidance stands.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md","docs/guides/testing.md","src-ui/src/components/Button.tsx","src-ui/src/contexts/navigation-store.ts"]}
+  ]
+}

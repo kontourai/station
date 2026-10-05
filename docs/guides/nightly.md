@@ -20,9 +20,11 @@ device receipts for current availability.
 
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
-**Cadence: daily at 06:43 UTC, with native publication only when `main` moved.**
-Main qualification runs independently every six hours; Nightly admits its
-exact-source evidence or runs fresh qualification. See [the release process](releasing.md). The scheduled job compares `HEAD`
+**Cadence: about once a day, with native publication only when `main` moved.**
+Nightly runs daily at 06:43 UTC. Main qualification runs every six hours, and
+a passing run also calls Nightly for the commit it just qualified, at most
+about once a day. The scheduled run admits exact-source qualification evidence
+or runs fresh qualification. See [the release procedure](releasing.md#release-procedure). The scheduled job compares `HEAD`
 against the rolling `nightly` tag (the commit the last published nightly was
 cut from) and builds nothing when they match and the deploy ledger records
 that ship: a new version number over identical content is a version number
@@ -157,8 +159,9 @@ To enable it (owner only):
   `gh variable set STATION_PORTABLE_NIGHTLY_PUBLISH --repo kontourai/station --body enabled`.
 - Read the first enabled Nightly's step summary for "Assemble, dry-run sign and
   verify". It says whether the gate evaluated as enabled for that run. The gate
-  relies on `github.workflow_ref` in a called workflow naming the caller
-  (`nightly.yml`), as GitHub documents, and that is unverified until then. If
+  relies on `github.workflow_ref` in a called workflow naming the top-level
+  caller (`nightly.yml`, or `main-qualification.yml` when qualification starts
+  the Nightly), as GitHub documents, and that is unverified until then. If
   the summary says dry run, the publish job was skipped, which fails safe.
 
 Deleting the variable returns every run to a dry run.

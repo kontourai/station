@@ -1,0 +1,7 @@
+{
+  "revision": "0341ddb564a105ebed51ca810d7e9a1d75a06eb9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the Action rows section against ActionOverflowMenu: checked rows are menuitemcheckbox, exclusive makes them menuitemradio, separatorBefore draws a separator above an item; added that sentence. The inventory line for the review panel matches the one-row bar, merge menu and 390 hit-target audit; two lines a merge doubled were removed.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-server/security/pairing-route-scopes.ts","src-ui/src/components/ActionOverflowMenu.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}
