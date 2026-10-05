@@ -22,6 +22,7 @@ import {
 } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
+import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 
@@ -421,6 +422,7 @@ describe('HomeView', () => {
   });
 
   beforeEach(() => {
+    resetStartChoicesForTests();
     showSurface.mockClear();
     showSurfacePage.mockClear();
     fixtures.projects = [{ id: 'p1', slug: 'station', name: 'Station' }];

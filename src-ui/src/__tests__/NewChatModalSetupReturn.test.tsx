@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type {
@@ -30,6 +31,7 @@ import type { AgentData } from '../contexts/AgentsContext';
 import { bannerStore, useBanners } from '../contexts/banner-store';
 import { navigationStore } from '../contexts/navigation-store';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
 const experienceRead = vi.hoisted(() => ({
   inventory: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
@@ -225,6 +227,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  resetStartChoicesForTests();
   experienceRead.inventory = { experiences: [], diagnostics: [] };
   experienceRead.refetch.mockReset().mockResolvedValue(undefined);
   screenSize.mobile = false;

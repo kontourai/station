@@ -14,6 +14,7 @@
  * the parent's onSelect handler surfaces instead of vanishing — from the
  * user's seat that failure is identical to the silent fall-through.
  */
+
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
@@ -30,11 +31,13 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
 const AGENT: AgentData = {
   slug: 'assistant',
@@ -186,6 +189,7 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  resetStartChoicesForTests();
   // Chip choices are remembered in storage; no test may inherit another's.
   localStorage.clear();
   experienceInventory.current = { experiences: [], diagnostics: [] };
@@ -1455,6 +1459,58 @@ describe('the start composer in the dock', () => {
     expect(message().value).toBe('From Home');
     expect(screen.getByRole('button', { name: 'Project: gone' })).toBeTruthy();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  // Delta review: Home's start that lands while the dock's own project list
+  // is still loading waits for it; it is not refused as a missing project.
+  test("a start for Home's project waits for the dock's list, then runs there", async () => {
+    const station = {
+      id: 'p1',
+      slug: 'station',
+      name: 'Station',
+      workingDirectory: '/w/station',
+    } as unknown as ProjectMetadata;
+    selectionModelState.isGlobal = false;
+    selectionModelState.selectedProject = undefined;
+    const onSelect = vi.fn();
+    const props = {
+      startSurface: true,
+      agents: selectionModelState.agents,
+      onSelect,
+      onClose: vi.fn(),
+      startWithDefault: true,
+      initialPrompt: 'From Home',
+      startSelection: { context: 'station', agentSlug: 'assistant' },
+    };
+    const view = render(
+      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByText(/no longer available/)).toBeNull();
+    selectionModelState.selectedProject = station;
+    view.rerender(
+      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+    );
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][1]).toBe('station');
+  });
+
+  // Delta review: Enter on an Agent that cannot start does what its row
+  // offers; it does not choose it.
+  test('Enter on an Agent that cannot start does not choose it', async () => {
+    selectionModelState.agents = [AGENT, UNAVAILABLE_AGENT];
+    start();
+    fireEvent.click(screen.getByRole('button', { name: 'Agent: Assistant' }));
+    const menu = await screen.findByRole('dialog', { name: 'Choose agent' });
+    const search = within(menu).getByRole('textbox', { name: 'Search agents' });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(screen.getByRole('dialog', { name: 'Choose agent' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Agent: Assistant' }),
+    ).toBeTruthy();
+    expect(getContextAgent('authority-1', '__global__')).toBeUndefined();
   });
 
   // Review finding: the dock builds a new draft object every render; a chip

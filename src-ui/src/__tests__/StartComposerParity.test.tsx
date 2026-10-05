@@ -10,7 +10,9 @@
  *   the other;
  * - the project chip rebinds the dock, so both surfaces open on it.
  */
+
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -30,6 +32,11 @@ import {
 import type { AgentData } from '../contexts/AgentsContext';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import {
+  buildLastChosenModelBindingKey,
+  trackLastChosenModel,
+} from '../hooks/lastChosenModel';
+import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const state = vi.hoisted(() => ({
@@ -100,20 +107,41 @@ vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
 vi.mock('../components/session/SessionModelPicker', () => ({
   SessionModelPicker: ({
     onSelect,
+    onReset,
+    onRuntimeOptionChange,
     onClose,
   }: {
     onSelect: (model: { id: string; name: string }) => void;
+    onReset: () => void;
+    onRuntimeOptionChange: (key: string, value: string) => void;
     onClose: () => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => {
-        onSelect({ id: 'sonnet', name: 'Sonnet' });
-        onClose();
-      }}
-    >
-      Choose Sonnet
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          onSelect({ id: 'sonnet', name: 'Sonnet' });
+          onClose();
+        }}
+      >
+        Choose Sonnet
+      </button>
+      <button
+        type="button"
+        onClick={() => onRuntimeOptionChange('effort', 'high')}
+      >
+        Set effort high
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onReset();
+          onClose();
+        }}
+      >
+        Use default
+      </button>
+    </>
   ),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
@@ -164,6 +192,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  resetStartChoicesForTests();
   localStorage.clear();
   deviceSettingsStore.set('chatDockProjectSlug', null);
   state.agents = [CLAUDE, CODEX];
@@ -385,6 +414,125 @@ describe('Home and the dock start the same way', () => {
     );
     expect(agentChip(ui.dock()).getAttribute('aria-label')).toMatch(
       /^Agent: Claude · [Ss]onnet$/,
+    );
+    ui.cleanupListener();
+  }, 30_000);
+
+  async function openModelPicker(root: HTMLElement) {
+    fireEvent.click(agentChip(root));
+    const menu = await screen.findByRole(
+      'dialog',
+      { name: 'Choose agent' },
+      { timeout: 15_000 },
+    );
+    // Claude's row's own Model control, whatever Model it names now.
+    const row = menu
+      .querySelector('button[data-agent-slug="claude"]')!
+      .closest<HTMLElement>('.new-chat-modal__agent-row')!;
+    fireEvent.click(within(row).getByRole('button', { name: /^Model: / }));
+    return screen.findByRole(
+      'button',
+      { name: 'Choose Sonnet' },
+      { timeout: 15_000 },
+    );
+  }
+
+  // Delta review: a Reset on one surface is a Reset on the other.
+  test('a Model Reset in the dock returns both chips to the default', async () => {
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    fireEvent.click(await openModelPicker(home));
+    await waitFor(() =>
+      expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
+        'Agent: Claude · Sonnet',
+      ),
+    );
+    await openModelPicker(ui.dock());
+    fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
+    await waitFor(() =>
+      expect(agentChip(home).getAttribute('aria-label')).toBe(
+        'Agent: Claude · Opus',
+      ),
+    );
+    expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
+      'Agent: Claude · Opus',
+    );
+    ui.cleanupListener();
+  }, 30_000);
+
+  // Delta review: a runtime option set on either surface is the option the
+  // start sends, from either surface.
+  test('a runtime option set in the dock is what Home starts with', async () => {
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    await openModelPicker(ui.dock());
+    fireEvent.click(screen.getByRole('button', { name: 'Set effort high' }));
+    fireEvent.change(
+      within(formOf(home)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Go' } },
+    );
+    await waitFor(() =>
+      expect(
+        within(formOf(home)).getByRole('button', { name: 'Start' }),
+      ).not.toHaveProperty('disabled', true),
+    );
+    fireEvent.click(
+      within(formOf(home)).getByRole('button', { name: 'Start' }),
+    );
+    expect(ui.starts.at(-1)!.detail.selection).toMatchObject({
+      agentSlug: 'claude',
+      model: { providerOptions: { effort: 'high' } },
+    });
+    ui.cleanupListener();
+  }, 30_000);
+
+  // Delta review: another chat's accepted turn writes the remembered Model;
+  // it must not override a Model chosen on a chip in this tab.
+  test("another chat's accepted turn does not override a chosen Model", async () => {
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    fireEvent.click(await openModelPicker(ui.dock()));
+    await waitFor(() =>
+      expect(agentChip(home).getAttribute('aria-label')).toBe(
+        'Agent: Claude · Sonnet',
+      ),
+    );
+    act(() =>
+      trackLastChosenModel(buildLastChosenModelBindingKey(CLAUDE), 'opus'),
+    );
+    expect(agentChip(home).getAttribute('aria-label')).toBe(
+      'Agent: Claude · Sonnet',
+    );
+    expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
+      'Agent: Claude · Sonnet',
+    );
+    ui.cleanupListener();
+  }, 30_000);
+
+  test("Home's project pick yields when the dock is rebound elsewhere", async () => {
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    fireEvent.click(projectChip(home));
+    const menu = await screen.findByRole(
+      'dialog',
+      { name: 'Choose project' },
+      { timeout: 15_000 },
+    );
+    fireEvent.click(
+      menu.querySelector<HTMLButtonElement>('[data-context-value="station"]')!,
+    );
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('aria-label')).toBe(
+        'Project: Station',
+      ),
+    );
+    act(() => deviceSettingsStore.set('chatDockProjectSlug', null));
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('aria-label')).toBe(
+        'Project: No workspace',
+      ),
     );
     ui.cleanupListener();
   }, 30_000);

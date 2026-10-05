@@ -880,6 +880,10 @@ export function NewChatModal({
 
   const modelChoiceFor = (agent: AgentData) =>
     modelChoices[modelChoiceKey(agent)];
+  // The model-gone picker reads the composer's shared choice when the
+  // composer shows, and a fork's local one otherwise.
+  const pickerChoiceFor = (agent: AgentData) =>
+    showStart ? start.modelChoiceFor(agent) : modelChoiceFor(agent);
   const modelFor = (agent: AgentData) => {
     const choice = modelChoiceFor(agent);
     const effective = defaultEffectiveModelForAgent(agent);
@@ -1041,16 +1045,15 @@ export function NewChatModal({
   useEffect(() => {
     if (
       seededModel.current ||
+      automaticMode ||
       !startSelection?.model ||
       !draftAgent ||
       draftAgent.slug !== startSelection.agentSlug
     )
       return;
     seededModel.current = true;
-    const key = modelChoiceKey(draftAgent);
-    const model = startSelection.model;
-    setModelChoices((current) => ({ ...current, [key]: model }));
-  }, [draftAgent, modelChoiceKey, setModelChoices, startSelection]);
+    start.seedModelChoice(draftAgent, startSelection.model);
+  }, [automaticMode, draftAgent, start, startSelection]);
 
   useEffect(() => {
     if (
@@ -1076,6 +1079,8 @@ export function NewChatModal({
       return;
     const pinnedSlug = startSelection?.agentSlug;
     if (startSelection && !isGlobal && !selectedProject) {
+      // Not yet known: the dock's own list is still loading.
+      if (!projectsLoaded) return;
       automaticStartAttempted.current = true;
       refuseMissingProject();
       return;
@@ -1120,6 +1125,7 @@ export function NewChatModal({
     selectedContextResolved,
     startSelection,
     selectedProject,
+    projectsLoaded,
     defaultSelection?.agent,
     flatList,
   ]);
@@ -2035,14 +2041,14 @@ export function NewChatModal({
                 loading={modelPickerLoading}
                 providers={modelPickerProviders}
                 currentProviderId={
-                  modelChoiceFor(modelPickerAgent)?.providerId ??
+                  pickerChoiceFor(modelPickerAgent)?.providerId ??
                   modelPickerDefault?.providerId
                 }
-                currentModel={modelChoiceFor(modelPickerAgent)?.modelId}
+                currentModel={pickerChoiceFor(modelPickerAgent)?.modelId}
                 defaultModel={modelPickerDefault?.id ?? undefined}
                 defaultSourceLabel={modelFor(modelPickerAgent).source}
                 runtimeOptions={
-                  modelChoiceFor(modelPickerAgent)?.providerOptions
+                  pickerChoiceFor(modelPickerAgent)?.providerOptions
                 }
                 onSelect={(model) =>
                   // The composer's choices are remembered wherever they are
@@ -2061,6 +2067,10 @@ export function NewChatModal({
                       }))
                 }
                 onReset={() => {
+                  if (showStart) {
+                    start.resetModel(modelPickerAgent);
+                    return;
+                  }
                   const key = modelChoiceKey(modelPickerAgent);
                   setModelChoices((current) => {
                     const { [key]: _removed, ...rest } = current;
@@ -2068,13 +2078,15 @@ export function NewChatModal({
                   });
                 }}
                 onRuntimeOptionChange={(key, value) =>
-                  updateModelChoice(modelPickerAgent, (current) => ({
-                    ...current,
-                    providerOptions: {
-                      ...current.providerOptions,
-                      [key]: value,
-                    },
-                  }))
+                  showStart
+                    ? start.setRuntimeOption(modelPickerAgent, key, value)
+                    : updateModelChoice(modelPickerAgent, (current) => ({
+                        ...current,
+                        providerOptions: {
+                          ...current.providerOptions,
+                          [key]: value,
+                        },
+                      }))
                 }
                 onClose={() => setModelPickerAgent(null)}
               />
