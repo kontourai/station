@@ -17,7 +17,7 @@ import {
   isWellFormedResolution,
   type ResourceResolutionResult,
 } from '@kontourai/station-contracts/project-identity';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import type { CheckoutRemoteReader } from '../checkout-remote-reader.js';
@@ -30,7 +30,10 @@ import {
   projectManifestPath,
 } from '../project-manifest-store.js';
 import { bindProjectResource } from '../project-resource-binder.js';
-import { ProjectResourceResolver } from '../project-resource-resolver.js';
+import {
+  ProjectResourceResolver,
+  RUN_LOCATION_TIMED_OUT_REASON,
+} from '../project-resource-resolver.js';
 
 /**
  * archive#1594 made `ResourceResolutionResult` a discriminated union, so
@@ -305,7 +308,12 @@ const noGitOnListReads: CheckoutRemoteReader = async (path) => {
   throw new Error(`describeProjectRunLocation read remotes at ${path}`);
 };
 
-describe('describeProjectRunLocation (#3370)', () => {
+/** One project through the list read. */
+async function describeOne(resolver: ProjectResourceResolver, slug: string) {
+  return (await resolver.describeProjectRunLocations([slug])).get(slug);
+}
+
+describe('describeProjectRunLocations (#3370)', () => {
   async function bindFolderlessMonorepo(harness: Harness) {
     const checkout = tempDir('station-run-location-checkout-');
     const app = join(checkout, 'packages', 'app');
@@ -331,10 +339,10 @@ describe('describeProjectRunLocation (#3370)', () => {
     const harness = createHome();
     const { app } = await bindFolderlessMonorepo(harness);
 
-    const described = await makeResolver(
-      harness,
-      noGitOnListReads,
-    ).describeProjectRunLocation('acme');
+    const described = await describeOne(
+      makeResolver(harness, noGitOnListReads),
+      'acme',
+    );
     const started = await makeResolver(
       harness,
       remoteReader(['git@github.com:acme/mono.git']),
@@ -352,9 +360,9 @@ describe('describeProjectRunLocation (#3370)', () => {
     const { app } = await bindFolderlessMonorepo(harness);
     const elsewhere = remoteReader(['git@github.com:other/repo.git']);
 
-    expect(
-      await makeResolver(harness, elsewhere).describeProjectRunLocation('acme'),
-    ).toEqual({ kind: 'execution-root', path: realpathSync(app) });
+    expect(await describeOne(makeResolver(harness, elsewhere), 'acme')).toEqual(
+      { kind: 'execution-root', path: realpathSync(app) },
+    );
     await expect(
       makeResolver(harness, elsewhere).resolveProjectExecutionRoot('acme'),
     ).rejects.toThrow(/cannot start here \(drifted\)/);
@@ -368,9 +376,7 @@ describe('describeProjectRunLocation (#3370)', () => {
       workingDirectory: folder,
     });
     expect(
-      await makeResolver(harness, noGitOnListReads).describeProjectRunLocation(
-        'plain',
-      ),
+      await describeOne(makeResolver(harness, noGitOnListReads), 'plain'),
     ).toEqual({ kind: 'folder', path: folder });
   });
 
@@ -378,9 +384,7 @@ describe('describeProjectRunLocation (#3370)', () => {
     const harness = createHome();
     await saveProject(harness.adapter, { slug: 'notes' });
     expect(
-      await makeResolver(harness, noGitOnListReads).describeProjectRunLocation(
-        'notes',
-      ),
+      await describeOne(makeResolver(harness, noGitOnListReads), 'notes'),
     ).toEqual({ kind: 'none' });
   });
 
@@ -391,14 +395,73 @@ describe('describeProjectRunLocation (#3370)', () => {
       slug: 'gone',
       workingDirectory: gone,
     });
-    const described = await makeResolver(
-      harness,
-      noGitOnListReads,
-    ).describeProjectRunLocation('gone');
+    const described = await describeOne(
+      makeResolver(harness, noGitOnListReads),
+      'gone',
+    );
     expect(described).toMatchObject({ kind: 'unavailable' });
-    expect(described.kind === 'unavailable' && described.reason).toMatch(
+    expect(described?.kind === 'unavailable' && described.reason).toMatch(
       /^Project 'gone' cannot start here \(missing\)/,
     );
+  });
+});
+
+describe('describeProjectRunLocations never holds the list on a folder (#3370 review)', () => {
+  const never = () => new Promise<never>(() => {});
+  const hungFs = { exists: never, realpath: never, isDirectory: never };
+
+  test('a folder that never answers reads as unavailable within the time box, and its neighbours still answer', async () => {
+    const harness = createHome();
+    await saveProject(harness.adapter, {
+      slug: 'hung',
+      workingDirectory: '/mnt/not-responding',
+    });
+    await saveProject(harness.adapter, { slug: 'notes' });
+    const started = Date.now();
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(['hung', 'notes'], {
+      timeoutMs: 50,
+      fs: hungFs,
+    });
+
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(locations.get('hung')).toEqual({
+      kind: 'unavailable',
+      reason: RUN_LOCATION_TIMED_OUT_REASON,
+    });
+    expect(locations.get('notes')).toEqual({ kind: 'none' });
+  });
+
+  test('reads Station’s records once per request: one project record per project, one bindings read in all', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b', 'c']) {
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: tempDir(`station-run-location-${slug}-`),
+      });
+      writeManifestRecord(harness.home, slug, {
+        id: `prj_${slug}`,
+        repos: [{ kind: 'local-only', id: `local:${slug}` }],
+      });
+    }
+    const getProject = vi.spyOn(harness.adapter, 'getProject');
+    const readBindings = vi.spyOn(harness.bindings, 'read');
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(['a', 'b', 'c']);
+
+    expect([...locations.values()].map(({ kind }) => kind)).toEqual([
+      'folder',
+      'folder',
+      'folder',
+    ]);
+    expect(getProject).toHaveBeenCalledTimes(3);
+    expect(readBindings).toHaveBeenCalledTimes(1);
   });
 });
 

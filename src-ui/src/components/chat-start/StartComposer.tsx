@@ -249,7 +249,7 @@ export function StartComposer({
               ) : (
                 <ProjectIcon
                   project={{ name: project.label, icon: project.icon }}
-                  size={20}
+                  size={18}
                   accent={project.accent}
                 />
               )}

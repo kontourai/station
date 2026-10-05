@@ -167,6 +167,19 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+.start-menu__hint--path {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+  min-width: 0;
+  white-space: nowrap;
+}
+.start-menu__hint-lead {
+  flex: none;
+}
+.start-menu__hint--path .new-chat-modal__cwd-breadcrumb {
+  flex: 1 1 auto;
+}
 .start-menu__search {
   width: auto;
   box-sizing: border-box;

@@ -3077,6 +3077,26 @@ describe('Project Routes', () => {
       });
     });
 
+    test('PUT /:slug drops a list entry’s derived runsAt instead of storing or refusing it', async () => {
+      const { app, storage } = createResolutionApp();
+      await saveProject(storage, 'notes');
+      const [entry] = (await json(await app.request('/'))).data;
+      expect(entry.runsAt).toEqual({ kind: 'none' });
+
+      const response = await app.request('/notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        // The other list-only fields (layoutCount, hasKnowledge…) are refused
+        // as before; this pins only that `runsAt` adds no new refusal.
+        body: JSON.stringify({ name: 'Notes renamed', runsAt: entry.runsAt }),
+      });
+
+      expect(response.status).toBe(200);
+      const stored = await storage.getProject('notes');
+      expect(stored.name).toBe('Notes renamed');
+      expect(stored).not.toHaveProperty('runsAt');
+    });
+
     test('GET / never adds run locations to a member’s projection', async () => {
       const { storage, projectHomeDir, bindings, manifests } =
         createResolutionApp();

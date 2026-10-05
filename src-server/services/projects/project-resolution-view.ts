@@ -125,8 +125,10 @@ export interface ProjectResourceResolverLike {
     projectSlug: string,
     resourceId?: string,
   ): Promise<ResourceResolutionResult>;
-  /** #3370: the project list's run location; absent, the list omits it. */
-  describeProjectRunLocation?(projectSlug: string): Promise<ProjectRunsAt>;
+  /** #3370: the project list's run locations; absent, the list omits them. */
+  describeProjectRunLocations?(
+    projectSlugs: readonly string[],
+  ): Promise<ReadonlyMap<string, ProjectRunsAt>>;
 }
 
 /**

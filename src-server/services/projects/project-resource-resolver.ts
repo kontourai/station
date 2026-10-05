@@ -163,6 +163,7 @@
  */
 
 import { existsSync, realpathSync, statSync } from 'node:fs';
+import { access, realpath, stat } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import type {
   ProjectConfig,
@@ -221,6 +222,65 @@ export interface ProjectResourceResolverOptions {
  */
 type IdentityCheck = 'verify' | 'trust-records';
 
+/** The folder reads a resolution makes, swappable so a list read never blocks. */
+export interface RunLocationFs {
+  exists(path: string): Promise<boolean>;
+  realpath(path: string): Promise<string>;
+  isDirectory(path: string): Promise<boolean>;
+}
+
+interface ResolutionIo extends RunLocationFs {
+  identity: IdentityCheck;
+  findBinding: ProjectBindingsStore['findBinding'];
+}
+
+/** Starts keep their synchronous reads: the behavior every start has had. */
+const SYNC_RUN_LOCATION_FS: RunLocationFs = {
+  exists: async (path) => existsSync(path),
+  realpath: async (path) => realpathSync(path),
+  isDirectory: async (path) => statSync(path).isDirectory(),
+};
+
+/** The list read's folder reads, off the event loop. */
+const ASYNC_RUN_LOCATION_FS: RunLocationFs = {
+  exists: (path) =>
+    access(path).then(
+      () => true,
+      () => false,
+    ),
+  realpath: (path) => realpath(path),
+  isDirectory: async (path) => (await stat(path)).isDirectory(),
+};
+
+/**
+ * How long a list read waits on one project's folder. A local disk answers in
+ * well under a millisecond; this only bounds a folder that does not answer.
+ */
+export const RUN_LOCATION_TIMEOUT_MS = 1500;
+
+export const RUN_LOCATION_TIMED_OUT_REASON =
+  "Station could not check this project's folder in time (it may be on a drive that is not responding).";
+
+async function withRunLocationTimeout(
+  pending: Promise<ProjectRunsAt>,
+  timeoutMs: number,
+): Promise<ProjectRunsAt> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<ProjectRunsAt>((resolve) => {
+    timer = setTimeout(
+      () =>
+        resolve({ kind: 'unavailable', reason: RUN_LOCATION_TIMED_OUT_REASON }),
+      timeoutMs,
+    );
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([pending, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type ResourceSelection =
   | { ok: true; resource: ProjectRepoResource }
   | { ok: false; result: ResourceResolutionResult };
@@ -271,34 +331,95 @@ export class ProjectResourceResolver {
   async resolveProjectExecutionRoot(
     projectSlug: string,
   ): Promise<string | undefined> {
-    return this.executionRoot(projectSlug, 'verify');
+    return this.executionRoot(projectSlug, this.verifyingIo());
+  }
+
+  /** Every start and resolution route: the live identity check, sync stats. */
+  private verifyingIo(): ResolutionIo {
+    return {
+      identity: 'verify',
+      findBinding: (projectId, resourceId) =>
+        this.bindings.findBinding(projectId, resourceId),
+      ...SYNC_RUN_LOCATION_FS,
+    };
   }
 
   /**
-   * #3370: where a new chat in this project would run, for the project list
-   * the start composer reads. It is `resolveProjectExecutionRoot`'s own
-   * selection — manifest, binding, working directory, `executionRoot` — with
-   * ONE step left out: the live git identity check, which spawns `git` per
-   * project and has no place on a list read. A checkout that would fail that
-   * check still names the directory it is in here; the start itself runs the
-   * check and refuses, naming why. Everything else that refuses a start (no
-   * single primary, a missing binding or folder, an execution root that is
-   * gone) reads as `unavailable`, with the same reason the start would give.
+   * #3370: the directory each project resolves to, for the project list the
+   * start composer reads. It is `resolveProjectExecutionRoot`'s own selection
+   * — manifest, binding, working directory, `executionRoot` — with ONE step
+   * left out: the live git identity check, which spawns `git` per project and
+   * has no place on a list read. So the result is the directory the records
+   * name, not a verified checkout: one that would fail that check still names
+   * its directory here, and the start refuses it. Everything else that refuses
+   * a start reads as `unavailable`, with the start's own reason.
+   *
+   * A list read must never hold the server on a project's folder: a hung
+   * network or autofs mount would otherwise stall every project-list fetch.
+   * So this reads Station's own records once per request (one project record
+   * and manifest per project, one bindings read for all of them), touches the
+   * project folders only through async `fs.promises`, runs the projects
+   * concurrently, and gives each one `timeoutMs` before it reads as
+   * `unavailable` — "could not check the folder".
    *
    * `none` is a project with no directory at all: where its chats run then
    * depends on the agent (home, an ACP connection's folder, or a private one),
    * which the client knows and this read does not.
    */
-  async describeProjectRunLocation(
+  async describeProjectRunLocations(
+    projectSlugs: readonly string[],
+    options: { timeoutMs?: number; fs?: RunLocationFs } = {},
+  ): Promise<Map<string, ProjectRunsAt>> {
+    const timeoutMs = options.timeoutMs ?? RUN_LOCATION_TIMEOUT_MS;
+    let findBinding: ResolutionIo['findBinding'];
+    try {
+      const store = this.bindings.read();
+      findBinding = (projectId, resourceId) =>
+        store.bindings.find(
+          (binding) =>
+            binding.projectId === projectId &&
+            binding.resourceId === resourceId,
+        );
+    } catch (error) {
+      // The same failure a start would hit, but only for a project that
+      // actually consults a binding.
+      findBinding = () => {
+        throw error;
+      };
+    }
+    const io: ResolutionIo = {
+      identity: 'trust-records',
+      findBinding,
+      ...(options.fs ?? ASYNC_RUN_LOCATION_FS),
+    };
+    const entries = await Promise.all(
+      projectSlugs.map(
+        async (slug) =>
+          [
+            slug,
+            await withRunLocationTimeout(this.describeOne(slug, io), timeoutMs),
+          ] as const,
+      ),
+    );
+    return new Map(entries);
+  }
+
+  private async describeOne(
     projectSlug: string,
+    io: ResolutionIo,
   ): Promise<ProjectRunsAt> {
     let root: string | undefined;
     let stored: string | undefined;
     try {
-      root = await this.executionRoot(projectSlug, 'trust-records');
+      const project = this.source.getProject(projectSlug);
+      const record = this.manifests.readRecord(projectSlug);
+      const manifest = record
+        ? this.manifests.composeManifest(record, project)
+        : undefined;
+      root = await this.executionRoot(projectSlug, io, project, manifest);
       // Compared expanded; returned as stored (`~/dev/app`), which is how
       // every other surface shows the project's folder.
-      stored = this.source.getProject(projectSlug).workingDirectory?.trim();
+      stored = project.workingDirectory?.trim();
       if (stored && resolvePath(expandTilde(stored)) !== root)
         stored = undefined;
     } catch (error) {
@@ -314,17 +435,21 @@ export class ProjectResourceResolver {
 
   private async executionRoot(
     projectSlug: string,
-    identity: IdentityCheck,
+    io: ResolutionIo,
+    projectSnapshot?: ProjectConfig,
+    manifestSnapshot?: ProjectManifest,
   ): Promise<string | undefined> {
-    const project = this.source.getProject(projectSlug);
-    const manifest = this.manifests.readProjectManifest(projectSlug);
+    const project = projectSnapshot ?? this.source.getProject(projectSlug);
+    const manifest = projectSnapshot
+      ? manifestSnapshot
+      : this.manifests.readProjectManifest(projectSlug);
     const selection = manifest?.executionRoot;
     const result = await this.resolve(
       projectSlug,
       selection?.repoId,
       project,
       manifest ?? null,
-      identity,
+      io,
     );
     if (!isWellFormedResolution(result)) {
       throw new Error(
@@ -333,7 +458,7 @@ export class ProjectResourceResolver {
     }
     // A list read's unverified `bound` is not a resolution outcome; counting
     // it would inflate the verified-start metric once per project per read.
-    if (identity === 'verify')
+    if (io.identity === 'verify')
       projectResourceResolutions.add(1, { state: result.state });
     if (result.state !== 'bound') {
       if (
@@ -359,19 +484,19 @@ export class ProjectResourceResolver {
       .split(/[\\/]/);
     const candidate = resolvePath(result.path, ...portableSegments);
     assertPathInside(result.path, candidate, 'Project execution root');
-    if (!existsSync(candidate)) {
+    if (!(await io.exists(candidate))) {
       throw new Error(
         `Project '${projectSlug}' execution root does not exist: ${selection.path}`,
       );
     }
-    const canonicalRoot = realpathSync(result.path);
-    const canonicalCandidate = realpathSync(candidate);
+    const canonicalRoot = await io.realpath(result.path);
+    const canonicalCandidate = await io.realpath(candidate);
     assertPathInside(
       canonicalRoot,
       canonicalCandidate,
       'Project execution root',
     );
-    if (!statSync(canonicalCandidate).isDirectory()) {
+    if (!(await io.isDirectory(canonicalCandidate))) {
       throw new Error(
         `Project '${projectSlug}' execution root is not a directory: ${selection.path}`,
       );
@@ -384,7 +509,7 @@ export class ProjectResourceResolver {
     resourceId?: string,
     projectSnapshot?: ProjectConfig,
     manifestSnapshot?: ProjectManifest | null,
-    identity: IdentityCheck = 'verify',
+    io: ResolutionIo = this.verifyingIo(),
   ): Promise<ResourceResolutionResult> {
     const project = projectSnapshot ?? this.source.getProject(projectSlug);
     // Decision 1: read only. A project with no manifest stays on the compat
@@ -411,7 +536,7 @@ export class ProjectResourceResolver {
           kind: 'local-only',
           id: localProjectResourceId(projectSlug),
         },
-        identity,
+        io,
       );
     }
 
@@ -419,10 +544,10 @@ export class ProjectResourceResolver {
     if (!selection.ok) return selection.result;
     const resource = selection.resource;
 
-    const binding = this.bindings.findBinding(manifest.id, resource.id);
+    const binding = io.findBinding(manifest.id, resource.id);
     if (binding) {
       const absolute = resolvePath(expandTilde(binding.path));
-      if (!existsSync(absolute)) {
+      if (!(await io.exists(absolute))) {
         // Decision 5: named, and never quietly re-pointed at the project's
         // working directory.
         return {
@@ -441,7 +566,7 @@ export class ProjectResourceResolver {
         binding.path,
         absolute,
         { kind: 'binding', verifiedAt: binding.verifiedAt },
-        identity,
+        io.identity,
       );
     }
 
@@ -489,13 +614,13 @@ export class ProjectResourceResolver {
     // §5 point 2: `workingDirectory` stays authoritative during compat, and a
     // backfilled binding row duplicating it is exactly the second copy this
     // design exists to avoid.
-    return this.resolveThroughWorkingDirectory(project, resource, identity);
+    return this.resolveThroughWorkingDirectory(project, resource, io);
   }
 
   private async resolveThroughWorkingDirectory(
     project: ProjectConfig,
     resource: ProjectRepoResource,
-    identity: IdentityCheck,
+    io: ResolutionIo,
   ): Promise<ResourceResolutionResult> {
     const resourceId = resource.id;
     const workingDirectory = project.workingDirectory?.trim();
@@ -520,7 +645,7 @@ export class ProjectResourceResolver {
     }
     // Decision 8.
     const absolute = resolvePath(expandTilde(workingDirectory));
-    if (!existsSync(absolute)) {
+    if (!(await io.exists(absolute))) {
       // archive#1594 — THIS is `missing`, not `unbound`. §5 makes the declared
       // `workingDirectory` the compat-era binding ("workingDirectory stays
       // authoritative during compat"), so a declared directory that is gone is
@@ -550,7 +675,7 @@ export class ProjectResourceResolver {
         {
           kind: 'working-directory',
         },
-        identity,
+        io.identity,
       );
     }
     return { state: 'bound', resourceId, path: absolute };

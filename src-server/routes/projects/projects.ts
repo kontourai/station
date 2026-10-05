@@ -580,7 +580,13 @@ export function createProjectRoutes(
     return undefined;
   }
 
-  function normalizeProjectBody<T extends Record<string, unknown>>(body: T): T {
+  function normalizeProjectBody<T extends Record<string, unknown>>(
+    input: T,
+  ): T {
+    // #3370: `runsAt` is derived on every list read, never stored. A client
+    // that sends a list entry back must not have it refused (or kept).
+    const { runsAt: _derived, ...rest } = input;
+    const body = rest as T;
     if (!Object.hasOwn(body, 'agents')) return body;
     return {
       ...body,
@@ -723,23 +729,23 @@ export function createProjectRoutes(
   );
 
   /**
-   * #3370: the operator's list carries where each project's chats run, so the
-   * start composer names the real directory. Record reads only (no `git`
-   * spawn), and never on a member's view, which carries no paths at all.
+   * #3370: the operator's list carries the directory each project resolves
+   * to, so the start composer names it. No `git` spawn, folder reads async
+   * and time-boxed per project (see `describeProjectRunLocations`), and never
+   * on a member's view, which carries no paths at all.
    */
   async function withRunLocations(
     projects: ProjectMetadata[],
   ): Promise<ProjectMetadata[]> {
-    const describe = resolution?.resolver.describeProjectRunLocation?.bind(
-      resolution.resolver,
+    const resolver = resolution?.resolver;
+    if (!resolver?.describeProjectRunLocations) return projects;
+    const runsAt = await resolver.describeProjectRunLocations(
+      projects.map(({ slug }) => slug),
     );
-    if (!describe) return projects;
-    return Promise.all(
-      projects.map(async (project) => ({
-        ...project,
-        runsAt: await describe(project.slug),
-      })),
-    );
+    return projects.map((project) => {
+      const location = runsAt.get(project.slug);
+      return location ? { ...project, runsAt: location } : project;
+    });
   }
 
   // List all projects

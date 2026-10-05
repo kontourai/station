@@ -547,15 +547,20 @@ type ProjectRunsAt =
   | { kind: 'unavailable'; reason: string };
 ```
 
-`runsAt` is where a new chat in the project runs on this Station, from the
+`runsAt` is the directory the project resolves to on this Station, from the
 records the session start reads: the manifest, its binding, the working
 directory and the manifest's `executionRoot`. `GET /api/projects` returns it
-on the operator's own list; a shared member's view omits it. It skips the live
-git identity check a start still makes, so a checkout of a different
-repository still reads as its directory here and the start refuses. `none`
-means the project has no directory, so the agent decides: the home folder, an
-ACP connection's folder, or a private folder Station makes. `unavailable`
-means a start would be refused, and `reason` says why.
+on the operator's own list; a shared member's view omits it. The identity is
+not verified: the start's git identity check is skipped, so a checkout of a
+different repository still reads as its directory here, and the start refuses
+it. It is not where every chat runs either: a chat in a worktree-isolated
+project runs in its own worktree. `none` means the project has no directory,
+so the agent decides: the home folder, an ACP connection's folder, or a
+private folder Station makes. `unavailable` means a start would be refused,
+or the folder did not answer within the list read's per-project time limit;
+`reason` says which. The list reads folders asynchronously, so a folder on a
+drive that does not respond never holds the list. A `runsAt` sent back in a
+project update is ignored.
 
 ---
 

@@ -268,15 +268,15 @@ export function StartProjectMenu({
         closeLabel="Close project list"
         onClose={onClose}
       />
-      <p className="start-menu__hint">
-        {'path' in workspaceHint ? (
-          <>
-            Runs in <CwdBreadcrumb path={workspaceHint.path} />
-          </>
-        ) : (
-          workspaceHintText(workspaceHint)
-        )}
-      </p>
+      {'path' in workspaceHint ? (
+        // One line: the folder's parent gives way, its leaf stays readable.
+        <p className="start-menu__hint start-menu__hint--path">
+          <span className="start-menu__hint-lead">Runs in</span>
+          <CwdBreadcrumb path={workspaceHint.path} />
+        </p>
+      ) : (
+        <p className="start-menu__hint">{workspaceHintText(workspaceHint)}</p>
+      )}
       <div className="start-menu__list">
         <ContextPickerOptions
           folderlessHint={folderlessHint}

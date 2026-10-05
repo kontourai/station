@@ -49,25 +49,29 @@ export interface ProjectMetadata {
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */
   position?: number;
   /**
-   * #3370: where a new chat in this project runs on this Station, as the
-   * session start resolves it. Present on the operator's own project list;
-   * absent from a member's view and from servers that predate it.
+   * #3370: the directory this project resolves to on this Station (identity
+   * not verified). Present on the operator's own project list; absent from a
+   * member's view and from servers that predate it.
    */
   runsAt?: ProjectRunsAt;
 }
 
 /**
- * Where a new chat in a project runs, computed from the same records the
+ * The directory a project resolves to on this Station, from the records the
  * session start reads (manifest, binding, working directory and the
- * manifest's `executionRoot`), without the live git identity check a start
- * still runs.
+ * manifest's `executionRoot`). The start's git identity check is NOT run, so
+ * a path here is the directory the records name, not a verified checkout of
+ * the project's repository: a start may still refuse it. It is also not
+ * where every chat runs: a chat in a worktree-isolated project runs in its
+ * own worktree, and a project with no directory leaves it to the agent.
  *
  * - `folder`: the project's own working directory, as stored.
  * - `execution-root`: a different directory the manifest selects, through a
  *   binding or its `executionRoot`; absolute.
  * - `none`: no directory; the agent decides (home, an ACP connection's
  *   folder, or a private Station-managed one).
- * - `unavailable`: a start would be refused; `reason` says why.
+ * - `unavailable`: a start would be refused, or the folder could not be
+ *   checked in time; `reason` says which.
  */
 export type ProjectRunsAt =
   | { kind: 'folder'; path: string }
