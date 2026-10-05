@@ -572,7 +572,7 @@ export async function loadAgentTools(
               ({
                 ...tool,
                 name: `${toolId}_${tool.name}`,
-              }) as unknown as Tool<any>,
+              }) as Tool<any>,
           ),
           toolNameMapping,
           toolNameReverseMapping,
