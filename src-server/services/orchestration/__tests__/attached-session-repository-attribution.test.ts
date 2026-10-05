@@ -342,10 +342,44 @@ describe('a session no project claims is followed under No project (#3386)', () 
   test('its No project is stable across polls and restarts', async () => {
     await follow(() => []).pollNow();
     const first = store.listEvents(session.threadId).length;
+    // Not just deduplicated by event id: a restart reads the stored No
+    // project back and offers the store no envelope at all.
+    const append = vi.spyOn(store, 'appendEventIfAbsent');
     for (let index = 0; index < 5; index += 1) {
       await follow(() => []).pollNow();
     }
+    expect(
+      append.mock.calls.filter(([stored]) =>
+        stored.method.startsWith('session.'),
+      ),
+    ).toEqual([]);
     expect(store.listEvents(session.threadId)).toHaveLength(first);
+  });
+
+  test('the read model treats a newer No project as newer than an older project', async () => {
+    await follow(() => [
+      { slug: 'scratch', workingDirectory: session.cwd },
+    ]).pollNow();
+    expect(summarize().projectSlug).toBe('scratch');
+    // The writer only says No project after a project when the project is
+    // beyond its bounded look-back; the reader must still take the newest.
+    const configured = store
+      .listEvents(session.threadId)
+      .map((item) => item.payload as unknown as CanonicalRuntimeEvent)
+      .find((item) => item.method === 'session.configured');
+    if (!configured) throw new Error('no envelope');
+    store.appendEventIfAbsent({
+      ...configured,
+      eventId: 'later-no-project',
+      createdAt: '2026-07-22T00:00:02.000Z',
+      metadata: {
+        controlMode: 'read-only-attached',
+        projectAttribution: 'unattributed',
+        attachedProvider: 'claude',
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      },
+    });
+    expect(summarize().projectSlug).toBeUndefined();
   });
 
   test('a project added later claims it', async () => {
