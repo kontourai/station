@@ -467,9 +467,24 @@ Station**. Claude and Codex create independent child Sessions; the original
 terminal Session can keep running. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
 
-**Continue in Station** needs the conversation's folder to be inside a Project
-folder. A conversation filed by its repository, or under **No project**, shows
-the reason instead.
+The continuation always works in the folder the conversation ran in, and the
+engine is confined to that folder. Station checks the folder again when you
+continue:
+
+- A conversation filed under a Project continues under that Project. This
+  includes one in a worktree outside the Project folder: it continues in that
+  worktree. Station refuses if the worktree was removed or replaced, or if its
+  `.git` does not lead back to the Project's repository.
+- A conversation under **No project** continues as a **No project** chat
+  confined to its own folder, after you confirm that choice. Station refuses
+  this for a folder too broad to confine an agent to: the file system root, a
+  top-level folder such as `/tmp`, your home folder or a folder containing it,
+  the system temporary folder, and Station's own data folder. To continue it
+  under a Project instead, add a Project for that folder or its repository
+  first. Station does not move a conversation into another Project's folder,
+  because its history refers to files in the folder it ran in.
+
+A hosted Station does not continue conversations outside your Projects.
 
 An attached Session remains read only. Continuing opens a Station-owned child.
 If Station cannot confirm the result, use the offered retry for that same
