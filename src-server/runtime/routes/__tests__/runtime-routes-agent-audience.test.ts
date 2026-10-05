@@ -40,6 +40,7 @@ import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
+import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
 import {
   DeploymentAuthenticationService,
   deploymentAccountPrincipal,
@@ -57,6 +58,10 @@ import {
   api,
   withStationControlCallerContext,
 } from '../../../tools/station-control-shared.js';
+import {
+  agentCatalogForCaller,
+  installAgentAudienceGate,
+} from '../../bootstrap/agent-audience-gate.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -100,6 +105,7 @@ const A_REF = {
 } as const;
 const NOW = new Date().toISOString();
 const ACCOUNT_COOKIE = 'test_account=present';
+const OUTAGE_COOKIE = 'test_account=outage';
 const makeTempDir = trackTempDirs();
 
 const AGENTS = {
@@ -192,10 +198,15 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       storage,
       new ProjectManifestStore(home, storage),
     );
-    await projects.createProject({ name: 'A private', slug: 'a-project' });
+    await projects.createProject({
+      name: 'A private',
+      slug: 'a-project',
+      workingDirectory: home,
+    });
     const bProject = await projects.createProject({
       name: 'B shared',
       slug: 'b-project',
+      workingDirectory: home,
     });
     const membership = createProjectMembershipRuntime(
       home,
@@ -270,22 +281,34 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       displayName: 'Test accounts',
       sessionCookies: ['test_account'],
       endpoints: [{ path: '/logout', methods: ['POST'], operation: 'logout' }],
-      authenticate: async () => ({
-        kind: 'authenticated',
-        session: {
-          subject: 'bob',
-          displayName: 'Bob',
-          sessionId: 'session-bob',
-          authenticatedAt: new Date(Date.now() - 1000).toISOString(),
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
-          contacts: [],
-        },
-      }),
+      authenticate: async ({ headers }) => {
+        // A provider outage: the service answers `unavailable`.
+        if (headers.get('cookie')?.includes(OUTAGE_COOKIE))
+          throw new Error('provider unreachable');
+        return {
+          kind: 'authenticated',
+          session: {
+            subject: 'bob',
+            displayName: 'Bob',
+            sessionId: 'session-bob',
+            authenticatedAt: new Date(Date.now() - 1000).toISOString(),
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            contacts: [],
+          },
+        };
+      },
       handle: async () => new Response(null, { status: 204 }),
     };
 
+    const approvalRegistry = new ApprovalRegistry({
+      info() {},
+      warn() {},
+      error() {},
+      debug() {},
+    });
     const app = new Hono();
     const context = deepStub({
+      approvalRegistry,
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: {
@@ -362,7 +385,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
-    return { base, revokeB, home };
+    return { base, revokeB, home, approvalRegistry, bProject };
   }
 
   /** A request exactly as a station-control tool in `session` makes it. */
@@ -386,13 +409,14 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     base: string,
     path: string,
     init: RequestInit = {},
+    cookie = ACCOUNT_COOKIE,
   ): Promise<{ status: number; body: any; cacheControl: string | null }> {
     const response = await fetch(`${base}${path}`, {
       ...init,
       headers: {
         ...(init.headers as Record<string, string> | undefined),
         authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
-        cookie: ACCOUNT_COOKIE,
+        cookie,
       },
     });
     return {
@@ -718,5 +742,137 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       ['concierge', 'elsewhere', 'ops-only', 'viewers-desk'].sort(),
     );
     expect(catalog.some((agent) => agent.kind === 'member-agent')).toBe(false);
+  });
+
+  test('a member’s /api/boot carries the member Project catalogue that GET /api/projects gives it; the operator’s boot is unchanged', async () => {
+    const { base, home, bProject } = await setup();
+    const listed = await asAccount(base, '/api/projects');
+    expect(listed.status).toBe(200);
+    const memberB = {
+      version: 'station.member-project/v1',
+      kind: 'member-project',
+      id: bProject.id,
+      slug: 'b-project',
+      name: 'B shared',
+      actions: ['view'],
+    };
+    expect(listed.body.data).toEqual([memberB]);
+
+    const boot = await asAccount(base, '/api/boot');
+    expect(boot.status).toBe(200);
+    expect(boot.body.sections.projects).toEqual({
+      data: { success: true, data: [memberB] },
+    });
+    // The other Project, and every field the member view excludes (local
+    // paths, model, knowledge and layout metadata), appear nowhere.
+    const projectsSection = JSON.stringify(boot.body.sections.projects);
+    expect(projectsSection).not.toMatch(
+      /workingDirectory|layoutCount|hasKnowledge|defaultModel|defaultProviderId|knowledgeNamespaces/,
+    );
+    expect(projectsSection).not.toContain(home);
+    expect(JSON.stringify(boot.body)).not.toMatch(/A private|"a-project"/);
+
+    const operator = await asOperator(base, '/api/boot');
+    const operatorProjects = operator.body.sections.projects.data.data as any[];
+    expect(operatorProjects.map((project) => project.slug).sort()).toEqual([
+      'a-project',
+      'b-project',
+    ]);
+    expect(
+      operatorProjects.every((project) => project.workingDirectory === home),
+    ).toBe(true);
+  });
+
+  test('a member cannot answer a pending approval on any approval route; the operator still can', async () => {
+    const { base, approvalRegistry } = await setup();
+    const pending = approvalRegistry.register('operator-approval', 60_000);
+    for (const [method, path, body] of [
+      ['POST', '/tool-approval/operator-approval', { approved: true }],
+      ['POST', '/notifications/some-card/action/approve', undefined],
+      ['DELETE', '/notifications/some-card', undefined],
+      ['DELETE', '/notifications', undefined],
+      [
+        'POST',
+        '/api/orchestration/commands',
+        {
+          type: 'respondToRequest',
+          threadId: 'a-agent',
+          requestId: 'r1',
+          decision: 'accept',
+        },
+      ],
+    ] as const) {
+      const refused = await asAccount(base, path, send(method, body));
+      expect([method, path, refused.status, refused.body?.code]).toEqual([
+        method,
+        path,
+        403,
+        'member_agent_turns_unavailable',
+      ]);
+    }
+    // The operator's tool call is still waiting on the operator.
+    expect(approvalRegistry.has('operator-approval')).toBe(true);
+    // Any other command is not an approval answer and keeps its own rules.
+    const other = await asAccount(
+      base,
+      '/api/orchestration/commands',
+      send('POST', { type: 'interruptTurn', threadId: 'a-agent' }),
+    );
+    expect(other.body?.code).not.toBe('member_agent_turns_unavailable');
+
+    const answered = await asOperator(
+      base,
+      '/tool-approval/operator-approval',
+      send('POST', { approved: true }),
+    );
+    expect([answered.status, answered.body]).toEqual([200, { success: true }]);
+    await expect(pending).resolves.toBe(true);
+  });
+
+  test('an account whose authentication is unavailable is refused before boot or the Agent list answers', async () => {
+    const { base } = await setup();
+    // The deployment-authentication boundary answers a provider outage
+    // itself, so neither surface ever sees an undecided caller from it.
+    for (const path of ['/api/boot', '/api/agents'])
+      expect([
+        path,
+        (await asAccount(base, path, {}, OUTAGE_COOKIE)).status,
+      ]).toEqual([path, 503]);
+  });
+});
+
+describe('agentCatalogForCaller: an undecided caller is an error for boot, an empty list for GET /api/agents (#3276)', () => {
+  const deps = {
+    // What the runtime composition answers when resolving the caller threw.
+    caller: async () => ({ kind: 'none', unresolved: true }) as const,
+    listAgents: async () => [
+      {
+        slug: 'concierge',
+        name: 'Concierge',
+        project: 'b-project',
+        audience: AGENTS.concierge.audience,
+      },
+    ],
+  };
+
+  test('boot’s catalog read rejects, so the section reports an error', async () => {
+    const app = new Hono();
+    app.get('/catalog', async (c) =>
+      c.json(await agentCatalogForCaller(deps, c)),
+    );
+    expect((await app.request('/catalog')).status).toBe(500);
+    await expect(agentCatalogForCaller(deps, {} as never)).rejects.toThrow(
+      'could not be resolved',
+    );
+  });
+
+  test('the gate’s own list still answers an empty list', async () => {
+    const app = new Hono();
+    installAgentAudienceGate(app as never, deps);
+    const listed = await app.request('/api/agents');
+    expect([listed.status, await listed.json()]).toEqual([
+      200,
+      { success: true, data: [] },
+    ]);
   });
 });

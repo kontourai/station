@@ -42,6 +42,20 @@
  *   and a 403 reveals nothing.
  * - Continuing an existing orchestration conversation or task: refused with
  *   the same code, because it is also a new member turn.
+ * - Answering a pending approval, which steers the turn that asked:
+ *   `POST /tool-approval/:id`, the approval inbox's
+ *   `POST /notifications/:id/action/:actionId`, `DELETE /notifications/:id`
+ *   and the bulk `DELETE /notifications` (an inbox dismissal declines the
+ *   approval; these routes are refused whole, so a member also cannot
+ *   action or dismiss any other notification),
+ *   and a `respondToRequest` sent to `POST /api/orchestration/commands`:
+ *   refused with the same code for a `member` caller. Outside hosted mode the
+ *   approval registry lets any caller settle an entry, so without this a
+ *   member could approve or deny the operator's pending tool call. A
+ *   caller-less (`none`) request keeps those routes' own rules here: they
+ *   name no Agent, and internal callers may use them. Not decided here:
+ *   `POST /api/orchestration/delegations/:id/respond`, which already admits
+ *   only the task's owner holding the Project's `approve` action (#2377).
  *
  * Not decided here: `/agents/:slug/conversations/...`, the caller's own
  * conversation history, which those routes already scope to its owner.
@@ -157,8 +171,18 @@ const TURN_CONTINUE = [
   /^\/api\/orchestration\/delegations\/[^/]+\/continue$/,
 ];
 
+/** Routes that answer a pending approval whatever their body says. */
+const APPROVAL_ANSWERS: readonly [string, RegExp][] = [
+  ['POST', /^\/tool-approval\/[^/]+$/],
+  ['POST', /^\/notifications\/[^/]+\/action\/[^/]+$/],
+  ['DELETE', /^\/notifications(?:\/(?!activity$)[^/]+)?$/],
+];
+/** The command route answers an approval only for this command type. */
+const COMMANDS_PATH = '/api/orchestration/commands';
+
 type Surface =
   | { kind: 'list' }
+  | { kind: 'approval-answer'; command: boolean }
   | { kind: 'catalog-mutation' }
   | { kind: 'detail'; slug: string }
   | { kind: 'addressed'; slug: string; mutation: boolean }
@@ -176,6 +200,12 @@ function decodeSlug(raw: string): string | undefined {
 function classify(method: string, rawPath: string): Surface | undefined {
   const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
   const read = method === 'GET' || method === 'HEAD';
+  if (
+    APPROVAL_ANSWERS.some(([m, pattern]) => m === method && pattern.test(path))
+  )
+    return { kind: 'approval-answer', command: false };
+  if (method === 'POST' && path === COMMANDS_PATH)
+    return { kind: 'approval-answer', command: true };
   if (LIST_PATHS.has(path))
     return read ? { kind: 'list' } : { kind: 'catalog-mutation' };
   if (!read && COLLECTION_MUTATIONS.has(path))
@@ -236,6 +266,10 @@ export async function agentCatalogForCaller(
 > {
   const caller = await deps.caller(c);
   if (caller.kind === 'operator') return { kind: 'operator' };
+  // An empty catalog would read as "no Agents for you"; an undecided caller
+  // is an error. The gate's own list keeps answering it with an empty list.
+  if (caller.kind === 'none' && caller.unresolved)
+    throw new Error('Agent catalog caller could not be resolved');
   return {
     kind: 'member',
     data: memberCatalog(await deps.listAgents(), caller),
@@ -251,6 +285,20 @@ function memberCatalog(
       ? [memberView(record as AgentAudienceRecord & { project: string })]
       : [],
   );
+}
+
+/** Whether a command body is an approval answer, read from a copy. */
+async function isRespondCommand(request: Request): Promise<boolean> {
+  try {
+    const body = (await request.clone().json()) as unknown;
+    return (
+      typeof body === 'object' &&
+      body !== null &&
+      (body as { type?: unknown }).type === 'respondToRequest'
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** The Agent a turn-starting body names, read from a copy of the request. */
@@ -285,15 +333,26 @@ export function installAgentAudienceGate(
 ): void {
   app.use('*', async (c, next) => {
     const surface = classify(c.req.method, c.req.path);
-    if (!surface) {
+    if (
+      !surface ||
+      // Only an approval answer is decided on the command route; read the
+      // body before resolving the caller, so other commands pay nothing.
+      (surface.kind === 'approval-answer' &&
+        surface.command &&
+        !(await isRespondCommand(c.req.raw)))
+    ) {
       await next();
       return undefined;
     }
     const caller = await deps.caller(c);
-    if (caller.kind === 'operator') {
+    if (
+      caller.kind === 'operator' ||
+      (surface.kind === 'approval-answer' && caller.kind !== 'member')
+    ) {
       await next();
       return undefined;
     }
+    if (surface.kind === 'approval-answer') return turnsUnavailable();
     if (surface.kind === 'turn-continue') return turnsUnavailable();
     if (surface.kind === 'catalog-mutation') return catalogReadOnly();
     let agents: readonly AgentAudienceRecord[];

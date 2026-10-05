@@ -124,8 +124,12 @@ export type AgentAudienceCaller =
       readonly kind: 'member';
       readonly admissions: () => readonly AgentAudienceMemberAdmission[];
     }
-  /** Acts for nobody: admitted to no Agent. */
-  | { readonly kind: 'none' };
+  /**
+   * Acts for nobody: admitted to no Agent. `unresolved` marks a caller that
+   * could not be decided (authentication threw), so a surface that cannot
+   * answer with a refusal reports an error instead of an empty answer.
+   */
+  | { readonly kind: 'none'; readonly unresolved?: true };
 
 /** Whether `caller` may see and use an Agent with this audience and owner. */
 export function agentAudienceAdmits(

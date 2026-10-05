@@ -254,26 +254,42 @@ handlers:
   `POST /agents/materialize-engine`, and on an admitted Agent `PUT` and
   `DELETE /agents/:slug` and the tools and workflows edits. The collection
   operations name no Agent, so a 403 reveals nothing the member's list does
-  not; a write to a hidden slug is still the uniform 404.
+  not; a write to a hidden slug is still the uniform 404;
+- answering a pending approval steers the turn that asked, so it is refused
+  with `403 member_agent_turns_unavailable`: `POST /tool-approval/:id`, the
+  approval inbox's `POST /notifications/:id/action/:actionId`,
+  `DELETE /notifications/:id` and `DELETE /notifications` (a dismissal
+  declines the approval, so a member cannot action or dismiss any
+  notification), and a `respondToRequest` sent to
+  `POST /api/orchestration/commands`. Outside hosted mode the approval
+  registry lets any caller settle an entry, so without this a member could
+  answer the operator's pending tool call.
+  `POST /api/orchestration/delegations/:id/respond` is not gated here; it
+  already admits only the task's owner holding the Project's `approve`
+  action.
 
 The caller's own conversation history under `/agents/:slug/conversations` stays
 readable; those routes already authorize by conversation owner.
 
-**Not yet covered by the gate.** These member-reachable paths are not decided
-by Agent audience in this slice:
+**Not yet covered by the gate.** These are the known Agent-related paths
+that are not yet gated. The rest of the member surface belongs to the wider
+member-surface inventory (#488, #490), and member turns to #3277.
 
-- starting or steering work without naming an Agent route the gate reads:
-  `POST /api/orchestration/commands`, `POST /api/orchestration/delegations/:id/respond`,
+- Starting or steering work without naming an Agent route the gate reads:
+  other `POST /api/orchestration/commands` commands (steering, interrupt),
   the global `POST /invoke`, and
   `POST /agents/:slug/conversations/:id/fork` (inside the conversation
-  carve-out);
-- Agent names outside the catalog routes: `GET /integrations` (`usedBy` lists
-  the Agents bound to each integration), `GET /monitoring/stats` and
-  `/monitoring/metrics` (per-Agent slug, name and model), and Project layout
-  reads whose stored config and integrity diagnostics quote Agent slugs.
-
-None of these returns an Agent's prompt or tool configuration. They belong to
-the wider member-surface inventory (#488, #490) and to member turns (#3277).
+  carve-out).
+- An Agent-definition write outside the Agent routes: `PUT /config/app` with
+  `builtinAgentEngineConnectionId` rebinds the built-in Agents' engine.
+- Agent names outside the catalog routes, with no prompt or tool
+  configuration: `GET /integrations` (`usedBy` lists the Agents bound to
+  each integration), `GET /monitoring/stats` and `/monitoring/metrics`
+  (per-Agent slug, name and model), and Project layout reads whose stored
+  config and integrity diagnostics quote Agent slugs.
+- Reachable, with payloads not yet audited: scheduler jobs
+  (`GET /scheduler/jobs` names a job's Agent and carries its prompt),
+  `/api/skills`, `/api/attention` and `/api/live-activity`.
 
 **Authority rule for member turns (R2).** When #3277 admits a member's turn on
 a member-facing Agent, that turn's effective authority is the intersection of:

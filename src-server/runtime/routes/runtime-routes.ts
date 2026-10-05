@@ -324,6 +324,7 @@ import {
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
 import {
+  createProjectCatalogueReader,
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
@@ -1950,7 +1951,7 @@ export function configureRuntimeRoutes(
         }
         if (account && account.kind !== 'absent') return { kind: 'none' };
       } catch {
-        return { kind: 'none' };
+        return { kind: 'none', unresolved: true };
       }
       const ownerId = agentOwnerIdForRequest(request);
       // A station-control call that acts for no resolved principal (caller-
@@ -5073,6 +5074,45 @@ export function configureRuntimeRoutes(
       canSeePlugin: canSeePluginForRequest,
     }),
   );
+  // #3276: `GET /api/projects` and `/api/boot`'s `projects` section answer
+  // from one catalogue decision (`createProjectCatalogueReader`).
+  const projectCatalogueDeps = {
+    memberProjectAdmissions: async (c) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      const authority = await authenticatedProjectMember(c.req.raw);
+      if (!authority) return undefined;
+      return (
+        await context.projectMembership!.readableProjectAdmissions(authority)
+      ).map(({ scope, member }) => ({
+        scope,
+        actions: member.actions.filter((action) => action === 'view'),
+      }));
+    },
+    projectCatalogueCurrent: async (c, admittedScopes) => {
+      const authority = await authenticatedProjectMember(c.req.raw);
+      if (!authority) return false;
+      const current =
+        await context.projectMembership!.readableProjectScopes(authority);
+      return (
+        current.length === admittedScopes.length &&
+        admittedScopes.every((admitted) =>
+          current.some(
+            (scope) =>
+              scope.localProjectId === admitted.localProjectId &&
+              scope.portableProjectId === admitted.portableProjectId &&
+              scope.localProjectSlug === admitted.localProjectSlug,
+          ),
+        )
+      );
+    },
+  } satisfies Parameters<typeof createProjectCatalogueReader>[1];
+  const projectCatalogue = createProjectCatalogueReader(
+    context.projectService,
+    projectCatalogueDeps,
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -5145,22 +5185,6 @@ export function configureRuntimeRoutes(
           !hostedTenantRegistry && !isHostedTenantExecutionRequired()
             ? 'supported'
             : 'unsupported',
-        memberProjectAdmissions: async (c) => {
-          roomRequestPrincipals.set(
-            c.req.raw,
-            resolveOrchestrationRequestPrincipal(c),
-          );
-          const authority = await authenticatedProjectMember(c.req.raw);
-          if (!authority) return undefined;
-          return (
-            await context.projectMembership!.readableProjectAdmissions(
-              authority,
-            )
-          ).map(({ scope, member }) => ({
-            scope,
-            actions: member.actions.filter((action) => action === 'view'),
-          }));
-        },
         memberProjectAdmission: async (c, slug) => {
           const authority = await authenticatedProjectMember(c.req.raw);
           if (!authority) return undefined;
@@ -5177,23 +5201,7 @@ export function configureRuntimeRoutes(
             ),
           };
         },
-        projectCatalogueCurrent: async (c, admittedScopes) => {
-          const authority = await authenticatedProjectMember(c.req.raw);
-          if (!authority) return false;
-          const current =
-            await context.projectMembership!.readableProjectScopes(authority);
-          return (
-            current.length === admittedScopes.length &&
-            admittedScopes.every((admitted) =>
-              current.some(
-                (scope) =>
-                  scope.localProjectId === admitted.localProjectId &&
-                  scope.portableProjectId === admitted.portableProjectId &&
-                  scope.localProjectSlug === admitted.localProjectSlug,
-              ),
-            )
-          );
-        },
+        ...projectCatalogueDeps,
       },
     ),
   );
@@ -6032,10 +6040,14 @@ export function configureRuntimeRoutes(
           ),
         };
       },
-      projects: async () => ({
-        success: true,
-        data: await context.projectService.listProjects(),
-      }),
+      projects: async (c) => {
+        // #3276: the same answer `GET /api/projects` gives this request, so
+        // a member never receives the operator's Project records.
+        const response = await projectCatalogue(c);
+        if (!response.ok)
+          throw new Error(`Project catalogue refused (${response.status})`);
+        return response.json();
+      },
       models: async () =>
         (
           await createModelsRoutes({

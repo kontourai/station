@@ -2723,9 +2723,15 @@ POST /tool-approval/:approvalId
 ```
 
 Resolve a pending tool call using the request-bound Session read authority and
-client origin. Knowing an approval ID alone is not sufficient. The
-[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
-cannot resolve an authorized pending request.
+client origin. The [approval handler](../../src-server/routes/agents/invoke.ts)
+returns 404 when it cannot resolve an authorized pending request. In hosted
+mode the entry must be bound to a session of the caller's tenant. Outside
+hosted mode the
+[registry](../../src-server/services/approvals/approval-registry.ts) lets any
+caller that reaches this route settle a pending entry by its ID. The exception
+is a request acting for a Project member: the
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+refuses it with `403 member_agent_turns_unavailable`.
 
 The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
 uses orchestration for parts carrying an approval thread ID, including the exact

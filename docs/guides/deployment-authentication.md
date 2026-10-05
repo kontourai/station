@@ -291,14 +291,15 @@ native qualification remain separate from backend and component-test evidence.
 An account session presented on a credential that is not account-bound is also
 a member caller for Agents. It sees only Agents whose
 [audience](../reference/config.md#audience) admits its current membership, as
-member views. Every other Agent returns the uniform not-found, Agent
-definitions cannot be changed, and member turns are refused until
-[#3277](https://github.com/kontourai/station/issues/3277). Some other
-member-reachable paths still show Agent names; the design lists them.
+member views. Every other Agent returns the uniform not-found. The Agent
+routes refuse a member's create, update and delete, member turns and
+approval answers are refused until
+[#3277](https://github.com/kontourai/station/issues/3277), and the design
+lists the Agent-related paths not yet gated.
 See [Agent audience](../design/project-membership.md#agent-audience).
 
-For authenticated members, the existing Project catalogue/detail endpoints
-return `station.member-project/v1` views: Project ID, slug, name, optional icon
+For authenticated members, the existing Project catalogue/detail endpoints,
+and `/api/boot`'s `projects` section, return `station.member-project/v1` views: Project ID, slug, name, optional icon
 and description, and currently effective actions (`view` in this profile).
 Local workspace paths, provider/model configuration, knowledge settings and
 layout metadata are excluded. Unaudited nested Project resources remain denied.
