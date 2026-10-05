@@ -837,6 +837,11 @@ lazy-mark tile fails capture rather than becoming a reference. This checks
 artwork presence, not whether an external image has decoded. The Settings
 explanation capture records the main column's scroll metrics in `capture.json`
 so a shifted frame can be diagnosed without resetting or hiding its state.
+The Settings explanation capture also requires the application frame to stay
+at scroll position zero with its toolbar in view. Phone Settings checks at
+320px and 390px exercise real wheel scrolling in the nested content while the
+outer frame stays bounded. These are Chromium checks; the older-WebView
+fallback remains outside that execution proof.
 
 Baseline artifacts (both committed):
 
