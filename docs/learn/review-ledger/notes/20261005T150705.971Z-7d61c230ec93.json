@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"connection-service.ts change in this round only rewords a log warning; the Connections section's identity and response claims are unchanged, and the /acp 400 wording lives in the ACP guide. No prose change.","inputs":["docs/reference/api.md","src-server/services/connections/connection-service.ts"]}
+  ]
+}
