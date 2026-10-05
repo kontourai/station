@@ -1,0 +1,7 @@
+{
+  "revision": "1b4d31720887852f077b588e840c417f12f535be",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3355: ConnectionInspector section now states that engine attribution reads listEngineConnectionIdentities (static, per Adapter, same public-identity resolver) and readiness keeps the live inspection; checked against connection-service.ts and enriched-agents.ts. Other sections unaffected.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}

@@ -57,6 +57,14 @@ export interface RuntimeConnectionSummary {
   summaryNamesFailure?: boolean;
 }
 
+/** A connection's static engine identity; see `getEngineConnectionIdentities`. */
+export interface EngineConnectionIdentity {
+  id: EngineConnectionId;
+  engineId: EngineId;
+  /** The connection's type as the inspector projects it (`'acp'` or the engine id). */
+  type: string;
+}
+
 type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
 
 /**
@@ -160,6 +168,14 @@ export interface EnrichedAgentDeps {
   defaultModel: string;
   defaultTools: { mcpServers: string[]; autoApprove: string[] };
   getRuntimeConnections: () => Promise<RuntimeConnectionSummary[]>;
+  /**
+   * #3355: each configured connection's engine, from its record and Adapter
+   * alone (`ConnectionService.listEngineConnectionIdentities`). Engine
+   * attribution reads this rather than `getRuntimeConnections`, a total live
+   * inspection that one failing Adapter or a slow probe turns into "no
+   * engine for anyone". Readiness keeps reading the live inspection.
+   */
+  getEngineConnectionIdentities?: () => Promise<EngineConnectionIdentity[]>;
   /** Runtime generation guard; reads never rebuild the runtime as a side effect. */
   getAgentConfigurationRevision?: () => number | null;
   /** Test override for the bounded optional attribution on detail reads. */
@@ -416,12 +432,20 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     metadata: AgentMetadata,
     spec: AgentSpec,
     runtimeConnectionsById: Map<string, RuntimeConnectionSummary>,
+    engineIdentitiesById: ReadonlyMap<string, EngineConnectionIdentity>,
     knownProjectSlugs: ReadonlySet<string> | undefined,
     engineDefault: boolean,
   ): EnrichedAgentProjection {
     const agentConnectionId = spec.execution?.agentConnectionId;
     const connection = agentConnectionId
       ? runtimeConnectionsById.get(agentConnectionId)
+      : undefined;
+    // #3355: the engine comes from the static identity whenever it resolved,
+    // so a live inspection that failed or timed out — for any Adapter, not
+    // necessarily this Agent's — no longer erases it. Matched by exact
+    // connection id; nothing here guesses an engine from a name.
+    const identity = agentConnectionId
+      ? engineIdentitiesById.get(agentConnectionId)
       : undefined;
     const activationFailure = deps.getActivationFailure?.(metadata.slug);
     const ownership = knownProjectSlugs
@@ -454,26 +478,33 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       ...(ownership ? { ownership: { findings: [ownership] } } : {}),
       ...(connection
         ? {
-            engineId: connection.engineId,
+            engineId: identity?.engineId ?? connection.engineId,
             engineDisplayName: connection.name,
             ...(connection.type
               ? { engineConnectionType: connection.type }
               : {}),
           }
-        : // archive#3662 review HIGH-3: only when this Agent really is on
-          // Station's own engine. The fallback used to assert it from the
-          // SLUG alone, so a home whose built-in engine is Codex still had
-          // the detail read chip it "Station" whenever connection
-          // attribution was unavailable (the detail path bounds it) — the
-          // execution binding said codex and the label said otherwise.
-          isStationAgentIdentity(metadata.slug) &&
-            !spec.execution?.agentConnectionId
-          ? {
-              engineId: engineId('station'),
-              engineDisplayName:
-                engineDisplayLabel(engineId('station')) ?? 'station',
+        : identity
+          ? // The live read is unavailable, so there is no display name or
+            // readiness to project — only the engine, which is static.
+            {
+              engineId: identity.engineId,
+              engineConnectionType: identity.type,
             }
-          : {}),
+          : // archive#3662 review HIGH-3: only when this Agent really is on
+            // Station's own engine. The fallback used to assert it from the
+            // SLUG alone, so a home whose built-in engine is Codex still had
+            // the detail read chip it "Station" whenever connection
+            // attribution was unavailable (the detail path bounds it) — the
+            // execution binding said codex and the label said otherwise.
+            isStationAgentIdentity(metadata.slug) &&
+              !spec.execution?.agentConnectionId
+            ? {
+                engineId: engineId('station'),
+                engineDisplayName:
+                  engineDisplayLabel(engineId('station')) ?? 'station',
+              }
+            : {}),
     };
   }
 
@@ -517,6 +548,31 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     }
   }
 
+  /**
+   * The static engine identities by connection id, or `null` when they could
+   * not be read (which leaves the live read as the only source, as before).
+   */
+  async function safeEngineIdentities(): Promise<Map<
+    string,
+    EngineConnectionIdentity
+  > | null> {
+    if (!deps.getEngineConnectionIdentities) return null;
+    try {
+      return new Map(
+        (await deps.getEngineConnectionIdentities()).map((identity) => [
+          identity.id,
+          identity,
+        ]),
+      );
+    } catch (error: unknown) {
+      deps.logger.warn(
+        'Failed to read engine identities for Agent attribution; continuing with the live read',
+        { error: errorMessage(error) },
+      );
+      return null;
+    }
+  }
+
   async function safeProjectSlugs(): Promise<Set<string> | undefined> {
     if (!deps.listProjectSlugs) return undefined;
     try {
@@ -534,6 +590,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     metadata: AgentMetadata,
     defaults: ReadonlySet<string>,
     runtimeConnectionsById: Map<string, RuntimeConnectionSummary>,
+    engineIdentitiesById: ReadonlyMap<string, EngineConnectionIdentity>,
     knownProjectSlugs: ReadonlySet<string> | undefined,
     runtimeConfigurationCurrent: boolean,
     runtimeConnectionAttributionAvailable: boolean,
@@ -567,6 +624,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       metadata,
       spec,
       runtimeConnectionsById,
+      engineIdentitiesById,
       knownProjectSlugs,
       engineDefault,
     );
@@ -762,13 +820,21 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
   }> {
     const expectedRuntimeConfigurationRevision =
       deps.getAgentConfigurationRevision?.() ?? null;
-    const [metadata, defaults, runtimeConns, knownProjectSlugs] =
-      await Promise.all([
-        listMetadata(),
-        defaultAgentIds(),
-        safeRuntimeConnections(options.attributionTimeoutMs),
-        safeProjectSlugs(),
-      ]);
+    const [
+      metadata,
+      defaults,
+      runtimeConns,
+      engineIdentities,
+      knownProjectSlugs,
+    ] = await Promise.all([
+      listMetadata(),
+      defaultAgentIds(),
+      safeRuntimeConnections(options.attributionTimeoutMs),
+      safeEngineIdentities(),
+      safeProjectSlugs(),
+    ]);
+    const engineIdentitiesById: ReadonlyMap<string, EngineConnectionIdentity> =
+      engineIdentities ?? new Map();
     const runtimeConnectionAttributionAvailable = runtimeConns !== null;
     const runtimeConnectionsById = new Map(
       (runtimeConns ?? []).map((connection) => [connection.id, connection]),
@@ -789,6 +855,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
             agent,
             defaults,
             runtimeConnectionsById,
+            engineIdentitiesById,
             knownProjectSlugs,
             stable,
             runtimeConnectionAttributionAvailable,
@@ -951,10 +1018,17 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       const agentConnectionId = spec.execution?.agentConnectionId;
       let engineId: EngineId | undefined;
       if (agentConnectionId) {
-        const connections = await safeRuntimeConnections();
-        engineId = connections?.find(
-          (connection) => connection.id === agentConnectionId,
-        )?.engineId;
+        // #3355: the static identity answers without a live inspection; the
+        // live read remains only for a runtime that cannot supply one.
+        const identities = await safeEngineIdentities();
+        if (identities) {
+          engineId = identities.get(agentConnectionId)?.engineId;
+        } else {
+          const connections = await safeRuntimeConnections();
+          engineId = connections?.find(
+            (connection) => connection.id === agentConnectionId,
+          )?.engineId;
+        }
       }
       return c.json({
         success: true,

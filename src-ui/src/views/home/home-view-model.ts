@@ -1,4 +1,7 @@
-import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type EngineId,
+  parseEngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -108,6 +111,16 @@ export interface HomeWorkItem {
    * item carrying an `agentSlug` still resolves to `'focus'`.
    */
   agentSlug?: string;
+  /**
+   * The engine the execution behind `agentSlug` recorded running on — the
+   * session's or chat's own `provider`, never derived from a label. Paired
+   * with `agentSlug`: a merged row takes it from the same side its slug came
+   * from, and carries none when the sides disagree.
+   *
+   * #3355: read only by `inboxRowIconAgent`, to draw an engine-bound agent's
+   * mark when the catalog resolves the agent but could not report its engine.
+   */
+  provider?: EngineId;
   /**
    * The project slug backing this row, distinct from `projectLabel` (a
    * display string that also covers the no-project fallback and
@@ -433,6 +446,9 @@ function buildSessionWorkItem(
     // rehydrate branch without `orchestrationThreadId` — but are still
     // carried for a local item so it can be rehydrated (archive#1297).
     agentSlug: session.assignedAgentSlug,
+    ...(parseEngineId(session.provider)
+      ? { provider: parseEngineId(session.provider) }
+      : {}),
     projectSlug: session.projectSlug,
     controlMode: session.controlMode,
     ...(provenance
@@ -638,10 +654,9 @@ function mergeHomeWorkItems(
       // A handoff's newest server execution is the only authoritative answer
       // to "who/model/status is this conversation on now?". The local chat
       // copy remains for focus/open continuity, not as a competing executor.
-      agentSlug:
-        lineage.length > 1
-          ? (orchestration?.agentSlug ?? identity?.agentSlug ?? chat?.agentSlug)
-          : mergeSingleExecutionAgentSlug(chat, orchestration),
+      ...(lineage.length > 1
+        ? lineageAgentIdentity([orchestration, identity, chat])
+        : singleExecutionAgentIdentity(chat, orchestration)),
       agentLabel:
         lineage.length > 1
           ? (orchestration?.agentLabel ??
@@ -742,6 +757,45 @@ function isLocalActionableLifecycle(item: HomeWorkItem): boolean {
     // hide it.
     'Running',
   ].includes(item.lifecycleLabel);
+}
+
+/**
+ * The merged row's agent slug and the provider that goes with it. Both keys
+ * are always present so neither the spread `display` side's slug nor its
+ * provider can survive a merge that decided otherwise.
+ *
+ * A lineage takes both from the one side that supplied the slug (newest
+ * server execution first).
+ */
+function lineageAgentIdentity(sides: ReadonlyArray<HomeWorkItem | undefined>): {
+  agentSlug: string | undefined;
+  provider: EngineId | undefined;
+} {
+  const source = sides.find((side) => side?.agentSlug != null);
+  return { agentSlug: source?.agentSlug, provider: source?.provider };
+}
+
+/**
+ * A single execution keeps `mergeSingleExecutionAgentSlug`'s verdict and
+ * takes the provider from the side(s) that named that slug — none when they
+ * disagree, since a mark cannot honestly name an engine Station cannot
+ * derive.
+ */
+function singleExecutionAgentIdentity(
+  chat: HomeWorkItem | undefined,
+  orchestration: HomeWorkItem | undefined,
+): { agentSlug: string | undefined; provider: EngineId | undefined } {
+  const agentSlug = mergeSingleExecutionAgentSlug(chat, orchestration);
+  if (!agentSlug) return { agentSlug, provider: undefined };
+  const providers = new Set(
+    [orchestration, chat]
+      .filter((side) => side?.agentSlug === agentSlug)
+      .flatMap((side) => (side?.provider ? [side.provider] : [])),
+  );
+  return {
+    agentSlug,
+    provider: providers.size === 1 ? [...providers][0] : undefined,
+  };
 }
 
 function mergeSingleExecutionAgentSlug(
@@ -1078,6 +1132,9 @@ export function buildActiveChatTaskItems({
         // are inert for the open policy (`chatSessionId` above short-circuits
         // it) and are read by Home's row icon and its activity chart.
         ...(chat.agentSlug ? { agentSlug: chat.agentSlug } : {}),
+        ...(parseEngineId(chat.provider)
+          ? { provider: parseEngineId(chat.provider) }
+          : {}),
         ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
       };
     });

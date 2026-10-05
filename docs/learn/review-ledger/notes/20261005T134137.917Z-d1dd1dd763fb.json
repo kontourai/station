@@ -1,0 +1,7 @@
+{
+  "revision": "1b4d31720887852f077b588e840c417f12f535be",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"#3355 review: the change wires ConnectionService.listEngineConnectionIdentities into the enriched Agent routes (runtime-routes.ts adds one dependency), derives bound Agent engineId/engineConnectionType statically per Adapter instead of from the total live inspection, adds HomeWorkItem.provider (and its Home-role projection description) and an inbox-row engine-mark fallback. Searched this document for claims about Agent engine attribution, runtime connection inspection, the Agent catalog/binding routes, Home row icons or the Home projection field list; it states none that the change alters, so its claims remain accurate.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -15,7 +15,10 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { InboxRow } from '../components/chat-dock/ChatDockInboxRows';
+import {
+  InboxRow,
+  inboxRowIconAgent,
+} from '../components/chat-dock/ChatDockInboxRows';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -408,5 +411,107 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
     const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
+  });
+});
+
+/**
+ * #3355: the catalog resolved the row's agent but could not report its
+ * engine (the server's attribution read failed). The row's own recorded
+ * `provider` then supplies the mark — gated so it never names an engine for
+ * an unresolved agent, an ACP agent, or an agent with no engine binding.
+ */
+describe('inbox row engine fallback for a resolved agent without engineId (#3355)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    deviceSettingsStore.reloadFromStorage();
+  });
+
+  const reviewer = {
+    slug: 'reviewer',
+    name: 'Reviewer',
+    execution: { agentConnectionId: 'codex' },
+  };
+
+  function rowFor(overrides: Partial<HomeWorkItem>) {
+    return workItem({
+      kind: 'orchestration',
+      kindLabel: 'Session',
+      chatSessionId: undefined,
+      orchestrationThreadId: 'thread-1',
+      agentLabel: 'Reviewer',
+      agentSlug: 'reviewer',
+      ...overrides,
+    });
+  }
+
+  function avatar(agents: unknown[], item: HomeWorkItem) {
+    const { container } = renderPanelHost(item, vi.fn(), agents as any);
+    return container.querySelector('.chat-dock-inbox__avatar');
+  }
+
+  it('draws the recorded engine mark, not initials, for an engine-bound agent', () => {
+    expect(
+      avatar([reviewer], rowFor({ provider: 'codex' as never }))?.getAttribute(
+        'data-brand-key',
+      ),
+    ).toBe('codex');
+  });
+
+  it('keeps the agent’s own identicon when the row recorded no engine', () => {
+    const icon = avatar([reviewer], rowFor({}));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('never stands an engine in for an agent the catalog does not resolve', () => {
+    expect(
+      avatar(
+        [reviewer],
+        rowFor({ agentSlug: 'gone', provider: 'codex' as never }),
+      ),
+    ).toBeNull();
+  });
+
+  it('an ACP-bound agent keeps its initials even beside a branded provider', () => {
+    const acpAgent = {
+      slug: 'reviewer',
+      name: 'Reviewer',
+      execution: { agentConnectionId: 'kiro' },
+      engineConnectionType: 'acp',
+    };
+    const icon = avatar([acpAgent], rowFor({ provider: 'codex' as never }));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('an agent reporting acp keeps its initials', () => {
+    const icon = avatar(
+      [{ ...reviewer, engineId: 'acp' }],
+      rowFor({ provider: 'codex' as never }),
+    );
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('an agent with no engine binding is not given the Station mark', () => {
+    const icon = avatar(
+      [{ slug: 'reviewer', name: 'Reviewer' }],
+      rowFor({ provider: 'station-agent' as never }),
+    );
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('a recorded engine with no bundled mark adds nothing', () => {
+    const icon = avatar([reviewer], rowFor({ provider: 'acp' as never }));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('returns the catalog entry by reference when no fallback applies', () => {
+    const agents = [{ ...reviewer, engineId: 'codex' as never }];
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'claude' as never }), agents),
+    ).toBe(agents[0]);
   });
 });
