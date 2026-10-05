@@ -514,6 +514,8 @@ describe('OpenCodeSessionSource', () => {
       outcome: 'rejected_candidate',
       sessions: [],
     });
+    // OpenCode keeps writing; every later poll looks again and stays quiet.
+    store.touch('ses_main');
     expect(await source.discover()).toEqual({
       outcome: 'rejected_candidate',
       sessions: [],
