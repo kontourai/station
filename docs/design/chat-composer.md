@@ -40,15 +40,20 @@ detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
 
-Ordinary New chat opens an unsent message draft, with compact Agent and Model
-controls and up to five recent chats from the selected project or No project.
+New chat opens the start composer, the same component Home renders inline: a
+text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
+readiness, repair and Model picker), a project chip (accent, name, folder, No
+workspace), an overflow for visual skills, and Start, with up to five recent
+chats from the selected project or No project below it.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
-Choosing an Agent or Model in this draft does not start an engine. Send hands
-the message to the dock’s existing sender once. Setup actions retain the draft
+Choosing on a chip does not start an engine; a choice is remembered (Agent per
+context, Model per binding, project as the dock's binding). Start hands the
+message to the dock’s existing sender once; Home's Start hands the dock its
+exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
 explicit replacement; an unavailable preference keeps its reason and repair.
 Home’s quick-start recommendation remains runnable. The mobile overflow holds

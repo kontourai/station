@@ -138,8 +138,11 @@ picker uses 18px titles with up to two lines, Agent icons, 14px project/status
 metadata, and a pinned New chat action at the lower right. Project names wrap.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the mobile bar, task picker, and desktop inbox, with a 44px minimum target
-and an accessible name. Creation controls remain outside the scrolling lists. The task picker presents
+across the mobile bar, task picker, desktop inbox, the collapsed dock bar (icon
+only) and the open, empty dock, with a 44px minimum target and an accessible
+name. It opens the start composer, whose chips and overflow are 44px targets in
+their own group apart from Start, and whose chip menus are edge sheets on a
+phone with their own scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 
