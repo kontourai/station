@@ -640,7 +640,7 @@ test.describe('Default agent workflow', () => {
 
     await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
-      'History (1)',
+      'History · 1',
     );
     await expect(page.locator('.conversation-history')).toContainText(
       'Station Chat',
