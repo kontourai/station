@@ -36,6 +36,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { connect } from 'node:net';
+import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { STATION_CHANNEL_PORTS_DATA } from '../channel-ports.generated.js';
 import {
@@ -46,6 +47,7 @@ import {
   activeVersionDir,
   assertSafeRemoveTarget,
   type Context,
+  canonicalize,
   DATA_ROOT_MARKER,
   DATA_ROOT_SIGNATURE,
   fail,
@@ -53,6 +55,7 @@ import {
   INSTALL_ROOT_SIGNATURE,
   type InstallerEnv,
   InstallRefusal,
+  inside,
   isLink,
   owner,
   type Paths,
@@ -68,6 +71,7 @@ import {
   resolvePaths,
   same,
   sealTree,
+  secureInstallRoot,
   versionPaths,
 } from './install.js';
 
@@ -109,29 +113,72 @@ function removeCurrent(installRoot: string): void {
 }
 
 /**
- * The owned launcher's exact text. cmd.exe expands `%` in a batch file even
- * inside quotes, and CALL doubles `^`, so a path with either cannot be
- * written into one safely and is refused.
+ * The owned launcher's exact text. cmd.exe reads a batch file in the OEM code
+ * page, so the file must be ASCII: a path beneath the user profile (the
+ * install root always is) is written relative to %USERPROFILE%, which cmd.exe
+ * expands from the Unicode environment, so a profile such as C:\Users\José
+ * works. Any other non-ASCII path is refused, as is `%`, `^` or a quote,
+ * which a batch file cannot hold literally.
+ *
+ * The last line hands over to the version's bin\station.cmd without CALL:
+ * control transfers to it and `%*` is expanded once, so the caller's
+ * arguments arrive unchanged (CALL would double `^` and expand `%` again).
+ * The SETLOCAL environment stays in effect for the batch file it transfers
+ * to, and that file's own `exit /b` sets the exit status.
  */
-export function launcherText(paths: Paths): string {
-  const values = [paths.stationRoot, paths.stationHome, paths.installRoot];
-  for (const value of values)
-    if (/[%^"\r\n]/.test(value))
+export function launcherText(
+  paths: Paths,
+  profile: string = canonicalize(homedir()),
+): string {
+  const render = (value: string): string => {
+    const underProfile =
+      inside(value, profile) && value.length > profile.length;
+    const literal = underProfile ? value.slice(profile.length) : value;
+    if (/[%^"\r\n]/.test(literal))
       fail(
         `a Station path contains a character the Windows launcher cannot quote (% ^ or a quote): ${value}`,
       );
+    if (/[^\x20-\x7e]/.test(literal))
+      fail(
+        `a Station path has a non-ASCII part the Windows launcher cannot hold (cmd.exe reads it in the console code page): ${value}; choose a path whose part beneath your profile, or the whole path outside it, is ASCII`,
+      );
+    return underProfile ? `%USERPROFILE%${literal}` : literal;
+  };
   return [
     '@echo off',
     'rem station-owned-launcher-v2',
     'setlocal EnableExtensions DisableDelayedExpansion',
     `set "STATION_CHANNEL=${paths.channel}"`,
-    `set "STATION_ROOT=${paths.stationRoot}"`,
-    `set "STATION_HOME=${paths.stationHome}"`,
-    `set "STATION_INSTALL_ROOT=${paths.installRoot}"`,
-    `call "${join(paths.current, 'bin', 'station.cmd')}" %*`,
-    'exit /b %ERRORLEVEL%',
+    `set "STATION_ROOT=${render(paths.stationRoot)}"`,
+    `set "STATION_HOME=${render(paths.stationHome)}"`,
+    `set "STATION_INSTALL_ROOT=${render(paths.installRoot)}"`,
+    `"${render(join(paths.current, 'bin', 'station.cmd'))}" %*`,
     '',
   ].join('\r\n');
+}
+
+/**
+ * The version `current` names, which must be a directory of this install's
+ * `versions`: its runtime\node.exe is about to run, so a `current` pointing
+ * anywhere else is refused.
+ */
+function activeInstalledVersion(paths: Paths): string | null {
+  const active = activeVersionDir(paths.current);
+  if (active !== null && !inside(active, canonicalize(paths.versions)))
+    fail(
+      `${paths.current} points outside ${paths.versions}; refusing to run anything from it`,
+    );
+  return active;
+}
+
+/**
+ * An install root that already exists is checked before anything in it is
+ * read, recovered or run: it must be this installer's and, on Windows,
+ * restricted to the current user.
+ */
+function assertExistingInstallRoot(paths: Paths): void {
+  if (existsSync(paths.installRoot) || isLink(paths.installRoot))
+    prepareOwnedInstallRoot(paths.installRoot);
 }
 
 function launcherIsOwned(paths: Paths): boolean {
@@ -179,6 +226,19 @@ function restoreFile(path: string, bytes: Buffer | null, mode: number): void {
 }
 
 type Ports = { server: number; ui: number };
+
+/** The ports an install state file's bytes record, or null. */
+function portsOf(state: Buffer | null): Ports | null {
+  try {
+    const value = JSON.parse(state?.toString('utf8') ?? 'null');
+    return Number.isInteger(value?.serverPort) &&
+      Number.isInteger(value?.uiPort)
+      ? { server: value.serverPort, ui: value.uiPort }
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function parsePort(value: string): number {
   if (!/^[1-9][0-9]{0,4}$/.test(value) || Number(value) > 65_535)
@@ -483,7 +543,9 @@ export async function installArchive(context: Context): Promise<number> {
   const { env, io } = context;
   const request = readStageRequest(env, 'install');
   const paths = resolvePaths(env, request.requested, request.ring);
+  assertExistingInstallRoot(paths);
   recoverCurrent(paths.installRoot);
+  activeInstalledVersion(paths);
   const ports = resolvePorts(env, paths.channel, readRecordedPorts(paths));
   refuseArchiveServices(paths, 'switch the version');
   if (existsSync(join(paths.installRoot, 'runtime', 'service-state.json')))
@@ -601,7 +663,18 @@ function switchToRelease(
         pointCurrentAt(paths.installRoot, previous);
         restoreFile(paths.launcher, previousLauncher, 0o755);
         restoreFile(paths.stateFile, previousState, 0o600);
-        if (!noStart && !startStation(context, previous, paths, ports))
+        // The previous release comes back on the ports its restored state
+        // records, not on ports this run was asked for (install.sh's
+        // restart_previous_station uses the new ones).
+        if (
+          !noStart &&
+          !startStation(
+            context,
+            previous,
+            paths,
+            portsOf(previousState) ?? ports,
+          )
+        )
           throw new Error('the previous release did not start');
       } else {
         removeCurrent(paths.installRoot);
@@ -721,6 +794,7 @@ export function uninstallArchive(context: Context, args: string[]): number {
       INSTALL_ROOT_MARKER,
       INSTALL_ROOT_SIGNATURE,
     );
+    secureInstallRoot(paths.installRoot, false);
     recoverCurrent(paths.installRoot);
   }
   if (purge && present(paths.stationHome)) {
@@ -728,7 +802,7 @@ export function uninstallArchive(context: Context, args: string[]): number {
     assertOwnedRoot(paths.stationHome, DATA_ROOT_MARKER, DATA_ROOT_SIGNATURE);
   }
   refuseArchiveServices(paths, 'uninstall');
-  if (!stopStation(context, activeVersionDir(paths.current), paths))
+  if (!stopStation(context, activeInstalledVersion(paths), paths))
     fail('could not stop the installed Station; no files were removed');
   if (present(paths.launcher)) {
     if (!launcherIsOwned(paths))

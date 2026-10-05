@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -8,6 +9,8 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer, type Server } from 'node:net';
@@ -219,8 +222,7 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
         `set "STATION_ROOT=${root}"`,
         `set "STATION_HOME=${home}"`,
         `set "STATION_INSTALL_ROOT=${installRoot}"`,
-        `call "${join(installRoot, 'current', 'bin', 'station.cmd')}" %*`,
-        'exit /b %ERRORLEVEL%',
+        `"${join(installRoot, 'current', 'bin', 'station.cmd')}" %*`,
         '',
       ].join('\r\n'),
     );
@@ -419,7 +421,10 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
       join(f.installRoot, '.station-release-state.json'),
     );
     const launcherBefore = readFileSync(f.launcher);
+    const [newServer, newUi] = await freePorts();
     const failed = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      STATION_INSTALL_SERVER_PORT: String(newServer),
+      STATION_INSTALL_UI_PORT: String(newUi),
       STATION_TEST_CLI_FAIL: 'start@0.7.0-nightly.13',
     });
     expect(failed.status).toBe(1);
@@ -431,11 +436,21 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
       readFileSync(join(f.installRoot, '.station-release-state.json')),
     ).toEqual(stateBefore);
     expect(readFileSync(f.launcher)).toEqual(launcherBefore);
-    expect(verbs(takeCliRuns(f))).toEqual([
+    const runs = takeCliRuns(f);
+    expect(verbs(runs)).toEqual([
       'stop@0.7.0-nightly.12',
       'start@0.7.0-nightly.13',
       'stop@0.7.0-nightly.13',
       'start@0.7.0-nightly.12',
+    ]);
+    // The new release was tried on the requested ports; the restored one
+    // comes back on the ports its restored state records.
+    expect(runs[1].args).toContain(`--port=${newServer}`);
+    expect(runs[3].args).toEqual([
+      'start',
+      `--base=${real(f.home)}`,
+      `--port=${server}`,
+      `--ui-port=${ui}`,
     ]);
   });
 
@@ -456,6 +471,104 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     expect(existsSync(join(f.installRoot, '.station-release-state.json'))).toBe(
       false,
     );
+  });
+
+  it('writes paths beneath a non-ASCII profile relative to %USERPROFILE%, so the launcher is ASCII', () => {
+    const f = fixture();
+    const profile = join(f.dir, 'José');
+    mkdirSync(profile);
+    const root = join(profile, '.station');
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+      HOME: profile,
+      STATION_ROOT: root,
+      STATION_BIN_DIR: join(profile, '.local', 'bin'),
+      STATION_INSTALL_NO_START: '1',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const text = readFileSync(
+      join(profile, '.local', 'bin', 'station-nightly.cmd'),
+      'utf8',
+    );
+    expect(text).toMatch(/^[\x20-\x7e\r\n]*$/);
+    const sep = join('a', 'b').slice(1, 2);
+    const installRoot = ['.station', 'installs', 'nightly'].join(sep);
+    expect(text).toContain(`set "STATION_ROOT=%USERPROFILE%${sep}.station"`);
+    expect(text).toContain(
+      `set "STATION_HOME=%USERPROFILE%${sep}${['.station', 'instances', 'nightly'].join(sep)}"`,
+    );
+    expect(text).toContain(
+      `set "STATION_INSTALL_ROOT=%USERPROFILE%${sep}${installRoot}"`,
+    );
+    expect(text).toContain(
+      `"%USERPROFILE%${sep}${[installRoot, 'current', 'bin', 'station.cmd'].join(sep)}" %*`,
+    );
+    // The same install again recognizes the launcher as its own.
+    const again = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      HOME: profile,
+      STATION_ROOT: root,
+      STATION_BIN_DIR: join(profile, '.local', 'bin'),
+      STATION_INSTALL_NO_START: '1',
+    });
+    expect(again.status, again.stderr).toBe(0);
+  });
+
+  it('refuses a non-ASCII path the launcher would have to hold literally', () => {
+    const f = fixture();
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+      STATION_HOME: join(f.stationRoot, 'instances', 'Zoë'),
+      STATION_INSTALL_NO_START: '1',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'a Station path has a non-ASCII part the Windows launcher cannot hold',
+    );
+    expect(existsSync(join(f.installRoot, 'current'))).toBe(false);
+  });
+
+  it('checks an existing install root before recovering or reading anything in it', () => {
+    const f = fixture();
+    mkdirSync(f.installRoot, { recursive: true });
+    const elsewhere = join(f.dir, 'elsewhere');
+    mkdirSync(elsewhere);
+    symlinkSync(elsewhere, join(f.installRoot, 'current.next'));
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+      STATION_INSTALL_NO_START: '1',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'STATION_INSTALL_ROOT is not an empty or installer-owned directory',
+    );
+    // Not "recovered" into current.
+    expect(
+      lstatSync(join(f.installRoot, 'current.next')).isSymbolicLink(),
+    ).toBe(true);
+    expect(existsSync(join(f.installRoot, 'current'))).toBe(false);
+  });
+
+  it('refuses to run anything from a current that points outside versions', () => {
+    const f = fixture();
+    expect(
+      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+        STATION_INSTALL_NO_START: '1',
+      }).status,
+    ).toBe(0);
+    const planted = join(f.dir, 'planted');
+    cpSync(join(f.installRoot, 'versions', '0.7.0-nightly.12'), planted, {
+      recursive: true,
+    });
+    unlinkSync(join(f.installRoot, 'current'));
+    symlinkSync(planted, join(f.installRoot, 'current'));
+    takeCliRuns(f);
+    for (const run of [
+      () => install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13')),
+      () => core(f, {}, ['uninstall']),
+    ]) {
+      const result = run();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('points outside');
+      expect(takeCliRuns(f)).toEqual([]);
+    }
+    expect(existsSync(f.launcher)).toBe(true);
   });
 
   it('finishes a switch a crash interrupted between removing current and renaming current.next', () => {

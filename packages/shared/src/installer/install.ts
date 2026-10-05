@@ -204,7 +204,7 @@ export function prepareOwnedRoot(
  * refused rather than repaired. POSIX installs keep install.sh's owner and
  * mode checks.
  */
-function secureInstallRoot(root: string, created: boolean): void {
+export function secureInstallRoot(root: string, created: boolean): void {
   if (process.platform !== 'win32') return;
   const target = [{ kind: 'directory' as const, path: root }];
   try {
