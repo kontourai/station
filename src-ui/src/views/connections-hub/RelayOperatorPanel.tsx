@@ -19,7 +19,8 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
-import { ErrorState } from '../../components/state';
+import { SkeletonList } from '../../components/Skeleton';
+import { Empty, ErrorState } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
@@ -169,12 +170,9 @@ function OperatorPanel({ scope }: { scope: Scope }) {
     },
   });
   const busy = deviceApproval.isPending || revoke.isPending || deny.isPending;
-  if (
-    !scope.isCurrent() ||
-    capabilities.data?.canManage !== true ||
-    query.isPending
-  )
-    return null;
+  if (!scope.isCurrent() || capabilities.data?.canManage !== true) return null;
+  if (query.isPending)
+    return <SkeletonList count={1} label="Loading devices" />;
   if (query.isError) {
     if (
       query.error instanceof StationHttpError &&
@@ -311,9 +309,7 @@ function OperatorPanel({ scope }: { scope: Scope }) {
           ))}
         </ul>
       ) : (
-        view.pendingDevices.length === 0 && (
-          <p className="connections-computers__note">No devices yet.</p>
-        )
+        view.pendingDevices.length === 0 && <Empty variant="compact" />
       )}
       {inviting && (
         <InviteDeviceDialog
