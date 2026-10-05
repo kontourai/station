@@ -2858,7 +2858,7 @@ describe('CI verification workflow contracts', () => {
       (step) => step.name === 'Verify desktop resource staging',
     );
     expect(resourceStaging?.run).toBe(
-      'npm run test:focused -- scripts/__tests__/verify-desktop-clean-checkout.test.ts',
+      'npm run test:focused -- scripts/__tests__/windows-resource-staging.test.ts',
     );
     expect(resourceStaging?.if).toBeUndefined();
     const relevance = floorJob.steps.find(
