@@ -7,7 +7,6 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
-import { jsonSchema } from 'ai';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { currentTenantExecutionContext } from '../bootstrap/runtime-tenant-context.js';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
@@ -101,16 +100,16 @@ function registerNativeKnowledgeTools(
   );
   return stationKnowledgeToolCatalog().map((tool) => ({
     id: tool.name,
-    type: 'user-defined' as const,
-    isClientSide: () => false,
     name: tool.name,
     description: tool.description,
-    // Marked through `jsonSchema()` as `toVoltAgentTool` does for plain tools:
-    // a `user-defined` tool reaches the AI SDK untouched, and the catalog's
-    // `z.toJSONSchema()` output carries zod's hidden `~standard` marker, so a
-    // bare object is misread as a zod v3 schema ("reading 'typeName'") and
-    // every turn of an agent holding these tools fails before its request.
-    parameters: jsonSchema(tool.inputSchema),
+    // Plain JSON Schema, like every other MCP tool's `parameters`: Strands
+    // hands it to `FunctionTool` as-is, and `toVoltAgentTool` marks it with
+    // the AI SDK's `jsonSchema()` on the VoltAgent side. These tools must NOT
+    // claim `type: 'user-defined'` — that sends them to the AI SDK untouched,
+    // where the catalog's `z.toJSONSchema()` output (which carries zod's
+    // hidden `~standard` marker) is misread as a zod v3 schema ("reading
+    // 'typeName'") and every turn of an agent holding them fails.
+    parameters: tool.inputSchema,
     execute: (input: Record<string, unknown>) => {
       const correlation = currentAuthorizedTurnCorrelation();
       const session = correlation

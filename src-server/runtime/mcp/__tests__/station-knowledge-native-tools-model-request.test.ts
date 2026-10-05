@@ -1,11 +1,16 @@
 /**
- * The native knowledge tools are `user-defined` tools, so `toVoltAgentTool`
- * hands them to the AI SDK untouched. Their schema must survive the SDK's own
- * request preparation: a bare `z.toJSONSchema()` object is misread there as a
- * zod v3 schema and every turn of an agent holding these tools failed with
- * "Cannot read properties of undefined (reading 'typeName')" before any
- * request reached the model — the built-in Station agent's scheduled turns
- * among them.
+ * The native knowledge tools reach two runtimes, and each must receive their
+ * schema in the form it reads:
+ *
+ * - VoltAgent hands `parameters` to the AI SDK. A bare `z.toJSONSchema()`
+ *   object that skipped `toVoltAgentTool`'s `jsonSchema()` marking was
+ *   misread as a zod v3 schema, and every turn of an agent holding these
+ *   tools failed with "Cannot read properties of undefined (reading
+ *   'typeName')" before any request reached the model — the built-in Station
+ *   agent's scheduled turns among them.
+ * - Strands hands `parameters` to `FunctionTool` as its JSON Schema, so it
+ *   must stay a plain schema; an AI SDK wrapper there became
+ *   `{"jsonSchema":{…}}` with no top-level `type`.
  */
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { MockLanguageModelV3 } from 'ai/test';
@@ -13,6 +18,7 @@ import { afterEach, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { stationKnowledgeRuntimeIdentity } from '../../bootstrap/station-control-runtime-env.js';
+import { createStrandsFunctionTools } from '../../frameworks/strands-tool-loader.js';
 import { VoltAgentFramework } from '../../frameworks/voltagent-adapter.js';
 import { __resetStationControlMcpTokensForTests } from '../station-control-mcp-token.js';
 import { createNativeStationKnowledgeTools } from '../station-knowledge-native-tools.js';
@@ -24,22 +30,27 @@ afterEach(async () => {
   __resetStationControlMcpTokensForTests();
 });
 
-test('an agent holding the native knowledge tools sends its turn with their schemas', async () => {
+function nativeKnowledgeTools(port: number) {
   const owner = new MCPLocalConnectionCustody();
   owners.push(owner);
   const definition = {
     id: 'station-knowledge',
     kind: 'mcp' as const,
     transport: 'stdio' as const,
-    ...stationKnowledgeRuntimeIdentity(41032),
+    ...stationKnowledgeRuntimeIdentity(port),
   };
   const native = createNativeStationKnowledgeTools(
     definition,
-    41032,
+    port,
     owner.acquire(definition.id, 'managed'),
     owner,
   );
   expect(native.tools.length).toBeGreaterThan(0);
+  return native;
+}
+
+test('an agent holding the native knowledge tools sends its turn with their schemas', async () => {
+  const native = nativeKnowledgeTools(41032);
 
   const model = new MockLanguageModelV3({
     doGenerate: async () => ({
@@ -78,4 +89,21 @@ test('an agent holding the native knowledge tools sends its turn with their sche
   expect(sent.map((tool) => tool.name).sort()).toEqual(
     native.tools.map((tool) => tool.name).sort(),
   );
+});
+
+test('Strands receives the native knowledge tools as plain JSON Schema', () => {
+  const native = nativeKnowledgeTools(41033);
+  const functionTools = createStrandsFunctionTools(
+    native.tools as never,
+    new Map(),
+  );
+  expect(functionTools.map((tool) => tool.name).sort()).toEqual(
+    native.tools.map((tool) => tool.name).sort(),
+  );
+  for (const tool of functionTools) {
+    const schema = tool.toolSpec.inputSchema as Record<string, unknown>;
+    expect(schema.type, tool.name).toBe('object');
+    expect(schema, tool.name).not.toHaveProperty('jsonSchema');
+    expect(schema.properties, tool.name).toEqual(expect.any(Object));
+  }
 });
