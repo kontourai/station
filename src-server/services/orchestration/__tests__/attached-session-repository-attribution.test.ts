@@ -19,7 +19,10 @@ import {
   AttachedSessionFollowService,
   resolveAttachedSessionProject,
 } from '../attached-session-follow-service.js';
-import { createPollRepositoryLookup } from '../attached-session-repository.js';
+import {
+  createPollRepositoryLookup,
+  locateRepository,
+} from '../attached-session-repository.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import type { SessionAnswerabilityObservation } from '../open-requests.js';
@@ -214,6 +217,11 @@ describe('attribution by repository (#3386)', () => {
         { slug: 'station', workingDirectory: main },
       ]),
     ).resolves.toEqual({ state: 'unattributed' });
+    // The lookup itself answers "in no repository", not merely a per-poll
+    // cache that swallowed its rejection.
+    await expect(
+      locateRepository(join(lane, 'packages', 'app')),
+    ).resolves.toBeUndefined();
   });
 });
 
