@@ -483,15 +483,21 @@ a mid-turn interjection is a steer. Where Grok records what the user typed
 separately (`displayText`, for interjections and locally expanded slash
 skills), Station shows that rather than the model-facing text. A new prompt
 after a turn that never recorded its completion ends that turn as aborted and
-its open tools as unresolved. A rewind appends a marker rather than removing
-turns; Station records the marker and keeps the rewound turns, because a live
-follower has already published them and the event log has no retraction. A log
+its open tools as unresolved. A user chunk without a prompt index, after prompts
+have carried one, is Grok's synthetic mid-turn input and is not imported. A
+rewind appends a marker rather than removing turns; Station keeps the rewound
+turns, because a live follower has already published them and the event log
+has no retraction. The marker is recorded as an extension notification but is
+not shown in the transcript yet. A log
 or summary in an unrecognized shape is skipped with one logged warning per
-file kind, never guessed at. Discovery lists every session folder name each
-poll but stats at most 16,384 folders and inspects at most 1,024 new or changed
-sessions; followed, unvisited and recently changed folders come first and a
-rotating sweep covers the rest, so a large backlog of probe sessions delays a
-new session by a few polls without hiding it.
+file kind, never guessed at. Discovery re-reads a working directory's folder
+list only when it changed, reads at most 131,072 entries, stats at most 16,384
+folders and inspects at most 1,024 new or changed sessions per poll; followed,
+unvisited and recently changed folders come first and a rotating sweep covers
+the rest, so a large backlog of probe sessions delays a new session by a few
+polls without hiding it. The index holds at most 131,072 folders and makes room
+by forgetting inspected prompt-less ones; a single working directory with more
+session folders than that is only partly listed.
 
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
