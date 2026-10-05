@@ -87,10 +87,18 @@ export function HomeSurface({
       onNavigate={onNavigate}
     />
   );
+  // The Continue card shows its item as the full work row; the list beside
+  // it leaves that item out rather than show it twice. Counts in the chart
+  // still read every item.
+  const continued =
+    !model.actionsLoading && model.primaryWorkItem
+      ? model.primaryWorkItem.id
+      : undefined;
+  const listedLanes = continued ? withoutItem(lanes, continued) : lanes;
   const recentWork = (
     <HomeRecentWorkSection
       id={RECENT_WORK_SECTION_ID}
-      lanes={lanes}
+      lanes={listedLanes}
       workItems={model.workItems}
       workFacts={model.workFacts}
       workLoading={model.workLoading}
@@ -160,6 +168,34 @@ export function HomeSurface({
       )}
     </>
   );
+}
+
+/** The lanes without one item (by id), every other field as derived. */
+function withoutItem<
+  L extends {
+    needsYou: { id: string }[];
+    running: { id: string }[];
+    idle: { id: string }[];
+    external?: { id: string }[];
+    drafts?: { id: string }[];
+    recentlyFinished: { id: string }[];
+    snoozed: { id: string }[];
+    settled: { id: string }[];
+  },
+>(lanes: L, id: string): L {
+  const keep = <T extends { id: string }>(items: T[]) =>
+    items.filter((item) => item.id !== id);
+  return {
+    ...lanes,
+    needsYou: keep(lanes.needsYou),
+    running: keep(lanes.running),
+    idle: keep(lanes.idle),
+    ...(lanes.external ? { external: keep(lanes.external) } : {}),
+    ...(lanes.drafts ? { drafts: keep(lanes.drafts) } : {}),
+    recentlyFinished: keep(lanes.recentlyFinished),
+    snoozed: keep(lanes.snoozed),
+    settled: keep(lanes.settled),
+  };
 }
 
 /**

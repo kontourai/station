@@ -199,12 +199,28 @@ beforeEach(() => {
   state.projects = [STATION];
   state.projectsLoading = false;
 });
-afterEach(() => cleanup());
+// Every dock listener a test adds, removed even when the test fails, so a
+// later test's "no dock" is real.
+const dockListeners: Array<(event: Event) => void> = [];
+const realAdd = window.addEventListener.bind(window);
+window.addEventListener = ((type: string, listener: never, options?: never) => {
+  if (type === 'station:open-new-chat') dockListeners.push(listener);
+  return realAdd(type, listener, options);
+}) as typeof window.addEventListener;
+afterEach(() => {
+  cleanup();
+  for (const listener of dockListeners.splice(0))
+    window.removeEventListener('station:open-new-chat', listener);
+});
 
 function renderBoth() {
   const dockSelect = vi.fn();
   const starts: CustomEvent[] = [];
-  const listener = (event: Event) => starts.push(event as CustomEvent);
+  // A dock that takes the intent, as ChatDock does.
+  const listener = (event: Event) => {
+    event.preventDefault();
+    starts.push(event as CustomEvent);
+  };
   window.addEventListener('station:open-new-chat', listener);
   const view = render(
     <AuthorityPersistenceContext.Provider
@@ -531,7 +547,7 @@ describe('Home and the dock start the same way', () => {
     act(() => deviceSettingsStore.set('chatDockProjectSlug', null));
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: No workspace',
+        'Project: No project',
       ),
     );
     ui.cleanupListener();
@@ -600,7 +616,10 @@ describe('Home and the dock start the same way', () => {
       },
     ];
     const starts: CustomEvent[] = [];
-    const listener = (event: Event) => starts.push(event as CustomEvent);
+    const listener = (event: Event) => {
+      event.preventDefault();
+      starts.push(event as CustomEvent);
+    };
     window.addEventListener('station:open-new-chat', listener);
     localStorage.setItem(
       'station.newChat.lastAgentByContext',
@@ -645,4 +664,154 @@ describe('Home and the dock start the same way', () => {
     ).toBe('');
     window.removeEventListener('station:open-new-chat', listener);
   }, 30_000);
+
+  // Review MED-1: a project with no folder is never a start context, on
+  // either surface, so neither offers it; both say why.
+  test('a project with no folder cannot be chosen on either surface', async () => {
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '' },
+    ];
+    const ui = renderBoth();
+    for (const root of [screen.getByTestId('home'), ui.dock()]) {
+      fireEvent.click(projectChip(root));
+      const menu = await screen.findByRole(
+        'dialog',
+        { name: 'Choose project' },
+        { timeout: 15_000 },
+      );
+      const notes = menu.querySelector<HTMLButtonElement>(
+        '[data-context-value="notes"]',
+      )!;
+      expect(notes.disabled).toBe(true);
+      expect(notes.textContent).toMatch(/No folder set/);
+      expect(
+        menu.querySelector<HTMLButtonElement>('[data-context-value="station"]')!
+          .disabled,
+      ).toBe(false);
+      fireEvent.keyDown(within(menu).getByPlaceholderText('Filter...'), {
+        key: 'Escape',
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Choose project' }),
+        ).toBeNull(),
+      );
+    }
+    // A binding to it made elsewhere (the sidebar) reads as No project on
+    // both, never as Notes on one.
+    act(() => deviceSettingsStore.set('chatDockProjectSlug', 'notes'));
+    await waitFor(() =>
+      expect(
+        projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+      ).toBe('Project: No project'),
+    );
+    ui.cleanupListener();
+  }, 30_000);
+
+  // Review HIGH-1/HIGH-2: Home's draft is never lost.
+  describe("Home's draft survives every way a start or hand-off can end", () => {
+    function renderHome() {
+      return render(
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <HomeStartComposer />
+        </AuthorityPersistenceContext.Provider>,
+      );
+    }
+    const field = () =>
+      screen.getByRole('textbox', {
+        name: 'What would you like done?',
+      }) as HTMLTextAreaElement;
+    const startButton = () =>
+      screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+    async function handOffSkills() {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More start options' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Use a visual skill' }),
+      );
+    }
+
+    test('with no chat dock open, Start keeps the message and says so', async () => {
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Keep this' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      expect(field().value).toBe('Keep this');
+      expect(screen.getByRole('alert').textContent).toMatch(
+        /No chat dock is open/,
+      );
+      // Not left "Starting…": nothing took the start.
+      expect(startButton().getAttribute('aria-busy')).not.toBe('true');
+      expect(startButton().textContent).toBe('Start');
+    });
+
+    test('with no chat dock open, a hand-off keeps the message and says so', async () => {
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Keep this' } });
+      await handOffSkills();
+      expect(field().value).toBe('Keep this');
+      expect(screen.getByRole('alert').textContent).toMatch(
+        /No chat dock is open/,
+      );
+    });
+
+    test('a hand-off dismissed in the dock brings the message back', async () => {
+      const taken: CustomEvent[] = [];
+      const dock = (event: Event) => {
+        event.preventDefault();
+        taken.push(event as CustomEvent);
+      };
+      window.addEventListener('station:open-new-chat', dock);
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Keep this' } });
+      await handOffSkills();
+      expect(field().value).toBe('');
+      expect(screen.getByRole('status').textContent).toMatch(
+        /moved to the chat dock/,
+      );
+      act(() => taken.at(-1)!.detail.onClosed('dismissed'));
+      expect(field().value).toBe('Keep this');
+      window.removeEventListener('station:open-new-chat', dock);
+    });
+
+    test('a hand-off dismissed after Home unmounted (setup left the page) comes back on the next Home', async () => {
+      const taken: CustomEvent[] = [];
+      const dock = (event: Event) => {
+        event.preventDefault();
+        taken.push(event as CustomEvent);
+      };
+      window.addEventListener('station:open-new-chat', dock);
+      const first = renderHome();
+      fireEvent.change(field(), { target: { value: 'Survive the trip' } });
+      await handOffSkills();
+      first.unmount();
+      act(() => taken.at(-1)!.detail.onClosed('dismissed'));
+      renderHome();
+      expect(field().value).toBe('Survive the trip');
+      window.removeEventListener('station:open-new-chat', dock);
+    });
+
+    test('a started chat clears the field; a dismissed start keeps it', async () => {
+      const taken: CustomEvent[] = [];
+      const dock = (event: Event) => {
+        event.preventDefault();
+        taken.push(event as CustomEvent);
+      };
+      window.addEventListener('station:open-new-chat', dock);
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'First' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      act(() => taken.at(-1)!.detail.onClosed('dismissed'));
+      expect(field().value).toBe('First');
+      fireEvent.click(startButton());
+      act(() => taken.at(-1)!.detail.onClosed('started'));
+      expect(field().value).toBe('');
+      window.removeEventListener('station:open-new-chat', dock);
+    });
+  });
 });

@@ -67,7 +67,10 @@ import {
 } from '../../hooks/useDockShellChrome';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
-import { readNewChatIntent } from '../../lib/newChatIntent';
+import {
+  dockAcceptsNewChatIntent,
+  readNewChatIntent,
+} from '../../lib/newChatIntent';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -500,7 +503,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   } = chrome;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
-  const { projects, isLoading: projectsLoading } = useProjects();
+  const { projects, isConfirmedLoaded: projectsConfirmed } = useProjects();
   const { showToast, dismissToast } = useToast();
   // station#3687 seams 3/5: an inbox click that opened nothing says so.
   const showInboxOpenFailure = useCallback(
@@ -800,6 +803,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     newChatInitialPrompt,
     newChatSelection,
     newChatHandoff,
+    newChatSelectionInvalid,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
@@ -1689,13 +1693,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     const openNewChat = (event: Event) => {
       const intent = readNewChatIntent(event);
-      // Home's starts and hand-offs belong to the ambient dock; a dock scoped
-      // to one project would run them in the wrong project.
-      if (
-        (intent.startWithDefault || intent.handoff || intent.selection) &&
-        hasImmutableProjectScope
-      )
-        return;
+      if (!dockAcceptsNewChatIntent(intent, hasImmutableProjectScope)) return;
+      // Tell the sender a dock took it, so it may hand its draft over.
+      event.preventDefault();
       setShowNewChatModal(true, intent);
     };
     // station#1297: `HomeView.continueWork` / `ProjectSidebar` request focus
@@ -2965,9 +2965,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatInitialPrompt,
           newChatSelection,
           newChatHandoff,
+          newChatSelectionInvalid,
           projectBindable: !hasImmutableProjectScope && !forkSource,
           accentProjectSlugs: projects.map((project) => project.slug),
-          projectsLoaded: !projectsLoading,
+          // A confirmed list only: an errored read must not resolve the
+          // bound project to a guessed No project.
+          projectsLoaded: projectsConfirmed,
           recentChats: {
             items: taskItems,
             pending: taskItemsPending,
@@ -3088,7 +3091,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 'The chat could not be opened. Check the selected Agent and try again.',
               );
             navigate(pathname, { chat: sessionId });
-            setShowNewChatModal(false);
+            setShowNewChatModal(false, undefined, 'started');
             setNewChatProjectOverride(null);
             setHandoffSource(null);
           },

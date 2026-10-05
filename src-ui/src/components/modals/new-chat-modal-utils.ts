@@ -30,6 +30,13 @@ import { resolveNewChatAgentEnable } from './new-chat-agent-enable';
 export const GLOBAL_CONTEXT = '__global__';
 
 /**
+ * The one name for "no project": the dock bar, Home's rows and the start
+ * composer's project chip all say it. The chip chooses a project (its
+ * folder is the project's), so it is not a separate "workspace" concept.
+ */
+export const NO_PROJECT_LABEL = 'No project';
+
+/**
  * Where the chat about to be started will actually run.
  *
  * `'connection'` exists because of archive#1089. The picker used to print
@@ -348,7 +355,7 @@ export function buildContextOptions(
   projects: ProjectMetadata[],
 ): NewChatModalContextOption[] {
   const options: NewChatModalContextOption[] = [
-    { value: GLOBAL_CONTEXT, label: 'No workspace', glyph: 'globe' },
+    { value: GLOBAL_CONTEXT, label: NO_PROJECT_LABEL, glyph: 'globe' },
   ];
   for (const project of projects) {
     if (!project) {

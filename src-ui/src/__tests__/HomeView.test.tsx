@@ -96,6 +96,7 @@ const fixtures = vi.hoisted(() => ({
   chatDockProjectSlug: null as string | null,
   selectedContextResolved: true,
   setDeviceSetting: vi.fn(),
+  continueDecoy: false,
   selectionInputs: [] as Array<{
     selectedContext: string;
     revalidateSelection?: boolean;
@@ -126,6 +127,21 @@ const fixtures = vi.hoisted(() => ({
     | undefined,
 }));
 
+/**
+ * The Continue card shows the newest work as the full row, and the list
+ * beside it leaves that item out. A test of the LIST's behaviour (lanes,
+ * snooze, chrome) turns this on so a newer chat takes the Continue card and
+ * the item under test stays in the list.
+ */
+const CONTINUE_DECOY = {
+  'continue-decoy': {
+    title: 'Newest work in Continue',
+    agentSlug: 'codex-agent',
+    agentName: 'Codex',
+    messages: [{ role: 'user', content: 'hi', timestamp: 9_999_999_999_999 }],
+  },
+};
+
 vi.mock('../contexts/open-chats-store', async () => {
   // #1582 B9: the work selector shares the store's own predicate rather than
   // restating it, so this double cannot disagree with production about which
@@ -151,9 +167,12 @@ vi.mock('../contexts/open-chats-store', async () => {
     useOpenChats: () => map(Object.entries(fixtures.chats) as [string, any][]),
     useOpenWorkChats: () =>
       map(
-        (Object.entries(fixtures.chats) as [string, any][]).filter(([, chat]) =>
-          activeChatHasWork(chat),
-        ),
+        (
+          Object.entries({
+            ...fixtures.chats,
+            ...(fixtures.continueDecoy ? CONTINUE_DECOY : {}),
+          }) as [string, any][]
+        ).filter(([, chat]) => activeChatHasWork(chat)),
       ),
     openChatsStore: {
       focus: vi.fn(),
@@ -203,7 +222,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     const data = config?.requestScope
       ? (byAuthority[config.requestScope.authorityKey] ?? fixtures.projects)
       : undefined;
-    return { data, isLoading: fixtures.projectsLoading };
+    return {
+      data,
+      isLoading: fixtures.projectsLoading,
+      isSuccess: data !== undefined && !fixtures.projectsLoading,
+    };
   },
   dispatchOrchestrationCommandWithReceipt: fixtures.discardDraft,
   useOrchestrationSessionsQuery: () => ({
@@ -432,6 +455,7 @@ describe('HomeView', () => {
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
+    fixtures.continueDecoy = false;
     fixtures.agents = [
       { slug: 'codex-agent', name: 'Codex', model: 'gpt-5.3-codex' },
     ];
@@ -604,6 +628,7 @@ describe('HomeView', () => {
    * a project with no Coding layout, or no project, stays in the dock.
    */
   test('opening a row whose project has a Coding layout routes to that layout after focusing the chat', async () => {
+    fixtures.continueDecoy = true;
     fixtures.layoutsBySlug = {
       station: [
         { slug: 'tasks', type: 'tasks' },
@@ -662,6 +687,7 @@ describe('HomeView', () => {
   });
 
   test('a row whose project has no Coding layout stays in the dock', async () => {
+    fixtures.continueDecoy = true;
     fixtures.layoutsBySlug = { station: [{ slug: 'tasks', type: 'tasks' }] };
     fixtures.sessions = [
       {
@@ -926,6 +952,7 @@ describe('HomeView', () => {
   // so if Home stopped rendering that section the row would vanish from Home
   // with every other test green. Render it and find the row inside it.
   test('Home lists a Draft under its own Drafts section, and not under a live lane', () => {
+    fixtures.continueDecoy = true;
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
     fixtures.defaultModelLabel = 'Model not reported';
@@ -1213,6 +1240,7 @@ describe('HomeView', () => {
   });
 
   test('separates Running from terminal Just finished work with counts', () => {
+    fixtures.continueDecoy = true;
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -1296,7 +1324,8 @@ describe('HomeView', () => {
 
     renderHomeView({ continuation: null, onNavigate });
 
-    expect(screen.getAllByText('Durable local work')).toHaveLength(2);
+    // Shown once: in the Continue card, not again in the list below it.
+    expect(screen.getAllByText('Durable local work')).toHaveLength(1);
     // The Continue row reads like every work row: the honest agent fallback
     // and the project, never an invented Agent.
     expect(continueRow().textContent).toContain('Durable local work');
@@ -1352,7 +1381,8 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate });
 
     expect(screen.queryByText('Raw correlated chat')).toBeNull();
-    expect(screen.getAllByText('Persisted task')).toHaveLength(2);
+    // Shown once: the Continue card holds it, the list leaves it out.
+    expect(screen.getAllByText('Persisted task')).toHaveLength(1);
     fireEvent.click(continueRow());
     expect(onNavigate).toHaveBeenCalledWith({ type: 'task', taskId: 'task-1' });
   });
@@ -1403,6 +1433,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
    * is no hover to reveal them with.
    */
   test('a fine pointer gets the hover chrome: no Details button, snooze behind hover', () => {
+    fixtures.continueDecoy = true;
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const recent = screen.getByRole('region', { name: 'Recent work' });
     const [row] = within(recent).getAllByTestId('inbox-row');
@@ -1422,6 +1453,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
   });
 
   test('a coarse pointer keeps the 44px touch chrome with Details and one action', () => {
+    fixtures.continueDecoy = true;
     const media = window.matchMedia as unknown as ReturnType<typeof vi.fn>;
     media.mockImplementation((query: string) => ({
       matches: query === '(pointer: coarse)',
@@ -1466,6 +1498,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
   });
 
   test('snooze button opens the preset menu; selecting a preset moves the row to the snoozed shelf and persists the wake time', async () => {
+    fixtures.continueDecoy = true;
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
@@ -1512,6 +1545,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     });
 
     test('shelf expand + wake: a pre-snoozed item shows its wake time and returns to active when woken', () => {
+      fixtures.continueDecoy = true;
       writeSnooze(RUNNING_SESSION.threadId, NOW + 60 * 60 * 1000, NOW);
 
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
@@ -1534,6 +1568,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     });
 
     test('settled-tail "Show more" reveals items beyond the first page', () => {
+      fixtures.continueDecoy = true;
       fixtures.sessions = [];
       fixtures.tasks = Array.from({ length: 7 }, (_, index) => ({
         id: `task-${index + 1}`,
@@ -1586,6 +1621,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     });
 
     test('a settled failed row still says Failed', () => {
+      fixtures.continueDecoy = true;
       fixtures.sessions = [
         {
           threadId: 'settled-failed-thread',
@@ -1649,6 +1685,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
+    fixtures.continueDecoy = false;
     fixtures.remoteSessionsResult = undefined;
   });
 
@@ -1695,7 +1732,9 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.
-    expect(within(recent).getAllByTestId('inbox-row')).toHaveLength(3);
+    // The local session is the Continue card's, so the list holds the two
+    // remote rows only (it is not shown twice).
+    expect(within(recent).getAllByTestId('inbox-row')).toHaveLength(2);
     expect(
       recent.querySelectorAll(
         '.inbox-row__chip--remote, .inbox-row__slim-remote',
@@ -1770,6 +1809,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
   // (`useRemoteSessionsQuery` returning `data: undefined`, this suite's
   // default) — proving the remote read never blocks or delays it.
   test('AC2: the local list renders while the remote-session query is still pending', () => {
+    fixtures.continueDecoy = true;
     fixtures.sessions = [
       {
         threadId: 'local-thread',
@@ -1800,6 +1840,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
   // not reach in time) still never blocks the local list, and degrades to
   // an unobtrusive note rather than an error state.
   test('AC2/R3: an unreachable connected environment shows an unobtrusive note beside a normally-rendered local list', () => {
+    fixtures.continueDecoy = true;
     fixtures.sessions = [
       {
         threadId: 'local-thread',

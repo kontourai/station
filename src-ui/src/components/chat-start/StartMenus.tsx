@@ -210,7 +210,7 @@ export function StartAgentMenu({
 }
 
 /**
- * The project chip's menu: No workspace and every project, each with the
+ * The project chip's menu: No project and every project, each with the
  * folder it runs in, and the folder this start will actually use (an
  * engine's own Working Directory outranks home for a folderless project).
  */
@@ -236,9 +236,17 @@ export function StartProjectMenu({
   const anchorRef = useRef<HTMLElement | null>(anchor);
   const [search, setSearch] = useState('');
   const query = search.toLowerCase();
+  // TODO(project-icons): render `ProjectIcon` once feat/project-icons
+  // lands. Until then no raw `project.icon` reaches LayoutIcon here (it
+  // would hotlink a remote or path icon); every project shows the folder.
+  const safeOptions = options.map((option) =>
+    option.icon
+      ? { ...option, icon: undefined, glyph: 'folder' as const }
+      : option,
+  );
   const filtered = query
-    ? options.filter((option) => option.label.toLowerCase().includes(query))
-    : options;
+    ? safeOptions.filter((option) => option.label.toLowerCase().includes(query))
+    : safeOptions;
   return (
     <ResponsiveDialogSurface
       layer={layer}
@@ -274,6 +282,11 @@ export function StartProjectMenu({
           filteredContextOptions={filtered}
           selectedContext={selectedContext}
           onSelectContext={onChoose}
+          // Both surfaces' start context reads a folderless project as No
+          // project (`resolveNewChatInitialContext`: the server cannot run a
+          // chat in a project with no folder), so offering one here would
+          // show a chip the next start does not use.
+          folderlessReason="No folder set. Add one in the project's settings to start chats in it."
         />
       </div>
     </ResponsiveDialogSurface>

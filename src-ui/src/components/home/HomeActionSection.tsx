@@ -125,7 +125,8 @@ export function HomeActionSection({
           <span id="home-continue-label" className="home-view__continue-label">
             Continue
           </span>
-          <ul className="home-view__continue-list">
+          {/* The lanes' own list, so the row is the full Home row. */}
+          <ul className="home-view__task-list home-view__continue-list">
             {renderHomeWorkRow({
               task: { ...primary, stableId: `continue:${primary.id}` },
               isWoken: false,

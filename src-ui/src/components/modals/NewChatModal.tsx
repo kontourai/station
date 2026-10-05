@@ -82,6 +82,7 @@ import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
 import {
   GLOBAL_CONTEXT,
   NEW_CHAT_AGENT_UNAVAILABLE_FALLBACK,
+  NO_PROJECT_LABEL,
   resolveNewChatAgentEnable,
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
@@ -171,6 +172,8 @@ interface NewChatModalProps {
   startSelection?: NewChatStartSelection;
   /** Work Home's composer handed over: a setup journey, or visual skills. */
   handoff?: NewChatHandoff;
+  /** Home sent choices that did not parse: say so, keep the message. */
+  selectionInvalid?: boolean;
   /**
    * Whether the project chip may rebind the dock (`chatDockProjectSlug`).
    * False for a dock scoped to one project, which never moves the ambient
@@ -203,6 +206,7 @@ export function NewChatModal({
   recentChats,
   startSelection,
   handoff,
+  selectionInvalid = false,
   projectBindable = false,
   accentProjectSlugs,
   projectsLoaded = true,
@@ -728,8 +732,10 @@ export function NewChatModal({
       (composer
         ? start.modelChoiceFor(agent)
         : modelChoices[modelChoiceKey(agent)]);
+    // A Model chosen before this dialog (Home's chip, or before a setup
+    // journey) can have gone meanwhile: check it before starting on it.
     if (
-      returnedFromSetup &&
+      (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
       !modelsForAgent(agent).some(
         (model) =>
@@ -741,6 +747,8 @@ export function NewChatModal({
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
       );
+      // An automatic start shows the composer, message kept, to choose one.
+      setShowChatOptions(true);
       openModelPicker(agent);
       return;
     }
@@ -873,7 +881,7 @@ export function NewChatModal({
       // Dispatching would target a workspace the server cannot resolve
       // either; swallowing the click is worse. Say what to do.
       setSelectFeedback(
-        'This chat needs a workspace — pick one from the Workspace menu above, or choose "No workspace".',
+        'This chat needs a project — pick one, or choose "No project".',
       );
     }
   };
@@ -1199,10 +1207,10 @@ export function NewChatModal({
     : {
         status: 'ready',
         // A project the list no longer has keeps its own name (its slug),
-        // never a No workspace the start would not use.
+        // never a No project the start would not use.
         label:
           currentContextOption?.label ??
-          (isGlobal ? 'No workspace' : selectedContext),
+          (isGlobal ? NO_PROJECT_LABEL : selectedContext),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(selectedContext),
         folder: workspaceHint.kind === 'home' ? '~' : workspaceHint.path,
@@ -1633,6 +1641,12 @@ export function NewChatModal({
 
       {showStart ? (
         <div className="chat-start__body">
+          {selectionInvalid && (
+            <p role="alert">
+              The choices sent with this chat could not be read. Choose an Agent
+              and project to continue; your message is kept.
+            </p>
+          )}
           {defaultSelection?.missingPreferredAgentSlug && !draftAgent && (
             <p role="alert">
               Your previous Agent is no longer available in this workspace.
@@ -1723,10 +1737,12 @@ export function NewChatModal({
               />
             )}
           </StartComposer>
-          {(selectFeedback || returnError || runtimeError || modelsError) && (
+          {/* setupError covers the project list too: a failed read is said,
+              never shown as a guessed project chip. */}
+          {(selectFeedback || returnError || setupError) && (
             <p role="alert">
               {selectFeedback?.text ??
-                describeReadFailure(returnError ?? runtimeError ?? modelsError)}
+                describeReadFailure(returnError ?? setupError)}
             </p>
           )}
           {runtimeLoading || modelsLoading ? (

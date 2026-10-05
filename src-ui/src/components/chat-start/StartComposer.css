@@ -1,6 +1,8 @@
 /* The start composer (Home, inline, and the dock's draft). No viewport
-   queries: the bar wraps, so a phone gets the chips on one line and Start on
-   the next without a breakpoint, and every target is 44px tall already. */
+   query: the bar is one flex line that wraps. On a desktop the chips and
+   [⋯ Start] share one line. When they do not fit (a phone), the chips keep
+   row one, on one line, each shrinking to an ellipsis, and [⋯ … Start]
+   takes row two. Every target is 44px. */
 .start-composer {
   display: flex;
   flex-direction: column;
@@ -33,13 +35,23 @@
 }
 .start-composer__chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--k-space-2);
   min-width: 0;
-  /* Wider than a phone's column: there Start drops to its own line, under
-     the chips, rather than floating between two rows of them. */
-  flex: 1 1 24rem;
+  /* Grows far more than the actions, so on a shared line the actions keep
+     their own width and sit together at the end. */
+  flex: 1000 1 auto;
+}
+.start-composer__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  /* Alone on row two it takes the width: ⋯ at the start, Start at the end. */
+  flex: 1 0 auto;
+}
+.start-composer__actions > :first-child {
+  margin-right: auto;
 }
 .start-composer__chip {
   display: inline-flex;
@@ -48,6 +60,7 @@
   min-height: 44px;
   max-width: 100%;
   min-width: 0;
+  flex: 0 1 auto;
 }
 .start-composer__chip-text {
   min-width: 0;
@@ -93,7 +106,6 @@
   border-radius: 999px;
 }
 .start-composer__start {
-  margin-left: auto;
   min-height: 44px;
 }
 .start-composer__note {
@@ -165,12 +177,30 @@
   width: auto;
   box-sizing: border-box;
 }
-/* The overflow sits among 44px chips: it takes their height, square. */
-.start-composer__chips > .start-composer__more {
+/* The overflow beside Start: a 44px square drawn like the chips, not the
+   quiet bordered glyph the shared trigger is elsewhere (which read as
+   disabled here). */
+.start-composer__actions > .start-composer__more {
   width: 44px;
   height: 44px;
+  border-color: var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 /* Every project row is a 44px target, on every pointer. */
 .start-menu__list .new-chat-modal__dropdown-item {
   min-height: 44px;
+}
+/* In the Agent menu a row keeps its Model beside the name at every width:
+   the sheet is the row's whole width, so the phone list's stacked row (the
+   Model pill alone on a second line) only cost height here. */
+.start-menu__list .new-chat-modal__agent-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.start-menu__list .new-chat-modal__agent-side {
+  flex-wrap: nowrap;
+  padding: 6px 12px 6px 4px;
+}
+.start-menu__list .new-chat-modal__model-trigger {
+  max-width: min(40vw, 200px);
 }

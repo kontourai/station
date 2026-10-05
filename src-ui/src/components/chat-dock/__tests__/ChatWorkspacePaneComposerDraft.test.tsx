@@ -25,6 +25,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
@@ -37,6 +38,7 @@ import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { dispatchNewChatIntent } from '../../../lib/newChatIntent';
 import {
   type ProjectChatComposerDraft,
   requestProjectChat,
@@ -577,4 +579,82 @@ test('a Project-scoped pane shows only that Project’s chats', async () => {
   renderPane('pulse');
   await act(async () => {});
   expect(screen.queryByTestId('active-chat-body')).toBeNull();
+});
+
+// Review FI-1 / HIGH-1: Home's starts, selections and hand-offs are the
+// ambient dock's. A dock scoped to one project leaves them alone, and only a
+// dock that took one tells the sender so (the sender keeps its draft
+// otherwise).
+test('a project-scoped pane leaves Home intents to the ambient dock and says it did not take them', async () => {
+  renderPane('pulse');
+  const selection = { context: '__global__', agentSlug: 'assistant' };
+  for (const detail of [
+    { startWithDefault: true, initialPrompt: 'Go', selection },
+    { initialPrompt: 'Go', selection, handoff: { kind: 'skills' as const } },
+    { initialPrompt: 'Go', selection },
+  ]) {
+    let accepted = true;
+    act(() => {
+      accepted = dispatchNewChatIntent(detail);
+    });
+    expect(accepted).toBe(false);
+  }
+  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+  // An ordinary open is still its own.
+  let accepted = false;
+  act(() => {
+    accepted = dispatchNewChatIntent({});
+  });
+  expect(accepted).toBe(true);
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+});
+
+test("the ambient dock takes Home's hand-off and reports how it ended", async () => {
+  renderDockedPane();
+  const onClosed = vi.fn();
+  let accepted = false;
+  act(() => {
+    accepted = dispatchNewChatIntent({
+      initialPrompt: 'Keep me',
+      selection: { context: '__global__', agentSlug: 'assistant' },
+      handoff: { kind: 'repair', agentSlug: 'assistant', route: 'models' },
+      onClosed,
+    });
+  });
+  expect(accepted).toBe(true);
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const props = pickerProps.at(-1)!;
+  expect(props.initialPrompt).toBe('Keep me');
+  expect(props.handoff).toEqual({
+    kind: 'repair',
+    agentSlug: 'assistant',
+    route: 'models',
+  });
+  // Closed (or its setup journey cancelled, which closes it): dismissed.
+  act(() => props.onClose());
+  expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed');
+
+  const onStarted = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({
+      startWithDefault: true,
+      initialPrompt: 'Start me',
+      selection: { context: '__global__', agentSlug: 'assistant' },
+      onClosed: onStarted,
+    });
+  });
+  await waitFor(() =>
+    expect(pickerProps.at(-1)!.initialPrompt).toBe('Start me'),
+  );
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Start me',
+      );
+  });
+  expect(onStarted).toHaveBeenCalledExactlyOnceWith('started');
 });

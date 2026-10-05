@@ -70,6 +70,7 @@ interface ChatDockModalStackProps {
   newChatInitialPrompt?: string;
   newChatSelection?: ComponentProps<typeof NewChatModal>['startSelection'];
   newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
+  newChatSelectionInvalid?: boolean;
   projectBindable?: boolean;
   accentProjectSlugs?: string[];
   projectsLoaded?: boolean;
@@ -132,6 +133,7 @@ export function ChatDockModalStack({
   newChatInitialPrompt,
   newChatSelection,
   newChatHandoff,
+  newChatSelectionInvalid,
   projectBindable,
   accentProjectSlugs,
   projectsLoaded,
@@ -183,6 +185,7 @@ export function ChatDockModalStack({
             initialPrompt: newChatInitialPrompt,
             startSelection: forkMode ? undefined : newChatSelection,
             handoff: forkMode ? undefined : newChatHandoff,
+            selectionInvalid: forkMode ? false : newChatSelectionInvalid,
             projectBindable,
             accentProjectSlugs,
             projectsLoaded,

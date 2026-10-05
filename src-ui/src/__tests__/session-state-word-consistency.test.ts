@@ -386,6 +386,9 @@ const SRC_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** The surfaces the vocabulary governs. */
 const SURFACE_ROOTS = [
   'components/home',
+  // The start composer (Home and the dock's draft) and its dock host.
+  'components/chat-start',
+  'components/modals/NewChatModal.tsx',
   'components/inbox-row',
   'components/chat-dock',
   'components/project-sidebar',
@@ -466,6 +469,7 @@ const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
+  ['components/chat-start/StartComposer.tsx', 'Model not reported'],
   ['components/chat-dock/command-launcher-model.ts', 'Model not reported'],
   ['views/home/home-view-model.ts', 'Model not reported'],
 ];

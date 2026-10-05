@@ -32,7 +32,7 @@ export type StartProjectChip =
   | {
       status: 'ready';
       label: string;
-      /** The project's accent (the sidebar's), absent for No workspace. */
+      /** The project's accent (the sidebar's), absent for No project. */
       accent?: string;
       isGlobal: boolean;
       /** The folder the chat runs in, as the project menu also states. */
@@ -225,6 +225,10 @@ export function StartComposer({
               </button>
             </span>
           )}
+        </fieldset>
+        {/* The rarer options sit with Start, apart from the chips: on a
+            phone the chips keep row one and this pair takes row two. */}
+        <div className="start-composer__actions">
           {overflowActions && overflowActions.length > 0 && (
             <ActionOverflowMenu
               label="More start options"
@@ -232,17 +236,17 @@ export function StartComposer({
               triggerClassName="action-overflow__trigger start-composer__more"
             />
           )}
-        </fieldset>
-        <Button
-          type="submit"
-          variant="primary"
-          className="start-composer__start"
-          disabled={!canStart}
-          pending={pending}
-          pendingLabel="Starting…"
-        >
-          Start
-        </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            className="start-composer__start"
+            disabled={!canStart}
+            pending={pending}
+            pendingLabel="Starting…"
+          >
+            Start
+          </Button>
+        </div>
       </div>
       {note && <p className="start-composer__note">{note}</p>}
       {children}

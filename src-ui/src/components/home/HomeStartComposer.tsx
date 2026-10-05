@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
-import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
@@ -10,9 +9,8 @@ import {
   useStartSelection,
 } from '../../hooks/useStartSelection';
 import {
+  dispatchNewChatIntent,
   type NewChatHandoff,
-  type NewChatIntent,
-  OPEN_NEW_CHAT_EVENT,
 } from '../../lib/newChatIntent';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import type { AgentFixRoute } from '../AgentReadinessCell';
@@ -26,6 +24,7 @@ import {
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
   GLOBAL_CONTEXT,
+  NO_PROJECT_LABEL,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
 } from '../modals/new-chat-modal-utils';
@@ -69,6 +68,29 @@ function HomeChatSetupHelper(
   return <ChatSetupHelper {...props} devicePresentation={devicePresentation} />;
 }
 
+/**
+ * A draft Home handed to the dock that came back undone (its dock draft was
+ * closed, or the setup journey cancelled). Held at module scope because the
+ * setup journey leaves the page, so the Home that sent it may have unmounted.
+ */
+let returnedHomeDraft: string | null = null;
+const returnedHomeDraftListeners = new Set<() => void>();
+function returnHomeDraft(text: string) {
+  returnedHomeDraft = text;
+  for (const listener of returnedHomeDraftListeners) listener();
+}
+function takeReturnedHomeDraft(): string | null {
+  const text = returnedHomeDraft;
+  returnedHomeDraft = null;
+  return text;
+}
+function subscribeReturnedHomeDraft(listener: () => void) {
+  returnedHomeDraftListeners.add(listener);
+  return () => {
+    returnedHomeDraftListeners.delete(listener);
+  };
+}
+
 type ChipMenu = {
   kind: 'agents' | 'project' | 'model';
   trigger: HTMLElement | null;
@@ -94,26 +116,19 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   const agents = useAgents();
   const projectsQuery = useScopedProjectsQuery();
   const projects = projectsQuery.data ?? [];
-  const startContext = useNewChatStartContext(
-    projects,
-    !projectsQuery.isLoading,
-  );
-  // An explicit pick on this page. The binding it writes reads a folderless
-  // project back as No workspace (see `useBindStartProject`), so the pick
-  // itself holds the chip until the page goes.
-  const [picked, setPicked] = useState<{
-    context: string;
-    binding: string | null;
-  } | null>(null);
-  const { chatDockProjectSlug } = useDeviceSettings();
-  // Held only while the dock is still bound as this pick left it: a rebind
-  // from the dock (or anywhere) moves Home's chip with it.
-  const pickedContext =
-    picked && picked.binding === chatDockProjectSlug
-      ? picked.context
-      : undefined;
-  const context = pickedContext ?? startContext ?? GLOBAL_CONTEXT;
-  const contextPending = pickedContext === undefined && !startContext;
+  // Loaded means a real, successful list: the pending AND the errored shape
+  // both read as `[]`, and an errored list must not resolve a bound project
+  // to a guessed No project (`useProjects().isConfirmedLoaded`'s rule). A
+  // failed read is said by the setup alert below.
+  const projectsLoaded =
+    projectsQuery.isSuccess &&
+    !projectsQuery.isPlaceholderData &&
+    projectsQuery.data !== undefined;
+  // The chip IS the dock's binding (the project chip writes it), so Home and
+  // the dock read one value; folderless projects cannot be chosen.
+  const startContext = useNewChatStartContext(projects, projectsLoaded);
+  const context = startContext ?? GLOBAL_CONTEXT;
+  const contextPending = !startContext;
   const [agentSearch, setAgentSearch] = useState('');
   const selection = useNewChatSelectionModel({
     agents,
@@ -142,6 +157,26 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   const start = useStartSelection(selection, context);
   const bindProject = useBindStartProject();
   const [prompt, setPrompt] = useState('');
+  /** What happened to a draft sent to the dock, in a sentence. */
+  const [notice, setNotice] = useState<{
+    text: string;
+    tone: 'status' | 'alert';
+  } | null>(null);
+  // A draft handed to the dock and then dismissed there comes back here,
+  // including to a Home that was remounted meanwhile (setup leaves the page).
+  useEffect(() => {
+    const take = () => {
+      const text = takeReturnedHomeDraft();
+      if (text === null) return;
+      setPrompt(text);
+      setNotice({
+        text: 'Your draft is back from the chat dock.',
+        tone: 'status',
+      });
+    };
+    take();
+    return subscribeReturnedHomeDraft(take);
+  }, []);
   const [pending, setPending] = useState(false);
   const [menu, setMenu] = useState<ChipMenu | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -168,23 +203,40 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     },
   });
 
-  /** Hand the draft to the dock's composer and let it finish there. */
+  const noDock = () =>
+    setNotice({
+      text: 'No chat dock is open to take this. Open the chat dock and try again; your message is kept here.',
+      tone: 'alert',
+    });
+
+  /**
+   * Hand the draft to the dock's composer and let it finish there. Only a
+   * dock that took it may empty this field; if the dock's draft is then
+   * dismissed (closed, or its setup journey cancelled), the text comes back.
+   */
   const handOff = (handoff: NewChatHandoff, agentSlug = agent?.slug) => {
     const target = agentSlug
       ? viewModel.flatList.find((candidate) => candidate.slug === agentSlug)
       : undefined;
-    window.dispatchEvent(
-      new CustomEvent<NewChatIntent>(OPEN_NEW_CHAT_EVENT, {
-        detail: {
-          initialPrompt: prompt,
-          selection: start.startSelection(target ?? agent),
-          handoff,
-        },
-      }),
-    );
     setMenu(null);
+    const text = prompt;
+    const accepted = dispatchNewChatIntent({
+      initialPrompt: text,
+      selection: start.startSelection(target ?? agent),
+      handoff,
+      onClosed: (outcome) => {
+        if (outcome === 'dismissed' && text.trim()) returnHomeDraft(text);
+      },
+    });
+    if (!accepted) {
+      noDock();
+      return;
+    }
     setPrompt('');
-    setFeedback('Your draft moved to the chat dock to finish there.');
+    setNotice({
+      text: 'Your draft moved to the chat dock to finish there.',
+      tone: 'status',
+    });
   };
 
   const repair = (target: typeof agent & object, route: AgentFixRoute) => {
@@ -224,8 +276,8 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     : {
         status: 'ready',
         // A project the list no longer has keeps its own name (its slug),
-        // never a No workspace the start would not use.
-        label: option?.label ?? (isGlobal ? 'No workspace' : context),
+        // never a No project the start would not use.
+        label: option?.label ?? (isGlobal ? NO_PROJECT_LABEL : context),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(context),
         folder: workspaceHint.kind === 'home' ? '~' : workspaceHint.path,
@@ -253,6 +305,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         onPromptChange={(value) => {
           setPrompt(value);
           if (feedback && !pending) setFeedback(null);
+          if (notice) setNotice(null);
         }}
         agent={agentChip}
         onOpenAgents={(trigger) => {
@@ -273,24 +326,28 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         pending={pending}
         onStart={() => {
           if (inFlight.current) return;
+          const accepted = dispatchNewChatIntent({
+            startWithDefault: true,
+            initialPrompt: prompt,
+            // No Agent to offer: the dock prepares one (first run).
+            selection: agent
+              ? start.startSelection()
+              : { context: start.startSelection().context },
+            onClosed: (outcome) => {
+              inFlight.current = false;
+              if (!mounted.current) return;
+              setPending(false);
+              // Started: the message is in its chat now. Dismissed: it stays.
+              if (outcome === 'started') setPrompt('');
+            },
+          });
+          if (!accepted) {
+            noDock();
+            return;
+          }
           inFlight.current = true;
           setPending(true);
-          window.dispatchEvent(
-            new CustomEvent<NewChatIntent>(OPEN_NEW_CHAT_EVENT, {
-              detail: {
-                startWithDefault: true,
-                initialPrompt: prompt,
-                // No Agent to offer: the dock prepares one (first run).
-                selection: agent
-                  ? start.startSelection()
-                  : { context: start.startSelection().context },
-                onClosed: () => {
-                  inFlight.current = false;
-                  setPending(false);
-                },
-              },
-            }),
-          );
+          setNotice(null);
         }}
       >
         {defaultSelection?.missingPreferredAgentSlug && !agent && (
@@ -299,10 +356,9 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
             an Agent to continue.
           </p>
         )}
+        {notice && <p role={notice.tone}>{notice.text}</p>}
         {(feedback || setupError) && (
-          <p role={feedback?.startsWith('Your draft') ? 'status' : 'alert'}>
-            {feedback ?? describeReadFailure(setupError)}
-          </p>
+          <p role="alert">{feedback ?? describeReadFailure(setupError)}</p>
         )}
         {!loading && agent && !agentRunnability(agent).runnable && (
           <React.Suspense
@@ -396,10 +452,6 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               selectedContext={context}
               workspaceHint={workspaceHint}
               onChoose={(value) => {
-                setPicked({
-                  context: value,
-                  binding: value === GLOBAL_CONTEXT ? null : value,
-                });
                 bindProject(value);
                 setMenu(null);
               }}

@@ -34,14 +34,55 @@ export type NewChatHandoff =
   | { kind: 'connections' }
   | { kind: 'skills' };
 
+/** How the dock's New chat closed: a chat started, or it was dismissed. */
+export type NewChatClosedOutcome = 'started' | 'dismissed';
+
 export interface NewChatIntent {
   /** Start at once with `selection` (or the defaults), sending the prompt. */
   startWithDefault?: boolean;
   initialPrompt?: string;
   selection?: NewChatStartSelection;
+  /**
+   * The intent carried a selection that did not parse. The dock opens the
+   * composer with the message and says so, never a default start.
+   */
+  selectionInvalid?: boolean;
   /** Open the draft with the prompt and selection, then run this. */
   handoff?: NewChatHandoff;
-  onClosed?: () => void;
+  onClosed?: (outcome: NewChatClosedOutcome) => void;
+}
+
+/**
+ * Dispatch a new-chat intent and report whether a dock took it. Docks call
+ * `preventDefault()` on an intent they accept; with no dock listening (no
+ * region holds the Chat pane) or only a project-scoped dock, nobody does,
+ * and the sender must keep its draft.
+ */
+export function dispatchNewChatIntent(detail: NewChatIntent): boolean {
+  return !window.dispatchEvent(
+    new CustomEvent<NewChatIntent>(OPEN_NEW_CHAT_EVENT, {
+      detail,
+      cancelable: true,
+    }),
+  );
+}
+
+/**
+ * Whether a dock takes this intent. Home's starts, selections and hand-offs
+ * belong to the ambient dock: a dock scoped to one project would run them in
+ * the wrong project, so it leaves them for the ambient one.
+ */
+export function dockAcceptsNewChatIntent(
+  intent: NewChatIntent,
+  hasImmutableProjectScope: boolean,
+): boolean {
+  if (!hasImmutableProjectScope) return true;
+  return !(
+    intent.startWithDefault ||
+    intent.handoff ||
+    intent.selection ||
+    intent.selectionInvalid
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -106,13 +147,22 @@ export function readNewChatIntent(event: Event): NewChatIntent {
   const callback = 'onClosed' in detail ? detail.onClosed : undefined;
   const selection =
     'selection' in detail ? readSelection(detail.selection) : undefined;
+  // A selection that was sent but does not parse is not "no selection": the
+  // start it came with must not quietly run on the dock's defaults.
+  const selectionInvalid = 'selection' in detail && !selection;
   const handoff = 'handoff' in detail ? readHandoff(detail.handoff) : undefined;
   return {
     startWithDefault:
-      'startWithDefault' in detail && detail.startWithDefault === true,
+      !selectionInvalid &&
+      'startWithDefault' in detail &&
+      detail.startWithDefault === true,
     initialPrompt: typeof prompt === 'string' ? prompt : undefined,
     ...(selection ? { selection } : {}),
+    ...(selectionInvalid ? { selectionInvalid: true } : {}),
     ...(handoff ? { handoff } : {}),
-    onClosed: typeof callback === 'function' ? () => callback() : undefined,
+    onClosed:
+      typeof callback === 'function'
+        ? (outcome: NewChatClosedOutcome) => callback(outcome)
+        : undefined,
   };
 }

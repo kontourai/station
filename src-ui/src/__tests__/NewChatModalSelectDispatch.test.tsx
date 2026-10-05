@@ -73,6 +73,7 @@ const AUTHORED_CODEX: AgentData = {
 } as unknown as AgentData;
 
 const selectionModelState = {
+  models: [] as Array<{ id: string; providerId?: string }>,
   isGlobal: true as boolean,
   selectedProject: undefined as
     | { slug: string; name: string; workingDirectory?: string }
@@ -165,7 +166,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     setModelPickerAgent: vi.fn(),
     modelChoices: {},
     setModelChoices: vi.fn(),
-    modelsForAgent: () => [],
+    modelsForAgent: () => selectionModelState.models,
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,
@@ -204,6 +205,7 @@ afterEach(() => {
   connectMock.mockReset();
   detectedEngines.length = 0;
   selectionModelState.refreshSetup = undefined;
+  selectionModelState.models = [];
 });
 
 beforeAll(() => {
@@ -443,7 +445,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     clickAgent('assistant');
     expect(onSelect).not.toHaveBeenCalled();
     const alert = screen.getByRole('alert');
-    expect(alert.textContent).toMatch(/workspace/i);
+    expect(alert.textContent).toMatch(/needs a project/i);
   });
 
   test('Enter on an unavailable agent speaks instead of silently returning', () => {
@@ -1318,7 +1320,8 @@ describe('the start composer in the dock', () => {
       const onSelect = start(vi.fn(), { draftContext: draft });
       fireEvent.change(message(), { target: { value: '  Make it small  ' } });
       fireEvent.click(startButton());
-      expect(onSelect.mock.calls[0][3]).toBe(`Make it small\n\n${legacy}`);
+      // Leading indentation stays; only the trailing spaces go.
+      expect(onSelect.mock.calls[0][3]).toBe(`  Make it small\n\n${legacy}`);
       expect(onSelect.mock.calls[0][12]).toBe(true);
     });
 
@@ -1340,6 +1343,8 @@ describe('the start composer in the dock', () => {
     test('starts the chosen Agent with the chosen Model and runtime options', async () => {
       selectionModelState.agents = [AGENT, AUTHORED_CODEX];
       selectionModelState.recommendedAgent = AGENT;
+      // The chosen Model is still in the catalog.
+      selectionModelState.models = [{ id: 'gpt-5.4', providerId: 'codex' }];
       const onSelect = start(vi.fn(), {
         startWithDefault: true,
         initialPrompt: 'From Home',
@@ -1511,6 +1516,50 @@ describe('the start composer in the dock', () => {
       screen.getByRole('button', { name: 'Agent: Assistant' }),
     ).toBeTruthy();
     expect(getContextAgent('authority-1', '__global__')).toBeUndefined();
+  });
+
+  // Review FI-2: a skills hand-off from Home opens the skills picker here.
+  test("a skills hand-off opens the visual skills list with Home's message", () => {
+    start(vi.fn(), {
+      initialPrompt: 'From Home',
+      handoff: { kind: 'skills' },
+    });
+    expect(screen.getByRole('region', { name: 'Visual skills' })).toBeTruthy();
+    expect(message().value).toBe('From Home');
+  });
+
+  // Review MED-2: an unreadable selection is said; the message is kept and
+  // nothing starts.
+  test('an unreadable selection opens the composer with the message and says so', async () => {
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      selectionInvalid: true,
+    });
+    expect(message().value).toBe('From Home');
+    expect(
+      screen.getByText(/choices sent with this chat could not be read/),
+    ).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  // Review MED-2: a Model Home chose that the dock no longer lists is not
+  // started on; the composer asks for another, message kept.
+  test("a start on Home's Model that is gone is refused, not started", async () => {
+    const onSelect = start(vi.fn(), {
+      startWithDefault: true,
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'gone-model', providerOptions: {} },
+      },
+    });
+    expect(
+      await screen.findByText(/Model you selected is no longer available/),
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   // Review finding: the dock builds a new draft object every render; a chip

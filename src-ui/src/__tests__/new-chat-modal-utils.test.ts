@@ -132,7 +132,7 @@ describe('new-chat-modal-utils', () => {
         } as any,
       ]),
     ).toEqual([
-      { value: GLOBAL_CONTEXT, label: 'No workspace', glyph: 'globe' },
+      { value: GLOBAL_CONTEXT, label: 'No project', glyph: 'globe' },
       {
         value: 'project-a',
         label: 'Project A',
@@ -149,7 +149,7 @@ describe('new-chat-modal-utils', () => {
         { slug: 'project-a', name: 'Project A' } as any,
       ] as any),
     ).toEqual([
-      { value: GLOBAL_CONTEXT, label: 'No workspace', glyph: 'globe' },
+      { value: GLOBAL_CONTEXT, label: 'No project', glyph: 'globe' },
       {
         value: 'project-a',
         label: 'Project A',
@@ -522,7 +522,7 @@ describe('new-chat-modal-utils', () => {
     expect(viewModel.currentContextOption?.value).toBe(GLOBAL_CONTEXT);
     expect(viewModel.contextOptions[0]).toEqual({
       value: GLOBAL_CONTEXT,
-      label: 'No workspace',
+      label: 'No project',
       glyph: 'globe',
     });
     expect(viewModel.filteredContextOptions).toHaveLength(2);

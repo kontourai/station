@@ -256,6 +256,33 @@ describe('HomeSurface composition', () => {
     expect(m.continueWork).toHaveBeenCalledWith(running);
   });
 
+  // Review MED-3b: the item in Continue is not repeated in the list beside
+  // it; every other item still is.
+  test('the list leaves out the item the Continue card shows, and keeps the rest', () => {
+    const newest = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const older = item(
+      'b',
+      'Audit the ref translation',
+      'Station',
+      30,
+      'Running',
+    );
+    renderHome({ workItems: [newest, older], primaryWorkItem: newest });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    expect(within(recent).queryByText('Wire the delegate verbs')).toBeNull();
+    expect(within(recent).getByText('Audit the ref translation')).toBeTruthy();
+    expect(screen.getAllByText('Wire the delegate verbs')).toHaveLength(1);
+    // The row is the lanes' full-size row, in the lanes' own list.
+    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(region.querySelector('ul.home-view__task-list')).toBeTruthy();
+  });
+
   test('Last project carries the project accent the sidebar uses', () => {
     renderHome({}, vi.fn(), { type: 'project', slug: 'station' });
     const card = screen.getByRole('button', { name: /Last project/ });
