@@ -43,8 +43,12 @@ detail, with a Back to list control, instead of squeezing both columns.
 New chat opens the start composer, the same component Home renders inline: a
 text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
 readiness, repair and Model picker), a project chip (accent, name, folder, No
-workspace), an overflow for visual skills, and Start, with up to five recent
-chats from the selected project or No project below it.
+project; a project with no folder is shown but cannot be chosen), and, beside
+Start, an overflow for visual skills. Up to five recent chats from the
+selected project or No project follow; with none, the composer stands alone.
+A start or hand-off from Home is taken only by the ambient dock, which says
+so (the intent is cancelable); Home keeps its message until the chat starts
+and gets it back if the dock's draft is dismissed.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 The shared New chat action remains directly reachable in mobile chrome and at

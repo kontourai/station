@@ -124,24 +124,27 @@ first; the two chips under the text box show what **Start** will use:
   options such as reasoning effort. Choosing a Model for an Agent also chooses
   that Agent.
 - The **project** chip shows the project's colour and name, or **No
-  workspace**. Open it to choose a project. The list shows each project's
-  folder, and the folder this chat will run in.
+  project**. Open it to choose a project. The list shows each project's
+  folder, and the folder this chat will run in. A project with no folder
+  cannot be chosen there (a chat cannot run in it); the list says so.
 - **⋯** holds **Use a visual skill**.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
-remembered for each project and for **No workspace** on this browser and
+remembered for each project and for **No project** on this browser and
 Station access, and the Model for each Agent. The project is remembered as the
 chat dock's project for new chats, the same setting the dock's project
 switcher changes, so Home and the dock always open on the same choices.
-**No workspace** clears it. A project with no folder is remembered too, but
-next time, as with the project switcher, new chats open in **No workspace**.
+**No project** clears it. If the chat dock is bound to a project with no
+folder (from the sidebar), new chats open in **No project** on both, as they
+always have.
 Runtime options such as reasoning effort apply to that start only; they are
 not remembered. A choice you make stays on both surfaces for this browser tab,
 even if another chat later runs on a different Model, until you change it or
 choose **Reset**.
 
 Until Station has loaded your projects, the chips show placeholders and
-**Start** waits, so a start never runs in a project Station has guessed. A
+**Start** waits, so a start never runs in a project Station has guessed. If
+the project list cannot be read, the composer says so instead. A
 chat started from Home opens in the chat dock's current project (by default,
 the project you last opened), so that project's default Agent and Model apply.
 With no Agent ready at all, **Start** still works: Station uses working
@@ -152,7 +155,13 @@ needed. Explicitly disabled apps remain disabled. A missing account,
 permission, or working target is shown at the point where it is needed,
 without claiming preparation succeeded. If the Agent Home chose cannot start,
 the chat dock says so and shows the composer with your message, rather than
-starting another Agent.
+starting another Agent. If what Home sent cannot be read, or its Model is
+no longer offered, the dock says so and keeps your message for you to choose
+again.
+
+Home's message is never lost. **Start** from Home empties the field once the
+chat has started; if you close the dock's draft instead, the message stays on
+Home. If no chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the pencil on the collapsed bar),
 **⌘T**, and **New chat** in **Chats and tasks** open the same composer.
@@ -161,8 +170,9 @@ In the chat dock, the **New chat** button (the pencil on the collapsed bar),
 Setup from Home continues in the chat dock. When you choose **Connect**,
 **Set up**, **Edit agent**, or **Use a visual skill** on Home, your message,
 project, Agent and Model move into the chat dock's composer, which opens the
-setup page or the skills list; Home says your draft moved. **Enable**
-prepares an Agent in place on either surface.
+setup page or the skills list; Home says your draft moved. If you then close
+that draft or cancel the setup return, the message comes back to Home.
+**Enable** prepares an Agent in place on either surface.
 
 Context handed to a new chat, such as a prepared request from a plugin page,
 shows as a chip above the text box; tap it to leave it out. With no message,
