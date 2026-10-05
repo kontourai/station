@@ -1,0 +1,7 @@
+{
+  "revision": "f40a247617222f0c1510f8df0dded4555c0c3529",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#3355: regenerated station-docs-content.ts carries the updated agents/acp/api guide text about static Agent engine attribution; the reference's claims about how shipped topics are generated and served are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
