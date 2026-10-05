@@ -41,10 +41,10 @@ describe('chat dock header keycap hints (station audit F6)', () => {
 });
 
 describe('chat dock header buttons are quiet (design round 2026-10, B1)', () => {
-  test('"Start a chat" has no override and the bar’s buttons draw no border at rest', () => {
+  test('the collapsed bar’s New chat has no override and the bar’s buttons draw no border at rest', () => {
     const overrides = ruleBodiesFor(
       indexCss,
-      '.chat-dock__header-actions button.chat-dock__counter-action',
+      '.chat-dock__header-actions button.chat-dock__collapsed-new',
     );
     expect(overrides).toHaveLength(0);
     const shared = ruleBodiesFor(
