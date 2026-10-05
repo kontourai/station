@@ -352,7 +352,7 @@ async function post(
 /** Status plus the exact response bytes, for indistinguishability checks. */
 async function raw(
   app: Hono,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT',
   path: string,
   credential: Credential,
   body?: unknown,
@@ -628,8 +628,14 @@ test('two principals each reach the MCP server with their own token and cannot u
     // Someone else's binding answers exactly like an id that does not exist:
     // same status, same bytes, on every route that names a binding.
     const assertHiddenLikeMissing = async () => {
-      const probes: Array<[string, 'GET' | 'POST', string, unknown]> = [
+      const probes: Array<[string, 'GET' | 'POST' | 'PUT', string, unknown]> = [
         ['get', 'GET', '', undefined],
+        [
+          'replace',
+          'PUT',
+          '',
+          { name: 'Taken', authRef: { env: 'TAKEN' }, expectedRevision: 1 },
+        ],
         ['revoke', 'POST', '/revoke', { expectedRevision: 1 }],
         ['bind', 'POST', '/bind', consumer('MAIL_TOKEN', 1)],
         ['unbind', 'POST', '/unbind', consumer('MAIL_TOKEN', 1)],
