@@ -372,7 +372,9 @@ export async function runAgentMcpPrompt(
       body: JSON.stringify(input),
     },
   );
-  const result = await response.json().catch(() => ({}));
+  // A request deadline is passed on; any other unreadable body becomes the
+  // generic failure below.
+  const result = await response.json().catch(unlessDeadline(() => ({})));
   if (!response.ok || !result.success)
     throw new Error(apiErrorMessage(result, 'Failed to run the MCP prompt'));
   return result.data as AgentMcpPromptRun;
@@ -677,3 +679,4 @@ export function useStatsQuery(
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';

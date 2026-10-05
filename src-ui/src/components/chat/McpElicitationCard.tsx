@@ -31,7 +31,7 @@ function initialDraft(form: McpElicitationForm): Draft {
  * out rather than sent as an empty value nobody chose; the shared validator
  * (the same one the server runs) then decides.
  */
-export function mcpElicitationContentFromDraft(
+function mcpElicitationContentFromDraft(
   form: McpElicitationForm,
   draft: Draft,
 ): McpElicitationContent {
