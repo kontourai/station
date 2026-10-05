@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/private-runner-partition.md","note":"actionlint-gate.mjs change admits one GitHub-hosted reusable call (full-regression.yml, ubuntu-22.04 jobs) from merge-queue-regression.yml; it adds no persistent or capacity-leased job and does not alter fast-feedback/heavy-host routing rules described here.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

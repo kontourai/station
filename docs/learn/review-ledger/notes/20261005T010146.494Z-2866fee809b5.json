@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"testing.md change is confined to the Merge integration and quarantine paragraphs; the routes this file gives to testing.md remain valid.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
