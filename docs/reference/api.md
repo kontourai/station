@@ -3215,6 +3215,29 @@ The promotion satisfies the pending-request route scope without granting
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 
+## Operator passkey administration (host)
+
+`GET /api/pairing/operator-passkeys` lists enrollment availability, active
+passkeys (metadata only: id, label, relying-party ID, origin, transports,
+timestamps) and pending enrollment requests **without their codes**.
+Each pending request carries `requester` (`kind`, the first eight characters of
+`deviceId`, `pairedAt`, `scope`) from the pairing registry, beside the
+device-chosen `deviceLabel`. `POST .../requests/inspect` takes
+`{ "code" }` and returns that without confirming. `POST .../requests/approve`
+takes `{ "code", "device"? }`; `device`, when sent, must be a prefix (at least
+four characters) of the requesting device's id or nothing is confirmed (409
+`device_mismatch`). `POST .../requests/deny` takes `{ "code" }` and also
+withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
+are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
+a passkey. Only the operator credential is accepted; a paired device holding
+`access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
+(429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
+(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
+consent origin under `/operator/passkeys/enroll`; see the
+[enrollment guide](../guides/operator-passkeys.md). Owner:
+[host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),
+[service](../../src-server/services/identity/operator-passkey-enrollment.ts).
+
 ## Bind a paired device to its verified person
 
 ```http

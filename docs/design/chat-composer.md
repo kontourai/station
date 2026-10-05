@@ -40,18 +40,41 @@ detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
 
-Ordinary New chat opens an unsent message draft, with compact Agent and Model
-controls and up to five recent chats from the selected project or No project.
+New chat opens the start composer, the same component Home renders inline: a
+text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
+readiness, repair and Model picker), a project chip (accent, name, folder, No
+project; a project with no folder can be chosen and runs where the server
+puts it: the home folder, or for an ACP engine its connection folder or a
+private Station-managed workspace, which the chip and list say), and, beside
+Start, an overflow for visual skills. Up to five recent chats from the
+selected project or No project follow; with none, the composer stands alone.
+A start or hand-off from Home is taken only by the ambient dock, which says
+so (the intent is cancelable); Home keeps its message until the chat starts,
+then removes only the text it sent. A dismissed dock draft (from a hand-off
+or a Start) comes back as edited there: into an empty field directly,
+otherwise behind Restore your earlier draft (a swap) and Discard it, with a
+polite announcement. Waiting drafts are kept in the tab's session storage, so
+they survive a reload but not closing the tab.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
+When Continue holds Home's only item of work, Recent work is not shown and
+View Activity sits beside the Continue heading.
+Home's Recent work rows are the same row: a decorative mark before the Project
+name is the Project's chosen icon, or, without one, a dot in its sidebar colour
+(the name stays plain text); a row read from another Station draws no mark,
+since its slug names that Station's Project. The hover card's Project row
+repeats that mark, and its Git section reads the row's local session folder, as
+in the dock.
 The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
-Choosing an Agent or Model in this draft does not start an engine. Send hands
-the message to the dock’s existing sender once. Setup actions retain the draft
+Choosing on a chip does not start an engine; a choice is remembered (Agent per
+context, Model per binding, project as the dock's binding). Start hands the
+message to the dock’s existing sender once; Home's Start hands the dock its
+exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
 explicit replacement; an unavailable preference keeps its reason and repair.
-Home’s quick-start recommendation remains runnable. The mobile overflow holds
+Home’s composer shows the same remembered Agent, repair included; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
 chat actions rather than repeating the app header’s connection-health row.
 When fullscreen chat hides that header, its actions sheet retains Station
 management and connection state.
@@ -347,7 +370,7 @@ The **Chats and tasks** picker keeps a circular **+** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
-title, Project, and a right-aligned status/time. Unresolved Agents retain their
+title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs
 approval`, …, the same words the dock row prints). Running time uses the
 recorded open-turn start; without one, the row's compact time trails the status

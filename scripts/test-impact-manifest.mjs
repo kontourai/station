@@ -1280,17 +1280,26 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     // Spawned as child processes, outside the import graph (#2923, #2924).
     pattern: 'scripts/check-documentation-freshness.mjs',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+    ],
     reason: 'scoped documentation freshness CLI and its exit status',
   },
   {
     pattern: 'scripts/record-documentation-review.mjs',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+    ],
     reason: 'review-ledger record command and its refusals',
   },
   {
     pattern: 'scripts/migrate-review-ledger.mjs',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+    ],
     reason: 'single-file review ledger migration and branch fold (#2936)',
   },
   {

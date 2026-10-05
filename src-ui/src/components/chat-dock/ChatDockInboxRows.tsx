@@ -32,12 +32,14 @@ import {
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   InboxRowChips,
   InboxRowStatusGlyph,
   InboxRowStatusLine,
 } from '../inbox-row/InboxRowStatus';
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
+import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { LazyBoundary } from '../LazyBoundary';
 import {
@@ -146,6 +148,30 @@ export function inboxRowIconAgent(
 ): SessionIconAgent | null {
   if (!agents || !item.agentSlug) return null;
   return agents.find((agent) => agent.slug === item.agentSlug) ?? null;
+}
+
+/**
+ * The project's mark before its name: its icon when it has one, else its
+ * colour as a dot. Decorative (`aria-hidden`): the name beside it is what
+ * says which project, and the colour is never applied to text.
+ */
+function ProjectAccentSwatch({
+  accent,
+  icon,
+  name,
+}: {
+  accent: string | undefined;
+  icon: string | undefined;
+  name: string;
+}) {
+  return (
+    <ProjectIcon
+      project={{ name, icon }}
+      accent={accent}
+      size={12}
+      className="inbox-row__project-accent"
+    />
+  );
 }
 
 /**
@@ -357,6 +383,19 @@ interface InboxRowProps {
    */
   gitLocation?: GitReadLocation;
   /**
+   * The row's project colour (`useProjectAccents`, the sidebar's own
+   * allocation), drawn as a decorative swatch before the project name.
+   * Never a text colour: the name stays as text in the row's own
+   * foreground. Absent (no project, or a host without the project list)
+   * draws no swatch.
+   */
+  projectAccent?: string;
+  /**
+   * The row's project icon (`useProjectIcons`), drawn in place of the colour
+   * swatch when the project has one. Absent draws the swatch.
+   */
+  projectIcon?: string;
+  /**
    * `card` (the default) is the full row for work that needs you, is
    * running or is idle. `slim` is the one-line row for snoozed and settled
    * work: status icon, title, status word, time.
@@ -429,6 +468,8 @@ export function InboxRow({
   onDraftDiscarded,
   agents,
   gitLocation,
+  projectAccent,
+  projectIcon,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
@@ -760,6 +801,11 @@ export function InboxRow({
                   <>
                     {' '}
                     ·{' '}
+                    <ProjectAccentSwatch
+                      accent={projectAccent}
+                      icon={projectIcon}
+                      name={item.projectLabel}
+                    />
                     <span className="inbox-row__project">
                       {item.projectLabel}
                     </span>
@@ -793,6 +839,11 @@ export function InboxRow({
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 <FolderGlyph />
+                <ProjectAccentSwatch
+                  accent={projectAccent}
+                  icon={projectIcon}
+                  name={item.projectLabel}
+                />
                 <span className="inbox-row__project">{item.projectLabel}</span>
               </span>
             )}
@@ -851,6 +902,8 @@ export function InboxRow({
             now,
             facts,
             gitLocation,
+            projectAccent,
+            projectIcon,
             anchor: hover.anchor,
             onClose: hover.close,
             id: hoverCardId,
@@ -866,6 +919,8 @@ export function InboxRow({
             now,
             facts,
             gitLocation,
+            projectAccent,
+            projectIcon,
             triggerRef: detailsTriggerRef,
             onClose: () => setDetailsOpen(false),
             actions: sheetMenu,
@@ -909,6 +964,14 @@ export interface InboxGroupListProps {
    * across renders for the same reason `agents` is.
    */
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
+  /**
+   * Project accents by slug (`useProjectAccents`). Rows resolve their own
+   * `projectAccent` through `rowProjectMarks`. Referentially stable, like
+   * the other shared props.
+   */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** Project icons by slug (`useProjectIcons`), resolved like the accents. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
   actionsInDetails?: InboxRowProps['actionsInDetails'];
@@ -939,6 +1002,8 @@ export function InboxGroupList({
   onDraftDiscarded,
   agents,
   gitLocationByThreadId,
+  projectAccentBySlug,
+  projectIconBySlug,
   chrome,
   actionsInDetails,
   workFacts,
@@ -999,6 +1064,7 @@ export function InboxGroupList({
           item.orchestrationThreadId ?? item.chatSessionId ?? '',
         ) ?? undefined
       }
+      {...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
     />
   );
   // #2312: Drafts untouched for a day fold under one disclosure. Nothing is

@@ -217,6 +217,17 @@ test.describe('Dock Mode Preference', () => {
     await settleDock(page);
     await dismissSetupLauncher(page);
 
+    // The collapsed, empty bar offers the one New chat action, icon-only,
+    // and no second "Start a chat" wording (owner, 2026-10).
+    const collapsedNew = page
+      .locator('.chat-dock__header')
+      .getByRole('button', { name: 'New chat', exact: true });
+    await expect(collapsedNew).toHaveCount(1);
+    await expect(collapsedNew).toHaveClass(/new-chat-action--icon/);
+    await expect(
+      page.locator('.chat-dock__header').getByText('Start a chat'),
+    ).toHaveCount(0);
+
     await page.locator('.chat-dock__header').click();
     await settleDock(page);
 

@@ -25,6 +25,7 @@ import {
   type ApprovalMode,
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
+  type DelegationProvenance,
   type EngineId,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
@@ -370,6 +371,8 @@ export interface DelegateTaskInput {
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
+  /** #3323: see `AuthorityBearingForegroundMessageInput.delegationProvenance`. */
+  delegationProvenance?: DelegationProvenance;
   /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
   delegationAttestation?: string;
   /** #2601: see `AuthorityBearingForegroundMessageInput.stationControlToolCall`. */
@@ -477,6 +480,14 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
    * `resolveRequestDelegation` settled, and forwards it as it is.
    */
   stationControlToolCall?: true;
+  /**
+   * #3323: set only by a dispatch route, beside the `delegation` its
+   * `resolveRequestDelegation` settled: how Station came by that context.
+   * The start stamps it (`DELEGATION_PROVENANCE_METADATA_KEY`) after the
+   * reserved-key strip. Never forwarded to another Station, which judges its
+   * own request.
+   */
+  delegationProvenance?: DelegationProvenance;
 };
 
 /**
@@ -2123,7 +2134,11 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    if (response.status === 403 && forbiddenMessage)
+    // The paired-Station sentence is for a paired (peer) target's 403 only.
+    // `current` and `ssh` fall through to the local refusal below: this
+    // Station's own 403 keeps its typed code (#2708, #2795), and an SSH
+    // target is not a paired Station.
+    if (response.status === 403 && forbiddenMessage && target.kind === 'peer')
       throw new PeerPortableFollowUpError(forbiddenMessage);
     // The sentinel itself stays code-free: a peer's diagnostics never cross
     // this seam. Only this Station's own answer rides along, as a cause the
@@ -4946,7 +4961,12 @@ export async function delegateTask(
         // only an unresolved claim, so it names no parent here.
         ...(!input.stationControlToolCall &&
         input.delegation?.parentConversationId
-          ? { parentConversationId: input.delegation.parentConversationId }
+          ? {
+              parentConversationId: input.delegation.parentConversationId,
+              ...(input.delegationProvenance
+                ? { delegationProvenance: input.delegationProvenance }
+                : {}),
+            }
           : {}),
       });
     }
@@ -5514,6 +5534,15 @@ export async function delegateTask(
             environmentId: target.environmentId,
           },
           resourceAdmissionIntent: 'delegated_background',
+          // #3323: stamped beside `delegation` after the reserved-key strip.
+          ...(input.delegation && input.delegationProvenance
+            ? {
+                delegationProvenance: {
+                  context: input.delegation,
+                  provenance: input.delegationProvenance,
+                },
+              }
+            : {}),
           ...(input.taskRoomInvocationAdmission
             ? {
                 receiverExecutionAdmission: input.taskRoomInvocationAdmission,
@@ -5836,6 +5865,8 @@ export async function executeExecutionTargetMessage(
       delegation: _claimedDelegation,
       delegationAttestation: _claimedAttestation,
       stationControlToolCall: _stationControlToolCall,
+      // #3323: this Station's judgement of its own request; never forwarded.
+      delegationProvenance: _delegationProvenance,
       ...remoteInput
     } = input;
     const forwarded = input.stationControlToolCall
@@ -6217,6 +6248,15 @@ export async function executeExecutionTargetMessage(
                   resourceId: input.receiverAdmission.resourceId,
                   localProjectId:
                     input.receiverAdmission.admittedProject.localProjectId,
+                },
+              }
+            : {}),
+          // #3323: stamped beside `delegation` after the reserved-key strip.
+          ...(input.delegation && input.delegationProvenance
+            ? {
+                delegationProvenance: {
+                  context: input.delegation,
+                  provenance: input.delegationProvenance,
                 },
               }
             : {}),

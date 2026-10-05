@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import {
   buildLastChosenModelBindingKey,
   trackLastChosenModel,
 } from '../hooks/lastChosenModel';
 import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
+import { trackContextAgent } from '../hooks/useRecentAgents';
 
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
@@ -265,6 +268,35 @@ describe('the default selection stays current for a mounted surface', () => {
     expect(view.result.current.defaultSelection.effectiveModel.id).toBe(
       'newer',
     );
+  });
+
+  test('an Agent remembered elsewhere meanwhile becomes the default', () => {
+    const OTHER = { ...OLD, slug: 'other', name: 'Other' } as AgentData;
+    state.agents = [OLD, OTHER];
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+      >
+        {children}
+      </AuthorityPersistenceContext.Provider>
+    );
+    const view = renderHook(
+      () =>
+        useNewChatSelectionModel({
+          agents: [OLD, OTHER],
+          projects: [PROJECT],
+          selectedContext: '__global__',
+        }),
+      { wrapper },
+    );
+    expect(view.result.current.defaultSelection.agent?.slug).toBe('assistant');
+    // Another surface (the dock's draft) remembers a choice for this
+    // context; this mounted surface follows without remounting.
+    act(() => trackContextAgent('ns-1', '__global__', 'other'));
+    expect(view.result.current.defaultSelection.agent?.slug).toBe('other');
+    // A choice for a different context leaves this one alone.
+    act(() => trackContextAgent('ns-1', 'alpha', 'assistant'));
+    expect(view.result.current.defaultSelection.agent?.slug).toBe('other');
   });
 
   test('a project context is resolved only once its detail has loaded', () => {

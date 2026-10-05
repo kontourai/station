@@ -2209,7 +2209,7 @@ button:hover {
   cursor: pointer;
 }
 
-/* archive#800: the collapsed dock's "Start a chat" label is a real action, not
+/* archive#800: the collapsed dock's New chat action is a real action, not
    text inheriting the header's pointer cursor; it shares this family. */
 .chat-dock__header-actions button:hover,
 .chat-dock__header-actions button:focus-visible {
@@ -6451,7 +6451,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* The collapsed chat dock renders as a bottom bar on mobile. At the desktop
-     38px the "Chat Dock" label + gear / "Start a chat" / send / chevron
+     38px the "Chat Dock" label + gear / New chat / send / chevron
      controls are cramped, so give the bar comfortable room on small screens.
      The chat-dock snap math reads this same variable (collapsedHeight), so the
      Collapsed snap/drag-release continues to land on the actual bar height.

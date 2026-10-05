@@ -196,6 +196,13 @@ const ARGS: Record<string, Record<string, unknown>> = {
     decision: 'decline',
   },
   interrupt_task: { taskId: 't' },
+  send_to_session: {
+    sessionId: 'session-1',
+    text: 'hello',
+    requestKey: 'key-0000001',
+  },
+  interrupt_session: { sessionId: 'session-1', requestKey: 'key-0000002' },
+  wait_session: { sessionId: 'session-1', until: 'idle' },
   update_config: { updates: { theme: 'dark' } },
   reindex_knowledge: {},
   search_knowledge: { query: 'q' },

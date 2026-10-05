@@ -26,6 +26,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -108,6 +109,16 @@ admission. `account-response-guard.ts` rechecks delivery with zero prefetch. The
 application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
+
+Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+[enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
+owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
+[registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
+private SQLite file of public keys. The browser half is mounted on the consent
+listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
+the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
+behind `station environment operator passkeys`. Nothing authenticates with an
+enrolled passkey yet.
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
@@ -1151,6 +1162,44 @@ covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
+
+## SessionMessageDelivery
+
+An agent that messages another Session must not deliver twice when it retries,
+and must not start a second turn on a Session that is already running one.
+[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
+is the one place that decides which of those a message becomes, for Station
+Control's `send_to_session` and later for delegation result delivery.
+
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
+decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+`no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
+pure rule: `auto` steers a running Session and starts an idle one, `start`
+refuses a running one, and `steer` refuses an idle one. The module performs
+nothing itself: the caller supplies the ports for the busy check, a turn start,
+and a receipted steer, each already authorized.
+
+**Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
+`clientInputId` of a steer, so the durable turn claim and the steer receipt
+deduplicate a re-driven delivery. `decided` pins the branch a first attempt took
+(recorded through `recordDecision` before its effect), so a re-drive never turns a
+steer into a start because the turn ended in between. An engine without mid-turn
+input answers the steer as `session_busy`, never as a start.
+
+**Composition and evidence.** The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) checks
+the caller's scope and keys each request in the durable
+[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+(owned by `EventStore`) before it reaches this module. `wait_session` observes
+the same lifecycle fold the steer path reads through
+[SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
+which never acts on the Session. Source tests are the
+[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
+Their presence is not an executed receipt against a real engine. See
+[agent configuration](../guides/self-configuring-agent.md#session-control) for the
+tool-level behavior.
 
 ## ConversationSessionLineage
 

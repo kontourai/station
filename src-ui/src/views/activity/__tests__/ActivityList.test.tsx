@@ -39,7 +39,14 @@ const useLiveActivityQuery = vi.hoisted(() =>
 // cross-surface block below feeds typed summaries, since it also passes them
 // to `buildOrchestrationItems` / `buildWorkFacts` directly.
 let sessions: Array<Record<string, unknown> | OrchestrationSessionSummary> = [];
+// The Project list every accent is allocated over (`useProjectAccents`).
+let projectList: ProjectMetadata[] = [];
 
+// Home's start composer reads the server through React Query; this suite
+// compares the work surfaces, so it stands in as the bare form.
+vi.mock('../../../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: () => <form aria-label="Start work" />,
+}));
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
   useShowSurfacePage: () => vi.fn(),
@@ -72,6 +79,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   return {
     ...real,
     useAgentsQuery: () => ({ data: [], isLoading: false }),
+    useProjectsQuery: () => ({
+      data: projectList,
+      isLoading: false,
+      isSuccess: true,
+      isError: false,
+    }),
     useOrchestrationSessionsQuery: () => ({
       data: sessions,
       isLoading: false,
@@ -141,10 +154,13 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { createRef } from 'react';
+import { type ComponentProps, createRef } from 'react';
 import { renderWithIsolatedConnections } from '../../../__tests__/renderWithIsolatedConnections';
 import { ChatDockInboxPanel } from '../../../components/chat-dock/ChatDockInboxPanel';
 import { MobileTaskSwitcher } from '../../../components/chat-dock/MobileTaskSwitcher';
+import type { ProjectMetadata } from '../../../contexts/ProjectsContext';
+import { useGitLocationByThreadId } from '../../../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../../../hooks/useProjectAccents';
 import { HomeSurface } from '../../home/HomeSurface';
 import { buildOrchestrationItems } from '../../home/home-view-model';
 import { buildWorkFacts } from '../../home/work-facts';
@@ -853,6 +869,38 @@ describe('Activity list', () => {
  * host feeds it (Home and the dock from the shared item + facts derivation,
  * Activity from the session list).
  */
+/** The dock's inbox as `ChatDock` feeds it: the shared row-fact hooks. */
+function DockInboxHost(
+  props: Omit<
+    ComponentProps<typeof ChatDockInboxPanel>,
+    'gitLocationByThreadId' | 'projectAccentBySlug'
+  >,
+) {
+  return (
+    <ChatDockInboxPanel
+      {...props}
+      gitLocationByThreadId={useGitLocationByThreadId()}
+      projectAccentBySlug={useProjectAccents()}
+    />
+  );
+}
+
+/** The phone sheet as `ChatDock` feeds it. */
+function SheetHost(
+  props: Omit<
+    ComponentProps<typeof MobileTaskSwitcher>,
+    'gitLocationByThreadId' | 'projectAccentBySlug'
+  >,
+) {
+  return (
+    <MobileTaskSwitcher
+      {...props}
+      gitLocationByThreadId={useGitLocationByThreadId()}
+      projectAccentBySlug={useProjectAccents()}
+    />
+  );
+}
+
 describe('Home, the dock and Activity agree on one item', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -863,6 +911,7 @@ describe('Home, the dock and Activity agree on one item', () => {
       removeEventListener: vi.fn(),
     }));
     summaries = [];
+    projectList = [];
   });
 
   afterEach(() => {
@@ -964,7 +1013,7 @@ describe('Home, the dock and Activity agree on one item', () => {
       />,
     ).container;
     const dock = render(
-      <ChatDockInboxPanel
+      <DockInboxHost
         items={items}
         activeChatSessionId={null}
         openChatSessionIds={[]}
@@ -982,7 +1031,7 @@ describe('Home, the dock and Activity agree on one item', () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MobileTaskSwitcher
+        <SheetHost
           open
           tasks={items}
           activeChatSessionId={null}
@@ -1059,5 +1108,35 @@ describe('Home, the dock and Activity agree on one item', () => {
       expect(root.textContent).not.toMatch(/Needs you \(\d+\)/);
       expect(root.querySelector('.chat-dock-inbox__group-count')).toBeNull();
     }
+  });
+
+  test('a project wears one colour on Home, in the dock and in the sheet', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    // Three projects, so the accent is set-aware: `station` sorts last and
+    // takes the third colour of the palette, not the first a one-project
+    // allocation would give it.
+    projectList = (['alpha', 'beta', 'station'] as const).map((slug) => ({
+      id: `p-${slug}`,
+      slug,
+      name: slug,
+      hasWorkingDirectory: true,
+      layoutCount: 0,
+      hasKnowledge: false,
+    }));
+    summaries = [runningSummary(minutesAgo(3))];
+    const { home, dock, sheet } = surfaces();
+    const swatch = (root: HTMLElement) => {
+      const swatches = root.querySelectorAll<HTMLElement>(
+        '.inbox-row__project-accent',
+      );
+      expect(swatches).toHaveLength(1);
+      // Decorative: the project's name beside it is the identity.
+      expect(swatches[0].getAttribute('aria-hidden')).toBe('true');
+      return swatches[0].style.backgroundColor;
+    };
+    expect(swatch(home)).toBe('var(--event-tool-call)');
+    expect(swatch(dock)).toBe(swatch(home));
+    expect(swatch(sheet)).toBe(swatch(home));
   });
 });

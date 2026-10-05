@@ -1,0 +1,7 @@
+{
+  "revision": "241bfe879370faf6c63e3b1503522b9bf3eaeaca",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed the route delta: a re-driven refusal now carries pinned: true and a distinct text. The module section's claims (pinned branch survives a re-drive; steer-unsupported answers session_busy) hold. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/session-agent-control.ts"]}
+  ]
+}

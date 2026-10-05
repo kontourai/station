@@ -5380,6 +5380,7 @@ describe('upgrade', () => {
 
 describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () => {
   let serverModule: any;
+  const makeTrackedUiDir = trackTempDirs();
   let uiDir: string;
   let upstream: import('node:http').Server | ReturnType<typeof serve> | null =
     null;
@@ -6136,6 +6137,35 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     );
     // The upstream still sees the rewritten Host it dials.
     expect(seen?.host).toBe(`127.0.0.1:${upstreamPort}`);
+  });
+
+  it('#2894: attests that its client sent forwarding headers, and discards a client-supplied attestation', async () => {
+    uiDir = makeTrackedUiDir('station-ui-client-forwarded-');
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    const seen: Record<string, string | string[] | undefined>[] = [];
+    await startUpstream((req, res) => {
+      seen.push(req.headers);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{}');
+    });
+    serverModule = await startServer();
+    const send = (headers: Record<string, string>) =>
+      fetch(`http://127.0.0.1:${serverModule.port}/api/projects`, {
+        headers,
+      });
+
+    // A forwarder in front of this proxy (its client) added X-Forwarded-For.
+    expect((await send({ 'x-forwarded-for': '100.96.12.7' })).status).toBe(200);
+    // A client claiming the marker itself, with no forwarding header.
+    expect(
+      (await send({ 'x-station-proxy-client-forwarded': '1' })).status,
+    ).toBe(200);
+    // An ordinary direct client.
+    expect((await send({})).status).toBe(200);
+
+    expect(
+      seen.map((headers) => headers['x-station-proxy-client-forwarded']),
+    ).toEqual(['1', undefined, undefined]);
   });
 
   it('keeps hosted readiness and readiness-file navigation behind the resolved tenant attestation', async () => {
