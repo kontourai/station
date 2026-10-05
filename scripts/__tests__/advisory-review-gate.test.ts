@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { isGeneratedPath } from '../advisory-review-gate.mjs';
 
 const exec = promisify(execFile);
@@ -21,12 +21,10 @@ type World = {
   fail?: string;
 };
 
+const makeTempDir = trackTempDirs();
 const servers: Server[] = [];
-const directories: string[] = [];
 afterEach(() => {
   for (const server of servers.splice(0)) server.close();
-  for (const dir of directories.splice(0))
-    rmSync(dir, { recursive: true, force: true });
 });
 
 function pullRequest(overrides: Record<string, unknown> = {}) {
@@ -78,8 +76,7 @@ async function runGate(
   servers.push(server);
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   const port = (server.address() as AddressInfo).port;
-  const directory = mkdtempSync(join(tmpdir(), 'advisory-gate-'));
-  directories.push(directory);
+  const directory = makeTempDir('advisory-gate-');
   const outputFile = join(directory, 'output');
   writeFileSync(outputFile, '');
   let code = 0;
