@@ -53,6 +53,7 @@ import {
   toolRequestIsPlainCall,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -1572,6 +1573,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...input.metadata,
         cwd: input.cwd,
         usageAccountKey,
+        // station#3320: a resumed query() continues the cost total its
+        // transcript saved, so the usage fold must not add this process's
+        // figures to the previous one's. Set from the same cursor that
+        // `buildOptions` passes as the SDK `resume` option, and written
+        // after the caller's metadata so a copied marker cannot claim a
+        // resume this process did not make.
+        [NATIVE_SESSION_RESUMED_METADATA_KEY]: record.attemptedResumeCursor
+          ? true
+          : undefined,
       },
     });
     const baseConfiguredMetadata: Record<string, unknown> = {

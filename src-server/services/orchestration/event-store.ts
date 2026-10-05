@@ -65,7 +65,13 @@ import {
 } from '@kontourai/station-shared/sqlite-corruption-marker';
 import { watchForSqliteCorruption } from '@kontourai/station-shared/sqlite-corruption-watch';
 import { explicitCorruption } from '@kontourai/station-shared/sqlite-integrity';
-import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
+import {
+  CumulativeCostSegments,
+  isUsableCost,
+  NATIVE_SESSION_RESUMED_METADATA_KEY,
+  providerCostScope,
+  providerUsageScope,
+} from '@kontourai/station-shared/usage-fold';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   canonicalPersistedRequestId,
@@ -477,7 +483,9 @@ const SESSION_INVENTORY_GROUP_METHODS: Readonly<
 
 /**
  * The receipt facts joined onto each `token-usage.updated` row: its
- * conversation, task, model, credential account and engine process epoch.
+ * conversation, task, model and credential account. The cost segment is
+ * not a per-row join: it is replayed over each thread's whole history by
+ * `cumulativeCostSegmentsFor`.
  * Shared by the windowed usage rollup and the per-conversation usage tree so
  * the two cannot attribute one event differently.
  */
@@ -509,11 +517,7 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                     AND json_valid(config.payload)
                     AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
                     AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
-                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json,
-                (SELECT COUNT(*) FROM orchestration_events epoch
-                  WHERE epoch.thread_id = e.thread_id
-                    AND epoch.method = 'session.started'
-                    AND epoch.sequence <= e.sequence) AS process_epoch
+                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
 `;
 
 /** A session that names a parent conversation; see `listSessionsNamingParents`. */
@@ -530,7 +534,12 @@ export interface UsageReceiptEventRow {
   conversationId: string;
   taskId?: string;
   model?: string;
-  processEpoch: number;
+  /**
+   * The `CumulativeCostSegments` key of this event's cost figure when its
+   * provider's cost is `engine-process-cumulative`; figures sharing a key
+   * restate one running total (station#3320).
+   */
+  costSegment?: string;
   accountKey?: string;
 }
 
@@ -4650,10 +4659,22 @@ export class EventStore {
         options.after?.eventId ?? null,
         options.limit + 1,
       ) as any[];
-    return rows.map((row) => this.mapUsageReceiptEventRow(row));
+    const costSegments = this.cumulativeCostSegmentsFor(
+      rows
+        .filter(
+          (row) =>
+            providerCostScope(row.provider) === 'engine-process-cumulative',
+        )
+        .map((row) => row.thread_id as string),
+    );
+    return rows.map((row) => this.mapUsageReceiptEventRow(row, costSegments));
   }
 
-  private mapUsageReceiptEventRow(row: any): UsageReceiptEventRow {
+  private mapUsageReceiptEventRow(
+    row: any,
+    costSegments: ReadonlyMap<string, string>,
+  ): UsageReceiptEventRow {
+    const costSegment = costSegments.get(row.id);
     const accountKey: unknown =
       typeof row.credential_profile_json === 'string'
         ? JSON.parse(row.credential_profile_json)
@@ -4664,7 +4685,7 @@ export class EventStore {
       ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof accountKey === 'string' ? { accountKey } : {}),
-      processEpoch: Number(row.process_epoch),
+      ...(costSegment !== undefined ? { costSegment } : {}),
     };
   }
 
@@ -4683,6 +4704,8 @@ export class EventStore {
     const unique = [...new Set(threadIds)];
     if (unique.length === 0 || limit < 1) return [];
     const rows: UsageReceiptEventRow[] = [];
+    // Segments replay each thread's whole history, not just the rows read.
+    const costSegments = this.cumulativeCostSegmentsFor(unique);
     for (
       let offset = 0;
       offset < unique.length && rows.length < limit;
@@ -4701,7 +4724,8 @@ export class EventStore {
           LIMIT ?`,
         )
         .all(...chunk, limit - rows.length) as unknown[];
-      for (const row of found) rows.push(this.mapUsageReceiptEventRow(row));
+      for (const row of found)
+        rows.push(this.mapUsageReceiptEventRow(row, costSegments));
     }
     return rows;
   }
@@ -4822,6 +4846,69 @@ export class EventStore {
       }
     }
     return { sessions: result, truncated };
+  }
+
+  /**
+   * Event id -> `CumulativeCostSegments` key for every cumulative cost figure
+   * in the given threads, replayed over each thread's whole history (not the
+   * receipt window) through the same derivation `foldUsageEvents` uses, so a
+   * receipt rollup and the session total agree on which figures supersede
+   * which (station#3320). Reads only `session.started` and cost-bearing
+   * usage rows of threads the caller has already selected under its owner
+   * and tenant bounds.
+   */
+  private cumulativeCostSegmentsFor(
+    threadIds: readonly string[],
+  ): Map<string, string> {
+    const segments = new Map<string, string>();
+    // Chunks partition by THREAD, never inside one, so every thread's whole
+    // history still replays through one segmenter in sequence order.
+    for (const chunk of this.chunkArray(
+      [...new Set(threadIds)],
+      EVENT_STORE_BATCH_CHUNK_SIZE,
+    )) {
+      const evidence = this.db
+        .prepare(
+          `SELECT id, thread_id, provider, method,
+                  CASE WHEN method = 'session.started'
+                        AND json_type(payload, '$.metadata.${NATIVE_SESSION_RESUMED_METADATA_KEY}') = 'true'
+                       THEN 1 ELSE 0 END AS resumed,
+                  CASE WHEN method = 'token-usage.updated'
+                       THEN json_extract(payload, '$.reportedCostUsd') END AS cost
+             FROM orchestration_events
+            WHERE thread_id IN (${chunk.map(() => '?').join(', ')})
+              AND method IN ('session.started', 'token-usage.updated')
+              AND json_valid(payload)
+              AND (method = 'session.started'
+                OR json_type(payload, '$.reportedCostUsd') IN ('integer', 'real'))
+            ORDER BY thread_id, sequence`,
+        )
+        .all(...chunk) as Array<{
+        id: string;
+        thread_id: string;
+        provider: string;
+        method: string;
+        resumed: number;
+        cost: unknown;
+      }>;
+      let thread: string | undefined;
+      let segmenter = new CumulativeCostSegments();
+      for (const row of evidence) {
+        if (row.thread_id !== thread) {
+          thread = row.thread_id;
+          segmenter = new CumulativeCostSegments();
+        }
+        if (row.method === 'session.started') {
+          segmenter.sessionStarted(row.resumed === 1);
+        } else if (
+          providerCostScope(row.provider) === 'engine-process-cumulative' &&
+          isUsableCost(row.cost)
+        ) {
+          segments.set(row.id, segmenter.observe(row.cost));
+        }
+      }
+    }
+    return segments;
   }
 
   /**

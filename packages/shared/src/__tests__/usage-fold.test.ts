@@ -249,8 +249,8 @@ describe('foldUsageEvents', () => {
     });
 
     it('sums one running total per engine process across a restart', () => {
-      // A resume builds a NEW query(), so its running total starts at zero;
-      // the earlier process's spend still happened.
+      // A restart WITHOUT resume begins a new transcript, so its running
+      // total starts at zero; the earlier process's spend still happened.
       const aggregate = foldUsageEvents([
         ev({ method: 'session.started', provider: 'claude' } as any),
         ev({
@@ -267,6 +267,128 @@ describe('foldUsageEvents', () => {
       ]);
 
       expect(aggregate.reportedCostUsd).toBeCloseTo(0.5, 10);
+    });
+
+    describe('across a resumed engine process (station#3320)', () => {
+      // The exact shapes the Claude adapter publishes: `session.started`
+      // from `startTrackedSession`, and the cost-bearing usage event from
+      // the `result` handler. Figures are from a live Agent SDK 0.3.278
+      // probe: a fresh query reported 0.030603, the same transcript resumed
+      // reported 0.0324923 (already including the first), and a fresh
+      // query without resume reported 0.0088783.
+      const started = (resumed: boolean) =>
+        ev({
+          method: 'session.started',
+          provider: 'claude',
+          sessionId: 't1',
+          initialState: 'created',
+          metadata: {
+            cwd: '/work',
+            usageAccountKey: undefined,
+            ...(resumed ? { nativeSessionResumed: true } : {}),
+          },
+        } as any);
+      const cost = (reportedCostUsd: number) =>
+        ev({
+          method: 'token-usage.updated',
+          provider: 'claude',
+          turnId: `r${n}`,
+          promptTokens: 10,
+          completionTokens: 3,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 4_000,
+          contextTokens: 4_010,
+          reportedCostUsd,
+        } as any);
+
+      it('keeps only the latest running total when a process resumes its transcript', () => {
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.030603),
+          started(true),
+          cost(0.0324923),
+        ]);
+        // Summing per process would report 0.0630953: the first process's
+        // spend counted twice.
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.0324923, 10);
+      });
+
+      it('still sums across a restart that did not resume', () => {
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.0324923),
+          started(false),
+          cost(0.0088783),
+        ]);
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.0413706, 10);
+      });
+
+      it('keeps an equal restatement after a resume in the same running total', () => {
+        // The resume handshake result (`num_turns: 0`) restates the saved
+        // total unchanged before the next turn adds to it.
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.030603),
+          started(true),
+          cost(0.030603),
+          cost(0.0324923),
+        ]);
+        // Opening a new total on the equal figure would report 0.0630953.
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.0324923, 10);
+      });
+
+      it('follows a chain of resumes and a later fresh restart', () => {
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.1),
+          cost(0.2),
+          started(true),
+          cost(0.25),
+          started(true),
+          cost(0.3),
+          started(false),
+          cost(0.05),
+        ]);
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.35, 10);
+      });
+
+      it('keeps the earlier spend when a resume of a missing transcript reports zero', () => {
+        // A resume whose transcript is gone ends with an error result
+        // carrying `total_cost_usd: 0` (confirmed live); Station then
+        // starts a fresh process.
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.4),
+          started(true),
+          cost(0),
+          started(false),
+          cost(0.1),
+        ]);
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.5, 10);
+      });
+
+      it('sums a lower figure after a resume rather than letting it overwrite the running total', () => {
+        // A resumed transcript that saved no total restarts from zero; a
+        // running total never decreases, so the lower figure is new spend.
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.4),
+          started(true),
+          cost(0.1),
+          cost(0.15),
+        ]);
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.55, 10);
+      });
+
+      it('sums an unmarked restart as before (events written before the marker existed)', () => {
+        const aggregate = foldUsageEvents([
+          ev({ method: 'session.started', provider: 'claude' } as any),
+          cost(0.030603),
+          ev({ method: 'session.started', provider: 'claude' } as any),
+          cost(0.0324923),
+        ]);
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.0630953, 10);
+      });
     });
 
     it('sums an undeclared provider cost per turn (the fail-safe direction)', () => {
