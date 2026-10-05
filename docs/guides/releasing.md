@@ -121,9 +121,11 @@ opted-in PR; a failing run cannot. The merge queue owns combined-candidate check
 and the final merge.
 
 When the queue removes a PR, the same workflow's `dequeue` job explains it on
-the PR. Each new removal gets a new comment, so the owner is notified, and the
+the PR. Each reported removal gets a new comment, so the owner is notified, and the
 app's earlier reports are minimized as outdated; a removal already reported is
-not reported again. A failing-checks removal names the merge group's failing checks, their
+not reported again. Reports for one PR run one at a time, and GitHub keeps only
+the newest waiting run, so a quick burst of removals can skip a middle one; the
+last report always describes the latest removal. A failing-checks removal names the merge group's failing checks, their
 error annotations (each failing `fast-checks` shard annotates its failed tests)
 and the run's artifacts, including the shard's redacted Vitest JSON report. A
 conflict removal runs `git merge-tree` against current main without checking out
