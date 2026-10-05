@@ -168,6 +168,36 @@ function masqueradesAsReserved(toolName: string, reserved: string): boolean {
 }
 
 /**
+ * Whether `toolName` is an authentic call to the in-process `station-browser`
+ * server, the only call the server-wide session grant is offered for and
+ * honoured on. All of these must hold, the same guards the #90 N2 auto-approval
+ * applies, plus the delivery fact:
+ *  - the name is `'authentic'`: the engine generated it from the `mcpServers`
+ *    config key Station handed it (an ACP self-reported name never qualifies);
+ *  - it is the raw `mcp__station-browser__<tool>` form with the reserved id as
+ *    its REAL server segment (`masqueradesAsReserved`): the canonicalised
+ *    `station-browser_x` form, and `mcp__station-browser_x__y`, never qualify;
+ *  - no authored tool server squats on the id; and
+ *  - the session was actually delivered the built-in in-process server.
+ */
+export function isAuthenticStationBrowserCall(
+  toolName: string,
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+  toolNameProvenance: ExternalToolNameProvenance,
+  deliveredInProcess: boolean,
+): boolean {
+  if (!deliveredInProcess || toolNameProvenance !== 'authentic') return false;
+  if (!toolName.startsWith('mcp__')) return false;
+  if (reservedBuiltinServerForTool(toolName) !== STATION_BROWSER_MCP_SERVER_ID)
+    return false;
+  if (masqueradesAsReserved(toolName, STATION_BROWSER_MCP_SERVER_ID))
+    return false;
+  return !(resolvedToolServers ?? []).some(
+    (server) => server.id === STATION_BROWSER_MCP_SERVER_ID,
+  );
+}
+
+/**
  * #2584: the bounded-write station-control tools every agent may call without
  * an authored pattern (`SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS`). Granted by
  * EXACT identity, never through pattern matching: a pattern or a

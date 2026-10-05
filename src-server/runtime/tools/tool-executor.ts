@@ -5,6 +5,7 @@
 
 export {
   canonicalizeExternalToolName,
+  isAuthenticStationBrowserCall,
   isAutoApproved,
   isAutoApprovedExternalTool,
   isIntrinsicStationEngineGrant,

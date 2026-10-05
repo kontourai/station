@@ -7,7 +7,7 @@ import {
 } from '../contexts/ActiveChatsContext';
 import { useToast } from '../contexts/ToastContext';
 
-export type ToolApprovalAction = 'once' | 'trust' | 'deny';
+export type ToolApprovalAction = 'once' | 'trust' | 'trust-server' | 'deny';
 
 /** The decision an orchestration adapter's `respondToRequest` understands. */
 function orchestrationDecisionForToolApproval(
@@ -18,7 +18,7 @@ function orchestrationDecisionForToolApproval(
   // tool, not a local list.
   return action === 'once'
     ? 'accept'
-    : action === 'trust'
+    : action === 'trust' || action === 'trust-server'
       ? 'acceptForSession'
       : 'decline';
 }
@@ -80,6 +80,9 @@ export function useToolApproval(apiBase: string) {
           requestId: approvalId,
           requestEventId: approvalEventId,
           decision: orchestrationDecisionForToolApproval(action),
+          // The typed choice, never the label: the same `acceptForSession`
+          // decision, widened to the whole Station browser server.
+          ...(action === 'trust-server' ? { sessionGrantScope: 'server' } : {}),
         });
       } else {
         const result = await submitToolApproval(approvalId, approved);
@@ -138,7 +141,7 @@ export function useToolApproval(apiBase: string) {
               ...part,
               needsApproval: false,
               cancelled: !approved,
-              approvalStatus: (action === 'trust'
+              approvalStatus: (action === 'trust' || action === 'trust-server'
                 ? 'auto-approved'
                 : approved
                   ? 'user-approved'

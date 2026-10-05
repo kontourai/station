@@ -46,6 +46,7 @@ export function conversationPartToContentParts(
       ? { approvalToolName: part.approvalToolName }
       : {}),
     approvalSessionGrant: part.approvalSessionGrant,
+    approvalServerGrant: part.approvalServerGrant,
     approvalStatus: part.approvalStatus,
   } as ContentPart;
   // Preserve the same tool-result identity and sanitized blocks as the live

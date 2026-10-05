@@ -439,6 +439,96 @@ describe('#2316 inline approval card', () => {
     },
   );
 
+  describe('the Station browser server grant', () => {
+    const LABEL = 'Allow the Station browser for this session';
+    const TOOL = 'mcp__station-browser__browser_click';
+
+    const openedEventId = () => {
+      const opened = windowEvents.current.find(
+        (entry) =>
+          (entry.event as Record<string, unknown>).method === 'request.opened',
+      );
+      if (!opened) throw new Error('no request.opened event');
+      return (opened.event as Record<string, unknown>).eventId;
+    };
+
+    /** The browser call as the Claude adapter publishes it. */
+    function useBrowserCall(authentic: boolean) {
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method === 'tool.started')
+          return { ...entry, event: { ...event, toolName: TOOL } };
+        if (event.method === 'request.opened')
+          return {
+            ...entry,
+            event: {
+              ...event,
+              title: `Allow ${TOOL}`,
+              payload: {
+                ...(event.payload as Record<string, unknown>),
+                toolName: TOOL,
+                ...(authentic ? { stationBrowserServer: true } : {}),
+              },
+            },
+          };
+        return entry;
+      });
+    }
+
+    test('an authentic call offers the choice beside the per-tool one, and choosing it sends the typed scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      useBrowserCall(true);
+      renderCard();
+
+      await screen.findByRole('button', {
+        name: 'Allow station-browser.browser_click for this session',
+      });
+      fireEvent.click(await screen.findByRole('button', { name: LABEL }));
+
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toEqual({
+        type: 'respondToRequest',
+        threadId: 'claude-child-b',
+        requestId: 'req-claude-b',
+        // The exact prompt the user saw.
+        expectedRequestEventId: openedEventId(),
+        decision: 'acceptForSession',
+        sessionGrantScope: 'server',
+      });
+    });
+
+    test('the per-tool choice sends no scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      useBrowserCall(true);
+      renderCard();
+
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'Allow station-browser.browser_click for this session',
+        }),
+      );
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({ decision: 'acceptForSession' });
+      expect(calls[0].body).not.toHaveProperty('sessionGrantScope');
+    });
+
+    test('a call the adapter did not find authentic does not show it, whatever its name', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      useBrowserCall(false);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(screen.queryByRole('button', { name: LABEL })).toBeNull();
+      expect(screen.queryByText(LABEL)).toBeNull();
+    });
+
+    test('an ordinary tool card never shows it', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(screen.queryByRole('button', { name: LABEL })).toBeNull();
+    });
+  });
+
   test('#2916: a plan exit card offers no session grant', async () => {
     stubFetch(() => Response.json({ success: true, data: {} }));
     windowEvents.current = claudeBashAwaitingApproval().map((entry) => {

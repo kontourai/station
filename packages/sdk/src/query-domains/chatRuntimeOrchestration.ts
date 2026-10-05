@@ -1069,6 +1069,8 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
   answers?: HarnessQuestionAnswers;
   apiBase?: string;
 }): Promise<void> {
@@ -1081,6 +1083,9 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.sessionGrantScope
+        ? { sessionGrantScope: input.sessionGrantScope }
+        : {}),
       ...(input.answers ? { answers: input.answers } : {}),
     },
     input.apiBase,

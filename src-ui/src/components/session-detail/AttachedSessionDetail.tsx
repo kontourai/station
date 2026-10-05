@@ -72,6 +72,7 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
     approvalEventId: _approvalEventId,
     approvalToolName: _approvalToolName,
     approvalSessionGrant: _approvalSessionGrant,
+    approvalServerGrant: _approvalServerGrant,
     ...rest
   } = part as TranscriptPart & Record<string, unknown>;
   return rest as TranscriptPart;

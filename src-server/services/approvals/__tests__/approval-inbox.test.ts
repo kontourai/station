@@ -142,6 +142,68 @@ describe('approval inbox notifications', () => {
     });
   });
 
+  describe('the Station browser server grant', () => {
+    const open = (payload: Record<string, unknown>) =>
+      emit('orchestration:event', {
+        event: {
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          payload,
+          provider: 'claude',
+          requestId: 'req-browser',
+          requestType: 'approval',
+          threadId: 'thread-browser',
+          title: 'Allow station-browser',
+        },
+      });
+    const browserCall = {
+      toolName: 'mcp__station-browser__browser_click',
+      toolInput: {},
+    };
+
+    test('is offered beside the per-tool action, only when the adapter found the call authentic, and sends the typed scope', async () => {
+      await open({ ...browserCall, stationBrowserServer: true });
+      const [card] = await notificationService.list();
+      expect(card.actions?.map((action) => action.label)).toEqual([
+        'Allow Once',
+        'Allow station-browser.browser_click for this session',
+        'Allow the Station browser for this session',
+        'Deny',
+      ]);
+
+      await notificationService.action(card.id, 'acceptForSessionServer');
+      expect(orchestrationService.dispatch).toHaveBeenCalledWith({
+        type: 'respondToRequest',
+        threadId: 'thread-browser',
+        requestId: 'req-browser',
+        decision: 'acceptForSession',
+        sessionGrantScope: 'server',
+      });
+    });
+
+    test('the per-tool action sends no scope', async () => {
+      await open({ ...browserCall, stationBrowserServer: true });
+      const [card] = await notificationService.list();
+      await notificationService.action(card.id, 'acceptForSession');
+      expect(orchestrationService.dispatch).toHaveBeenCalledWith({
+        type: 'respondToRequest',
+        threadId: 'thread-browser',
+        requestId: 'req-browser',
+        decision: 'acceptForSession',
+      });
+    });
+
+    test('a call named like the browser tool, without the adapter finding, is not offered it', async () => {
+      await open(browserCall);
+      const [card] = await notificationService.list();
+      expect(card.actions?.map((action) => action.id)).toEqual([
+        'accept',
+        'acceptForSession',
+        'decline',
+      ]);
+    });
+  });
+
   test('#2916: a plan exit is persisted without a session-grant action', async () => {
     await emit('orchestration:event', {
       event: {

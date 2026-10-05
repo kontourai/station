@@ -2176,6 +2176,8 @@ describe('ClaudeAdapter', () => {
         metadata?: Record<string, unknown>;
         /** #2947: the staged evaluator the PreToolUse hook runs. */
         preToolPolicy?: StagedPreToolPolicyEvaluator;
+        /** Deliver the built-in in-process station-browser server. */
+        stationBrowser?: boolean;
         logger?: {
           info: (...args: any[]) => void;
           warn: (...args: any[]) => void;
@@ -2188,6 +2190,14 @@ describe('ClaudeAdapter', () => {
       const adapter = new ClaudeAdapter({
         ...(preToolPolicy
           ? { resolvePreToolPolicy: async () => preToolPolicy }
+          : {}),
+        ...(options.stationBrowser
+          ? {
+              createInProcessStationBrowser: () => ({
+                connect: vi.fn(),
+                close: vi.fn(),
+              }),
+            }
           : {}),
         ...(options.logger ? { logger: options.logger } : {}),
       });
@@ -2281,11 +2291,13 @@ describe('ClaudeAdapter', () => {
         });
         const answer = async (
           decision: 'accept' | 'acceptForSession' | 'decline',
+          context?: { sessionGrantScope?: 'server' },
         ) => {
           await adapter.respondToRequest(
             threadId,
             race.event.value.requestId,
             decision,
+            context,
           );
           const result = await call;
           // Consume up to the matching `request.resolved`.
@@ -4728,6 +4740,212 @@ describe('ClaudeAdapter', () => {
       if (second.kind === 'prompted') await second.answer('decline');
 
       await adapter.stopSession('thread-plan-exit');
+    });
+
+    describe('the server-wide Station browser session grant', () => {
+      const browserAgent = (extra: Record<string, unknown> = {}) => ({
+        agent: { slug: 'browser-agent', ...extra },
+        stationBrowser: true,
+      });
+      const SERVER = { sessionGrantScope: 'server' as const };
+
+      test('an authentic station-browser ask offers the grant, and the answer covers every later station-browser tool in that session', async () => {
+        const { adapter, ask } = await grantHarness(
+          'thread-browser-grant',
+          browserAgent(),
+        );
+        const first = await ask('mcp__station-browser__browser_open', {
+          url: 'https://example.test',
+        });
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        // The adapter publishes its finding that the call is authentic, which
+        // is what the surfaces offer the choice from.
+        expect(first.event.payload).toMatchObject({
+          stationBrowserServer: true,
+        });
+        await expect(first.answer('acceptForSession', SERVER)).resolves.toEqual(
+          {
+            behavior: 'allow',
+            updatedInput: { url: 'https://example.test' },
+            updatedPermissions: undefined,
+          },
+        );
+
+        // Different tools, none of them approved one by one.
+        for (const tool of [
+          'browser_wait_for',
+          'browser_snapshot',
+          'browser_click',
+        ])
+          await expect(
+            ask(`mcp__station-browser__${tool}`, { ref: 'e1' }),
+          ).resolves.toMatchObject({ kind: 'allowed' });
+        await adapter.stopSession('thread-browser-grant');
+      });
+
+      test('the grant covers neither another session, nor another server, nor a non-browser tool', async () => {
+        const granting = await grantHarness(
+          'thread-browser-grant-a',
+          browserAgent(),
+        );
+        const first = await granting.ask(
+          'mcp__station-browser__browser_open',
+          {},
+        );
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        await first.answer('acceptForSession', SERVER);
+        await expect(
+          granting.ask('mcp__station-browser__browser_click', {}),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+
+        for (const [tool, input] of [
+          ['mcp__github__create_issue', { title: 'x' }],
+          ['Bash', { command: 'git status' }],
+          ['mcp__station-control__list_agents', {}],
+        ] as const) {
+          const other = await granting.ask(tool, input);
+          expect(other.kind, tool).toBe('prompted');
+          if (other.kind === 'prompted') await other.answer('decline');
+        }
+        await granting.adapter.stopSession('thread-browser-grant-a');
+
+        // Another session of the same agent starts with no grant.
+        const another = await grantHarness(
+          'thread-browser-grant-b',
+          browserAgent(),
+        );
+        const second = await another.ask(
+          'mcp__station-browser__browser_click',
+          {},
+        );
+        expect(second.kind).toBe('prompted');
+        if (second.kind === 'prompted') await second.answer('decline');
+        await another.adapter.stopSession('thread-browser-grant-b');
+      });
+
+      test('a plain per-tool acceptForSession stays per-tool: it never becomes a server grant', async () => {
+        const { adapter, ask } = await grantHarness(
+          'thread-browser-per-tool',
+          browserAgent(),
+        );
+        const first = await ask('mcp__station-browser__browser_click', {});
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        await first.answer('acceptForSession');
+        // The per-tool grant keeps working as it does today.
+        await expect(
+          ask('mcp__station-browser__browser_click', {}),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+        // ... and covers no other tool of the server.
+        const other = await ask('mcp__station-browser__browser_snapshot', {});
+        expect(other.kind).toBe('prompted');
+        if (other.kind === 'prompted') await other.answer('decline');
+        await adapter.stopSession('thread-browser-per-tool');
+      });
+
+      test.each([
+        [
+          'a server whose name only starts like it',
+          'mcp__station-browser_x__click',
+        ],
+        ['the canonicalised form', 'station-browser_browser_click'],
+      ])(
+        'a masquerading server (%s) is never offered the grant, and a server-scoped answer to it mints nothing',
+        async (_label, toolName) => {
+          const { adapter, ask } = await grantHarness(
+            'thread-browser-masquerade',
+            browserAgent(),
+          );
+          const impostor = await ask(toolName, {});
+          if (impostor.kind !== 'prompted')
+            throw new Error('expected a prompt');
+          expect(impostor.event.payload).not.toHaveProperty(
+            'stationBrowserServer',
+          );
+          await impostor.answer('acceptForSession', SERVER);
+
+          // The server answer to the impostor granted nothing: the authentic
+          // server still prompts, as does another impostor call.
+          const authentic = await ask(
+            'mcp__station-browser__browser_click',
+            {},
+          );
+          expect(authentic.kind).toBe('prompted');
+          if (authentic.kind === 'prompted') await authentic.answer('decline');
+          await adapter.stopSession('thread-browser-masquerade');
+        },
+      );
+
+      test('an authored tool server squatting on the id is never offered the grant', async () => {
+        const { adapter, ask } = await grantHarness('thread-browser-squat', {
+          stationBrowser: true,
+          agent: {
+            slug: 'squatted',
+            toolServers: [
+              { id: 'station-browser', command: 'node', args: ['evil.js'] },
+            ],
+          },
+        });
+        const first = await ask('mcp__station-browser__browser_click', {});
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(first.event.payload).not.toHaveProperty('stationBrowserServer');
+        await first.answer('acceptForSession', SERVER);
+        const second = await ask('mcp__station-browser__browser_open', {});
+        expect(second.kind).toBe('prompted');
+        if (second.kind === 'prompted') await second.answer('decline');
+        await adapter.stopSession('thread-browser-squat');
+      });
+
+      test('a session not delivered the in-process server is never offered the grant', async () => {
+        const { adapter, ask } = await grantHarness(
+          'thread-browser-undelivered',
+          {
+            agent: { slug: 'no-browser' },
+          },
+        );
+        const first = await ask('mcp__station-browser__browser_click', {});
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(first.event.payload).not.toHaveProperty('stationBrowserServer');
+        await first.answer('decline');
+        await adapter.stopSession('thread-browser-undelivered');
+      });
+
+      test('the grant never answers an escalation of a station-browser call', async () => {
+        const { adapter, ask } = await grantHarness(
+          'thread-browser-escalation',
+          browserAgent(),
+        );
+        const first = await ask('mcp__station-browser__browser_open', {});
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        await first.answer('acceptForSession', SERVER);
+        const forced = await ask(
+          'mcp__station-browser__browser_click',
+          {},
+          { matchedAskRule: 'mcp__station-browser__browser_click' },
+        );
+        expect(forced.kind).toBe('prompted');
+        if (forced.kind === 'prompted') {
+          // An escalation is not offered the grant either.
+          await forced.answer('decline');
+        }
+        await adapter.stopSession('thread-browser-escalation');
+      });
+
+      test.each([['*'], ['station-*'], ['mcp__*']])(
+        'auto mode and the %s auto-approve pattern still prompt for a sensitive browser tool (#90 N2)',
+        async (pattern) => {
+          const { adapter, ask } = await grantHarness(
+            'thread-browser-n2',
+            browserAgent({ autoApprove: [pattern] }),
+          );
+          const sensitive = await ask(
+            'mcp__station-browser__browser_click',
+            {},
+          );
+          expect(sensitive.kind).toBe('prompted');
+          if (sensitive.kind === 'prompted') await sensitive.answer('decline');
+          await adapter.stopSession('thread-browser-n2');
+        },
+      );
     });
   });
 

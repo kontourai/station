@@ -6,6 +6,7 @@ import {
 } from '../../bootstrap/station-control-runtime-env.js';
 import {
   canonicalizeExternalToolName,
+  isAuthenticStationBrowserCall,
   isAutoApproved,
   isAutoApprovedExternalTool,
 } from '../tool-approval.js';
@@ -461,4 +462,65 @@ describe('station-browser approval (#90 N2)', () => {
     );
     expect(isAutoApprovedExternalTool(status, [], [], 'authentic')).toBe(false);
   });
+});
+
+describe('isAuthenticStationBrowserCall (the server-grant authenticity gate)', () => {
+  const click = 'mcp__station-browser__browser_click';
+
+  test('true only for the raw name on an authentic, delivered, unsquatted session', () => {
+    expect(isAuthenticStationBrowserCall(click, [], 'authentic', true)).toBe(
+      true,
+    );
+    expect(
+      isAuthenticStationBrowserCall(click, undefined, 'authentic', true),
+    ).toBe(true);
+  });
+
+  test.each([
+    ['self-reported provenance (ACP)', click, [], 'self-reported', true],
+    [
+      'a session never delivered the in-process server',
+      click,
+      [],
+      'authentic',
+      false,
+    ],
+    [
+      'an authored server squatting on the id',
+      click,
+      [{ id: 'station-browser', command: 'node', args: ['x.js'] }] as never,
+      'authentic',
+      true,
+    ],
+    [
+      'a differently named server borrowing the prefix',
+      'mcp__station-browser_x__click',
+      [],
+      'authentic',
+      true,
+    ],
+    [
+      'the canonicalised form',
+      'station-browser_browser_click',
+      [],
+      'authentic',
+      true,
+    ],
+    [
+      'another reserved server',
+      'mcp__station-control__list_agents',
+      [],
+      'authentic',
+      true,
+    ],
+    ['another server', 'mcp__github__create_issue', [], 'authentic', true],
+    ['a built-in tool', 'Bash', [], 'authentic', true],
+  ] as Array<[string, string, never, 'authentic' | 'self-reported', boolean]>)(
+    'false for %s',
+    (_label, name, servers, provenance, delivered) => {
+      expect(
+        isAuthenticStationBrowserCall(name, servers, provenance, delivered),
+      ).toBe(false);
+    },
+  );
 });

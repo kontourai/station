@@ -24,6 +24,8 @@ export async function answerOrchestrationRequest(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
+    /** With `acceptForSession`: widen the grant to the Station browser server. */
+    sessionGrantScope?: 'server';
   },
 ): Promise<OrchestrationAnswerOutcome> {
   try {
@@ -36,6 +38,9 @@ export async function answerOrchestrationRequest(
         ? { expectedRequestEventId: request.requestEventId }
         : {}),
       decision: request.decision,
+      ...(request.sessionGrantScope
+        ? { sessionGrantScope: request.sessionGrantScope }
+        : {}),
     });
     return 'answered';
   } catch (error) {

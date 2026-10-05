@@ -105,6 +105,8 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
   answers?: HarnessQuestionAnswers;
 }
 

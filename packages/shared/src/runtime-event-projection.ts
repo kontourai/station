@@ -8,7 +8,10 @@ import type {
   MessagePart,
 } from './conversation-message.js';
 import { readHarnessQuestionnaire } from './harness-questions.js';
-import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
+import {
+  toolRequestServerGrantFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
 function repeatedRuntimeErrorText(message: string, count: number) {
@@ -949,6 +952,9 @@ export function projectRuntimeEventsToMessages(
             target.approvalToolName = toolName;
           else delete target.approvalToolName;
           target.approvalSessionGrant = toolRequestSessionGrantFromPayload(
+            ev.payload,
+          );
+          target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
           target.state = 'awaiting-approval';

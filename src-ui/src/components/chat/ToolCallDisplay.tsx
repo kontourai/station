@@ -1,4 +1,6 @@
 import {
+  STATION_BROWSER_SERVER_GRANT_LABEL,
+  type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
   toolRequestSessionGrant,
@@ -63,6 +65,8 @@ export interface ToolCallData {
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  /** See `MessagePart.approvalServerGrant`. */
+  approvalServerGrant?: ToolRequestServerGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -80,7 +84,7 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'deny',
+  action: 'once' | 'trust' | 'trust-server' | 'deny',
 ) => void | Promise<ToolApprovalOutcome | void>;
 
 interface ToolCallDisplayProps {
@@ -302,6 +306,7 @@ function ToolCallDisplayComponent({
             <ToolApprovalButtons
               onApprove={onApprove}
               grantToolName={grantToolName}
+              serverGrant={toolCall.approvalServerGrant ?? 'none'}
               sessionGrant={
                 // A part without the projected grant (a registry-route
                 // request) is judged by its tool name alone.
@@ -349,8 +354,11 @@ function ToolApprovalButtons({
   onApprove,
   grantToolName,
   sessionGrant,
+  serverGrant,
 }: {
   onApprove: ToolApprovalHandler;
+  /** Whether the request also offers the Station browser server grant. */
+  serverGrant: ToolRequestServerGrant;
   /** The request's reported tool name — never the row's display name. */
   grantToolName?: string;
   sessionGrant: ToolRequestSessionGrant;
@@ -359,7 +367,7 @@ function ToolApprovalButtons({
     'idle' | 'sending' | 'sent' | 'already-settled'
   >('idle');
   const [failure, setFailure] = useState<string | null>(null);
-  const decide = (action: 'once' | 'trust' | 'deny') => {
+  const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
     if (phase !== 'idle') return;
     setPhase('sending');
     setFailure(null);
@@ -410,6 +418,16 @@ function ToolApprovalButtons({
               same grant. It names the REQUEST's tool, never the row's
               `toolName`, which can be an ACP title — a whole command line. */}
           {grantLabel}
+        </button>
+      )}
+      {serverGrant === 'server' && (
+        <button
+          type="button"
+          onClick={() => decide('trust-server')}
+          disabled={busy}
+          className="tool-call__approve-btn tool-call__approve-btn--secondary"
+        >
+          {STATION_BROWSER_SERVER_GRANT_LABEL}
         </button>
       )}
       <button

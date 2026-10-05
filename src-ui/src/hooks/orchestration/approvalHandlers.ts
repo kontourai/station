@@ -1,10 +1,12 @@
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
+  STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
@@ -113,6 +115,9 @@ export function raiseRequestOpenedToast(
     agentName,
     conversationTitle: chat.title,
     grantLabel,
+    ...(toolRequestServerGrantFromPayload(event.payload) === 'server'
+      ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
+      : {}),
   });
 }
 
@@ -122,6 +127,8 @@ type ApprovalToastView = {
   agentName: string;
   conversationTitle?: string;
   grantLabel?: string;
+  /** Set only when the request offers the Station browser server grant. */
+  serverGrantLabel?: string;
 };
 
 function showApprovalToast(
@@ -129,8 +136,11 @@ function showApprovalToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
 ) {
-  const answer = (decision: 'accept' | 'acceptForSession' | 'decline') => {
-    void answerFromToast(apiBase, event, view, decision);
+  const answer = (
+    decision: 'accept' | 'acceptForSession' | 'decline',
+    sessionGrantScope?: 'server',
+  ) => {
+    void answerFromToast(apiBase, event, view, decision, sessionGrantScope);
   };
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
@@ -154,6 +164,15 @@ function showApprovalToast(
               label: view.grantLabel,
               variant: 'secondary' as const,
               onClick: () => answer('acceptForSession'),
+            },
+          ]
+        : []),
+      ...(view.serverGrantLabel
+        ? [
+            {
+              label: view.serverGrantLabel,
+              variant: 'secondary' as const,
+              onClick: () => answer('acceptForSession', 'server'),
             },
           ]
         : []),
@@ -192,6 +211,7 @@ async function answerFromToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
+  sessionGrantScope?: 'server',
 ) {
   // The request stops waiting on the user at the click, not at the engine's
   // `request.resolved`: the queue card is already gone, and a status surface
@@ -209,6 +229,7 @@ async function answerFromToast(
       requestId: event.requestId,
       requestEventId: event.eventId,
       decision,
+      ...(sessionGrantScope ? { sessionGrantScope } : {}),
     });
     if (outcome === 'already-settled') {
       toastStore.show(

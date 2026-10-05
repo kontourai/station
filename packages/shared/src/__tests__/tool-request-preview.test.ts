@@ -3,6 +3,7 @@ import {
   claudeAskEscalates,
   directoryPermissionUpdateKind,
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+  STATION_BROWSER_SERVER_GRANT_LABEL,
   sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
   toolRequestDisplayName,
@@ -14,6 +15,8 @@ import {
   toolRequestNeedsPerson,
   toolRequestPreview,
   toolRequestPreviewFromPayload,
+  toolRequestServerGrant,
+  toolRequestServerGrantFromPayload,
   toolRequestSessionGrant,
   toolRequestSessionGrantFromPayload,
 } from '../tool-request-preview.js';
@@ -1142,5 +1145,64 @@ describe('#1545 D4: an engine that names no argument bag (Codex)', () => {
     expect(toolRequestPreview('mcp__x__y', { changes: [{ diff: 'x' }] })).toBe(
       '{"changes":[{"diff":"x"}]}',
     );
+  });
+});
+
+describe('the server-wide Station browser grant', () => {
+  const browserCall = {
+    toolName: 'mcp__station-browser__browser_click',
+    authenticStationBrowser: true,
+  };
+
+  test('is offered for an authentic station-browser plain call, beside the per-tool grant', () => {
+    expect(toolRequestServerGrant(browserCall)).toBe('server');
+    // The per-tool choice is unchanged.
+    expect(toolRequestSessionGrant(browserCall)).toBe('tool');
+    expect(STATION_BROWSER_SERVER_GRANT_LABEL).toBe(
+      'Allow the Station browser for this session',
+    );
+  });
+
+  test.each([
+    [
+      'a name alone never proves authenticity',
+      { toolName: browserCall.toolName },
+    ],
+    [
+      'an unauthenticated flag value',
+      { ...browserCall, authenticStationBrowser: 'true' },
+    ],
+    [
+      'a rule-forced ask (an escalation)',
+      { ...browserCall, matchedAskRule: 'mcp__station-browser__browser_click' },
+    ],
+    [
+      'an ask the engine says no standing allowance may answer',
+      { ...browserCall, suppressAlwaysAllowRule: true },
+    ],
+  ])('is not offered for %s', (_label, request) => {
+    expect(toolRequestServerGrant(request)).toBe('none');
+  });
+
+  test('reads the adapter finding off the request.opened payload, never the name', () => {
+    const payload = {
+      toolName: 'mcp__station-browser__browser_click',
+      toolInput: {},
+    };
+    expect(toolRequestServerGrantFromPayload(payload)).toBe('none');
+    expect(
+      toolRequestServerGrantFromPayload({
+        ...payload,
+        stationBrowserServer: true,
+      }),
+    ).toBe('server');
+    expect(
+      toolRequestServerGrantFromPayload({
+        ...payload,
+        toolName: 'mcp__github__create_issue',
+        stationBrowserServer: false,
+      }),
+    ).toBe('none');
+    expect(toolRequestServerGrantFromPayload(undefined)).toBe('none');
   });
 });
