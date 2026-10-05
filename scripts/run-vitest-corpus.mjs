@@ -7,6 +7,7 @@ import {
 } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
@@ -619,6 +620,20 @@ export function emitResult(result) {
     process.stderr.write(
       `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n`,
     );
+    const headings = stripVTControlCharacters(
+      `${result.stdout ?? ''}\n${result.stderr ?? ''}`,
+    )
+      .split('\n')
+      .filter((line) =>
+        /^\s*FAIL\s+\S+\.(?:test|spec)\.[cm]?[jt]sx?\s+>/.test(line),
+      );
+    if (headings.length)
+      process.stderr.write(
+        `[vitest-corpus] ${result.name} failure headings:\n${headings
+          .slice(0, 32)
+          .map((line) => line.slice(0, 1_024))
+          .join('\n')}\n`,
+      );
     process.stdout.write(
       `[vitest-corpus] ${result.name} stdout tail:\n${tail(result.stdout ?? '') || '<empty>'}\n`,
     );
