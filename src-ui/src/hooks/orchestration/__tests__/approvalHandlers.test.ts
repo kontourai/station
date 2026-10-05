@@ -144,6 +144,17 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
   });
 
+  test('#3382: a title shown in place of a tool name is sanitised too', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const NEL = String.fromCodePoint(0x85);
+    handleRequestOpenedEvent('http://localhost:1', {
+      ...requestOpened({ command: 'ls' }),
+      title: `echo ${RLO}a${NEL}b\nrm -rf /`,
+    } as Parameters<typeof handleRequestOpenedEvent>[1]);
+
+    expect(approvalToast().toolName).toBe('echo a b \u23ce rm -rf /');
+  });
+
   test('#2916: a plan exit offers no session grant', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',
