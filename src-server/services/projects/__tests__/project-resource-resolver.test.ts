@@ -437,7 +437,7 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
   });
 
   /** Hangs any folder under /mnt, like a dead mount; reads the rest. */
-  function mountFs(hung: ReturnType<typeof vi.fn>) {
+  function mountFs(hung: (path: string) => Promise<never>) {
     const isHung = (path: string) => path.startsWith('/mnt/');
     return {
       exists: (path: string) =>
