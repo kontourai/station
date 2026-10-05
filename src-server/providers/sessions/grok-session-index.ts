@@ -4,31 +4,31 @@ import type { AttachedSessionSourceOutcome } from './attached-session-source.js'
 
 /**
  * Incremental index of the Grok session tree, `<group>/<session>/`, for
- * discovery under bounded per-poll work.
+ * discovery under bounded per-poll work. Station's own ACP workspaces are
+ * excluded by the caller before any of this runs, which leaves ordinary trees
+ * small; the bounds below are for a pathological one, and every bound defers
+ * work to a later poll instead of dropping it.
  *
- * Station's own ACP probes leave a prompt-less session per run, so the tree
- * can outgrow any single poll. Work per poll is bounded three ways, and every
- * bound defers work to a later poll instead of dropping it:
+ * - Directory reads. Groups that changed since the last poll (a session
+ *   folder was added or removed) are read first, newest first; the rest
+ *   follow in a rotation that advances past whatever a poll reached. An
+ *   unchanged group is not re-read, and a group whose last read ran out of
+ *   budget does not jump the queue.
+ * - Stats: listed sessions, this poll's new folders, the never-statted
+ *   backlog, then a rotating sweep with the rest of the budget. Grok renames
+ *   a fresh summary.json into a session folder on every append, so the folder
+ *   mtime tracks activity.
+ * - Inspections: new folders in changed groups, then folders with activity
+ *   since they were last seen, then the backlog in admission order.
  *
- * - Directory reads. A group (one working directory) is re-read only when its
- *   own mtime changed, which is exactly when a session folder was added or
- *   removed in it. A read the entry budget cuts short, or one that could not
- *   admit every folder, makes the next poll start one group later, so no
- *   group is starved.
- * - Stats. Listed sessions first, then never-statted folders (carried until
- *   reached), then recently changed prompt-less ones, then a reserved
- *   rotating sweep of everything else. Grok renames a fresh summary.json into
- *   a session folder on every append, so the folder mtime tracks activity.
- * - Inspections, newest first.
- *
- * Groups the caller excludes (Station's own ACP workspaces) are skipped
- * before any stat. The rest are visited newest first.
- *
- * The index itself holds at most `maxEntries` folders. When it is full, a new
- * folder evicts an inspected prompt-less folder from a group this poll has not
- * read, and that group is marked for a re-read, so stale entries never block
- * new ones. A single group with more folders than the entry budget is only
- * partly listed, in directory order.
+ * The index holds at most `maxEntries` folders. When it is full, a folder in
+ * a changed group evicts an inspected, settled, prompt-less folder from a
+ * group not read this poll (that group is re-read later). Other folders are
+ * admitted only while the waiting work fits one poll, so an over-cap tree is
+ * covered as a sliding window that never outpaces inspection. A folder
+ * inspected within its 2 s mtime tick is not settled. A single group with
+ * more folders than the entry budget is only partly listed, in directory
+ * order.
  */
 
 export interface IndexedInspection {
@@ -67,6 +67,10 @@ interface Entry {
 
 interface Group {
   members: Set<string>;
+  /** The group's mtime when a poll last saw it. */
+  seenAt?: number;
+  /** Its last read ran out of budget: it does not jump the queue again. */
+  truncated?: boolean;
   /** mtime at the last complete read; absent when the group must be re-read. */
   cleanAt?: number;
   /**
@@ -77,8 +81,6 @@ interface Group {
   partial?: { mtime: number; entries: number };
 }
 
-/** A prompt-less folder this recent is re-checked every poll. */
-const RECENT_MS = 60 * 60 * 1000;
 /** A group read within this window of its mtime may still be changing. */
 const MTIME_SETTLE_MS = 2000;
 /** Sorting more never-statted names than this would block; use list order. */
@@ -95,8 +97,9 @@ export class GrokSessionIndex {
   private readonly groups = new Map<string, Group>();
   private readonly unstatted = new Set<string>();
   private readonly listed = new Set<string>();
-  private readonly recent = new Set<string>();
   private readonly uninspected = new Set<string>();
+  /** Inspected before, and changed since. */
+  private readonly changed = new Set<string>();
   private readonly unrecognized = new Map<
     string,
     AttachedSessionSourceOutcome
@@ -133,7 +136,8 @@ export class GrokSessionIndex {
     if (listing.rejected) raise('rejected_candidate');
     if (listing.refused) raise('candidate_limit');
 
-    // Stats: listed, never statted, recent, then the reserved sweep.
+    // Stats: listed, this poll's admissions, never-statted backlog, then a
+    // rotating sweep of everything else with the rest of the budget.
     const statted = new Set<string>();
     let stats = 0;
     const stat = async (path: string, budget: number): Promise<boolean> => {
@@ -145,64 +149,67 @@ export class GrokSessionIndex {
       this.restat(path);
       return true;
     };
-    // Never statted: this poll's admissions newest first, then the backlog.
-    // Grok's generated session ids are UUIDv7, so a greater name is newer; a
-    // backlog too large to sort without blocking keeps admission order.
-    const admitted = this.admittedThisPoll.reverse();
+    // Admissions follow the newest-first group order. In the backlog, Grok's
+    // generated session ids are UUIDv7, so a greater name is newer; a backlog
+    // too large to sort without blocking keeps admission order.
+    const admitted = this.admittedThisPoll;
     let backlog: Iterable<string> = this.unstatted;
     if (this.unstatted.size <= MAX_SORTED_UNSTATTED) {
       backlog = [...this.unstatted].sort((left, right) =>
         left < right ? 1 : -1,
       );
     }
-    const recentSince = this.options.now() - RECENT_MS;
-    const recent: string[] = [];
-    for (const path of this.recent) {
-      await this.tick();
-      const modifiedAt = this.entries.get(path)?.modifiedAt;
-      if (modifiedAt === undefined || modifiedAt < recentSince) {
-        this.recent.delete(path);
-      } else {
-        recent.push(path);
-      }
-    }
     const priorityBudget = this.options.maxStats - this.options.maxSweepStats;
-    const order = function* (lists: Iterable<string>[]) {
-      for (const list of lists) yield* list;
-    };
-    for (const path of order([this.listed, admitted, backlog, recent])) {
+    for (const path of chain([this.listed, admitted, backlog])) {
       if (!(await stat(path, priorityBudget))) {
         raise('candidate_limit');
         break;
       }
     }
-    for (let swept = 0; swept < this.options.maxSweepStats; ) {
+    // The sweep re-checks everything else in rotation with what is left of
+    // the budget (at least its reserved share), at most once around a poll.
+    for (let visited = 0; visited < this.entries.size; visited += 1) {
       this.sweep ??= this.entries.keys();
       const next = this.sweep.next();
       if (next.done) {
         this.sweep = undefined;
-        if (swept === 0 || this.entries.size <= statted.size) break;
         continue;
       }
-      if (statted.has(next.value)) continue;
       if (!(await stat(next.value, this.options.maxStats))) break;
-      swept += 1;
     }
 
-    // Inspections, newest first.
-    // Only the newest `maxInspections` are needed: a bounded heap with
-    // yields, not a sort of every waiting folder.
-    const newest = new NewestHeap(this.options.maxInspections);
-    for (const path of this.uninspected) {
-      await this.tick();
-      const modifiedAt = this.entries.get(path)?.modifiedAt;
-      if (modifiedAt !== undefined) newest.offer(path, modifiedAt);
+    // Inspections: this poll's admissions newest first, then folders that
+    // changed since they were inspected (newest first), then the backlog in
+    // admission order. Every admitted folder is reached in a bounded number
+    // of polls, and new activity is never queued behind old backlog.
+    let changed: Iterable<string> = this.changed;
+    if (this.changed.size <= MAX_SORTED_UNSTATTED) {
+      changed = [...this.changed].sort(
+        (left, right) =>
+          (this.entries.get(right)?.modifiedAt ?? 0) -
+          (this.entries.get(left)?.modifiedAt ?? 0),
+      );
     }
-    if (newest.offered > this.options.maxInspections) raise('candidate_limit');
-    for (const path of newest.drainNewestFirst()) {
-      await this.tick(INSPECTION_YIELD_EVERY);
+    const inspected = new Set<string>();
+    let inspections = 0;
+    for (const path of chain([admitted, changed, this.uninspected])) {
       const entry = this.entries.get(path);
-      if (!entry) continue;
+      if (
+        !entry ||
+        !this.uninspected.has(path) ||
+        entry.modifiedAt === undefined ||
+        inspected.has(path)
+      ) {
+        await this.tick();
+        continue;
+      }
+      if (inspections >= this.options.maxInspections) {
+        raise('candidate_limit');
+        break;
+      }
+      inspections += 1;
+      inspected.add(path);
+      await this.tick(INSPECTION_YIELD_EVERY);
       this.record(path, entry, inspect(path, entry.dirName));
     }
 
@@ -297,12 +304,27 @@ export class GrokSessionIndex {
 
     const readThisPoll = new Set<string>();
     let complete = rootRead === 'complete';
-    const start = included.length ? this.groupOffset % included.length : 0;
-    for (let index = 0; index < included.length; index += 1) {
-      const { path: groupPath, mtime } =
-        included[(start + index) % included.length]!;
+    // Groups that changed since the last poll (a new session folder, or a
+    // new group) go first, newest first; the rest follow in a rotation that
+    // advances whenever a poll could not cover or admit everything.
+    const fresh: typeof included = [];
+    const rest: typeof included = [];
+    for (const item of included) {
+      const known = this.groups.get(item.path);
+      (known?.seenAt !== item.mtime && !known?.truncated ? fresh : rest).push(
+        item,
+      );
+    }
+    const start = rest.length ? this.groupOffset % rest.length : 0;
+    const ordered = [...fresh, ...rest.slice(start), ...rest.slice(0, start)];
+    // Rotated groups this poll got to; the next poll starts after them.
+    let rotatedReads = 0;
+    const rotated = new Set(rest.map((item) => item.path));
+    for (const { path: groupPath, mtime } of ordered) {
+      if (budget > 0 && rotated.has(groupPath)) rotatedReads += 1;
       const group = this.groups.get(groupPath) ?? { members: new Set() };
       this.groups.set(groupPath, group);
+      group.seenAt = mtime;
       if (group.cleanAt === mtime) continue;
       if (group.partial?.mtime === mtime && group.partial.entries >= budget) {
         complete = false;
@@ -313,6 +335,7 @@ export class GrokSessionIndex {
         break;
       }
       readThisPoll.add(groupPath);
+      const isFresh = !rotated.has(groupPath);
       const budgetBefore = budget;
       const refusedBefore = refused;
       const seen = new Set<string>();
@@ -322,7 +345,7 @@ export class GrokSessionIndex {
         // Once the index refuses a folder, it refuses the rest of this poll.
         if (
           !this.entries.has(path) &&
-          (refused || !this.admit(path, groupPath, name, readThisPoll))
+          (refused || !this.admit(path, groupPath, name, readThisPoll, isFresh))
         ) {
           refused = true;
         }
@@ -334,6 +357,7 @@ export class GrokSessionIndex {
       }
       if (read === 'partial') {
         complete = false;
+        group.truncated = true;
         // Refused names must be offered again once eviction makes room.
         if (refused === refusedBefore) {
           group.partial = { mtime, entries: budgetBefore };
@@ -343,6 +367,7 @@ export class GrokSessionIndex {
         break;
       }
       delete group.partial;
+      group.truncated = false;
       // Deleting while iterating a Set is safe; no copy of a large group.
       for (const path of group.members) {
         await this.tick();
@@ -357,24 +382,40 @@ export class GrokSessionIndex {
     }
     // Any poll that could not admit everything starts one group later next
     // time, so a refusal never pins the same groups to the front.
-    this.groupOffset = complete && !refused ? 0 : start + 1;
+    this.groupOffset =
+      complete && !refused ? 0 : start + Math.max(1, rotatedReads);
     return { complete, rejected, refused };
   }
 
-  /** Add a folder, evicting a stale one when the index is full. */
+  /**
+   * Add a folder, evicting a stale one when the index is full. A folder in a
+   * group that changed since the last poll (where new sessions appear) is
+   * always worth room. Otherwise, when full, a folder is admitted only while
+   * the waiting stat and inspection work fits one poll, so rotating through
+   * an over-cap tree never outpaces inspection: the window slides, and every
+   * folder in it is inspected before it can be evicted.
+   */
   private admit(
     path: string,
     groupPath: string,
     dirName: string,
     readThisPoll: ReadonlySet<string>,
+    fresh: boolean,
   ): boolean {
     if (this.entries.size >= this.options.maxEntries) {
+      if (
+        !fresh &&
+        this.unstatted.size + this.uninspected.size >=
+          this.options.maxInspections
+      ) {
+        return false;
+      }
       if (!this.evictOne(readThisPoll)) return false;
     }
     this.entries.set(path, { group: groupPath, dirName });
     this.groups.get(groupPath)?.members.add(path);
     this.unstatted.add(path);
-    this.admittedThisPoll.push(path);
+    if (fresh) this.admittedThisPoll.push(path);
     return true;
   }
 
@@ -426,18 +467,20 @@ export class GrokSessionIndex {
       this.drop(path);
       return;
     }
+    const previous = entry.modifiedAt;
     entry.modifiedAt = info.mtimeMs;
     this.unstatted.delete(path);
     if (entry.inspectedAt !== entry.modifiedAt) {
       this.uninspected.add(path);
+      // Activity since it was last seen: ahead of the never-inspected backlog.
+      if (
+        entry.inspection ||
+        (previous !== undefined && previous !== info.mtimeMs)
+      ) {
+        this.changed.add(path);
+      }
       // Changed since inspected: it may have gained a prompt, so keep it.
       this.evictable.delete(path);
-    }
-    if (
-      !entry.inspection?.session &&
-      entry.modifiedAt >= this.options.now() - RECENT_MS
-    ) {
-      this.recent.add(path);
     }
   }
 
@@ -452,12 +495,12 @@ export class GrokSessionIndex {
     if (inspection.cacheable && settled) {
       entry.inspectedAt = entry.modifiedAt;
       this.uninspected.delete(path);
+      this.changed.delete(path);
     } else {
       delete entry.inspectedAt;
     }
     if (inspection.session) {
       this.listed.add(path);
-      this.recent.delete(path);
       this.evictable.delete(path);
     } else {
       this.listed.delete(path);
@@ -477,8 +520,8 @@ export class GrokSessionIndex {
     this.entries.delete(path);
     this.unstatted.delete(path);
     this.listed.delete(path);
-    this.recent.delete(path);
     this.uninspected.delete(path);
+    this.changed.delete(path);
     this.unrecognized.delete(path);
     this.evictable.delete(path);
   }
@@ -491,49 +534,8 @@ export class GrokSessionIndex {
   }
 }
 
-/** Keeps the `capacity` items with the greatest key (a min-heap on key). */
-class NewestHeap {
-  private readonly items: Array<{ path: string; key: number }> = [];
-  offered = 0;
-
-  constructor(private readonly capacity: number) {}
-
-  offer(path: string, key: number): void {
-    this.offered += 1;
-    const items = this.items;
-    if (items.length < this.capacity) {
-      items.push({ path, key });
-      let index = items.length - 1;
-      while (index > 0) {
-        const parent = (index - 1) >> 1;
-        if (items[parent]!.key <= items[index]!.key) break;
-        [items[parent], items[index]] = [items[index]!, items[parent]!];
-        index = parent;
-      }
-      return;
-    }
-    if (key <= items[0]!.key) return;
-    items[0] = { path, key };
-    let index = 0;
-    for (;;) {
-      const left = index * 2 + 1;
-      const right = left + 1;
-      let smallest = index;
-      if (left < items.length && items[left]!.key < items[smallest]!.key)
-        smallest = left;
-      if (right < items.length && items[right]!.key < items[smallest]!.key)
-        smallest = right;
-      if (smallest === index) break;
-      [items[smallest], items[index]] = [items[index]!, items[smallest]!];
-      index = smallest;
-    }
-  }
-
-  drainNewestFirst(): string[] {
-    return this.items
-      .sort((left, right) => right.key - left.key)
-      .map((item) => item.path);
-  }
+function* chain(lists: Iterable<string>[]): Generator<string> {
+  for (const list of lists) yield* list;
 }
 
 export function mergeOutcome(

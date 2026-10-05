@@ -74,9 +74,11 @@ describe('GrokSessionIndex', () => {
         folder(root, `m-probe-${group}`, `probe-${item}`);
       }
     }
-    const target = index({ maxEntries: 40 });
+    // Few inspections a poll, so few folders are evictable and admissions
+    // are refused, as at the real cap.
+    const target = index({ maxEntries: 40, maxInspections: 2 });
     const found = new Set<string>();
-    for (let round = 0; round < 24 && found.size < 3; round += 1) {
+    for (let round = 0; round < 60 && found.size < 3; round += 1) {
       for (const session of (await poll(target, root)).sessions) {
         found.add(session.inspection.session!.sessionId);
       }
