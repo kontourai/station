@@ -718,6 +718,9 @@
   background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
   border-left: 2px solid var(--accent-primary);
   color: var(--text-primary);
+  /* As on a current project row: the border comes out of the padding, so a
+     current Activity's icon and label do not move. */
+  padding-left: 10px;
 }
 
 .sidebar__nav-btn[aria-disabled="true"] {

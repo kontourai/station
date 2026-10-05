@@ -41,6 +41,31 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 
+// Activity is current when `main` shows its surface at `/`.
+const region = vi.hoisted(() => ({ mainOccupant: null as string | null }));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useRegionModelOptional: () => ({
+    regions: {
+      main: {
+        visible: true,
+        size: 0,
+        panes: region.mainOccupant ? [region.mainOccupant] : [],
+        occupant: region.mainOccupant,
+      },
+      left: { visible: false, size: 400, panes: [], occupant: null },
+      right: { visible: false, size: 400, panes: [], occupant: null },
+      bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },
+    },
+  }),
+}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurfacePage: () => vi.fn(),
+}));
+vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set<string>(),
+}));
+
+import { ProjectSidebarNav } from '../components/project-sidebar/ProjectSidebarNav';
 import { ProjectSidebarRow } from '../components/project-sidebar/ProjectSidebarRow';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../');
@@ -191,6 +216,60 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
         } finally {
           await page.close();
         }
+      }
+    });
+
+    test('a current Activity row keeps its icon and label where they sit when it is not current', async () => {
+      const navMarkup = (current: boolean) => {
+        region.mainOccupant = current ? 'activity' : null;
+        const { container, unmount } = render(
+          <ProjectSidebarNav
+            collapsed={false}
+            isMobile={false}
+            navigate={vi.fn()}
+            activePath="/"
+          />,
+        );
+        const html = container.innerHTML;
+        unmount();
+        cleanup();
+        return html;
+      };
+      const page = await browser.newPage({
+        viewport: { width: 1280, height: 800 },
+      });
+      try {
+        const measure = async (current: boolean) => {
+          await page.setContent(
+            `<style>${css}</style><div class="sidebar sidebar--expanded" style="width:250px">${navMarkup(current)}</div>`,
+          );
+          return page.evaluate(() => {
+            const row = document.querySelector<HTMLElement>(
+              'button[aria-label="Activity"]',
+            );
+            return {
+              current: row?.getAttribute('aria-current') ?? null,
+              iconLeft:
+                row?.querySelector('svg')?.getBoundingClientRect().left ?? null,
+              labelLeft:
+                row
+                  ?.querySelector('.sidebar__nav-label')
+                  ?.getBoundingClientRect().left ?? null,
+            };
+          });
+        };
+        const idle = await measure(false);
+        const current = await measure(true);
+        // The fixture really toggles the current state.
+        expect(idle.current).toBeNull();
+        expect(current.current).toBe('page');
+        expect(idle.labelLeft).not.toBeNull();
+        expect({
+          icon: current.iconLeft,
+          label: current.labelLeft,
+        }).toEqual({ icon: idle.iconLeft, label: idle.labelLeft });
+      } finally {
+        await page.close();
       }
     });
 
