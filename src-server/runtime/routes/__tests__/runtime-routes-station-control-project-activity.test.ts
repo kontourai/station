@@ -320,12 +320,17 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     startSession('a-stopped', A, p1);
     startSession('a-long', A, p1);
     startSession('a-anchor', A, p1);
+    // Runs unconfined: another Session's host is never a scoped caller's to read.
+    startSession('a-host', A, p1, {
+      metadata: { stationConfinement: 'host' },
+    });
     startSession('a-other-project', A, p2);
     startSession('g-caller', A, undefined);
     startSession('a-global', A, undefined);
     startSession('carol-p1', CAROL, p1);
 
     writeTurn('a-caller', 1, { end: 'completed', prompt: 'CALLER-WORK' });
+    writeTurn('a-host', 1, { end: 'completed', prompt: 'HOST-SECRET' });
     writeTurn('a-running', 1, {
       end: 'open',
       prompt: 'RUNNING-WORK still going',
@@ -678,10 +683,16 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         bearer('a-caller'),
       ]) {
         const listed = await tool(caller, 'list_project_activity', {});
+        // A bound operator keeps the operator's reach to an unconfined
+        // Session; a scoped caller never reaches one, and it reads as absent.
+        const expected =
+          caller.channel === 'sdk-in-process'
+            ? [...PROJECT_1_SESSIONS, 'a-host'].sort()
+            : [...PROJECT_1_SESSIONS];
         expect([caller.channel, listed.isError, ids(listed.body)]).toEqual([
           caller.channel,
           false,
-          [...PROJECT_1_SESSIONS],
+          expected,
         ]);
         const text = JSON.stringify(listed.body);
         // Another Project, another person and another Station are absent,
@@ -696,6 +707,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
           'peer-delegation',
           'OTHER-PROJECT-SECRET',
           'CAROL-SECRET',
+          ...(caller.channel === 'sdk-in-process'
+            ? []
+            : ['a-host', 'HOST-SECRET']),
         ])
           expect([caller.channel, secret, text.includes(secret)]).toEqual([
             caller.channel,
@@ -867,6 +881,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         const rows: Array<[string, boolean]> = [];
         for (const target of [
           'a-peer',
+          'a-host',
           'a-other-project',
           'a-global',
           'carol-p1',
@@ -886,6 +901,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
           caller.channel === 'sdk-in-process'
             ? [
                 ['a-peer', true],
+                ['a-host', true],
                 ['a-other-project', true],
                 ['a-global', true],
                 ['carol-p1', false],
@@ -895,6 +911,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
               ]
             : [
                 ['a-peer', true],
+                ['a-host', false],
                 ['a-other-project', false],
                 ['a-global', false],
                 ['carol-p1', false],
@@ -1161,7 +1178,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
           aroundMessageId: hit.messageId,
           limit: 10,
         });
-        expect(JSON.stringify(page.body).slice(0, 400)).toMatch(/"success":true/);
+        expect(JSON.stringify(page.body).slice(0, 400)).toMatch(
+          /"success":true/,
+        );
         const messages = page.body.data.messages;
         // The matched message, on this first page, and with its neighbours.
         const matched = messages.find((m: any) => m.id === hit.messageId);
@@ -1191,7 +1210,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         aroundMessageId: 'a-anchor-turn-17:start:user',
         limit: 7,
       });
-      expect(JSON.stringify(around.body).slice(0, 400)).toMatch(/"success":true/);
+      expect(JSON.stringify(around.body).slice(0, 400)).toMatch(
+        /"success":true/,
+      );
       const indexes = (page: any) =>
         page.body.data.messages.map((m: any) => m.index);
       const collected = new Map<number, string>();
