@@ -1,0 +1,7 @@
+{
+  "revision": "179ed50a14cef9fd50318e63c476a47fd8e5f402",
+
+  "notes": [
+    {"path":"docs/third-party/provider-icons.md","note":"Re-read after BrandIcon.tsx/.css changed glyph sizing: a single-grapheme glyph (Intl.Segmenter, code-point fallback) is 72% of --icon-size; a multi-letter text glyph such as an engine default 'MV' takes the initials' share (42%, 9px floor). The doc covers mark sources and hashes, CSS fills for inline marks, integration icon containment and the mark-or-initials fallback; it states no glyph sizing, and the resolution order it implies (explicit glyph, local image, bundled mark, initials) is unchanged. No prose change.","inputs":["docs/third-party/provider-icons.md","src-ui/src/components/icons/BrandIcon.css","src-ui/src/components/icons/BrandIcon.tsx"]}
+  ]
+}
