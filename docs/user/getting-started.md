@@ -425,7 +425,8 @@ controls them. It looks in three places:
   `~/.local/share/opencode` when that is not set. Station opens it read-only
   and lists top-level OpenCode sessions you have sent a message in; subagent
   sessions and archived sessions are left out. A message appears once OpenCode
-  has finished writing it. Older OpenCode releases kept sessions as JSON files
+  has finished writing it. Conversations Station itself runs through an
+  OpenCode connection are not listed a second time. Older OpenCode releases kept sessions as JSON files
   under `storage`; Station does not read those, and current OpenCode moves
   them into the database when it starts. If an OpenCode update changes the
   database layout, Station stops reading it and logs one warning instead of
