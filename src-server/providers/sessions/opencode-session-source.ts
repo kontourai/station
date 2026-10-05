@@ -33,6 +33,7 @@ const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_ROW_BYTES = 256 * 1024;
 const DEFAULT_MAX_EVENTS = 512;
 const DEFAULT_MAX_PARTS_PER_MESSAGE = 1024;
+const DEFAULT_READ_YIELD_EVERY_MESSAGES = 16;
 const MAX_CANDIDATES_CEILING = 512;
 const MAX_MESSAGES_CEILING = 512;
 const MAX_BYTES_CEILING = 2 * 1024 * 1024;
@@ -148,6 +149,10 @@ interface OpenCodeSessionSourceOptions {
   maxRowBytes?: number;
   maxEvents?: number;
   maxPartsPerMessage?: number;
+  /** Messages mapped between event-loop yields in `read()`. */
+  readYieldEveryMessages?: number;
+  /** Test seam for the bounded event-loop yield. */
+  yieldFn?: () => Promise<void>;
   /** Test seam for the one-per-reason schema/open warning. */
   warn?: (message: string, meta: Record<string, unknown>) => void;
 }
@@ -186,6 +191,8 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     message: string,
     meta: Record<string, unknown>,
   ) => void;
+  private readonly readYieldEveryMessages: number;
+  private readonly yieldFn: () => Promise<void>;
   private readonly warned = new Set<string>();
   private readonly handles = new Map<string, SourceRegistration>();
 
@@ -224,6 +231,14 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       options.maxPartsPerMessage ?? DEFAULT_MAX_PARTS_PER_MESSAGE,
       MAX_PARTS_PER_MESSAGE_CEILING,
     );
+    this.readYieldEveryMessages = boundedInteger(
+      'readYieldEveryMessages',
+      options.readYieldEveryMessages ?? DEFAULT_READ_YIELD_EVERY_MESSAGES,
+      MAX_MESSAGES_CEILING,
+    );
+    this.yieldFn =
+      options.yieldFn ??
+      (() => new Promise<void>((resolve) => setImmediate(resolve)));
     this.warn = options.warn ?? ((message, meta) => logger.warn(message, meta));
   }
 
@@ -248,7 +263,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       registration: SourceRegistration;
     }> = [];
     for (const database of listed.databases) {
-      const result = this.withDatabase(database, (db) => {
+      const result = await this.withDatabase(database, (db) => {
         // `time_updated` has no index upstream, so this is one scan of the
         // session table (about 12 ms warm on a 61k-session store). The
         // EXISTS probe uses `message_session_time_created_id_idx`; it skips
@@ -335,7 +350,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const cursor = decodeCursor(previousCursor);
     if (!cursor) return rejected();
 
-    const result = this.withDatabase(current, (db) => {
+    const result = await this.withDatabase(current, async (db) => {
       const row = db
         .prepare(
           'SELECT id, directory, time_created, time_updated FROM session WHERE id = ?',
@@ -356,21 +371,11 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     return result.value;
   }
 
-  resolveSourceHome(
-    affinity: ProviderSessionSourceAffinity | undefined,
-  ): string | null {
-    return resolveConfigHomeAffinity(
-      SOURCE_HOME_NAMESPACE,
-      this.dataDir,
-      affinity,
-    );
-  }
-
-  private readMessages(
+  private async readMessages(
     db: DatabaseSync,
     session: AttachedSessionDescriptor,
     cursor: DecodedCursor,
-  ): AttachedSessionReadResult {
+  ): Promise<AttachedSessionReadResult> {
     const after = cursor.state.after;
     // Only the fields this source maps are projected out of the writer's
     // JSON, inside SQLite: a user message's file diffs or a tool's metadata
@@ -437,6 +442,11 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     let bytesUsed = 0;
     const window = messageRows.slice(0, this.maxMessages);
     for (const [index, message] of window.entries()) {
+      // A full page is a few hundred parts parsed on the main thread; yield
+      // between message batches like the JSONL sources do between lines.
+      if (index > 0 && index % this.readYieldEveryMessages === 0) {
+        await this.yieldFn();
+      }
       if (!message) {
         // A row whose identity columns are not the writer's types.
         return {
@@ -594,12 +604,13 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
    * schema mismatch fails closed for that database and is logged once per
    * database and reason, never per poll.
    */
-  private withDatabase<T>(
+  private async withDatabase<T>(
     database: DatabaseRegistration,
-    body: (db: DatabaseSync) => T,
-  ):
+    body: (db: DatabaseSync) => T | Promise<T>,
+  ): Promise<
     | { ok: true; value: T }
-    | { ok: false; outcome: AttachedSessionSourceOutcome } {
+    | { ok: false; outcome: AttachedSessionSourceOutcome }
+  > {
     let db: DatabaseSync | undefined;
     try {
       db = new DatabaseSync(database.path, {
@@ -614,7 +625,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         });
         return { ok: false, outcome: 'rejected_candidate' };
       }
-      return { ok: true, value: body(db) };
+      return { ok: true, value: await body(db) };
     } catch (error) {
       this.warnOnce(database, `error:${errorCode(error)}`, {
         reason: 'database_unreadable',
@@ -714,6 +725,96 @@ type MappedMessage =
       state: OpenCodeCursorState;
     };
 
+type TurnClose =
+  | { kind: 'completed'; finishReason: 'stop' | 'max-tokens' | 'other' }
+  | { kind: 'aborted'; reason: string }
+  | { kind: 'superseded' };
+
+/** A canonical event without the fields every event of one message shares. */
+type CanonicalEventBody = CanonicalRuntimeEvent extends infer Event
+  ? Event extends CanonicalRuntimeEvent
+    ? Omit<Event, 'eventId' | 'provider' | 'threadId' | 'createdAt'>
+    : never
+  : never;
+
+/** Per-message emission context: event ids are positional within a message. */
+class MessageEmitter {
+  readonly events: CanonicalRuntimeEvent[] = [];
+  readonly base: {
+    provider: 'opencode';
+    threadId: string;
+    createdAt: string;
+  };
+
+  constructor(
+    private readonly session: AttachedSessionDescriptor,
+    private readonly message: MessageRow,
+    public state: OpenCodeCursorState,
+  ) {
+    this.base = {
+      provider: 'opencode',
+      threadId: session.threadId,
+      createdAt: millisTimestamp(message.time),
+    };
+  }
+
+  id(kind: string): string {
+    return eventId(this.session, this.message.id, this.events.length, kind);
+  }
+
+  /** Emit an event; `eventId` and the common fields are filled in here. */
+  emit(kind: string, event: CanonicalEventBody): void {
+    this.events.push({
+      ...this.base,
+      eventId: this.id(kind),
+      ...event,
+    } as CanonicalRuntimeEvent);
+  }
+
+  omissionWarning(omitted: number, turnId: string | undefined): void {
+    if (omitted === 0) return;
+    this.emit('parts-bounded', {
+      method: 'runtime.warning',
+      ...(turnId ? { turnId } : {}),
+      severity: 'warning',
+      code: 'external_record_bounded',
+      message:
+        'OpenCode message parts exceeded the retained activity limit and were omitted.',
+      details: { omittedPartCount: omitted },
+    });
+  }
+
+  closeTurn(close: TurnClose): void {
+    const turnId = this.state.turnId;
+    if (!turnId) return;
+    if (this.state.usage) {
+      this.events.push(
+        usageEvent(this.base, this.id('usage'), turnId, this.state.usage),
+      );
+    }
+    if (close.kind === 'aborted') {
+      this.emit('turn-aborted', {
+        method: 'turn.aborted',
+        turnId,
+        reason: close.reason,
+      });
+    } else {
+      this.emit('turn-completed', {
+        method: 'turn.completed',
+        turnId,
+        finishReason: close.kind === 'completed' ? close.finishReason : 'other',
+        ...(close.kind === 'superseded'
+          ? { metadata: { source: PROMPT_SOURCE, closedBy: 'next-prompt' } }
+          : {}),
+      });
+    }
+    this.state = {
+      version: 1,
+      ...(this.state.after ? { after: this.state.after } : {}),
+    };
+  }
+}
+
 /**
  * One settled message to canonical events. A turn is a user message plus the
  * assistant messages that answer it; it closes the way OpenCode's own prompt
@@ -727,296 +828,252 @@ function mapMessage(
   session: AttachedSessionDescriptor,
   previous: OpenCodeCursorState,
 ): MappedMessage {
-  let state = cloneState(previous);
   const info = message.info;
-  // Settled: an assistant message once completed or failed, any message once
-  // the session has moved on to a later one (a crashed or interrupted write
-  // never completes, and must not hold the cursor forever).
-  if (
-    !hasLater &&
-    (!info ||
-      info.role === 'user' ||
-      (info.role === 'assistant' &&
-        !info.hasError &&
-        !Number.isSafeInteger(info.completed)))
-  ) {
-    return { kind: 'unsettled' };
-  }
+  if (!hasLater && !isSettled(info)) return { kind: 'unsettled' };
+  const state = cloneState(previous);
   if (message.oversized) return { kind: 'oversized', events: [], state };
   if (!info) return { kind: 'malformed', events: [], state };
-  const parts = planned.included
-    .map((part) => ({ id: part.id, data: parseRecord(part.data!) }))
-    .filter(
-      (part): part is { id: string; data: Record<string, unknown> } =>
-        part.data !== null,
-    );
-  const base = {
-    provider: 'opencode' as const,
-    threadId: session.threadId,
-    createdAt: millisTimestamp(message.time),
-  };
-  const events: CanonicalRuntimeEvent[] = [];
-  const id = (kind: string): string =>
-    eventId(session, message.id, events.length, kind);
-  const omissionWarning = (turnId: string | undefined): void => {
-    if (planned.omitted === 0) return;
-    events.push({
-      ...base,
-      eventId: id('parts-bounded'),
-      method: 'runtime.warning',
-      ...(turnId ? { turnId } : {}),
-      severity: 'warning',
-      code: 'external_record_bounded',
-      message:
-        'OpenCode message parts exceeded the retained activity limit and were omitted.',
-      details: { omittedPartCount: planned.omitted },
-    });
-  };
-  const closeTurn = (
-    close:
-      | { kind: 'completed'; finishReason: 'stop' | 'max-tokens' | 'other' }
-      | { kind: 'aborted'; reason: string }
-      | { kind: 'superseded' },
-  ): void => {
-    const turnId = state.turnId;
-    if (!turnId) return;
-    if (state.usage) {
-      events.push(usageEvent(base, id('usage'), turnId, state.usage));
-    }
-    if (close.kind === 'aborted') {
-      events.push({
-        ...base,
-        eventId: id('turn-aborted'),
-        method: 'turn.aborted',
-        turnId,
-        reason: close.reason,
-      });
-    } else {
-      events.push({
-        ...base,
-        eventId: id('turn-completed'),
-        method: 'turn.completed',
-        turnId,
-        finishReason: close.kind === 'completed' ? close.finishReason : 'other',
-        ...(close.kind === 'superseded'
-          ? { metadata: { source: PROMPT_SOURCE, closedBy: 'next-prompt' } }
-          : {}),
-      });
-    }
-    state = { version: 1, ...(state.after ? { after: state.after } : {}) };
-  };
-
-  if (info.role === 'user') {
-    if (parts.some((part) => text(part.data.type) === 'compaction')) {
-      events.push({
-        ...base,
-        eventId: id('context-compacted'),
-        method: 'extension.notification',
-        namespace: PROMPT_SOURCE,
-        type: 'context-compacted',
-        payload: { source: 'provider-event' },
-      });
-      return { kind: 'ok', events, state };
-    }
-    // A prompt that arrives while a turn is still open (queued behind it,
-    // or after an interrupted write) is answered as its own turn by
-    // OpenCode, so the open one ends here.
-    closeTurn({ kind: 'superseded' });
-    const prompt = parts
-      .filter(
-        (part) =>
-          text(part.data.type) === 'text' &&
-          part.data.synthetic !== true &&
-          part.data.ignored !== true &&
-          typeof part.data.text === 'string',
-      )
-      .map((part) => part.data.text as string)
-      .join(PARAGRAPH_BREAK);
-    const bounded = prompt
-      ? boundedPrompt(prompt, {
-          maxBytes: MAX_PROMPT_BYTES,
-          source: PROMPT_SOURCE,
-        })
-      : undefined;
-    state.turnId = message.id;
-    events.push({
-      ...base,
-      eventId: id('turn-started'),
-      method: 'turn.started',
-      turnId: message.id,
-      ...(bounded ? { prompt: bounded.value } : {}),
-      ...(bounded?.metadata ? { metadata: bounded.metadata } : {}),
-    });
-    omissionWarning(message.id);
-    return { kind: 'ok', events, state };
-  }
-
-  if (info.role !== 'assistant') {
+  if (info.role !== 'user' && info.role !== 'assistant') {
     return { kind: 'malformed', events: [], state };
   }
+  const parts = planned.included
+    .map((part) => ({ id: part.id, data: parseRecord(part.data!) }))
+    .filter((part): part is ParsedPart => part.data !== null);
+  const emitter = new MessageEmitter(session, message, state);
+  if (info.role === 'user') {
+    mapUserMessage(emitter, message.id, parts, planned.omitted);
+  } else {
+    mapAssistantMessage(emitter, message.id, info, parts, planned.omitted);
+  }
+  return { kind: 'ok', events: emitter.events, state: emitter.state };
+}
+
+interface ParsedPart {
+  id: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Settled: an assistant message once completed or failed. Any message also
+ * settles once the session has moved on to a later one (checked by the
+ * caller): a crashed or interrupted write never completes, and must not hold
+ * the cursor forever. A trailing user message waits, because its parts are
+ * written after its row.
+ */
+function isSettled(info: MessageInfo | null): boolean {
+  return (
+    info?.role === 'assistant' &&
+    (info.hasError || Number.isSafeInteger(info.completed))
+  );
+}
+
+function mapUserMessage(
+  emitter: MessageEmitter,
+  messageId: string,
+  parts: ParsedPart[],
+  omitted: number,
+): void {
+  if (parts.some((part) => text(part.data.type) === 'compaction')) {
+    emitter.emit('context-compacted', {
+      method: 'extension.notification',
+      namespace: PROMPT_SOURCE,
+      type: 'context-compacted',
+      payload: { source: 'provider-event' },
+    });
+    return;
+  }
+  // A prompt that arrives while a turn is still open (queued behind it, or
+  // after an interrupted write) is answered as its own turn by OpenCode, so
+  // the open one ends here.
+  emitter.closeTurn({ kind: 'superseded' });
+  const prompt = parts
+    .filter(
+      (part) =>
+        text(part.data.type) === 'text' &&
+        isVisibleText(part.data) &&
+        typeof part.data.text === 'string',
+    )
+    .map((part) => part.data.text as string)
+    .join(PARAGRAPH_BREAK);
+  const bounded = prompt
+    ? boundedPrompt(prompt, {
+        maxBytes: MAX_PROMPT_BYTES,
+        source: PROMPT_SOURCE,
+      })
+    : undefined;
+  emitter.state.turnId = messageId;
+  emitter.emit('turn-started', {
+    method: 'turn.started',
+    turnId: messageId,
+    ...(bounded ? { prompt: bounded.value } : {}),
+    ...(bounded?.metadata ? { metadata: bounded.metadata } : {}),
+  });
+  emitter.omissionWarning(omitted, messageId);
+}
+
+function mapAssistantMessage(
+  emitter: MessageEmitter,
+  messageId: string,
+  info: MessageInfo,
+  parts: ParsedPart[],
+  omitted: number,
+): void {
   // A compaction summary restates the conversation for the model; the
   // compaction notification already marks the boundary.
-  if (info.summary) return { kind: 'ok', events, state };
-
-  if (!state.turnId) {
-    const turnId = info.parentID ?? message.id;
-    state.turnId = turnId;
-    events.push({
-      ...base,
-      eventId: id('turn-started'),
-      method: 'turn.started',
-      turnId,
-    });
+  if (info.summary) return;
+  if (!emitter.state.turnId) {
+    const turnId = info.parentID ?? messageId;
+    emitter.state.turnId = turnId;
+    emitter.emit('turn-started', { method: 'turn.started', turnId });
   }
-  const turnId = state.turnId!;
-  let opensParagraph = state.assistantTextObserved === true;
+  const turnId = emitter.state.turnId!;
   let openToolCalls = false;
   for (const part of parts) {
     const type = text(part.data.type);
     if (type === 'text' || type === 'reasoning') {
-      const value = part.data.text;
-      if (typeof value !== 'string' || !value) continue;
-      if (part.data.synthetic === true || part.data.ignored === true) continue;
-      let delta = value;
-      if (type === 'text') {
-        if (opensParagraph && !value.startsWith(PARAGRAPH_BREAK)) {
-          delta = `${PARAGRAPH_BREAK}${value}`;
-        }
-        opensParagraph = true;
-        state.assistantTextObserved = true;
-      }
-      for (const [chunk, piece] of utf8Chunks(
-        delta,
-        MAX_TEXT_CHUNK_BYTES,
-      ).entries()) {
-        events.push({
-          ...base,
-          eventId: id(`${type}-${chunk}`),
-          method:
-            type === 'text' ? 'content.text-delta' : 'content.reasoning-delta',
-          turnId,
-          itemId: chunk === 0 ? part.id : `${part.id}:${chunk}`,
-          delta: piece,
-        });
-      }
-      continue;
-    }
-    if (type === 'tool') {
-      const callId = boundedId(part.data.callID);
-      const toolName = boundedId(part.data.tool);
-      const toolState = asRecord(part.data.state);
-      if (!callId || !toolName || !toolState) continue;
-      if (part.data.providerExecuted !== true) openToolCalls = true;
-      const projectedArguments = projectBoundedToolOutput(
-        toolState.input ?? {},
-      );
-      events.push({
-        ...base,
-        eventId: id('tool-started'),
-        method: 'tool.started',
-        turnId,
-        itemId: callId,
-        toolCallId: callId,
-        toolName,
-        arguments: projectedArguments.value,
-      });
-      if (projectedArguments.receipt) {
-        events.push({
-          ...base,
-          eventId: id('tool-arguments-bounded'),
-          method: 'runtime.warning',
-          turnId,
-          severity: 'warning',
-          code: 'external_tool_arguments_bounded',
-          message:
-            'OpenCode tool arguments exceeded the retained activity limit.',
-          details: { toolCallId: callId, receipt: projectedArguments.receipt },
-        });
-      }
-      const status = text(toolState.status);
-      if (status === 'completed') {
-        const output = projectBoundedToolOutput(
-          typeof toolState.output === 'string' ? toolState.output : '',
-        );
-        events.push({
-          ...base,
-          eventId: id('tool-completed'),
-          method: 'tool.completed',
-          turnId,
-          itemId: callId,
-          toolCallId: callId,
-          toolName,
-          status: 'success',
-          output: output.value,
-          ...(output.receipt ? { outputReceipt: output.receipt } : {}),
-        });
-      } else if (status === 'error') {
-        const failure = diagnosticText(toolState.error) ?? 'Tool failed.';
-        events.push({
-          ...base,
-          eventId: id('tool-completed'),
-          method: 'tool.completed',
-          turnId,
-          itemId: callId,
-          toolCallId: callId,
-          toolName,
-          status: 'error',
-          error: failure,
-          output: failure,
-        });
-      } else {
-        // A pending/running call in a settled message: OpenCode wrote no
-        // verdict, and this source does not invent one.
-        events.push({
-          ...base,
-          eventId: id('tool-status-unknown'),
-          method: 'runtime.warning',
-          turnId,
-          severity: 'warning',
-          code: 'external_tool_result_status_unknown',
-          message:
-            'OpenCode recorded this tool call without a success or failure verdict.',
-          details: { toolCallId: callId, toolName },
-        });
-      }
-      continue;
-    }
-    if (type === 'step-finish') {
+      mapTextPart(emitter, turnId, part, type);
+    } else if (type === 'tool') {
+      if (mapToolPart(emitter, turnId, part.data)) openToolCalls = true;
+    } else if (type === 'step-finish') {
       const step = decodeUsage(part.data.tokens);
-      if (step) state.usage = addUsage(state.usage, step);
+      if (step) emitter.state.usage = addUsage(emitter.state.usage, step);
     }
   }
-  omissionWarning(turnId);
+  emitter.omissionWarning(omitted, turnId);
 
   if (info.hasError) {
     if (info.errorName === 'MessageAbortedError') {
-      closeTurn({
+      emitter.closeTurn({
         kind: 'aborted',
         reason: diagnosticText(info.errorMessage) ?? 'aborted in OpenCode',
       });
-    } else {
-      events.push({
-        ...base,
-        eventId: id('turn-error'),
-        method: 'runtime.error',
-        turnId,
-        severity: 'error',
-        message:
-          diagnosticText(info.errorMessage) ??
-          info.errorName ??
-          'OpenCode reported an error.',
-      });
-      closeTurn({ kind: 'completed', finishReason: 'other' });
+      return;
     }
+    emitter.emit('turn-error', {
+      method: 'runtime.error',
+      turnId,
+      severity: 'error',
+      message:
+        diagnosticText(info.errorMessage) ??
+        info.errorName ??
+        'OpenCode reported an error.',
+    });
+    emitter.closeTurn({ kind: 'completed', finishReason: 'other' });
   } else if (
     info.finish !== undefined &&
     info.finish !== 'tool-calls' &&
     info.finish !== 'unknown' &&
     !openToolCalls
   ) {
-    closeTurn({ kind: 'completed', finishReason: finishReason(info.finish) });
+    emitter.closeTurn({
+      kind: 'completed',
+      finishReason: finishReason(info.finish),
+    });
   }
-  return { kind: 'ok', events, state };
+}
+
+function isVisibleText(data: Record<string, unknown>): boolean {
+  return data.synthetic !== true && data.ignored !== true;
+}
+
+function mapTextPart(
+  emitter: MessageEmitter,
+  turnId: string,
+  part: ParsedPart,
+  type: 'text' | 'reasoning',
+): void {
+  const value = part.data.text;
+  if (typeof value !== 'string' || !value || !isVisibleText(part.data)) return;
+  let delta = value;
+  if (type === 'text') {
+    // A later text part in the same turn opens a new paragraph.
+    if (
+      emitter.state.assistantTextObserved &&
+      !value.startsWith(PARAGRAPH_BREAK)
+    ) {
+      delta = `${PARAGRAPH_BREAK}${value}`;
+    }
+    emitter.state.assistantTextObserved = true;
+  }
+  for (const [chunk, piece] of utf8Chunks(
+    delta,
+    MAX_TEXT_CHUNK_BYTES,
+  ).entries()) {
+    emitter.emit(`${type}-${chunk}`, {
+      method:
+        type === 'text' ? 'content.text-delta' : 'content.reasoning-delta',
+      turnId,
+      itemId: chunk === 0 ? part.id : `${part.id}:${chunk}`,
+      delta: piece,
+    });
+  }
+}
+
+/** Returns whether the call is one the client executes (keeps the loop open). */
+function mapToolPart(
+  emitter: MessageEmitter,
+  turnId: string,
+  data: Record<string, unknown>,
+): boolean {
+  const callId = boundedId(data.callID);
+  const toolName = boundedId(data.tool);
+  const toolState = asRecord(data.state);
+  if (!callId || !toolName || !toolState) return false;
+  const call = { turnId, itemId: callId, toolCallId: callId };
+  const projectedArguments = projectBoundedToolOutput(toolState.input ?? {});
+  emitter.emit('tool-started', {
+    method: 'tool.started',
+    ...call,
+    toolName,
+    arguments: projectedArguments.value,
+  });
+  if (projectedArguments.receipt) {
+    emitter.emit('tool-arguments-bounded', {
+      method: 'runtime.warning',
+      turnId,
+      severity: 'warning',
+      code: 'external_tool_arguments_bounded',
+      message: 'OpenCode tool arguments exceeded the retained activity limit.',
+      details: { toolCallId: callId, receipt: projectedArguments.receipt },
+    });
+  }
+  const status = text(toolState.status);
+  if (status === 'completed') {
+    const output = projectBoundedToolOutput(
+      typeof toolState.output === 'string' ? toolState.output : '',
+    );
+    emitter.emit('tool-completed', {
+      method: 'tool.completed',
+      ...call,
+      toolName,
+      status: 'success',
+      output: output.value,
+      ...(output.receipt ? { outputReceipt: output.receipt } : {}),
+    });
+  } else if (status === 'error') {
+    const failure = diagnosticText(toolState.error) ?? 'Tool failed.';
+    emitter.emit('tool-completed', {
+      method: 'tool.completed',
+      ...call,
+      toolName,
+      status: 'error',
+      error: failure,
+      output: failure,
+    });
+  } else {
+    // A pending/running call in a settled message: OpenCode wrote no
+    // verdict, and this source does not invent one.
+    emitter.emit('tool-status-unknown', {
+      method: 'runtime.warning',
+      turnId,
+      severity: 'warning',
+      code: 'external_tool_result_status_unknown',
+      message:
+        'OpenCode recorded this tool call without a success or failure verdict.',
+      details: { toolCallId: callId, toolName },
+    });
+  }
+  return data.providerExecuted !== true;
 }
 
 function usageEvent(

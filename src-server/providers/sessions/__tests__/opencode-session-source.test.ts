@@ -408,6 +408,7 @@ describe('OpenCodeSessionSource', () => {
       ['maxMessages', 512],
       ['maxEvents', 512],
       ['maxPartsPerMessage', 4096],
+      ['readYieldEveryMessages', 512],
       ['maxBytes', 2 * 1024 * 1024],
     ] as const) {
       expect(
@@ -481,6 +482,27 @@ describe('OpenCodeSessionSource', () => {
       code: 'external_record_bounded',
       details: { omittedPartCount: 1 },
     });
+  });
+
+  test('yields to the event loop between message batches of one read', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    writeTurn(store, 'ses_main', 'One');
+    writeTurn(store, 'ses_main', 'Two');
+    const yieldFn = vi.fn(async () => {});
+    const source = new OpenCodeSessionSource({
+      dataDir,
+      readYieldEveryMessages: 2,
+      yieldFn,
+    });
+    const session = (await source.discover()).sessions[0]!;
+    const result = await source.read(session);
+    expect(
+      result.events.filter((event) => event.method === 'turn.completed'),
+    ).toHaveLength(2);
+    // Six messages: yields before the third and the fifth.
+    expect(yieldFn).toHaveBeenCalledTimes(2);
   });
 
   test('reads a live WAL store without writing to it', async () => {
