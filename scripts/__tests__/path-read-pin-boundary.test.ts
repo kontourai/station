@@ -537,6 +537,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
     'walks its own fixture root',
+  'scripts/__tests__/review-ledger-guards.test.ts':
+    'git ls-files through a helper that runs with cwd set to its temporary fixture repository, never the real tree',
+  'scripts/__tests__/install-ps1-full.test.ts':
+    'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-ps1.test.ts':
     'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-script.test.ts':

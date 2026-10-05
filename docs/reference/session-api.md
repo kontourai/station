@@ -88,6 +88,11 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+An Agent that messages, interrupts, or waits on an existing Session uses
+station-control's [Session control](../guides/self-configuring-agent.md#session-control)
+tools, which call their own agent-only routes under
+`/api/orchestration/session-control` rather than the routes above.
+
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
@@ -594,6 +599,84 @@ not proof of completion or failure. Poll with a deadline for the returned
 `providerTurnId`, checking `turn.completed`, `turn.aborted`, errors and open
 requests. Accepted/coalesced publication is owned by the orchestration service;
 a timeout or missing terminal event must remain unverified, not inferred success.
+
+### Conversation usage tree (`GET /conversations/:conversationId/usage-tree`)
+
+One conversation's usage with its children, as a
+[`ThreadUsageTree`](../../packages/contracts/src/thread-usage-tree.ts). The
+root holds the conversation's own turns (every session in its lineage). Its
+children are the engine subagents those sessions reported and the sessions
+launched from the conversation, nested recursively and read one depth level
+at a time. Each child carries its own figures and a `relation` for tokens and
+for cost: `added` (in the total), `included-in-parent` (the parent's figure
+already contains it) or `not-reported` (not in the total, which is then
+partial). `total` lists why it is partial in `partialReasons`.
+
+A session is a child of the conversation when its launch names any session of
+the conversation's lineage as its parent:
+
+- by its delegation context (`metadata.delegation.parentConversationId`).
+  When a Claude Code or Codex session calls `delegate_task` through its
+  session-bound station-control (Claude Code's in-process server, Codex's
+  per-session HTTP server), Station derives it from the calling session's own
+  record. For Station's own agent, the runtime attests it from the
+  conversation it ran the tool call in. Neither comes from the request. On a
+  direct request it is the requester's own claim. A paired-Station dispatch
+  record keeps the same value as `metadata.parentConversationId`;
+- otherwise by `metadata.parentTaskId`, which a request may set itself. A
+  delegation context naming another conversation always wins over it.
+
+A task launched through a caller-less station-control process (a stdio child
+with no per-session credential, as a Strands-runtime agent uses) carries no
+delegation context. Unless its
+request named `parentTaskId`, it is not found as a child and the total doesn't
+show it as missing.
+
+Tokens: `totalTokens` is input + output as each engine reported them; cache
+reads and writes are listed separately and are not added. `total.tokens`
+says what the summed input means in `cacheInclusion`: `excluded` (every engine
+reports uncached input), `mixed` (two declared conventions that differ were
+summed), or `not-established` (any other case, including an engine whose
+convention is unverified or undeclared; unknown is never called different). A subagent's own figure goes where its
+engine's meaning puts it: tokens used become `totalTokens`, a Claude Code
+subagent's last-request size is `lastRequestTokens`, and an undeclared
+engine's figure is `unverifiedTokens`. Only `totalTokens` is ever added.
+
+Cost stays in buckets: reported cost by currency, Station estimates by
+currency and price snapshot. Buckets are never summed together, and reported
+cost is never mixed with estimates.
+
+The read is authorized like the conversation transcript: every session in a
+conversation's lineage must be readable. A session you can't read is never
+read, named or figured. What happens to it depends on how its launch came to
+name your conversation, which the dispatch route records at launch in the
+reserved start metadata key `stationDelegationProvenance` (a request can't
+set it; Station strips any value a caller supplies):
+
+- `caller-derived` (from the calling session's own record) or
+  `runtime-attested` (Station's own runtime vouched for it): the session is
+  real work of your conversation that runs under another owner. In hosted
+  mode that happens when Station can't attribute the dispatch to a bound
+  caller (for example a Codex session calling through its URL token), so the
+  delegate is the Station operator's. It is counted as not visible: no node,
+  and the total is partial with one line saying how many such tasks there are.
+  The stamp counts only on the session's start record, beside the parent it
+  names.
+- `direct-claim` (passed through from a request outside this Station's
+  process, such as an operator, device, hosted-user or peer Station
+  credential), or no stamp (a launch from before it existed, or a
+  `parentTaskId`-only link): the link is only a claim, so the session is
+  ignored, neither shown nor counted as missing. Counting it would let anyone
+  mark someone else's total partial.
+
+A delegate that ran on a
+paired Station is shown from this Station's own record, with `not-reported`
+usage, and no peer is contacted. Responses are `Cache-Control: private,
+no-store`. `404` means no conversation you can read. `422` means the tree is
+past a bound (200 nodes, delegates nested 8 deep, 5,000 usage observations,
+or more than 1,000 session records naming one level's parents) and is refused rather
+than cut. Each level's parent lookup scans session start records; there is no
+index on the JSON fields it matches.
 
 ### Reading assistant turn content programmatically
 

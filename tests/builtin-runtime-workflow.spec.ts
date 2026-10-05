@@ -409,9 +409,16 @@ function historicalTurn(
   ];
 }
 
+/**
+ * Starts a chat on `runtimeName` the one way a chat starts: the dock's New
+ * chat opens the start composer, the Agent chip's list chooses the runtime,
+ * and Start sends `firstMessage` into the new chat (#3201 removed opening an
+ * empty chat from an Agent row; #3362).
+ */
 async function openRuntimeSession(
   page: import('@playwright/test').Page,
   runtimeName: 'Claude Runtime' | 'Codex Runtime',
+  firstMessage: string,
 ) {
   await page.addInitScript(() => {
     localStorage.setItem('lastProject', 'default');
@@ -428,12 +435,27 @@ async function openRuntimeSession(
     .locator('.chat-dock__tab-actions')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
-  await expect(
-    page.locator('.new-chat-modal__agent', { hasText: runtimeName }),
-  ).toBeVisible({ timeout: 10_000 });
-  await page
+  const dialog = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const composer = dialog.getByRole('form', { name: 'Start work' });
+  await composer.getByRole('button', { name: /^Agent:/ }).click({
+    timeout: 10_000,
+  });
+  const agents = page.getByRole('dialog', { name: 'Choose agent' });
+  await agents
     .locator('.new-chat-modal__agent', { hasText: runtimeName })
-    .click();
+    .click({ timeout: 10_000 });
+  await expect(agents).toHaveCount(0);
+  // The chip names the runtime that Start will use.
+  await expect(
+    composer.getByRole('button', {
+      name: new RegExp(`^Agent: ${runtimeName}(?: · [^,]+)?$`),
+    }),
+  ).toBeVisible();
+  await composer
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .fill(firstMessage);
+  await composer.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await page.getByRole('button', { name: 'Earlier' }).click();
   const selectedChat = page
     .getByRole('complementary', { name: 'Inbox chats' })
@@ -523,12 +545,8 @@ test.describe('Built-in runtime chat workflows', () => {
     const commandBodies: any[] = [];
     await installMockOrchestrationSse(page);
     await seedRuntimeRoutes(page, commandBodies);
-    await openRuntimeSession(page, 'Claude Runtime');
+    await openRuntimeSession(page, 'Claude Runtime', 'hello claude');
     await waitForMockOrchestrationSse(page);
-
-    const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    await textarea.fill('hello claude');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(
       commandBodies,
@@ -593,13 +611,8 @@ test.describe('Built-in runtime chat workflows', () => {
     const commandBodies: any[] = [];
     await installMockOrchestrationSse(page);
     await seedRuntimeRoutes(page, commandBodies);
-    await openRuntimeSession(page, 'Claude Runtime');
+    await openRuntimeSession(page, 'Claude Runtime', 'remember this turn');
     await waitForMockOrchestrationSse(page);
-
-    await page
-      .locator('textarea[placeholder*="Type a message"]')
-      .fill('remember this turn');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(
       commandBodies,
@@ -736,12 +749,8 @@ test.describe('Built-in runtime chat workflows', () => {
     const commandBodies: any[] = [];
     await installMockOrchestrationSse(page);
     await seedRuntimeRoutes(page, commandBodies);
-    await openRuntimeSession(page, 'Codex Runtime');
+    await openRuntimeSession(page, 'Codex Runtime', 'hello codex');
     await waitForMockOrchestrationSse(page);
-
-    const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    await textarea.fill('hello codex');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(commandBodies, 'hello codex');
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -786,12 +795,8 @@ test.describe('Built-in runtime chat workflows', () => {
     const commandBodies: any[] = [];
     await installMockOrchestrationSse(page);
     await seedRuntimeRoutes(page, commandBodies);
-    await openRuntimeSession(page, 'Claude Runtime');
+    await openRuntimeSession(page, 'Claude Runtime', 'use a tool');
     await waitForMockOrchestrationSse(page);
-
-    const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    await textarea.fill('use a tool');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(commandBodies, 'use a tool');
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -840,9 +845,11 @@ test.describe('Built-in runtime chat workflows', () => {
     });
 
     // archive#2652 redesign: the settled activity renders inline as a quiet
-    // verb-first row — no "Show N work activities" gate. Expanding the row
-    // preserves the exact tool name in the detail meta...
-    const activityRow = page.getByRole('button', { name: 'Used list files' });
+    // verb-first row — no "Show N work activities" gate. The row names what
+    // the tool did on what (list_files on "." reads "Read ."; #3362 updated
+    // this from "Used list files"). Expanding the row preserves the exact
+    // tool name in the detail meta...
+    const activityRow = page.getByRole('button', { name: /^Read \.(?:›)?$/ });
     await expect(activityRow).toBeVisible();
     await activityRow.click();
     await expect(page.locator('body')).toContainText('list_files');
@@ -856,12 +863,8 @@ test.describe('Built-in runtime chat workflows', () => {
     const commandBodies: any[] = [];
     await installMockOrchestrationSse(page);
     await seedRuntimeRoutes(page, commandBodies);
-    await openRuntimeSession(page, 'Claude Runtime');
+    await openRuntimeSession(page, 'Claude Runtime', 'delete a file');
     await waitForMockOrchestrationSse(page);
-
-    const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    await textarea.fill('delete a file');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(
       commandBodies,
@@ -905,10 +908,15 @@ test.describe('Built-in runtime chat workflows', () => {
     });
 
     // Pending approval stays compact until the user opens the queue, then its
-    // approve/deny actions must render.
-    await expect(page.locator('body')).toContainText('delete_file');
+    // approve/deny actions must render. The running tool names its target;
+    // its verb is not asserted (the product currently words delete_file as a
+    // read, filed separately). The queue control says the chat needs
+    // approval (#3362 updated it from the retired wording).
+    await expect(
+      page.getByRole('log', { name: 'Conversation transcript' }),
+    ).toContainText('secret.txt');
     const approvalQueue = page.getByRole('button', {
-      name: '1 pending approval',
+      name: 'Needs approval — show the request',
     });
     await expect(approvalQueue).toBeVisible({ timeout: 10_000 });
     const approvalPanel = page.getByTestId('approval-queue-panel');

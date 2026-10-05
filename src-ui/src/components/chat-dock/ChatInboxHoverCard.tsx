@@ -18,6 +18,7 @@ import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   InboxRowStatusGlyph,
   WorkStatusLineText,
@@ -86,6 +87,8 @@ export function ChatInboxHoverCard({
   now,
   facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   anchor,
   onClose,
   id,
@@ -105,6 +108,9 @@ export function ChatInboxHoverCard({
    * being answered by this machine's git.
    */
   gitLocation?: GitReadLocation;
+  /** The row's project colour and icon, for the Project row's mark. */
+  projectAccent?: string;
+  projectIcon?: string;
   /** The row element the card anchors beside (measured once on mount). */
   anchor: HTMLElement;
   onClose: () => void;
@@ -171,6 +177,8 @@ export function ChatInboxHoverCard({
         now={now}
         facts={facts}
         gitLocation={gitLocation}
+        projectAccent={projectAccent}
+        projectIcon={projectIcon}
       />
     </div>,
     document.body,
@@ -187,6 +195,8 @@ export function ChatInboxDetailsSheet({
   now,
   facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   triggerRef,
   onClose,
   actions,
@@ -195,6 +205,8 @@ export function ChatInboxDetailsSheet({
   now: number;
   facts?: WorkFacts;
   gitLocation?: GitReadLocation;
+  projectAccent?: string;
+  projectIcon?: string;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
   /**
@@ -248,6 +260,8 @@ export function ChatInboxDetailsSheet({
           now={now}
           facts={facts}
           gitLocation={gitLocation}
+          projectAccent={projectAccent}
+          projectIcon={projectIcon}
           showTitle={false}
         />
         {actions}
@@ -269,12 +283,16 @@ function ChatInboxCardBody({
   now,
   facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   showTitle = true,
 }: {
   item: HomeWorkItem;
   now: number;
   facts?: WorkFacts;
   gitLocation?: GitReadLocation;
+  projectAccent?: string;
+  projectIcon?: string;
   showTitle?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
@@ -491,6 +509,13 @@ function ChatInboxCardBody({
         <div>
           <dt>Project</dt>
           <dd>
+            {/* Decorative: the name beside it is the project. */}
+            <ProjectIcon
+              project={{ name: item.projectLabel, icon: projectIcon }}
+              accent={projectAccent}
+              size={14}
+              className="chat-dock-inbox-hover-card__project-mark"
+            />
             <bdi>{item.projectLabel}</bdi>
           </dd>
         </div>
