@@ -33,6 +33,7 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+import './ToolCallDetails.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -678,8 +679,7 @@ function RevealedText({ text }: { text: string }) {
           segment.text
         ) : (
           <span
-            // Segments are positional and never reorder.
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional segments of one string.
+            // Segments are positions in one string and never reorder.
             key={index}
             className="tool-call__hidden-char"
             title={`Hidden character: ${segment.name}. Shown here instead of being applied.`}
