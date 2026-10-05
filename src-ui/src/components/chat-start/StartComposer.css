@@ -211,3 +211,27 @@
   flex-shrink: 0;
   max-width: 50%;
 }
+/* A draft that came back while the field held other text. */
+.start-composer__held {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.start-composer__held-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+/* A Start that cannot start reads as disabled in both themes: the shared
+   primary's faded fill stayed close to its enabled colour on a dark page. */
+.start-composer__start:disabled:not([aria-busy="true"]) {
+  border-color: var(--k-line);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  opacity: 1;
+}

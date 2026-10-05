@@ -632,7 +632,8 @@ test("the ambient dock takes Home's hand-off and reports how it ended", async ()
   });
   // Closed (or its setup journey cancelled, which closes it): dismissed.
   act(() => props.onClose());
-  expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed');
+  expect(onClosed).toHaveBeenCalledTimes(1);
+  expect(onClosed.mock.calls[0][0]).toBe('dismissed');
 
   const onStarted = vi.fn();
   act(() => {
@@ -656,5 +657,50 @@ test("the ambient dock takes Home's hand-off and reports how it ended", async ()
         'Start me',
       );
   });
-  expect(onStarted).toHaveBeenCalledExactlyOnceWith('started');
+  expect(onStarted).toHaveBeenCalledTimes(1);
+  expect(onStarted.mock.calls[0][0]).toBe('started');
+});
+
+// Review FI-A: an unreadable selection from Home reaches the dock's modal as
+// such (the modal then says so), and a later ordinary open does not carry
+// it over.
+test('an unreadable selection reaches the modal as unreadable, and only for that request', async () => {
+  renderDockedPane();
+  act(() => {
+    dispatchNewChatIntent({
+      startWithDefault: true,
+      initialPrompt: 'Keep me',
+      selection: { context: '__global__', agentSlug: '' } as never,
+    });
+  });
+  await waitFor(() => expect(pickerProps.at(-1)!.selectionInvalid).toBe(true));
+  expect(pickerProps.at(-1)!.startWithDefault).toBe(false);
+  expect(pickerProps.at(-1)!.initialPrompt).toBe('Keep me');
+  act(() => pickerProps.at(-1)!.onClose());
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await waitFor(() => expect(pickerProps.at(-1)!.selectionInvalid).toBe(false));
+});
+
+// Review F3: a dismissed hand-off hands back the dock's draft as the person
+// left it there, not the text Home first sent.
+test("a dismissed hand-off returns the dock's edited draft", async () => {
+  renderDockedPane();
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({
+      initialPrompt: 'First words',
+      selection: { context: '__global__', agentSlug: 'assistant' },
+      handoff: { kind: 'skills' },
+      onClosed,
+    });
+  });
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  act(() => pickerProps.at(-1)!.onDraftChange('First words, then more'));
+  act(() => pickerProps.at(-1)!.onClose());
+  expect(onClosed).toHaveBeenCalledExactlyOnceWith(
+    'dismissed',
+    'First words, then more',
+  );
 });

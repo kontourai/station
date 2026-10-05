@@ -49,7 +49,11 @@ export interface NewChatIntent {
   selectionInvalid?: boolean;
   /** Open the draft with the prompt and selection, then run this. */
   handoff?: NewChatHandoff;
-  onClosed?: (outcome: NewChatClosedOutcome) => void;
+  /**
+   * How the request ended. A dismissal also hands back the dock's draft text
+   * as it last read (the person may have edited it there).
+   */
+  onClosed?: (outcome: NewChatClosedOutcome, draft?: string) => void;
 }
 
 /**
@@ -162,7 +166,8 @@ export function readNewChatIntent(event: Event): NewChatIntent {
     ...(handoff ? { handoff } : {}),
     onClosed:
       typeof callback === 'function'
-        ? (outcome: NewChatClosedOutcome) => callback(outcome)
+        ? (outcome: NewChatClosedOutcome, draft?: string) =>
+            callback(outcome, draft)
         : undefined,
   };
 }

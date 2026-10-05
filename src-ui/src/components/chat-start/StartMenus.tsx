@@ -282,11 +282,6 @@ export function StartProjectMenu({
           filteredContextOptions={filtered}
           selectedContext={selectedContext}
           onSelectContext={onChoose}
-          // Both surfaces' start context reads a folderless project as No
-          // project (`resolveNewChatInitialContext`: the server cannot run a
-          // chat in a project with no folder), so offering one here would
-          // show a chip the next start does not use.
-          folderlessReason="No folder set. Add one in the project's settings to start chats in it."
         />
       </div>
     </ResponsiveDialogSurface>

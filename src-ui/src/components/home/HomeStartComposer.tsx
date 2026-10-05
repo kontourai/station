@@ -1,4 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -17,6 +22,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
+import { Button } from '../Button';
 import {
   type StartAgentChip,
   StartComposer,
@@ -69,26 +75,34 @@ function HomeChatSetupHelper(
 }
 
 /**
- * A draft Home handed to the dock that came back undone (its dock draft was
- * closed, or the setup journey cancelled). Held at module scope because the
- * setup journey leaves the page, so the Home that sent it may have unmounted.
+ * Drafts Home handed to the dock that came back undone (the dock's draft was
+ * closed, or its setup journey cancelled), as the dock last held them. Kept
+ * at module scope because the setup journey leaves the page, so the Home
+ * that sent one may have unmounted. A draft leaves this list only when it is
+ * restored into the field or explicitly discarded, so no ordering of
+ * hand-offs, dismissals and starts loses text.
  */
-let returnedHomeDraft: string | null = null;
-const returnedHomeDraftListeners = new Set<() => void>();
-function returnHomeDraft(text: string) {
-  returnedHomeDraft = text;
-  for (const listener of returnedHomeDraftListeners) listener();
+let heldHomeDrafts: readonly string[] = [];
+const heldHomeDraftListeners = new Set<() => void>();
+function setHeldHomeDrafts(next: readonly string[]) {
+  heldHomeDrafts = next;
+  for (const listener of heldHomeDraftListeners) listener();
 }
-function takeReturnedHomeDraft(): string | null {
-  const text = returnedHomeDraft;
-  returnedHomeDraft = null;
-  return text;
+function holdHomeDraft(text: string) {
+  if (!text.trim() || heldHomeDrafts.includes(text)) return;
+  setHeldHomeDrafts([...heldHomeDrafts, text]);
 }
-function subscribeReturnedHomeDraft(listener: () => void) {
-  returnedHomeDraftListeners.add(listener);
+function subscribeHeldHomeDrafts(listener: () => void) {
+  heldHomeDraftListeners.add(listener);
   return () => {
-    returnedHomeDraftListeners.delete(listener);
+    heldHomeDraftListeners.delete(listener);
   };
+}
+const heldHomeDraftsSnapshot = () => heldHomeDrafts;
+
+/** Test seam: a fresh tab. */
+export function resetHeldHomeDraftsForTests() {
+  setHeldHomeDrafts([]);
 }
 
 type ChipMenu = {
@@ -156,26 +170,45 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   } = selection;
   const start = useStartSelection(selection, context);
   const bindProject = useBindStartProject();
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPromptState] = useState('');
+  // The field's current text, readable synchronously by a draft that comes
+  // back while a dispatch is still running.
+  const promptRef = useRef('');
+  const setPrompt = (next: string | ((current: string) => string)): void => {
+    setPromptState((current) => {
+      const value = typeof next === 'function' ? next(current) : next;
+      promptRef.current = value;
+      return value;
+    });
+  };
+  const held = useSyncExternalStore(
+    subscribeHeldHomeDrafts,
+    heldHomeDraftsSnapshot,
+    heldHomeDraftsSnapshot,
+  );
   /** What happened to a draft sent to the dock, in a sentence. */
   const [notice, setNotice] = useState<{
     text: string;
     tone: 'status' | 'alert';
   } | null>(null);
-  // A draft handed to the dock and then dismissed there comes back here,
-  // including to a Home that was remounted meanwhile (setup leaves the page).
+  // A draft that comes back goes into the field only while the field is
+  // empty; otherwise it waits behind "Restore your earlier draft", so the
+  // text being typed is never overwritten. On mount (a Home remounted after
+  // setup left the page) an empty field takes the oldest one back.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setPrompt only writes a stable state setter and a ref; the subscription is for the component's life.
   useEffect(() => {
-    const take = () => {
-      const text = takeReturnedHomeDraft();
-      if (text === null) return;
-      setPrompt(text);
+    const restoreIfEmpty = () => {
+      const [first, ...rest] = heldHomeDrafts;
+      if (first === undefined || promptRef.current.trim()) return;
+      setHeldHomeDrafts(rest);
+      setPrompt(first);
       setNotice({
         text: 'Your draft is back from the chat dock.',
         tone: 'status',
       });
     };
-    take();
-    return subscribeReturnedHomeDraft(take);
+    restoreIfEmpty();
+    return subscribeHeldHomeDrafts(restoreIfEmpty);
   }, []);
   const [pending, setPending] = useState(false);
   const [menu, setMenu] = useState<ChipMenu | null>(null);
@@ -203,6 +236,25 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     },
   });
 
+  /**
+   * Empty the field of `sent` only if it still holds exactly that; then an
+   * earlier draft waiting to come back takes the empty field.
+   */
+  const clearSent = (sent: string) => {
+    if (promptRef.current !== sent) return;
+    const [first, ...rest] = heldHomeDrafts;
+    if (first === undefined) {
+      setPrompt('');
+      return;
+    }
+    setHeldHomeDrafts(rest);
+    setPrompt(first);
+    setNotice({
+      text: 'Your draft is back from the chat dock.',
+      tone: 'status',
+    });
+  };
+
   const noDock = () =>
     setNotice({
       text: 'No chat dock is open to take this. Open the chat dock and try again; your message is kept here.',
@@ -224,15 +276,20 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
       initialPrompt: text,
       selection: start.startSelection(target ?? agent),
       handoff,
-      onClosed: (outcome) => {
-        if (outcome === 'dismissed' && text.trim()) returnHomeDraft(text);
+      // Dismissed: the dock's draft as it last read (edits included) comes
+      // back; started: it lives in its chat now.
+      onClosed: (outcome, dockDraft) => {
+        if (outcome === 'dismissed') holdHomeDraft(dockDraft ?? text);
       },
     });
     if (!accepted) {
       noDock();
       return;
     }
-    setPrompt('');
+    // Only the text that was sent leaves the field. An earlier draft that
+    // came back during this dispatch (its dock draft dismissed by this one)
+    // then takes the emptied field.
+    clearSent(text);
     setNotice({
       text: 'Your draft moved to the chat dock to finish there.',
       tone: 'status',
@@ -279,7 +336,10 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         label: option?.label ?? (isGlobal ? NO_PROJECT_LABEL : context),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(context),
-        folder: workspaceHint.kind === 'home' ? '~' : workspaceHint.path,
+        folder:
+          workspaceHint.kind === 'home'
+            ? 'Runs in your home folder (~)'
+            : `Runs in ${workspaceHint.path}`,
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
   const canStart =
@@ -325,6 +385,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         pending={pending}
         onStart={() => {
           if (inFlight.current) return;
+          const sentText = prompt;
           const accepted = dispatchNewChatIntent({
             startWithDefault: true,
             initialPrompt: prompt,
@@ -336,8 +397,10 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               inFlight.current = false;
               if (!mounted.current) return;
               setPending(false);
-              // Started: the message is in its chat now. Dismissed: it stays.
-              if (outcome === 'started') setPrompt('');
+              // Started: the message is in its chat now, so the text that was
+              // sent leaves the field (anything else there stays).
+              // Dismissed: it stays.
+              if (outcome === 'started') clearSent(sentText);
             },
           });
           if (!accepted) {
@@ -356,6 +419,35 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
           </p>
         )}
         {notice && <p role={notice.tone}>{notice.text}</p>}
+        {held.length > 0 && (
+          <fieldset className="start-composer__held" aria-label="Earlier draft">
+            <p className="start-composer__note">
+              Your earlier draft came back from the chat dock: “
+              {held[0].length > 60 ? `${held[0].slice(0, 60)}…` : held[0]}”
+            </p>
+            <div className="start-composer__held-actions">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  // A swap, never a loss: the field's text waits in its place.
+                  const [first, ...rest] = heldHomeDrafts;
+                  if (first === undefined) return;
+                  const current = promptRef.current;
+                  setHeldHomeDrafts(current.trim() ? [current, ...rest] : rest);
+                  setPrompt(first);
+                }}
+              >
+                Restore your earlier draft
+              </Button>
+              <Button
+                variant="link"
+                onClick={() => setHeldHomeDrafts(heldHomeDrafts.slice(1))}
+              >
+                Discard it
+              </Button>
+            </div>
+          </fieldset>
+        )}
         {(feedback || setupError) && (
           <p role="alert">{feedback ?? describeReadFailure(setupError)}</p>
         )}

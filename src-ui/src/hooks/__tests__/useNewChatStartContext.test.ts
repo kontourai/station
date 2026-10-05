@@ -38,17 +38,24 @@ describe('resolveNewChatStartContext', () => {
     ).toBe(GLOBAL_CONTEXT);
   });
 
-  test('a project without a working directory, or one that is gone, starts global', () => {
-    for (const dockProjectSlug of ['notes', 'deleted']) {
-      expect(
-        resolveNewChatStartContext({
-          dockProjectSlug,
-          routeActiveProjectSlug: null,
-          projects,
-          projectsLoaded: true,
-        }),
-      ).toBe(GLOBAL_CONTEXT);
-    }
+  test('a project without a working directory starts in it; one that is gone starts global', () => {
+    // No folder: the server runs it in the home folder, deliberately.
+    expect(
+      resolveNewChatStartContext({
+        dockProjectSlug: 'notes',
+        routeActiveProjectSlug: null,
+        projects,
+        projectsLoaded: true,
+      }),
+    ).toBe('notes');
+    expect(
+      resolveNewChatStartContext({
+        dockProjectSlug: 'deleted',
+        routeActiveProjectSlug: null,
+        projects,
+        projectsLoaded: true,
+      }),
+    ).toBe(GLOBAL_CONTEXT);
   });
 
   // #3350 item 1: on a first launch the dock names a project before the

@@ -282,7 +282,7 @@ describe('New Chat repair and return', () => {
       screen.getByRole('textbox', { name: /What would you like to build/ }),
       { target: { value: 'Keep my visual skill input' } },
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }));
     fireEvent.click(
@@ -305,9 +305,7 @@ describe('New Chat repair and return', () => {
     expect(
       screen.getByRole('textbox', { name: /What would you like to build/ }),
     ).toHaveProperty('value', 'Keep my visual skill input');
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Beta' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(screen.getByText(/selected source changed/)).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
@@ -329,7 +327,7 @@ describe('New Chat repair and return', () => {
   });
   test('retains intentional Project and Model through repair without selecting or sending', async () => {
     const view = harness();
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }));
     fireEvent.click(
@@ -341,9 +339,7 @@ describe('New Chat repair and return', () => {
     view.update({ agents: [READY] });
     await returnToChat();
     expect(navigationStore.getSnapshot().pathname).toBe('/');
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Beta' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
@@ -471,7 +467,7 @@ describe('New Chat repair and return', () => {
       /workspace.*no longer available/,
     );
     expect(
-      screen.getByRole('button', { name: 'Workspace: Select workspace' }),
+      screen.getByRole('button', { name: 'Project: Select project' }),
     ).toBeTruthy();
     fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
       key: 'Enter',
@@ -549,7 +545,7 @@ describe('New Chat retained context safeguards', () => {
   });
   test('a fresh modal owner removes the suspended banner and discards its choices', async () => {
     const view = harness();
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     await openSetup();
     view.unmount();
@@ -557,9 +553,7 @@ describe('New Chat retained context safeguards', () => {
     expect(
       screen.queryByRole('button', { name: 'Return to New Chat' }),
     ).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Alpha' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Alpha' })).toBeTruthy();
   });
 });
 

@@ -111,6 +111,8 @@ describe('an unreadable selection is said, never started on defaults', () => {
   test('the close callback is told how the request ended', () => {
     const onClosed = vi.fn();
     readNewChatIntent(event({ onClosed })).onClosed?.('started');
-    expect(onClosed).toHaveBeenCalledWith('started');
+    expect(onClosed).toHaveBeenCalledWith('started', undefined);
+    readNewChatIntent(event({ onClosed })).onClosed?.('dismissed', 'Edited');
+    expect(onClosed).toHaveBeenLastCalledWith('dismissed', 'Edited');
   });
 });

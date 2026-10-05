@@ -185,13 +185,12 @@ export function resolveNewChatInitialContext(
   const activeProject = activeProjectSlug
     ? projects.find((project) => project?.slug === activeProjectSlug)
     : undefined;
-  // A direct chat must not inherit Station's placeholder/organisational
-  // project as an execution workspace. The server rightly rejects that
-  // target because it cannot resolve a working directory; global chat is the
-  // usable, explicit fallback until the person picks a real project.
-  return activeProject?.workingDirectory?.trim()
-    ? activeProject.slug
-    : GLOBAL_CONTEXT;
+  // A project with no folder is a real start context, not a fallback to No
+  // project: the server runs its chats deliberately, in the home folder
+  // (`orchestration-service.ts`, `project_without_directory`), and the seeded
+  // `default` project is one. Only a project this list does not have falls
+  // back to No project.
+  return activeProject ? activeProject.slug : GLOBAL_CONTEXT;
 }
 
 export function buildNewChatModelOverrideKey(

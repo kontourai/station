@@ -43,6 +43,7 @@ const state = vi.hoisted(() => ({
   agents: [] as unknown[],
   projects: [] as unknown[],
   projectsLoading: false,
+  projectsError: false,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -64,12 +65,15 @@ vi.mock('@kontourai/station-sdk', () => ({
     dataUpdatedAt: 0,
     refetch: async () => ({}),
   }),
+  // The error shape is the real one: no data, not loading, not success.
   useProjectsQuery: () => ({
-    data: state.projectsLoading ? undefined : state.projects,
+    data:
+      state.projectsLoading || state.projectsError ? undefined : state.projects,
     isLoading: state.projectsLoading,
     isFetching: false,
-    isSuccess: !state.projectsLoading,
-    error: null,
+    isSuccess: !state.projectsLoading && !state.projectsError,
+    isError: state.projectsError,
+    error: state.projectsError ? new Error('projects unavailable') : null,
     refetch: async () => ({}),
   }),
   useProjectQuery: () => ({
@@ -151,7 +155,7 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   activeChatsStore: { getSnapshot: () => ({}) },
 }));
 
-const { HomeStartComposer } = await import(
+const { HomeStartComposer, resetHeldHomeDraftsForTests } = await import(
   '../components/home/HomeStartComposer'
 );
 const { NewChatModal } = await import('../components/modals/NewChatModal');
@@ -198,6 +202,8 @@ beforeEach(() => {
   state.agents = [CLAUDE, CODEX];
   state.projects = [STATION];
   state.projectsLoading = false;
+  state.projectsError = false;
+  resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
 // later test's "no dock" is real.
@@ -665,49 +671,90 @@ describe('Home and the dock start the same way', () => {
     window.removeEventListener('station:open-new-chat', listener);
   }, 30_000);
 
-  // Review MED-1: a project with no folder is never a start context, on
-  // either surface, so neither offers it; both say why.
-  test('a project with no folder cannot be chosen on either surface', async () => {
+  // Second review: a project with no folder is a real start context (the
+  // server runs it in the home folder; the seeded `default` project is one).
+  // Both surfaces offer it, name it the same, say where it runs, and
+  // remember it across remounts.
+  test('a project with no folder can be chosen, reads the same on both surfaces, and is remembered', async () => {
     state.projects = [
       STATION,
       { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '' },
     ];
-    const ui = renderBoth();
-    for (const root of [screen.getByTestId('home'), ui.dock()]) {
-      fireEvent.click(projectChip(root));
-      const menu = await screen.findByRole(
-        'dialog',
-        { name: 'Choose project' },
-        { timeout: 15_000 },
-      );
-      const notes = menu.querySelector<HTMLButtonElement>(
-        '[data-context-value="notes"]',
-      )!;
-      expect(notes.disabled).toBe(true);
-      expect(notes.textContent).toMatch(/No folder set/);
-      expect(
-        menu.querySelector<HTMLButtonElement>('[data-context-value="station"]')!
-          .disabled,
-      ).toBe(false);
-      fireEvent.keyDown(within(menu).getByPlaceholderText('Filter...'), {
-        key: 'Escape',
-      });
-      await waitFor(() =>
-        expect(
-          screen.queryByRole('dialog', { name: 'Choose project' }),
-        ).toBeNull(),
-      );
-    }
-    // A binding to it made elsewhere (the sidebar) reads as No project on
-    // both, never as Notes on one.
-    act(() => deviceSettingsStore.set('chatDockProjectSlug', 'notes'));
+    const first = renderBoth();
+    fireEvent.click(projectChip(screen.getByTestId('home')));
+    const menu = await screen.findByRole(
+      'dialog',
+      { name: 'Choose project' },
+      { timeout: 15_000 },
+    );
+    const notes = menu.querySelector<HTMLButtonElement>(
+      '[data-context-value="notes"]',
+    )!;
+    expect(notes.disabled).toBe(false);
+    expect(
+      notes
+        .querySelector('.new-chat-modal__no-cwd-badge')
+        ?.getAttribute('title'),
+    ).toBe('Runs in your home folder');
+    fireEvent.click(notes);
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
     await waitFor(() =>
       expect(
         projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
-      ).toBe('Project: No project'),
+      ).toBe('Project: Notes'),
     );
-    ui.cleanupListener();
+    expect(projectChip(screen.getByTestId('home')).getAttribute('title')).toBe(
+      'Runs in your home folder (~)',
+    );
+    first.cleanupListener();
+    cleanup();
+    // Remounted: both read the remembered binding the same way.
+    const second = renderBoth();
+    for (const root of [screen.getByTestId('home'), second.dock()]) {
+      expect(projectChip(root).getAttribute('aria-label')).toBe(
+        'Project: Notes',
+      );
+      expect(projectChip(root).getAttribute('title')).toBe(
+        'Runs in your home folder (~)',
+      );
+    }
+    second.cleanupListener();
   }, 30_000);
+
+  // Review FI-B: an errored project list is not a loaded one. Home must not
+  // resolve the dock's bound project to No project and start there.
+  test('an errored project list holds Home rather than starting in No project', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    state.projectsError = true;
+    const taken: CustomEvent[] = [];
+    window.addEventListener('station:open-new-chat', (event) => {
+      event.preventDefault();
+      taken.push(event as CustomEvent);
+    });
+    render(
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+      >
+        <HomeStartComposer />
+      </AuthorityPersistenceContext.Provider>,
+    );
+    const form = screen.getByRole('form', { name: 'Start work' });
+    fireEvent.change(
+      within(form).getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Go' } },
+    );
+    expect(
+      within(form).queryByRole('button', { name: 'Project: No project' }),
+    ).toBeNull();
+    const startButton = within(form).getByRole('button', {
+      name: 'Start',
+    }) as HTMLButtonElement;
+    expect(startButton.disabled).toBe(true);
+    fireEvent.click(startButton);
+    expect(
+      taken.filter((event) => event.detail.selection?.context === '__global__'),
+    ).toEqual([]);
+  });
 
   // Review HIGH-1/HIGH-2: Home's draft is never lost.
   describe("Home's draft survives every way a start or hand-off can end", () => {
@@ -793,6 +840,84 @@ describe('Home and the dock start the same way', () => {
       renderHome();
       expect(field().value).toBe('Survive the trip');
       window.removeEventListener('station:open-new-chat', dock);
+    });
+
+    // Second review F1: text typed after a hand-off is never overwritten by
+    // the draft that comes back; that one waits behind an action.
+    test('a returning draft never overwrites what was typed meanwhile', async () => {
+      const taken: CustomEvent[] = [];
+      window.addEventListener('station:open-new-chat', (event) => {
+        event.preventDefault();
+        taken.push(event as CustomEvent);
+      });
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Old draft' } });
+      await handOffSkills();
+      fireEvent.change(field(), { target: { value: 'Brand new work' } });
+      act(() => taken.at(-1)!.detail.onClosed('dismissed', 'Old draft'));
+      expect(field().value).toBe('Brand new work');
+      // The earlier draft is offered, and restoring it swaps the two, so
+      // neither text is lost.
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Restore your earlier draft' }),
+      );
+      expect(field().value).toBe('Old draft');
+      expect(
+        screen.getByRole('group', { name: 'Earlier draft' }).textContent,
+      ).toContain('Brand new work');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard it' }));
+      expect(screen.queryByRole('group', { name: 'Earlier draft' })).toBeNull();
+      expect(field().value).toBe('Old draft');
+    });
+
+    // Second review F2: a second hand-off while the first dock draft is
+    // open dismisses the first (synchronously, inside the dispatch). The
+    // first comes back; the second leaves the field; neither is lost.
+    test('a second hand-off while the first is open loses neither draft', async () => {
+      const taken: CustomEvent[] = [];
+      window.addEventListener('station:open-new-chat', (event) => {
+        event.preventDefault();
+        // As the dock does: a new request dismisses the open one first.
+        taken
+          .at(-1)
+          ?.detail.onClosed?.('dismissed', taken.at(-1)?.detail.initialPrompt);
+        taken.push(event as CustomEvent);
+      });
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Draft A' } });
+      await handOffSkills();
+      expect(field().value).toBe('');
+      fireEvent.change(field(), { target: { value: 'Draft B' } });
+      await handOffSkills();
+      // B went to the dock; A came back to the now-empty field.
+      expect(taken.at(-1)!.detail.initialPrompt).toBe('Draft B');
+      await waitFor(() => expect(field().value).toBe('Draft A'));
+    });
+
+    test('Start while a hand-off draft is open loses neither text', async () => {
+      const taken: CustomEvent[] = [];
+      window.addEventListener('station:open-new-chat', (event) => {
+        event.preventDefault();
+        taken
+          .at(-1)
+          ?.detail.onClosed?.('dismissed', taken.at(-1)?.detail.initialPrompt);
+        taken.push(event as CustomEvent);
+      });
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Draft A' } });
+      await handOffSkills();
+      fireEvent.change(field(), { target: { value: 'Start this' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      // A came back while "Start this" was in the field: it waits.
+      expect(field().value).toBe('Start this');
+      expect(
+        screen.getByRole('group', { name: 'Earlier draft' }).textContent,
+      ).toContain('Draft A');
+      act(() => taken.at(-1)!.detail.onClosed('started'));
+      // The started text leaves the field and A takes it back.
+      expect(field().value).toBe('Draft A');
+      expect(screen.queryByRole('group', { name: 'Earlier draft' })).toBeNull();
     });
 
     test('a started chat clears the field; a dismissed start keeps it', async () => {

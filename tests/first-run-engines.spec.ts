@@ -1410,7 +1410,7 @@ async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
   await modal.locator('.new-chat-modal__context-button').click();
   await page.locator('[data-context-value="setup-beta"]').click();
   await expect(
-    modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+    modal.getByRole('button', { name: 'Project: Setup Beta' }),
   ).toBeVisible();
   return {
     modal,
@@ -1461,7 +1461,7 @@ for (const viewport of [
     await returnButton.click();
     await expect(fixture.modal).toHaveCSS('opacity', '1');
     await expect(
-      fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+      fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
     ).toBeVisible();
     await expect(
       fixture.modal.locator('[data-agent-slug="setup-assistant"]'),
@@ -1489,7 +1489,7 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   await page.goBack();
   await expect(fixture.modal).toBeVisible();
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+    fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
   ).toBeVisible();
   await fixture.modal
     .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
@@ -1506,7 +1506,7 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
       .filter({ hasText: 'workspace you selected' }),
   ).toContainText('workspace you selected is no longer available');
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: Select workspace' }),
+    fixture.modal.getByRole('button', { name: 'Project: Select project' }),
   ).toBeVisible();
   await fixture.modal.locator('.new-chat-modal__context-button').click();
   await page.locator('[data-context-value="setup-alpha"]').click();
@@ -1525,6 +1525,6 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   );
   await expect(fixture.modal).toBeVisible();
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: No project' }),
+    fixture.modal.getByRole('button', { name: 'Project: No project' }),
   ).toBeVisible();
 });

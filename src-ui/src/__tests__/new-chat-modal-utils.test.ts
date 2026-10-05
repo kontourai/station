@@ -159,7 +159,7 @@ describe('new-chat-modal-utils', () => {
     ]);
   });
 
-  test('prefers only an active project with a working directory', () => {
+  test('resolves any project this list has, folder or not, and nothing else', () => {
     const projects = [
       { slug: 'project-a', name: 'Project A' },
       {
@@ -172,8 +172,10 @@ describe('new-chat-modal-utils', () => {
     expect(resolveNewChatInitialContext('project-b', projects)).toBe(
       'project-b',
     );
+    // A project with no folder is a real context: its chats run in the
+    // home folder (the server's project_without_directory).
     expect(resolveNewChatInitialContext('project-a', projects)).toBe(
-      GLOBAL_CONTEXT,
+      'project-a',
     );
     expect(resolveNewChatInitialContext('deleted-project', projects)).toBe(
       GLOBAL_CONTEXT,

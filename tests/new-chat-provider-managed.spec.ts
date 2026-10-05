@@ -446,7 +446,10 @@ test('selected project context shows Station via the global provider-managed fal
     name: 'Project: My Project',
     exact: true,
   });
-  await expect(chip).toHaveAttribute('title', '/Users/me/dev/github/kontourai');
+  await expect(chip).toHaveAttribute(
+    'title',
+    'Runs in /Users/me/dev/github/kontourai',
+  );
   // The project menu states the folder the chat runs in.
   await chip.click();
   const menu = page.getByRole('dialog', { name: 'Choose project' });
@@ -802,7 +805,10 @@ test('new chat project path stays overflow-free at 390x844', async ({
     name: 'Project: My Project',
     exact: true,
   });
-  await expect(chip).toHaveAttribute('title', '/Users/me/dev/github/kontourai');
+  await expect(chip).toHaveAttribute(
+    'title',
+    'Runs in /Users/me/dev/github/kontourai',
+  );
   expect(
     await page.evaluate(() => ({
       document: document.documentElement.scrollWidth <= window.innerWidth,

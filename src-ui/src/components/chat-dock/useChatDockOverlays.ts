@@ -64,8 +64,14 @@ export function useChatDockOverlays({
     string | undefined
   >();
   const newChatOnClosed = useRef<
-    ((outcome: NewChatClosedOutcome) => void) | undefined
+    ((outcome: NewChatClosedOutcome, draft?: string) => void) | undefined
   >(undefined);
+  // The open draft's text as the modal last reported it, handed back with a
+  // dismissal so the sender gets what the person left there.
+  const newChatDraftText = useRef<string | undefined>(undefined);
+  const reportNewChatDraft = useCallback((text: string) => {
+    newChatDraftText.current = text;
+  }, []);
   const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
   const [newChatSelection, setNewChatSelection] =
     useState<NewChatIntent['selection']>();
@@ -80,7 +86,8 @@ export function useChatDockOverlays({
       /** Why an open request ends: its chat started, or it was dismissed. */
       closedAs: NewChatClosedOutcome = 'dismissed',
     ) => {
-      newChatOnClosed.current?.(closedAs);
+      newChatOnClosed.current?.(closedAs, newChatDraftText.current);
+      newChatDraftText.current = undefined;
       newChatOnClosed.current = open ? options?.onClosed : undefined;
       setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
@@ -178,6 +185,7 @@ export function useChatDockOverlays({
     newChatSelection,
     newChatHandoff,
     newChatSelectionInvalid,
+    reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,

@@ -26,7 +26,6 @@ export function ContextPickerOptions({
   filteredContextOptions,
   selectedContext,
   onSelectContext,
-  folderlessReason,
 }: {
   contextSearch: string;
   onContextSearchChange: (value: string) => void;
@@ -35,12 +34,6 @@ export function ContextPickerOptions({
   filteredContextOptions: NewChatModalContextOption[];
   selectedContext: string;
   onSelectContext: (value: string) => void;
-  /**
-   * Set where a project without a folder cannot be chosen: its row is
-   * disabled and says why. The start composer sets it, because a start
-   * context never resolves to a folderless project.
-   */
-  folderlessReason?: string;
 }) {
   const filterRef = useRef<HTMLInputElement>(null);
 
@@ -66,19 +59,15 @@ export function ContextPickerOptions({
         }}
       />
       {filteredContextOptions.map((opt) => {
+        // A project with no folder runs its chats in the home folder.
         const folderless =
           opt.value !== GLOBAL_CONTEXT && !opt.workingDirectory?.trim();
-        const refused = Boolean(folderlessReason) && folderless;
         return (
           <button
             type="button"
             key={opt.value}
             data-context-value={opt.value}
             className={`new-chat-modal__dropdown-item ${opt.value === selectedContext ? 'new-chat-modal__dropdown-item--active' : ''}`}
-            disabled={refused}
-            aria-describedby={
-              refused ? `context-${opt.value}-reason` : undefined
-            }
             onClick={() => onSelectContext(opt.value)}
           >
             <span className="new-chat-modal__dropdown-item-main">
@@ -95,17 +84,14 @@ export function ContextPickerOptions({
                   <CwdBreadcrumb path={opt.workingDirectory} />
                 </span>
               )}
-              {refused && (
-                <span
-                  id={`context-${opt.value}-reason`}
-                  className="new-chat-modal__dropdown-item-dir"
-                >
-                  {folderlessReason}
-                </span>
-              )}
             </span>
-            {folderless && !refused && (
-              <span className="new-chat-modal__no-cwd-badge">~/</span>
+            {folderless && (
+              <span
+                className="new-chat-modal__no-cwd-badge"
+                title="Runs in your home folder"
+              >
+                ~/
+              </span>
             )}
           </button>
         );

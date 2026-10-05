@@ -175,6 +175,8 @@ interface NewChatModalProps {
   handoff?: NewChatHandoff;
   /** Home sent choices that did not parse: say so, keep the message. */
   selectionInvalid?: boolean;
+  /** The draft's text as it changes, so a dismissal can hand it back. */
+  onDraftChange?: (text: string) => void;
   /**
    * Whether the project chip may rebind the dock (`chatDockProjectSlug`).
    * False for a dock scoped to one project, which never moves the ambient
@@ -208,6 +210,7 @@ export function NewChatModal({
   startSelection,
   handoff,
   selectionInvalid = false,
+  onDraftChange,
   projectBindable = false,
   projectsLoaded = true,
   projectAccentBySlug = NO_ACCENTS,
@@ -249,6 +252,10 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
+  useEffect(() => {
+    reportDraft(prompt);
+  }, [prompt]);
   const [submitting, setSubmitting] = useState(false);
   const submitInFlight = useRef(false);
   // The control that opened the model picker; focus returns there on close.
@@ -1212,7 +1219,10 @@ export function NewChatModal({
           (isGlobal ? NO_PROJECT_LABEL : selectedContext),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(selectedContext),
-        folder: workspaceHint.kind === 'home' ? '~' : workspaceHint.path,
+        folder:
+          workspaceHint.kind === 'home'
+            ? 'Runs in your home folder (~)'
+            : `Runs in ${workspaceHint.path}`,
       };
   const contextSelected = Boolean(
     draftContext?.items.some((item) =>
@@ -1455,7 +1465,7 @@ export function NewChatModal({
               ref={contextButtonRef}
               type="button"
               className="new-chat-modal__context-button"
-              aria-label={`Workspace: ${currentContextOption?.label || 'Select workspace'}`}
+              aria-label={`Project: ${currentContextOption?.label || 'Select project'}`}
               onClick={() => {
                 setContextOpen((v) => !v);
                 setContextSearch('');
@@ -1472,7 +1482,7 @@ export function NewChatModal({
                 />
               )}
               <span className="new-chat-modal__context-label">
-                {currentContextOption?.label || 'Select workspace'}
+                {currentContextOption?.label || 'Select project'}
               </span>
               {workspaceHint.kind !== 'home' && (
                 <>
@@ -1530,7 +1540,7 @@ export function NewChatModal({
                   className="new-chat-modal__context-sheet"
                   role="dialog"
                   aria-modal="true"
-                  aria-label="Select workspace"
+                  aria-label="Select project"
                   tabIndex={-1}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {

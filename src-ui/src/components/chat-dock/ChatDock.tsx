@@ -789,6 +789,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     newChatSelection,
     newChatHandoff,
     newChatSelectionInvalid,
+    reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
@@ -2953,6 +2954,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatSelection,
           newChatHandoff,
           newChatSelectionInvalid,
+          onNewChatDraftChange: reportNewChatDraft,
           projectBindable: !hasImmutableProjectScope && !forkSource,
           // A confirmed list only: an errored read must not resolve the
           // bound project to a guessed No project.
