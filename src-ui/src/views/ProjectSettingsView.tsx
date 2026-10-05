@@ -510,8 +510,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               </div>
               {legacyIcon && (
                 <p className="project-settings__icon-notice">
-                  This project’s icon was a link Station no longer loads. Choose
-                  a new one.
+                  This project’s icon can’t be shown any more. Choose a new one.
                 </p>
               )}
               {iconPickerOpen && (

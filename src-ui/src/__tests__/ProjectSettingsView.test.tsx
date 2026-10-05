@@ -1121,7 +1121,7 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
     };
     renderProjectSettings();
     const notice =
-      'This project’s icon was a link Station no longer loads. Choose a new one.';
+      'This project’s icon can’t be shown any more. Choose a new one.';
     expect(screen.getByText(notice)).toBeTruthy();
     openPicker();
     const glyphInput = screen.getByLabelText(
@@ -1150,7 +1150,7 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
   test('a project whose icon is allowed shows no legacy notice', () => {
     sdkMocks.project = { ...projectFixture, icon: '🧭' };
     renderProjectSettings();
-    expect(screen.queryByText(/no longer loads/)).toBeNull();
+    expect(screen.queryByText(/can’t be shown any more/)).toBeNull();
   });
 
   test('a legacy icon the rule refuses neither blocks nor rides along on an unrelated save', async () => {

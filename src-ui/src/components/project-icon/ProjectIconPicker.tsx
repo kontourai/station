@@ -131,7 +131,7 @@ export function ProjectIconPicker({
           <span id={hintId}>
             {fetching
               ? 'Looking for artwork in the project folder…'
-              : 'Optional. Without one, Station shows the project’s colour.'}
+              : 'Optional. Without one, Station shows the project’s colour or initials.'}
           </span>
         </div>
         <button
