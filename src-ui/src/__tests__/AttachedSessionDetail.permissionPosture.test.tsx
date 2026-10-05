@@ -122,6 +122,9 @@ function renderAttached({
               },
               createdAt: '2026-06-27T00:00:00.000Z',
               updatedAt: '2026-06-27T00:00:00.000Z',
+              // A conversation a project claims, unless a test says otherwise
+              // (#3386: one no project claims continues as a No project chat).
+              projectSlug: 'station',
               ...sessionOverrides,
             } as any
           }
@@ -620,3 +623,78 @@ test.each(['inspector', 'chat'] as const)(
     expect(screen.queryByRole('button', { name: /^deny/i })).toBeNull();
   },
 );
+
+describe('a conversation no project claims (#3386)', () => {
+  test('a project conversation names no choice and keeps its plain Continue', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    renderAttached({ presentation: 'chat' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
+    expect(adoptOrchestrationSession.mock.calls[0]![0]).not.toHaveProperty(
+      'target',
+    );
+  });
+
+  test('the inspector offers a No project chat in the conversation folder', () => {
+    renderAttached({
+      session: { projectSlug: undefined, cwd: '/work/scratch/app' },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Continue as No project chat' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId('attached-continuation-no-project').textContent,
+    ).toBe(
+      'This conversation belongs to no project. Station will continue it as a No project chat that works only in /work/scratch/app. To continue it in a project instead, add a project for that folder or its repository first.',
+    );
+  });
+
+  test('confirming continues it as a No project chat in its own folder, and nothing before that', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const onAdopted = vi.fn();
+    renderAttached({
+      presentation: 'chat',
+      onAdopted,
+      session: { projectSlug: undefined, cwd: '/work/scratch/app' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
+    expect(dialog.textContent).toContain(
+      'Station will continue it as a No project chat that works only in /work/scratch/app.',
+    );
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    await waitFor(() => expect(onAdopted).toHaveBeenCalled());
+    expect(adoptOrchestrationSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceThreadId: 'external:claude:raw-thread-id',
+        target: { kind: 'own-folder' },
+      }),
+    );
+  });
+
+  test('an ambiguous conversation names its candidates, not No project', () => {
+    renderAttached({
+      session: {
+        projectSlug: undefined,
+        projectAttribution: { state: 'ambiguous', candidates: ['a', 'b'] },
+      },
+    });
+    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeTruthy();
+  });
+});

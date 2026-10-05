@@ -12,6 +12,7 @@ import {
   StarterWorkConflictError,
   StarterWorkUnavailableError,
 } from '../services/starter-work/starter-work-module.js';
+import { adoptSessionTargetSchema } from './orchestration/adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   refuseUngrantedFullAccess,
@@ -93,6 +94,7 @@ const continueSessionLaunchSchema = z
     starterId: z.literal('continue-session'),
     operationId: z.string().min(1).max(160),
     sourceSessionId: z.string().min(1).max(4096),
+    target: adoptSessionTargetSchema.optional(),
   })
   .strict();
 const inspectApprovalLaunchSchema = z

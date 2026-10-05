@@ -2,6 +2,7 @@ import { externalSessionContinuationAvailability } from '@kontourai/station-cont
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   OrchestrationSessionSummary,
   StarterWorkStatus,
 } from '@kontourai/station-sdk';
@@ -26,6 +27,7 @@ import {
 import type { ChatMessage } from '../../types';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
+import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
@@ -138,6 +140,17 @@ export function AttachedSessionDetail({
     session.attachedSource,
   );
   const continuationSupported = continuationSupport.enabled;
+  // #3386: a conversation no project claims (Activity's No project) continues
+  // only as a No project chat in its own folder, and only because the person
+  // confirmed that here: the request names the choice, and Station refuses
+  // it for a folder too broad to confine an agent to. A conversation a
+  // project claims continues under that project, so it names no choice.
+  const outsideProjects = sessionProjectKeys(session).length === 0;
+  const adoptionTarget: AdoptSessionTarget | undefined = outsideProjects
+    ? { kind: 'own-folder' }
+    : undefined;
+  const ownFolder = session.cwd ? session.cwd : 'its own folder';
+  const noProjectExplanation = `This conversation belongs to no project. Station will continue it as a No project chat that works only in ${ownFolder}. To continue it in a project instead, add a project for that folder or its repository first.`;
   const adoptionIntent = useRef(createAdoptOrchestrationSessionIntent());
   // A settled server outcome is distinct from local reservation evidence: the
   // former says this exact continuation cannot be retried safely, whereas the
@@ -207,6 +220,7 @@ export function AttachedSessionDetail({
               sourceThreadId: session.threadId,
               apiBase,
               intent: adoptionIntent.current,
+              ...(adoptionTarget ? { target: adoptionTarget } : {}),
             });
           const reservation = await continuationStore.current!.reserve(
             session.threadId,
@@ -221,6 +235,7 @@ export function AttachedSessionDetail({
           sourceSessionId: session.threadId,
           operationId,
           apiBase,
+          ...(adoptionTarget ? { target: adoptionTarget } : {}),
         });
         if (outcome.state === 'continued') {
           const clearance = await continuationStore.current!.clear(
@@ -351,7 +366,9 @@ export function AttachedSessionDetail({
         ? 'Continuing…'
         : presentation === 'chat'
           ? 'Continue and send'
-          : 'Continue in Station'}
+          : outsideProjects
+            ? 'Continue as No project chat'
+            : 'Continue in Station'}
     </Button>
   );
   const continuationFeedback = (
@@ -385,6 +402,11 @@ export function AttachedSessionDetail({
             ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
             : continuationSupport.reason}
         </p>
+        {continuationSupported && outsideProjects && (
+          <p data-testid="attached-continuation-no-project">
+            {noProjectExplanation}
+          </p>
+        )}
       </div>
       {continuationAction}
       {continuationFeedback}
@@ -690,6 +712,11 @@ export function AttachedSessionDetail({
               ? `This conversation started in ${displayProvider(session)}. Station will continue from this history and send your message. The original conversation stays available.`
               : continuationSupport.reason}
           </p>
+          {continuationSupported && outsideProjects && (
+            <p data-testid="attached-continuation-no-project">
+              {noProjectExplanation}
+            </p>
+          )}
           {continuationFeedback}
         </Dialog>
       )}

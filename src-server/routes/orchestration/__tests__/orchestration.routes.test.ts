@@ -3171,6 +3171,54 @@ describe('Orchestration Routes', () => {
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
   });
 
+  test('POST /commands passes a named continuation target through and refuses one that carries a path (#3386)', async () => {
+    const dispatchWithReceipt = vi.fn().mockResolvedValue({
+      receipt: {
+        commandId: 'cmd-adopt',
+        threadId: 'external:claude:source',
+        commandType: 'adoptSession',
+        status: 'accepted',
+        createdAt: '2026-10-05T00:00:00.000Z',
+      },
+      result: { provider: 'claude', threadId: 'station-child' },
+    });
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const post = (target: unknown) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'adoptSession',
+          sourceThreadId: 'external:claude:source',
+          target,
+        }),
+      });
+
+    expect((await post({ kind: 'own-folder' })).status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenLastCalledWith(
+      {
+        type: 'adoptSession',
+        sourceThreadId: 'external:claude:source',
+        target: { kind: 'own-folder' },
+      },
+      expect.anything(),
+    );
+    // The folder is always the conversation's own: a target naming one is
+    // refused before anything is dispatched.
+    dispatchWithReceipt.mockClear();
+    expect((await post({ kind: 'own-folder', cwd: '/' })).status).toBe(400);
+    expect(
+      (await post({ kind: 'project', projectSlug: 'station', cwd: '/' }))
+        .status,
+    ).toBe(400);
+    expect((await post({ kind: 'somewhere' })).status).toBe(400);
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
   test('POST /commands accepts adoption with only an opaque Station source id', async () => {
     const dispatchWithReceipt = vi.fn().mockResolvedValue({
       receipt: {

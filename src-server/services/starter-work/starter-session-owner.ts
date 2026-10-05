@@ -33,6 +33,7 @@ export function createStarterSessionOwner(
     continue: async ({
       sourceSessionId,
       operationId,
+      target,
       fullAccessGrant,
       owner,
       clientOrigin,
@@ -42,6 +43,7 @@ export function createStarterSessionOwner(
           type: 'adoptSession' as const,
           sourceThreadId: sourceSessionId,
           idempotencyKey: operationId,
+          ...(target ? { target } : {}),
         };
         // The caller's principal authorizes the source and owns the child.
         const outcome = await orchestration.dispatchWithReceipt(command, {

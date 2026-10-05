@@ -159,6 +159,7 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
@@ -367,6 +368,7 @@ const adoptSessionCommandSchema = z.object({
   type: z.literal('adoptSession'),
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
+  target: adoptSessionTargetSchema.optional(),
 });
 
 const interruptTurnCommandSchema = z.object({

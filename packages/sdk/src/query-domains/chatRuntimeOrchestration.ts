@@ -3,6 +3,7 @@ import type { ConversationContextBoundaryProjection } from '@kontourai/station-c
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   InterruptTurnResult,
   OrchestrationConversationEventWindow,
   OrchestrationSessionEventWindow,
@@ -690,6 +691,8 @@ export async function adoptOrchestrationSession(input: {
   sourceThreadId: string;
   apiBase?: string;
   intent?: AdoptOrchestrationSessionIntent;
+  /** #3386: where a conversation no project claims continues. */
+  target?: AdoptSessionTarget;
 }): Promise<AdoptedSessionResult> {
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const intent = input.intent ?? createAdoptOrchestrationSessionIntent();
@@ -704,6 +707,7 @@ export async function adoptOrchestrationSession(input: {
           type: 'adoptSession',
           sourceThreadId: input.sourceThreadId,
           idempotencyKey: intent.idempotencyKey,
+          ...(input.target ? { target: input.target } : {}),
         }),
       },
     );

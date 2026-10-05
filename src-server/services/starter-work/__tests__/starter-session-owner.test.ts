@@ -78,4 +78,21 @@ describe('createStarterSessionOwner (#2493)', () => {
       { userId: 'human:device:phone' },
     ]);
   });
+
+  test('a chosen continuation target rides the adoptSession command (#3386)', async () => {
+    const { dispatchWithReceipt, owner } = orchestration();
+    await owner.continue({
+      sourceSessionId: 'attached',
+      operationId: 'op-4',
+      target: { kind: 'own-folder' },
+      fullAccessGrant: null,
+      owner: { ownerUserId: 'human:local:operator' },
+    });
+    expect((dispatchWithReceipt.mock.calls[0] as unknown[])[0]).toEqual({
+      type: 'adoptSession',
+      sourceThreadId: 'attached',
+      idempotencyKey: 'op-4',
+      target: { kind: 'own-folder' },
+    });
+  });
 });
