@@ -20,7 +20,8 @@
 
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
 import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
-import { type ClientRequestOptions, getJson, StationHttpError } from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson } from './http';
 
 export interface StationUsageOverview {
   stationId: string;
@@ -36,7 +37,11 @@ export async function fetchStationUsage(
     opts,
   );
   if (!response.ok) {
-    throw new StationHttpError(response.status, 'Station overview unavailable');
+    throw envelopeError(
+      response,
+      await response.json().catch(() => null),
+      'Station overview unavailable',
+    );
   }
   const body = (await response.json()) as {
     success: boolean;
@@ -113,7 +118,11 @@ export async function fetchUsageRollup(
     opts,
   );
   if (!response.ok)
-    throw new StationHttpError(response.status, 'Usage rollup unavailable');
+    throw envelopeError(
+      response,
+      await response.json().catch(() => null),
+      'Usage rollup unavailable',
+    );
   return response.json() as Promise<UsageRollupResponse>;
 }
 

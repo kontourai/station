@@ -89,7 +89,14 @@ test('operator overview cache follows authority and pauses refused polling until
   let denied = false;
   fetch.mockImplementation(async () =>
     denied
-      ? Response.json({}, { status: 403 })
+      ? Response.json(
+          {
+            error: 'Operator access required',
+            code: 'OPERATOR_REQUIRED',
+            details: { scope: 'local' },
+          },
+          { status: 403 },
+        )
       : Response.json({
           success: true,
           scope: { kind: 'station', stationId: 'instance' },
@@ -121,7 +128,12 @@ test('operator overview cache follows authority and pauses refused polling until
     expect(view.result.current.data).toBeUndefined();
     await act(async () => {
       const result = await view.result.current.refetch();
-      expect(result.error?.message).toBe('Station overview unavailable');
+      expect(result.error).toMatchObject({
+        message: 'Operator access required',
+        status: 403,
+        code: 'OPERATOR_REQUIRED',
+        details: { scope: 'local' },
+      });
     });
     await act(() => vi.advanceTimersByTimeAsync(10));
     expect(view.result.current.isError).toBe(true);

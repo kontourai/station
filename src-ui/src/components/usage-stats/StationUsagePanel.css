@@ -12,7 +12,7 @@
 
 .station-usage__totals {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
   gap: var(--k-space-4);
   margin: 0;
   padding-block: var(--k-space-3);
@@ -102,10 +102,4 @@
 .station-usage summary:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
-}
-
-@media (max-width: 40rem) {
-  .station-usage__totals {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }

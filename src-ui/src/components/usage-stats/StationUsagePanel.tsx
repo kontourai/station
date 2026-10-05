@@ -168,7 +168,7 @@ export function StationUsagePanel() {
             ) : (
               <Empty
                 variant="compact"
-                label="No recorded activity in this breakdown"
+                label="Nothing recorded in this breakdown"
               />
             )}
             <details className="station-usage__details">

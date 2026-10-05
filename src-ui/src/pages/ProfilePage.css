@@ -354,12 +354,6 @@
   display: none;
 }
 
-@media (max-width: 40rem) {
-  .profile-usage-summary .usage-stats-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 .profile-people-list {
   display: grid;
   gap: var(--k-space-3);
@@ -387,6 +381,10 @@
 }
 
 @media (max-width: 700px) {
+  .profile-usage-summary .usage-stats-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .profile-hero-content {
     flex-direction: column;
     align-items: center;
