@@ -759,6 +759,38 @@ describe('project row identity (#2150)', () => {
     const row = screen.getByRole('button', { name: /Campfit/ });
     expect(row.textContent).toContain('🏕️');
   });
+
+  test('an image icon is drawn beside the bar, and stays out of the name', () => {
+    resetState();
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: image,
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    const icon = row.querySelector('.sidebar__project-icon');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.querySelector('img')?.getAttribute('src')).toBe(image);
+  });
+
+  test('a stored value the icon rule refuses is never hotlinked from the row', () => {
+    resetState();
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: 'https://example.com/logo.png',
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('img')).toBeNull();
+    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+  });
 });
 
 /**

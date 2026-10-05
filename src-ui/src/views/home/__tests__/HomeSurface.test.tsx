@@ -22,6 +22,9 @@ vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
 vi.mock('../../../hooks/useProjectAccents', () => ({
   useProjectAccents: () => new Map(),
 }));
+vi.mock('../../../hooks/useProjectIcons', () => ({
+  useProjectIcons: () => new Map(),
+}));
 
 import { HomeSurface } from '../HomeSurface';
 

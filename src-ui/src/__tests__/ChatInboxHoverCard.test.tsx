@@ -166,7 +166,11 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
 });
 
-function renderRow(item: HomeWorkItem, cwd?: string) {
+function renderRow(
+  item: HomeWorkItem,
+  cwd?: string,
+  project: { projectAccent?: string; projectIcon?: string } = {},
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <InboxRow
@@ -179,6 +183,7 @@ function renderRow(item: HomeWorkItem, cwd?: string) {
         gitLocation={
           cwd ? { projectSlug: 'station', workingDir: cwd } : undefined
         }
+        {...project}
       />
     </QueryClientProvider>,
   );
@@ -190,8 +195,12 @@ function hoverRow() {
   });
 }
 
-async function openCard(item: HomeWorkItem, cwd?: string) {
-  renderRow(item, cwd);
+async function openCard(
+  item: HomeWorkItem,
+  cwd?: string,
+  project?: { projectAccent?: string; projectIcon?: string },
+) {
+  renderRow(item, cwd, project);
   // Focus opens immediately (no hover delay) — the keyboard path, and the
   // deterministic way for a test to mount the card.
   fireEvent.focus(screen.getByTestId('inbox-row'));
@@ -269,6 +278,35 @@ describe('inbox hover card opening (through the real row)', () => {
 });
 
 describe('inbox hover card metadata sections', () => {
+  it("the Project row carries the row's project icon, else its colour", async () => {
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    await openCard(workItem(), undefined, {
+      projectAccent: 'var(--event-tool-call)',
+      projectIcon: image,
+    });
+    const projectRow = screen
+      .getByText('Project', { selector: 'dt' })
+      .closest('div') as HTMLElement;
+    const mark = projectRow.querySelector<HTMLElement>(
+      '.chat-dock-inbox-hover-card__project-mark',
+    );
+    expect(mark?.querySelector('img')?.getAttribute('src')).toBe(image);
+    expect(mark?.getAttribute('aria-hidden')).toBe('true');
+    expect(projectRow.textContent).toContain('kontourai/station');
+  });
+
+  it('a project with no icon shows its colour dot in the Project row', async () => {
+    await openCard(workItem(), undefined, {
+      projectAccent: 'var(--event-tool-call)',
+    });
+    const mark = screen
+      .getByText('Project', { selector: 'dt' })
+      .closest('div')
+      ?.querySelector<HTMLElement>('.chat-dock-inbox-hover-card__project-mark');
+    expect(mark?.classList.contains('project-icon--dot')).toBe(true);
+    expect(mark?.style.backgroundColor).toBe('var(--event-tool-call)');
+  });
+
   it('renders the project, machine, engine, and status the row already knows', async () => {
     await openCard(
       workItem({

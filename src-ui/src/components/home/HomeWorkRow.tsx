@@ -50,6 +50,8 @@ export interface HomeRowContext {
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
   /** The sidebar's project colours (`useProjectAccents`), by slug. */
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The projects' icons (`useProjectIcons`), by slug. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
 }
 
 /** The discard itself is the button's own server command; Home has no tab
@@ -96,6 +98,11 @@ export function renderHomeWorkRow({
         projectAccent={
           task.projectSlug
             ? context.projectAccentBySlug?.get(task.projectSlug)
+            : undefined
+        }
+        projectIcon={
+          task.projectSlug
+            ? context.projectIconBySlug?.get(task.projectSlug)
             : undefined
         }
         onActivate={() => onOpen(task)}

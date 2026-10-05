@@ -32,6 +32,7 @@ import {
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   InboxRowChips,
   InboxRowStatusGlyph,
@@ -149,17 +150,25 @@ export function inboxRowIconAgent(
 }
 
 /**
- * The project's colour as a dot before its name. Decorative (`aria-hidden`):
- * the name beside it is what says which project, and the colour is never
- * applied to text.
+ * The project's mark before its name: its icon when it has one, else its
+ * colour as a dot. Decorative (`aria-hidden`): the name beside it is what
+ * says which project, and the colour is never applied to text.
  */
-function ProjectAccentSwatch({ accent }: { accent: string | undefined }) {
-  if (!accent) return null;
+function ProjectAccentSwatch({
+  accent,
+  icon,
+  name,
+}: {
+  accent: string | undefined;
+  icon: string | undefined;
+  name: string;
+}) {
   return (
-    <span
+    <ProjectIcon
+      project={{ name, icon }}
+      accent={accent}
+      size={12}
       className="inbox-row__project-accent"
-      aria-hidden="true"
-      style={{ backgroundColor: accent }}
     />
   );
 }
@@ -381,6 +390,11 @@ interface InboxRowProps {
    */
   projectAccent?: string;
   /**
+   * The row's project icon (`useProjectIcons`), drawn in place of the colour
+   * swatch when the project has one. Absent draws the swatch.
+   */
+  projectIcon?: string;
+  /**
    * `card` (the default) is the full row for work that needs you, is
    * running or is idle. `slim` is the one-line row for snoozed and settled
    * work: status icon, title, status word, time.
@@ -454,6 +468,7 @@ export function InboxRow({
   agents,
   gitLocation,
   projectAccent,
+  projectIcon,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
@@ -784,7 +799,12 @@ export function InboxRow({
                 {!actionsInDetails && (
                   <>
                     {' '}
-                    · <ProjectAccentSwatch accent={projectAccent} />
+                    ·{' '}
+                    <ProjectAccentSwatch
+                      accent={projectAccent}
+                      icon={projectIcon}
+                      name={item.projectLabel}
+                    />
                     <span className="inbox-row__project">
                       {item.projectLabel}
                     </span>
@@ -818,7 +838,11 @@ export function InboxRow({
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 <FolderGlyph />
-                <ProjectAccentSwatch accent={projectAccent} />
+                <ProjectAccentSwatch
+                  accent={projectAccent}
+                  icon={projectIcon}
+                  name={item.projectLabel}
+                />
                 <span className="inbox-row__project">{item.projectLabel}</span>
               </span>
             )}
@@ -877,6 +901,8 @@ export function InboxRow({
             now,
             facts,
             gitLocation,
+            projectAccent,
+            projectIcon,
             anchor: hover.anchor,
             onClose: hover.close,
             id: hoverCardId,
@@ -892,6 +918,8 @@ export function InboxRow({
             now,
             facts,
             gitLocation,
+            projectAccent,
+            projectIcon,
             triggerRef: detailsTriggerRef,
             onClose: () => setDetailsOpen(false),
             actions: sheetMenu,
@@ -941,6 +969,8 @@ export interface InboxGroupListProps {
    * other shared props.
    */
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** Project icons by slug (`useProjectIcons`), resolved like the accents. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
   actionsInDetails?: InboxRowProps['actionsInDetails'];
@@ -972,6 +1002,7 @@ export function InboxGroupList({
   agents,
   gitLocationByThreadId,
   projectAccentBySlug,
+  projectIconBySlug,
   chrome,
   actionsInDetails,
   workFacts,
@@ -1036,6 +1067,9 @@ export function InboxGroupList({
         item.projectSlug
           ? projectAccentBySlug?.get(item.projectSlug)
           : undefined
+      }
+      projectIcon={
+        item.projectSlug ? projectIconBySlug?.get(item.projectSlug) : undefined
       }
     />
   );

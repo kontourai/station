@@ -3,7 +3,7 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { CheckGlyph, HomeGlyph } from '../icons/Glyph';
-import { LayoutIcon } from '../icons/LayoutIcon';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import { PickerCreateAction } from '../PickerCreateAction';
 import {
   ResponsiveDialogHeader,
@@ -191,14 +191,14 @@ export function ChatDockProjectSwitcherSheet({
                     className="chat-dock__project-switcher-icon"
                     aria-hidden="true"
                   >
-                    {project.icon ? (
-                      <LayoutIcon layout={project} size={28} />
-                    ) : (
-                      <span
-                        className="chat-dock__project-switcher-accent"
-                        style={{ backgroundColor: accents.get(project.slug) }}
-                      />
-                    )}
+                    {/* The project's icon, else the sidebar's colour bar. */}
+                    <ProjectIcon
+                      project={project}
+                      size={28}
+                      accent={accents.get(project.slug)}
+                      fallback="bar"
+                      className="chat-dock__project-switcher-accent"
+                    />
                   </span>
                   <span className="chat-dock__project-switcher-name">
                     <span className="chat-dock__project-switcher-label">
