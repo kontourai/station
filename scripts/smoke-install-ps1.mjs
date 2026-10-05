@@ -446,6 +446,14 @@ async function nonAsciiProfile() {
     /^[\x20-\x7e\r\n]*$/.test(text) && text.includes('%USERPROFILE%'),
     `the launcher is not ASCII through %USERPROFILE%:\n${text}`,
   );
+  // The probe below swaps the hand-over line, so the real one is checked
+  // here: no CALL anywhere, and the hand-over is the last line.
+  const handOver = text.trimEnd().split('\r\n').at(-1) ?? '';
+  check(
+    !/^\s*@?call\b/im.test(text) &&
+      /^"[^"]+\\station\.cmd" %\*$/.test(handOver),
+    `the launcher hands over through CALL or not last:\n${text}`,
+  );
   // Only what a fresh console has: no STATION_* variables.
   const bare = {
     SystemRoot: systemRoot,
@@ -696,6 +704,39 @@ async function fullInstall() {
     !existsSync(join(looseRoot, 'versions', second.version)),
     'a loosened root: a version was staged in it',
   );
+  // The way out the refusal names: a fresh install.ps1 uninstalls the
+  // loosened root without running anything from it, then installs again.
+  const looseEnv = (manifest) =>
+    environment(loose, manifest, {
+      STATION_INSTALL_STAGE_ONLY: '',
+      STATION_INSTALL_NO_START: '1',
+      STATION_BIN_DIR: join(loose, 'bin'),
+    });
+  const removed = await runFile(
+    windowsPowerShell,
+    looseEnv(''),
+    installScript,
+    ['uninstall'],
+  );
+  check(removed.status === 0, 'uninstalling the loosened root failed');
+  check(
+    !removed.stdout.includes('Using the Node.js of the installed Station'),
+    'uninstalling the loosened root ran its Node.js',
+  );
+  check(
+    removed.stderr.includes('removed without running anything from it'),
+    'uninstalling the loosened root did not say it ran nothing from it',
+  );
+  check(!existsSync(looseRoot), 'uninstall left the loosened root');
+  const reinstalled = await runFile(
+    windowsPowerShell,
+    looseEnv(publish('w2-loose-3', second)),
+  );
+  check(
+    reinstalled.status === 0,
+    'installing again after the uninstall failed',
+  );
+  assertRestrictedToUser(looseRoot);
 }
 
 try {

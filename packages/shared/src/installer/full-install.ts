@@ -56,6 +56,7 @@ import {
   type InstallerEnv,
   InstallRefusal,
   inside,
+  installRootTrustProblem,
   isLink,
   owner,
   type Paths,
@@ -71,7 +72,6 @@ import {
   resolvePaths,
   same,
   sealTree,
-  secureInstallRoot,
   versionPaths,
 } from './install.js';
 
@@ -164,7 +164,8 @@ export function launcherText(
  */
 function activeInstalledVersion(paths: Paths): string | null {
   const active = activeVersionDir(paths.current);
-  if (active !== null && !inside(active, canonicalize(paths.versions)))
+  const versions = canonicalize(paths.versions);
+  if (active !== null && (!inside(active, versions) || same(active, versions)))
     fail(
       `${paths.current} points outside ${paths.versions}; refusing to run anything from it`,
     );
@@ -176,9 +177,9 @@ function activeInstalledVersion(paths: Paths): string | null {
  * read, recovered or run: it must be this installer's and, on Windows,
  * restricted to the current user.
  */
-function assertExistingInstallRoot(paths: Paths): void {
+function assertExistingInstallRoot(paths: Paths, env: InstallerEnv): void {
   if (existsSync(paths.installRoot) || isLink(paths.installRoot))
-    prepareOwnedInstallRoot(paths.installRoot);
+    prepareOwnedInstallRoot(paths.installRoot, env);
 }
 
 function launcherIsOwned(paths: Paths): boolean {
@@ -372,6 +373,25 @@ function archiveServicesOf(paths: Paths): string[] {
   return ids;
 }
 
+/** Whether anything accepts connections on a loopback port. */
+function probePort(port: number): Promise<'free' | 'used' | 'unknown'> {
+  return new Promise((done) => {
+    const socket = connect({ host: '127.0.0.1', port });
+    socket.setTimeout(2000);
+    socket.on('connect', () => {
+      socket.destroy();
+      done('used');
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      done('unknown');
+    });
+    socket.on('error', (error: NodeJS.ErrnoException) =>
+      done(error.code === 'ECONNREFUSED' ? 'free' : 'unknown'),
+    );
+  });
+}
+
 /**
  * Nightly coexistence (install.sh's assert_nightly_coexistence, decision
  * D7): the Station Nightly desktop app defaults to the same home and ports.
@@ -398,21 +418,7 @@ async function assertNightlyCoexistence(
   }
   if (env.STATION_INSTALL_NO_START === '1' || isLink(paths.current)) return;
   for (const port of [ports.server, ports.ui]) {
-    const state = await new Promise<'free' | 'used' | 'unknown'>((done) => {
-      const socket = connect({ host: '127.0.0.1', port });
-      socket.setTimeout(2000);
-      socket.on('connect', () => {
-        socket.destroy();
-        done('used');
-      });
-      socket.on('timeout', () => {
-        socket.destroy();
-        done('unknown');
-      });
-      socket.on('error', (error: NodeJS.ErrnoException) =>
-        done(error.code === 'ECONNREFUSED' ? 'free' : 'unknown'),
-      );
-    });
+    const state = await probePort(port);
     if (state === 'used')
       fail(
         `port ${port} is already in use on this host, and no portable nightly Station is installed to own it. The Station Nightly desktop app uses the same ports; quit it before installing, or install with STATION_INSTALL_NO_START=1 and start Station once the port is free`,
@@ -543,7 +549,7 @@ export async function installArchive(context: Context): Promise<number> {
   const { env, io } = context;
   const request = readStageRequest(env, 'install');
   const paths = resolvePaths(env, request.requested, request.ring);
-  assertExistingInstallRoot(paths);
+  assertExistingInstallRoot(paths, env);
   recoverCurrent(paths.installRoot);
   activeInstalledVersion(paths);
   const ports = resolvePorts(env, paths.channel, readRecordedPorts(paths));
@@ -560,7 +566,7 @@ export async function installArchive(context: Context): Promise<number> {
     paths,
     'install',
     () => {
-      prepareOwnedInstallRoot(paths.installRoot);
+      prepareOwnedInstallRoot(paths.installRoot, env);
       const home = prepareOwnedRoot(
         paths.stationHome,
         DATA_ROOT_MARKER,
@@ -773,7 +779,10 @@ function assertOwnedRoot(root: string, markerName: string, signature: string) {
 }
 
 /** `install.ps1 uninstall [-PurgeData]` (install.sh's uninstall_station). */
-export function uninstallArchive(context: Context, args: string[]): number {
+export async function uninstallArchive(
+  context: Context,
+  args: string[],
+): Promise<number> {
   const { env, io } = context;
   if (args.length > 1) fail(`unexpected argument: ${args[1]}`);
   const option = args[0];
@@ -787,6 +796,7 @@ export function uninstallArchive(context: Context, args: string[]): number {
   const { requested, ring } = readChannel(env);
   const paths = resolvePaths(env, requested, ring);
   const present = (path: string) => existsSync(path) || isLink(path);
+  let trustProblem: string | null = null;
 
   if (present(paths.installRoot)) {
     assertOwnedRoot(
@@ -794,16 +804,38 @@ export function uninstallArchive(context: Context, args: string[]): number {
       INSTALL_ROOT_MARKER,
       INSTALL_ROOT_SIGNATURE,
     );
-    secureInstallRoot(paths.installRoot, false);
-    recoverCurrent(paths.installRoot);
+    trustProblem = installRootTrustProblem(paths.installRoot, env);
+    if (trustProblem === null) recoverCurrent(paths.installRoot);
+    else
+      io.err(
+        `Warning: ${paths.installRoot} is not restricted to your account (${trustProblem}); it is removed without running anything from it.`,
+      );
   }
   if (purge && present(paths.stationHome)) {
     assertSafeRemoveTarget(paths.stationHome);
     assertOwnedRoot(paths.stationHome, DATA_ROOT_MARKER, DATA_ROOT_SIGNATURE);
   }
   refuseArchiveServices(paths, 'uninstall');
-  if (!stopStation(context, activeInstalledVersion(paths), paths))
-    fail('could not stop the installed Station; no files were removed');
+  const active = activeInstalledVersion(paths);
+  if (trustProblem === null) {
+    if (!stopStation(context, active, paths))
+      fail('could not stop the installed Station; no files were removed');
+  } else if (active !== null) {
+    // Nothing from an untrusted root runs, its `station stop` included. A
+    // Station it may have started is detected on the ports the install
+    // recorded (or the channel's), and the uninstall waits for the user to
+    // stop it rather than killing a process it cannot vouch for.
+    const ports =
+      portsOf(readIfPresent(paths.stateFile)) ??
+      resolvePorts({}, paths.channel, null);
+    for (const port of [ports.server, ports.ui]) {
+      const state = await probePort(port);
+      if (state !== 'free')
+        fail(
+          `a Station may be running from ${paths.installRoot} (port ${port} is ${state === 'used' ? 'in use' : 'not answering'}), and nothing from that root is run to stop it. Stop it first (station stop, or end its node.exe), then rerun the uninstall. Nothing was removed`,
+        );
+    }
+  }
   if (present(paths.launcher)) {
     if (!launcherIsOwned(paths))
       fail(

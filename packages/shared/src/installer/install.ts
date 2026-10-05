@@ -194,36 +194,73 @@ export function prepareOwnedRoot(
 }
 
 /**
- * On Windows the install root is restricted to the current user (#2675 W2),
- * as `windows-path-trust.ts` restricts Station's own trust paths: a root this
- * run created gets a protected DACL with one FullControl entry for the
- * current user, inherited by everything installed in it; a root that already
- * existed must still have exactly that DACL. A root another account could
- * write may hold a version that account planted, which the installer would
- * otherwise reuse (its sentinel is only the published sha256), so it is
- * refused rather than repaired. POSIX installs keep install.sh's owner and
- * mode checks.
+ * Why an existing install root is not trusted, or null when it is. On
+ * Windows the install root is restricted to the current user (#2675 W2), as
+ * `windows-path-trust.ts` restricts Station's own trust paths; anything else
+ * may hold a version another account planted (a version's sentinel is only
+ * its published sha256). POSIX installs keep install.sh's owner and mode
+ * checks, so this is null there. STATION_INSTALL_TEST_UNTRUSTED_ROOT=1
+ * (test-only, behind STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1) reports
+ * any root as untrusted, so the refusal and uninstall paths run on every OS.
  */
-export function secureInstallRoot(root: string, created: boolean): void {
-  if (process.platform !== 'win32') return;
-  const target = [{ kind: 'directory' as const, path: root }];
-  try {
-    if (created) hardenWindowsPathsTrusted(runWindowsTrustCommand, target);
-    else assertWindowsPathsTrusted(runWindowsTrustCommand, target);
-  } catch (error) {
-    fail(
-      created
-        ? `could not restrict the install root to your account: ${(error as Error).message}`
-        : `the install root ${root} is not restricted to your account, so nothing in it is trusted (${(error as Error).message}); uninstall and reinstall, or restore its permissions to you alone`,
-    );
+export function installRootTrustProblem(
+  root: string,
+  env: InstallerEnv,
+): string | null {
+  if (env.STATION_INSTALL_TEST_UNTRUSTED_ROOT === '1') {
+    if (env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS !== '1')
+      fail(
+        'STATION_INSTALL_TEST_UNTRUSTED_ROOT is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+      );
+    return 'test-only override';
   }
+  if (process.platform !== 'win32') return null;
+  try {
+    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: root },
+    ]);
+    return null;
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
+/**
+ * A root this run created gets a protected DACL with one FullControl entry
+ * for the current user, inherited by everything installed in it (Windows
+ * only); a root that already existed must still have it, or it is refused
+ * with the way out: uninstall, which runs nothing from it.
+ */
+function secureInstallRoot(
+  root: string,
+  created: boolean,
+  env: InstallerEnv,
+): void {
+  if (created) {
+    if (process.platform !== 'win32') return;
+    try {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'directory', path: root },
+      ]);
+    } catch (error) {
+      fail(
+        `could not restrict the install root to your account: ${(error as Error).message}`,
+      );
+    }
+    return;
+  }
+  const problem = installRootTrustProblem(root, env);
+  if (problem !== null)
+    fail(
+      `the install root ${root} is not restricted to your account, so nothing in it is trusted (${problem}). Remove it with a freshly downloaded install.ps1 run as \`powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 uninstall\` (it runs nothing from that root and keeps your data), then install again`,
+    );
 }
 
 /**
  * The install root, owned by this installer, restricted to the current user
  * on Windows.
  */
-export function prepareOwnedInstallRoot(root: string): void {
+export function prepareOwnedInstallRoot(root: string, env: InstallerEnv): void {
   const state = prepareOwnedRoot(
     root,
     INSTALL_ROOT_MARKER,
@@ -234,7 +271,7 @@ export function prepareOwnedInstallRoot(root: string): void {
     fail(
       `STATION_INSTALL_ROOT is not an empty or installer-owned directory: ${root}`,
     );
-  secureInstallRoot(root, state === 'created');
+  secureInstallRoot(root, state === 'created', env);
 }
 
 /**
@@ -1033,7 +1070,7 @@ export async function stageArchive(context: Context): Promise<number> {
   const request = readStageRequest(context.env, 'stage');
   const paths = resolvePaths(context.env, request.requested, request.ring);
   const release = await prepareRelease(context, request, paths, 'stage', () => {
-    prepareOwnedInstallRoot(paths.installRoot);
+    prepareOwnedInstallRoot(paths.installRoot, context.env);
     prepareSafeDirectory(paths.versions);
   });
   context.io.out(`STATION_STAGED_VERSION=${release.payload.version}`);
