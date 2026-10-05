@@ -15,9 +15,11 @@ const wrapper = resolve('scripts/veritas-readiness-evidence.mjs');
  *  re-executed the required evidence checks (governance, lint, the docs
  *  truth gate), so each test cost 80-120s and grew with the repository
  *  while proving nothing about Station's config: what these tests name is
- *  how the wrapper classifies the engine's result. The real config is
- *  exercised on every pull request by `veritas:readiness` inside ci:fast.
- *  Each fixture run takes well under a second idle; the budget only
+ *  how the wrapper classifies the engine's result. ci:fast runs the Veritas
+ *  engine directly (`veritas:readiness`) with Station's real Repo Map and
+ *  evidence commands, not this wrapper; the wrapper itself meets the real
+ *  config only in ci.yml's manual-completion-diagnostics "Veritas readiness
+ *  evidence" step, which runs on workflow_dispatch. Each fixture run takes well under a second idle; the budget only
  *  absorbs a loaded host. */
 const WRAPPER_TIMEOUT_MS = 30_000;
 
