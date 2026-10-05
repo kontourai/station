@@ -35,7 +35,10 @@ export function MemberProjectPage({
       <div className="project-page__inner">
         {/* The one icon rule every surface uses. It refuses a URL or a path,
             so the native relay view never issues a raw image request outside
-            the broker; a validated data: image is inline bytes and draws. */}
+            the broker; a validated data: image is inline bytes and draws.
+            `ProjectIcon` applies the same rule; it is stated again here
+            because this is the broker boundary, so a header that stopped
+            using `ProjectIcon` could not start loading remote images. */}
         <MemberProjectHeader
           project={{ ...project, icon: displayableProjectIcon(project.icon) }}
           onRefresh={() => void sharedWork.refetch()}
