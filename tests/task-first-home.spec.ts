@@ -965,7 +965,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // No project is bound to the dock, so the chat names no workspace: the
     // global context the advertised identity was resolved in.
     expect(
-      (sent?.input as { target?: { workspace?: unknown } }).target?.workspace,
+      (sent?.input as { target?: { workspace?: unknown } } | undefined)?.target
+        ?.workspace,
     ).toBeUndefined();
   });
 
