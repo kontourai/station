@@ -31,6 +31,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
 
@@ -166,6 +167,10 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
 }));
 
 const { NewChatModal } = await import('../components/modals/NewChatModal');
+const { getContextAgent } = await import('../hooks/useRecentAgents');
+const { buildCodingChatInitialMessage } = await import(
+  '../components/coding-layout/chatContextDraft'
+);
 const { composerDraftContext } = await import(
   '../components/chat-dock/ChatDockModalStack'
 );
@@ -192,7 +197,11 @@ afterEach(() => {
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: vi.fn().mockReturnValue({ matches: false }),
+    value: vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
   });
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -1145,8 +1154,11 @@ describe('visual skill selection through the New Chat picker', () => {
   });
 });
 
-describe('composer-first New chat', () => {
-  function start(onSelect = vi.fn()) {
+describe('the start composer in the dock', () => {
+  function start(
+    onSelect = vi.fn(),
+    props: Partial<ComponentProps<typeof NewChatModal>> = {},
+  ) {
     render(
       <NewChatModal
         startSurface
@@ -1154,58 +1166,70 @@ describe('composer-first New chat', () => {
         projects={[]}
         onSelect={onSelect}
         onClose={vi.fn()}
+        {...props}
       />,
     );
     return onSelect;
   }
-  test('typing and choosing another Agent do not open a chat; Send starts the chosen Agent once with the draft', () => {
+  const message = () =>
+    screen.getByRole('textbox', {
+      name: 'What would you like done?',
+    }) as HTMLTextAreaElement;
+  const startButton = () =>
+    screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+  async function chooseInMenu(chip: string, slug: string) {
+    fireEvent.click(screen.getByRole('button', { name: chip }));
+    await screen.findByRole('dialog', { name: 'Choose agent' });
+    clickAgent(slug);
+  }
+
+  test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
     selectionModelState.agents = [AGENT, AUTHORED_CODEX];
     const onSelect = start();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-      target: { value: 'Review this change' },
-    });
+    fireEvent.change(message(), { target: { value: 'Review this change' } });
     expect(onSelect).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Agent: Assistant' }));
-    clickAgent('codex-agent');
+    await chooseInMenu('Agent: Assistant', 'codex-agent');
     expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Choose agent' })).toBeNull();
+    expect(message().value).toBe('Review this change');
     expect(
-      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
-        .value,
-    ).toBe('Review this change');
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    fireEvent.submit(screen.getByRole('form', { name: 'New chat draft' }));
+      screen.getByRole('button', { name: 'Agent: Codex Agent' }),
+    ).toBeTruthy();
+    fireEvent.click(startButton());
+    fireEvent.submit(screen.getByRole('form', { name: 'Start work' }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0].slug).toBe('codex-agent');
     expect(onSelect.mock.calls[0][3]).toBe('Review this change');
     expect(onSelect.mock.calls[0][12]).toBe(true);
   });
-  test('an unavailable remembered Agent shows setup and retains the draft without dispatching', async () => {
+
+  // Owner decision: a chip choice is remembered as the default for that
+  // context, in the memory the next start (on either surface) reads.
+  test('choosing an Agent remembers it for this context before anything starts', async () => {
+    localStorage.clear();
+    selectionModelState.agents = [AGENT, AUTHORED_CODEX];
+    const onSelect = start();
+    await chooseInMenu('Agent: Assistant', 'codex-agent');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(getContextAgent('authority-1', '__global__')).toBe('codex-agent');
+  });
+
+  test('an unavailable remembered Agent shows setup and retains the message without dispatching', async () => {
     selectionModelState.agents = [UNAVAILABLE_AGENT, AGENT];
     selectionModelState.recommendedAgent = UNAVAILABLE_AGENT;
     const onSelect = start();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-      target: { value: 'Keep this draft' },
-    });
+    fireEvent.change(message(), { target: { value: 'Keep this draft' } });
     expect(
       (await screen.findByRole('region', { name: 'Set up an AI connection' }))
         .textContent,
     ).toContain('connection offline');
-    expect(
-      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    expect(startButton().disabled).toBe(true);
     expect(onSelect).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Agent: Downed' }));
-    clickAgent('assistant');
-    expect(
-      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
-        .value,
-    ).toBe('Keep this draft');
-    expect(
-      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
+    await chooseInMenu('Agent: Downed, needs setup', 'assistant');
+    expect(message().value).toBe('Keep this draft');
+    expect(startButton().disabled).toBe(false);
   });
+
   test('a failed start retains the message and allows a retry', async () => {
     const onSelect = start(
       vi
@@ -1213,29 +1237,23 @@ describe('composer-first New chat', () => {
         .mockRejectedValueOnce(new Error('offline'))
         .mockResolvedValue(undefined),
     );
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-      target: { value: 'Do this later' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.change(message(), { target: { value: 'Do this later' } });
+    fireEvent.click(startButton());
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toContain(
         'Could not start',
       ),
     );
-    expect(
-      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
-        .value,
-    ).toBe('Do this later');
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(message().value).toBe('Do this later');
+    fireEvent.click(startButton());
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
+
   test('Enable prepares an Agent and returns to the draft without opening a conversation', async () => {
     selectionModelState.agents = [ENABLEABLE_ALIAS, AUTHORED_CODEX];
     selectionModelState.recommendedAgent = ENABLEABLE_ALIAS;
     const onSelect = start();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-      target: { value: 'Wait until I send' },
-    });
+    fireEvent.change(message(), { target: { value: 'Wait until I send' } });
     fireEvent.click(await screen.findByRole('button', { name: /Enable/ }));
     await waitFor(() =>
       expect(
@@ -1244,9 +1262,139 @@ describe('composer-first New chat', () => {
     );
     expect(onSelect).not.toHaveBeenCalled();
     expect(materializeMock).not.toHaveBeenCalled();
+    expect(message().value).toBe('Wait until I send');
+  });
+
+  // Owner decision 2: a requested draft folds into the composer as a
+  // removable context chip. With no message, the start hands over exactly
+  // the old Agent-row start's message (placed in the composer, not sent);
+  // with a message, the message comes first, then that same context, sent.
+  describe('context handed to the draft', () => {
+    const draft = {
+      title: 'Prepared prompt',
+      description: 'From the plugin primer',
+      framing: 'verbatim' as const,
+      items: [
+        {
+          id: 'composer-draft',
+          label: 'Prompt',
+          detail: 'Build a plugin',
+          messageLine: 'Build a plugin that lists my tasks.',
+        },
+      ],
+    };
+    const legacy = buildCodingChatInitialMessage(draft.items, 'verbatim');
+
+    test('with no message the start is byte-identical to the Agent-row start, and is not sent', () => {
+      const onSelect = start(vi.fn(), { draftContext: draft });
+      expect(
+        screen.getByRole('button', { name: 'Prompt: Build a plugin' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/With no message, Start puts this context/),
+      ).toBeTruthy();
+      fireEvent.click(startButton());
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect.mock.calls[0][3]).toBe(legacy);
+      expect(onSelect.mock.calls[0][3]).toBe(
+        'Build a plugin that lists my tasks.',
+      );
+      expect(onSelect.mock.calls[0][12]).not.toBe(true);
+    });
+
+    test('with a message it is the message, a blank line, then the context, and it is sent', () => {
+      const onSelect = start(vi.fn(), { draftContext: draft });
+      fireEvent.change(message(), { target: { value: '  Make it small  ' } });
+      fireEvent.click(startButton());
+      expect(onSelect.mock.calls[0][3]).toBe(`Make it small\n\n${legacy}`);
+      expect(onSelect.mock.calls[0][12]).toBe(true);
+    });
+
+    test('removing the context leaves nothing to start until a message is typed', () => {
+      const onSelect = start(vi.fn(), { draftContext: draft });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Prompt: Build a plugin' }),
+      );
+      expect(startButton().disabled).toBe(true);
+      fireEvent.change(message(), { target: { value: 'Just this' } });
+      fireEvent.click(startButton());
+      expect(onSelect.mock.calls[0][3]).toBe('Just this');
+    });
+  });
+
+  // Home's composer sends what its chips show; the dock starts exactly that
+  // and never substitutes its own default.
+  describe("a start carrying Home's selection", () => {
+    test('starts the chosen Agent with the chosen Model and runtime options', async () => {
+      selectionModelState.agents = [AGENT, AUTHORED_CODEX];
+      selectionModelState.recommendedAgent = AGENT;
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'From Home',
+        startSelection: {
+          context: '__global__',
+          agentSlug: 'codex-agent',
+          model: {
+            modelId: 'gpt-5.4',
+            providerId: 'codex',
+            providerOptions: { reasoningEffort: 'high' },
+          },
+        },
+      });
+      await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+      const call = onSelect.mock.calls[0];
+      expect(call[0].slug).toBe('codex-agent');
+      expect(call[3]).toBe('From Home');
+      expect(call[4]).toBe('gpt-5.4');
+      expect(call[8]).toEqual({ reasoningEffort: 'high' });
+      expect(call[9]).toBe('codex');
+    });
+
+    test('an Agent the dock cannot start is refused out loud, with the message kept', async () => {
+      selectionModelState.agents = [UNAVAILABLE_AGENT, AGENT];
+      selectionModelState.recommendedAgent = AGENT;
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'From Home',
+        startSelection: { context: '__global__', agentSlug: 'downed' },
+      });
+      expect(
+        (await screen.findByRole('form', { name: 'Start work' })) &&
+          message().value,
+      ).toBe('From Home');
+      expect(
+        screen.getByText(/The Agent you chose is not ready here/),
+      ).toBeTruthy();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+  });
+
+  // #3350 item 1: the dock names a project the list has not loaded. The
+  // start waits instead of running global with the global Model.
+  test('a bound project whose list is still loading holds the chips and the start', async () => {
+    const onSelect = start(vi.fn(), {
+      activeProjectSlug: 'station',
+      projectsLoaded: false,
+    });
+    fireEvent.change(message(), { target: { value: 'Wait for it' } });
     expect(
-      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
-        .value,
-    ).toBe('Wait until I send');
+      screen.getByRole('status', {
+        name: 'Checking which project the chat starts in',
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Agent:/ })).toBeNull();
+    expect(startButton().disabled).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('a bound project whose list is still loading holds the automatic start too', async () => {
+    const onSelect = start(vi.fn(), {
+      activeProjectSlug: 'station',
+      projectsLoaded: false,
+      startWithDefault: true,
+      initialPrompt: 'From Home',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

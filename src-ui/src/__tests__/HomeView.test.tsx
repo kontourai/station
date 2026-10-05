@@ -94,6 +94,7 @@ const fixtures = vi.hoisted(() => ({
   /** The dock's remembered project binding (device setting). */
   chatDockProjectSlug: null as string | null,
   selectedContextResolved: true,
+  setDeviceSetting: vi.fn(),
   selectionInputs: [] as Array<{
     selectedContext: string;
     revalidateSelection?: boolean;
@@ -165,6 +166,8 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // The start composer's Enable (a server create); no test here enables.
+  useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   // archive#3122: Home resolves its Workspace Pane renderer through
   // the shared selector, which reads the MCP-app host capability from config.
   // Undefined data is the real pre-load shape, and Home's built-in renderer
@@ -279,6 +282,10 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
     developerToolsEnabled: fixtures.developerToolsEnabled,
     chatDockProjectSlug: fixtures.chatDockProjectSlug,
   }),
+  // The start composer's project chip rebinds the dock through this.
+  useDeviceSettingsActions: () => ({
+    setDeviceSetting: fixtures.setDeviceSetting,
+  }),
 }));
 // Home mounts the first-run chapter (UX audit RT-02). These fixtures put the
 // home in the state every test in this file assumes — one that has already
@@ -319,17 +326,55 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ selectedProject: null }),
 }));
+// The selection model the start composer reads, as a double: the default
+// Agent and Model are the fixtures', so a chip names what Start would send.
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
   useNewChatSelectionModel: (input: {
     selectedContext: string;
     revalidateSelection?: boolean;
   }) => {
     fixtures.selectionInputs.push(input);
+    const agents = fixtures.defaultAgent
+      ? [{ available: true, ...fixtures.defaultAgent }]
+      : [];
     return {
+      viewModel: {
+        isGlobal: input.selectedContext === '__global__',
+        selectedProject: undefined,
+        contextOptions: [{ value: '__global__', label: 'No workspace' }],
+        filteredContextOptions: [],
+        currentContextOption:
+          input.selectedContext === '__global__'
+            ? { value: '__global__', label: 'No workspace', glyph: 'globe' }
+            : { value: input.selectedContext, label: 'Station' },
+        groups: [{ label: 'Agents', agents }],
+        flatList: agents,
+        scopedAgents: agents,
+      },
       defaultSelection: {
-        agent: fixtures.defaultAgent,
+        agent: agents[0],
+        preferredAgent: undefined,
         effectiveModel: { label: fixtures.defaultModelLabel },
       },
+      acpConnections: [],
+      agentConnections: [],
+      modelConnections: [],
+      runtimeLoading: false,
+      modelsLoading: false,
+      runtimeFetching: false,
+      modelsFetching: false,
+      setupFetching: false,
+      setupError: null,
+      refreshSetup: async () => undefined,
+      modelChoices: {},
+      setModelChoices: () => undefined,
+      modelChoiceKey: (agent: { slug: string }) => agent.slug,
+      modelsForAgent: () => [],
+      defaultEffectiveModelForAgent: () => ({
+        id: undefined,
+        label: fixtures.defaultModelLabel,
+        source: 'agent default',
+      }),
       selectedContextResolved: fixtures.selectedContextResolved,
     };
   },
@@ -355,6 +400,20 @@ vi.mock('../views/home/useWorkspaceHomeRole', () => ({
  * than pass by updating whichever assertion went red first.
  */
 const CODEX_SESSION_TITLE = 'Codex session';
+
+/**
+ * The Continue card is the shared work row under a "Continue" label: these
+ * read that row, never its twin in the lanes below.
+ */
+function queryContinue() {
+  return screen.queryByRole('region', { name: 'Continue' });
+}
+function continueRow(): HTMLElement {
+  const region = screen.getByRole('region', { name: 'Continue' });
+  const row = region.querySelector<HTMLElement>('.chat-dock-inbox__item');
+  if (!row) throw new Error('The Continue card has no work row');
+  return row;
+}
 
 describe('HomeView', () => {
   afterEach(() => {
@@ -404,8 +463,17 @@ describe('HomeView', () => {
       { target: { value: 'Help me plan my day' } },
     );
     expect(screen.queryByText(/Default Model/i)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Start a chat/i }));
+    // The Agent chip names what Start sends, and Start sends exactly it.
+    expect(
+      screen.getByRole('button', { name: 'Agent: Codex · gpt-5.3-codex' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(newChat).toHaveBeenCalledTimes(1);
+    expect(newChat.mock.calls[0][0].detail).toMatchObject({
+      startWithDefault: true,
+      initialPrompt: 'Help me plan my day',
+      selection: { context: '__global__', agentSlug: 'codex-agent' },
+    });
     fireEvent.click(
       screen.getByRole('button', { name: /Open local project/i }),
     );
@@ -444,11 +512,16 @@ describe('HomeView', () => {
         name: 'Finding available ways to help',
       }),
     ).toBeNull();
-    expect(container.querySelector('.home-view__goal textarea')).toBeTruthy();
-    expect(screen.queryByText('No agent is ready yet')).toBeNull();
     expect(
-      screen.getByRole('button', { name: /Start a chat/i }),
-    ).toHaveProperty('disabled', true);
+      within(start!).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText('No agent is ready yet')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveProperty(
+      'disabled',
+      true,
+    );
     expect(
       screen.queryByRole('button', { name: /Connect an AI app/i }),
     ).toBeNull();
@@ -503,7 +576,7 @@ describe('HomeView', () => {
       },
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
+    expect(queryContinue()).toBeNull();
   });
 
   test('the same chat produces the card once its first turn promotes it', () => {
@@ -519,9 +592,7 @@ describe('HomeView', () => {
       },
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(
-      screen.getByRole('button', { name: /^Continue/ }).textContent,
-    ).toContain('New chat');
+    expect(continueRow().textContent).toContain('New chat');
   });
 
   /**
@@ -565,7 +636,9 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     // The row itself, by keyboard: Enter on the focused row is a click.
-    const row = screen.getByRole('button', {
+    const row = within(
+      screen.getByRole('region', { name: 'Recent work' }),
+    ).getByRole('button', {
       name: 'Lives in Coding, station',
     });
     row.focus();
@@ -615,7 +688,10 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     fireEvent.click(
-      screen.getByRole('button', { name: 'Stays in the dock, station' }),
+      within(screen.getByRole('region', { name: 'Recent work' })).getByRole(
+        'button',
+        { name: 'Stays in the dock, station' },
+      ),
     );
     expect(focus).toHaveBeenCalledTimes(1);
     // The lookup settles with no layout: nothing routes.
@@ -664,22 +740,21 @@ describe('HomeView', () => {
       openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    const continueButton = screen.getByRole('button', {
-      name: /^Continue/,
-    });
+    const continueButton = continueRow();
     expect(continueButton.textContent).toContain('Task-first home');
-    expect(continueButton.textContent).toContain('Codex · gpt-5.3-codex');
+    // The work row's own metadata: the agent and the project.
+    expect(continueButton.textContent).toContain('Codex · Station');
     fireEvent.click(continueButton);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledWith({ sessionId: 'newest' });
     unregister();
   });
 
-  // #3312: with work on the page the start form is the compact one, and it
-  // still names the Agent and Model Start will run on. The note reads the
-  // default selection (`useNewChatSelectionModel`) for the context the start
-  // path opens in (`useNewChatStartContext`), so changing that selection
-  // changes the note.
+  // #3312: with work on the page the start composer is the compact one, and
+  // its Agent chip names the Agent and Model Start will run on: the default
+  // selection (`useNewChatSelectionModel`) for the context the start path
+  // opens in (`useNewChatStartContext`), so changing that selection changes
+  // the chip.
   const workSession = () => ({
     threadId: 'work-thread',
     provider: 'codex',
@@ -692,37 +767,40 @@ describe('HomeView', () => {
     eventCount: 3,
   });
   test.each([
-    ['gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
-    ['gpt-5.4', 'Codex · gpt-5.4'],
-    ['Model not reported', 'Codex'],
+    ['gpt-5.3-codex', 'Agent: Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'Agent: Codex · gpt-5.4'],
+    ['Model not reported', 'Agent: Codex'],
   ])(
-    'the compact start form names the default selection (%s) beside Start',
+    'the compact start composer names the default selection (%s) on its Agent chip',
     (modelLabel, expected) => {
       fixtures.defaultModelLabel = modelLabel;
       fixtures.sessions = [workSession()];
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       const form = screen.getByRole('form', { name: 'Start work' });
-      expect(form.classList.contains('home-view__goal--compact')).toBe(true);
-      const start = within(form).getByRole('button', { name: 'Start a chat' });
-      const note = document.getElementById(
-        start.getAttribute('aria-describedby') ?? '',
-      );
-      expect(note?.textContent).toBe(expected);
+      expect(form.classList.contains('start-composer--compact')).toBe(true);
+      expect(within(form).getByRole('button', { name: expected })).toBeTruthy();
     },
   );
 
-  test('the compact start form names no identity when no Agent is ready', () => {
+  test('with no Agent to offer the chip asks for one and Start still goes (first run)', () => {
     fixtures.defaultAgent = undefined;
     fixtures.sessions = [workSession()];
+    const newChat = vi.fn();
+    window.addEventListener('station:open-new-chat', newChat, { once: true });
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const form = screen.getByRole('form', { name: 'Start work' });
-    expect(form.classList.contains('home-view__goal--compact')).toBe(true);
     expect(
-      within(form)
-        .getByRole('button', { name: 'Start a chat' })
-        .getAttribute('aria-describedby'),
-    ).toBeNull();
-    expect(form.querySelector('.home-view__goal-identity')).toBeNull();
+      within(form).getByRole('button', { name: 'Agent: Choose an agent' }),
+    ).toBeTruthy();
+    fireEvent.change(
+      within(form).getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me' } },
+    );
+    fireEvent.click(within(form).getByRole('button', { name: 'Start' }));
+    // No Agent is pinned: the dock's automatic start prepares one.
+    expect(newChat.mock.calls[0][0].detail.selection).toEqual({
+      context: '__global__',
+    });
   });
 
   // #3312 review HIGH: Start runs in the dock's remembered project once the
@@ -754,17 +832,25 @@ describe('HomeView', () => {
     },
   );
 
-  test('names no identity while the start context is unresolved', () => {
+  test('names no Agent while the start context is unresolved: a skeleton chip, and Start waits', () => {
     fixtures.selectedContextResolved = false;
     fixtures.sessions = [workSession()];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const form = screen.getByRole('form', { name: 'Start work' });
+    expect(within(form).queryByRole('button', { name: /^Agent:/ })).toBeNull();
     expect(
-      within(form)
-        .getByRole('button', { name: 'Start a chat' })
-        .getAttribute('aria-describedby'),
-    ).toBeNull();
-    expect(form.querySelector('.home-view__goal-identity')).toBeNull();
+      within(form).getByRole('status', {
+        name: 'Checking which Agent will start',
+      }),
+    ).toBeTruthy();
+    fireEvent.change(
+      within(form).getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me' } },
+    );
+    expect(within(form).getByRole('button', { name: 'Start' })).toHaveProperty(
+      'disabled',
+      true,
+    );
   });
 
   test('uses honest identity fallbacks and selects exact orchestration continuation', () => {
@@ -787,7 +873,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
+    fireEvent.click(continueRow());
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'unmapped-thread',
     });
@@ -828,7 +914,7 @@ describe('HomeView', () => {
       },
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
+    fireEvent.click(continueRow());
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'worked-thread',
     });
@@ -1014,7 +1100,7 @@ describe('HomeView', () => {
     });
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
+    fireEvent.click(continueRow());
 
     expect(onNavigate).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledTimes(1);
@@ -1052,7 +1138,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
+    fireEvent.click(continueRow());
 
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'attached-thread',
@@ -1117,8 +1203,8 @@ describe('HomeView', () => {
       screen.queryByRole('button', { name: 'Start your first chat' }),
     ).toBeNull();
     expect(screen.getByText('Nothing here yet')).toBeTruthy();
-    // The form it defers to is the one that stays.
-    expect(screen.getByText('Start a chat')).toBeTruthy();
+    // The composer it defers to is the one that stays.
+    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
     expect(
       screen.getAllByRole('textbox', { name: 'What would you like done?' }),
     ).toHaveLength(1);
@@ -1209,14 +1295,15 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate });
 
     expect(screen.getAllByText('Durable local work')).toHaveLength(2);
-    expect(
-      screen.getAllByText(/Agent unavailable · Model unavailable/).length,
-    ).toBeGreaterThan(0);
+    // The Continue row reads like every work row: the honest agent fallback
+    // and the project, never an invented Agent.
+    expect(continueRow().textContent).toContain('Durable local work');
+    expect(continueRow().textContent).toContain('Agent unavailable · station');
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
+    fireEvent.click(continueRow());
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'task',
       taskId: 'task/durable',
@@ -1264,7 +1351,7 @@ describe('HomeView', () => {
 
     expect(screen.queryByText('Raw correlated chat')).toBeNull();
     expect(screen.getAllByText('Persisted task')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
+    fireEvent.click(continueRow());
     expect(onNavigate).toHaveBeenCalledWith({ type: 'task', taskId: 'task-1' });
   });
 });
@@ -1619,9 +1706,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     // day) — exactly the case that silently no-opped before the fix. The
     // primary CTA must skip past it to the most-recent item this Station can
     // actually continue: the local session.
-    const continueButton = screen.getByRole('button', {
-      name: /^Continue/,
-    });
+    const continueButton = continueRow();
     expect(continueButton.textContent).toContain(CODEX_SESSION_TITLE);
     fireEvent.click(continueButton);
     expect(showSurface).toHaveBeenCalledWith('activity', {
@@ -1675,7 +1760,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
+    expect(queryContinue()).toBeNull();
   });
 
   // the local list renders synchronously (from `useOrchestrationSessionsQuery`

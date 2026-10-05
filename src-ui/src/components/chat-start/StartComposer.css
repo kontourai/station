@@ -1,0 +1,164 @@
+/* The start composer (Home, inline, and the dock's draft). No viewport
+   queries: the bar wraps, so a phone gets the chips on one line and Start on
+   the next without a breakpoint, and every target is 44px tall already. */
+.start-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  width: 100%;
+  min-width: 0;
+}
+.start-composer__input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: calc(var(--k-space-6) * 3);
+  resize: vertical;
+}
+.start-composer--compact .start-composer__input {
+  min-height: 44px;
+}
+.start-composer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+.start-composer__chips,
+.start-composer__context {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.start-composer__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  /* Wider than a phone's column: there Start drops to its own line, under
+     the chips, rather than floating between two rows of them. */
+  flex: 1 1 24rem;
+}
+.start-composer__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  max-width: 100%;
+  min-width: 0;
+}
+.start-composer__chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-composer__chip svg {
+  flex: none;
+}
+.start-composer__chip--loading {
+  padding: 0 var(--k-space-3);
+}
+.start-composer__chip--attention {
+  border-color: var(--k-caution);
+}
+.start-composer__chip--skill {
+  padding-left: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  font-size: var(--k-text-sm);
+}
+.start-composer__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+.start-composer__chip-remove:focus-visible,
+.start-composer__context-chip:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.start-composer__swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 999px;
+}
+.start-composer__start {
+  margin-left: auto;
+  min-height: 44px;
+}
+.start-composer__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.start-composer__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.start-composer__context-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 44px;
+  max-width: 100%;
+  padding: var(--k-space-1) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.start-composer__context-chip[aria-pressed="false"] {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.start-composer__context-label {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+.start-composer__context-detail {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--k-text-sm);
+}
+
+/* The chip menus (lazy): one panel shape for the Agent list and the project
+   list, on top of the shared composer popover shell. */
+.start-menu__panel {
+  --composer-popover-width: 440px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(70dvh, 560px);
+}
+.start-menu__search {
+  margin: var(--k-space-2) var(--k-space-3);
+}
+.start-menu__list {
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: var(--k-space-2);
+}
+.start-menu__hint {
+  margin: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.start-menu__search {
+  width: auto;
+  box-sizing: border-box;
+}

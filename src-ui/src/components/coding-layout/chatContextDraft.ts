@@ -90,3 +90,26 @@ export function buildCodingChatInitialMessage(
     'Use this context when relevant, but ask before assuming stale terminal or diff state.',
   ].join('\n');
 }
+
+/**
+ * The first message of a chat started from the start composer with context
+ * attached (a requested composer draft, or a coding-context handoff).
+ *
+ * - No typed message: the selected context alone, byte for byte what
+ *   `buildCodingChatInitialMessage` produced when an Agent row started the
+ *   chat, and like then it is placed in the new chat's composer to review,
+ *   not sent.
+ * - A typed message: the message first, then a blank line, then that same
+ *   context text, and it is sent. The message leads because it is the
+ *   request; the context is the material it is about.
+ */
+export function composeStartMessage(
+  prompt: string,
+  items: CodingChatContextItem[],
+  framing: CodingChatContextDraft['framing'] = 'coding-context',
+): string {
+  const context = buildCodingChatInitialMessage(items, framing);
+  const typed = prompt.trim();
+  if (!typed) return context;
+  return context ? `${typed}\n\n${context}` : typed;
+}

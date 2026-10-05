@@ -1,5 +1,11 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { HomeWorkItem } from '../home-view-model';
 
@@ -11,6 +17,14 @@ const showSurfacePage = vi.hoisted(() => vi.fn());
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
   useShowSurfacePage: () => showSurfacePage,
+}));
+
+// The start composer owns its own tests (`HomeStartComposer.test.tsx`); here
+// it is the one "Start work" form whose place and compactness Home decides.
+vi.mock('../../../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: ({ compact }: { compact?: boolean }) => (
+    <form aria-label="Start work" data-compact={String(Boolean(compact))} />
+  ),
 }));
 
 import { HomeSurface } from '../HomeSurface';
@@ -205,39 +219,48 @@ describe('HomeSurface composition', () => {
     },
   );
 
-  test('the start card names the agent it can actually open on', () => {
-    renderHome();
-    const card = screen.getByRole('button', { name: /Start a chat/ });
-    expect(card).toHaveProperty('disabled', true);
+  test('the start composer is compact above a page of work, full on an empty one', () => {
+    renderHome({ workItems: [] });
     expect(
-      screen.getByRole('textbox', { name: 'What would you like done?' }),
-    ).toBeTruthy();
+      screen.getByRole('form', { name: 'Start work' }).dataset.compact,
+    ).toBe('false');
+    cleanup();
+    renderHome({
+      workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
+    });
+    expect(
+      screen.getByRole('form', { name: 'Start work' }).dataset.compact,
+    ).toBe('true');
   });
 
-  test('with no runnable agent the start card becomes a set-up CTA', () => {
-    // Finding 5: Home must not name an Agent the New Chat picker refuses one
-    // click later. On a home where nothing is runnable it stops recommending
-    // and asks for the setup instead — same destination, honest promise.
-    renderHome({
-      startReady: false,
-      startIdentity: 'No agent is ready yet',
-      defaultSelection: {
-        agent: undefined,
-        effectiveModel: { label: 'Model not reported' },
-      },
+  // The Continue and Last project cards read like the inbox rows (owner,
+  // 2026-10): Continue IS the shared work row; Last project carries the
+  // project's accent, as the sidebar draws it.
+  test('Continue is the shared work row, and opens the work', () => {
+    const running = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const { model: m } = renderHome({
+      workItems: [running],
+      primaryWorkItem: running,
     });
-    expect(screen.getByRole('button', { name: /Start a chat/ })).toHaveProperty(
-      'disabled',
-      true,
-    );
-    const cta = screen.getByRole('button', { name: /Start a chat/ });
-    fireEvent.change(
-      screen.getByRole('textbox', { name: 'What would you like done?' }),
-      { target: { value: 'Help me' } },
-    );
-    expect(cta).toHaveProperty('disabled', false);
-    // And it names no agent at all.
-    expect(cta.textContent).not.toContain('Codex');
+    const region = screen.getByRole('region', { name: 'Continue' });
+    const row = region.querySelector<HTMLElement>('.chat-dock-inbox__item');
+    expect(row?.textContent).toContain('Wire the delegate verbs');
+    expect(row?.textContent).toContain('Codex');
+    fireEvent.click(row!);
+    expect(m.continueWork).toHaveBeenCalledWith(running);
+  });
+
+  test('Last project carries the project accent the sidebar uses', () => {
+    renderHome({}, vi.fn(), { type: 'project', slug: 'station' });
+    const card = screen.getByRole('button', { name: /Last project/ });
+    const accent = card.querySelector<HTMLElement>('.home-view__action-accent');
+    expect(accent?.style.backgroundColor).toBeTruthy();
   });
 
   test.each([true, false])(

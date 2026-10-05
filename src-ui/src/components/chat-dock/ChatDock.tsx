@@ -500,7 +500,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   } = chrome;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
-  const { projects } = useProjects();
+  const { projects, isLoading: projectsLoading } = useProjects();
   const { showToast, dismissToast } = useToast();
   // station#3687 seams 3/5: an inbox click that opened nothing says so.
   const showInboxOpenFailure = useCallback(
@@ -798,6 +798,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     newChatRequestEpoch,
     newChatStartWithDefault,
     newChatInitialPrompt,
+    newChatSelection,
+    newChatHandoff,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
@@ -1687,7 +1689,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     const openNewChat = (event: Event) => {
       const intent = readNewChatIntent(event);
-      if (intent.startWithDefault && hasImmutableProjectScope) return;
+      // Home's starts and hand-offs belong to the ambient dock; a dock scoped
+      // to one project would run them in the wrong project.
+      if (
+        (intent.startWithDefault || intent.handoff || intent.selection) &&
+        hasImmutableProjectScope
+      )
+        return;
       setShowNewChatModal(true, intent);
     };
     // station#1297: `HomeView.continueWork` / `ProjectSidebar` request focus
@@ -2955,6 +2963,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatRequestEpoch,
           newChatStartWithDefault,
           newChatInitialPrompt,
+          newChatSelection,
+          newChatHandoff,
+          projectBindable: !hasImmutableProjectScope && !forkSource,
+          accentProjectSlugs: projects.map((project) => project.slug),
+          projectsLoaded: !projectsLoading,
           recentChats: {
             items: taskItems,
             pending: taskItemsPending,

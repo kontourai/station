@@ -1,12 +1,15 @@
+import type { ReactNode } from 'react';
+import { useState } from 'react';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
-import { relativeTime } from '../../utils/relativeTime';
-import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
+import { projectAccents } from '../project-sidebar/projectAccent';
+import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
 
@@ -53,6 +56,8 @@ interface HomeActionCardProps {
   className?: string;
   label: string;
   title: string;
+  /** Drawn before the title: the project's accent, as the sidebar draws it. */
+  leading?: ReactNode;
   /** A third line only where it says something the title does not. */
   detail?: string;
   onClick: () => void;
@@ -62,6 +67,7 @@ function HomeActionCard({
   className = '',
   label,
   title,
+  leading,
   detail,
   onClick,
 }: HomeActionCardProps) {
@@ -72,31 +78,13 @@ function HomeActionCard({
       onClick={onClick}
     >
       <span>{label}</span>
-      <strong>{title}</strong>
+      <strong className="home-view__action-title">
+        {leading}
+        {title}
+      </strong>
       {detail ? <small>{detail}</small> : null}
     </button>
   );
-}
-
-/**
- * Continue-card subtitle: the agent, a model only when one was reported,
- * Failed when it is, and the compact time. No kind word ("Session", "Direct
- * chat"): the card already says it continues work.
- */
-export function continueWorkDetail(
-  item: Pick<
-    HomeWorkItem,
-    'agentLabel' | 'modelLabel' | 'lifecycleLabel' | 'updatedAt'
-  >,
-  now = Date.now(),
-): string {
-  const parts = [item.agentLabel];
-  if (item.modelLabel && item.modelLabel !== 'Model not reported') {
-    parts.push(item.modelLabel);
-  }
-  if (item.lifecycleLabel === 'Failed') parts.push('Failed');
-  if (item.updatedAt > 0) parts.push(relativeTime(item.updatedAt, now));
-  return parts.join(' · ');
 }
 
 export function HomeActionSection({
@@ -107,20 +95,52 @@ export function HomeActionSection({
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
   const showLocalProject = hasLocalStationForProfile(profile);
+  const coarsePointer = useCoarsePointer();
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // TODO(useProjectAccents): the sibling lane adds a shared hook; until then
+  // the same set the sidebar colours.
+  const accents = projectAccents(
+    (model.projects ?? []).map((project: { slug: string }) => project.slug),
+  );
+  const continuationSlug = continuation
+    ? continuation.type === 'layout'
+      ? continuation.projectSlug
+      : continuation.slug
+    : undefined;
+  const primary = model.primaryWorkItem;
 
   return (
     <section className="home-view__actions" aria-label="Work actions">
       {/* V2: a label, the thing, and a detail only where one says something
           the title does not. The helper lines ("Resume your previous
           workspace", "1 project already available") explained the cards. */}
-      {showPrimary && model.primaryWorkItem && (
-        <HomeActionCard
-          className="home-view__action--primary"
-          label="Continue"
-          title={model.primaryWorkItem.title}
-          detail={continueWorkDetail(model.primaryWorkItem)}
-          onClick={() => model.continueWork(model.primaryWorkItem!)}
-        />
+      {/* Continue is the work row itself (the inbox's and the lanes' row):
+          its agent icon, status, time and hover card read exactly as they
+          do one scroll below, rather than a card's own summary line. */}
+      {showPrimary && primary && (
+        <section
+          className="home-view__continue"
+          aria-labelledby="home-continue-label"
+        >
+          <span id="home-continue-label" className="home-view__continue-label">
+            Continue
+          </span>
+          <ul className="home-view__continue-list">
+            {renderHomeWorkRow({
+              task: { ...primary, stableId: `continue:${primary.id}` },
+              isWoken: false,
+              agents: model.agents,
+              onOpen: () => model.continueWork(primary),
+              context: {
+                now: Date.now(),
+                workFacts: model.workFacts,
+                detailsFor,
+                setDetailsFor,
+                chrome: coarsePointer ? 'touch' : 'hover',
+              },
+            })}
+          </ul>
+        </section>
       )}
       <HomeActionCard
         label="Agents"
@@ -142,6 +162,15 @@ export function HomeActionSection({
         <HomeActionCard
           className="home-view__action--quiet"
           label="Last project"
+          leading={
+            continuationSlug && accents.get(continuationSlug) ? (
+              <span
+                className="home-view__action-accent"
+                aria-hidden="true"
+                style={{ backgroundColor: accents.get(continuationSlug) }}
+              />
+            ) : null
+          }
           title={continuationProjectLabel(continuation, model.projects)}
           onClick={() => onNavigate(continuation)}
         />

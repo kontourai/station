@@ -1,6 +1,6 @@
 import { HomeActionSection } from '../../components/home/HomeActionSection';
-import { HomeChatStartForm } from '../../components/home/HomeChatStartForm';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
+import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
 import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import type { NavigationView } from '../../types';
@@ -144,10 +144,7 @@ export function HomeSurface({
       <div
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
       >
-        <HomeChatStartForm
-          identity={model.startReady ? model.startIdentity : undefined}
-          compact={hasWork}
-        />
+        <HomeStartComposer compact={hasWork} />
       </div>
       {hasWork ? (
         <>

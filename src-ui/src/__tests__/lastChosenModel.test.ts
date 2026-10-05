@@ -116,4 +116,26 @@ describe('lastChosenModel', () => {
     act(() => clearLastChosenModel('codexdefault'));
     expect(result.current).toEqual({});
   });
+
+  // #3350 item 2: another tab's write reaches a mounted surface only as a
+  // `storage` event. Removing that listener used to leave every test green.
+  test("another tab's write re-renders the live map", async () => {
+    const { act, renderHook } = await import('@testing-library/react');
+    const { useLastChosenModelMap } = await import('../hooks/lastChosenModel');
+    const { result } = renderHook(() => useLastChosenModelMap());
+    expect(result.current).toEqual({});
+    act(() => {
+      // The other tab wrote storage directly; nothing here called track.
+      localStorage.setItem(
+        'station.newChat.lastModelByBinding',
+        JSON.stringify({ codexdefault: 'gpt-5.4' }),
+      );
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'station.newChat.lastModelByBinding',
+        }),
+      );
+    });
+    expect(result.current).toEqual({ codexdefault: 'gpt-5.4' });
+  });
 });

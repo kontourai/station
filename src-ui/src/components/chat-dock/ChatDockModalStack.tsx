@@ -68,6 +68,11 @@ interface ChatDockModalStackProps {
   newChatRequestEpoch?: number;
   newChatStartWithDefault?: boolean;
   newChatInitialPrompt?: string;
+  newChatSelection?: ComponentProps<typeof NewChatModal>['startSelection'];
+  newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
+  projectBindable?: boolean;
+  accentProjectSlugs?: string[];
+  projectsLoaded?: boolean;
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
@@ -125,6 +130,11 @@ export function ChatDockModalStack({
   newChatRequestEpoch,
   newChatStartWithDefault,
   newChatInitialPrompt,
+  newChatSelection,
+  newChatHandoff,
+  projectBindable,
+  accentProjectSlugs,
+  projectsLoaded,
   recentChats,
   showChatSettings,
   showSessionPicker,
@@ -171,6 +181,11 @@ export function ChatDockModalStack({
             requestAuthority,
             startWithDefault: newChatStartWithDefault,
             initialPrompt: newChatInitialPrompt,
+            startSelection: forkMode ? undefined : newChatSelection,
+            handoff: forkMode ? undefined : newChatHandoff,
+            projectBindable,
+            accentProjectSlugs,
+            projectsLoaded,
             startSurface: true,
             recentChats,
             activeProjectSlug:

@@ -20,6 +20,7 @@ describe('resolveNewChatStartContext', () => {
         dockProjectSlug: 'station',
         routeActiveProjectSlug: null,
         projects,
+        projectsLoaded: true,
       }),
     ).toBe('station');
   });
@@ -32,6 +33,7 @@ describe('resolveNewChatStartContext', () => {
         dockProjectSlug: null,
         routeActiveProjectSlug: 'station',
         projects,
+        projectsLoaded: true,
       }),
     ).toBe(GLOBAL_CONTEXT);
   });
@@ -43,8 +45,32 @@ describe('resolveNewChatStartContext', () => {
           dockProjectSlug,
           routeActiveProjectSlug: null,
           projects,
+          projectsLoaded: true,
         }),
       ).toBe(GLOBAL_CONTEXT);
     }
+  });
+
+  // #3350 item 1: on a first launch the dock names a project before the
+  // project list arrives. The context is unknown then, not global: a start
+  // in that window used to run global with the global Model.
+  test('a bound project is unresolved until the project list has loaded', () => {
+    expect(
+      resolveNewChatStartContext({
+        dockProjectSlug: 'station',
+        routeActiveProjectSlug: null,
+        projects: [],
+        projectsLoaded: false,
+      }),
+    ).toBeUndefined();
+    // Nothing bound: global needs no project list.
+    expect(
+      resolveNewChatStartContext({
+        dockProjectSlug: null,
+        routeActiveProjectSlug: null,
+        projects: [],
+        projectsLoaded: false,
+      }),
+    ).toBe(GLOBAL_CONTEXT);
   });
 });

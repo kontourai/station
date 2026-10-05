@@ -104,7 +104,11 @@ afterEach(cleanup);
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: vi.fn().mockReturnValue({ matches: false }),
+    value: vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
   });
   Element.prototype.scrollIntoView = vi.fn();
 });

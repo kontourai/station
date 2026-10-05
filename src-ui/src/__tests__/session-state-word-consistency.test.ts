@@ -465,10 +465,8 @@ const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   // for an answer."), not the retired "Still waiting" status label.
   ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
-  ['components/home/HomeActionSection.tsx', 'Model not reported'],
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
   ['components/chat-dock/command-launcher-model.ts', 'Model not reported'],
-  ['views/home/useHomeViewModel.ts', 'Model not reported'],
   ['views/home/home-view-model.ts', 'Model not reported'],
 ];
 

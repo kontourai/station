@@ -15,6 +15,7 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
+import type { NewChatIntent } from '../../lib/newChatIntent';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
 
@@ -61,20 +62,19 @@ export function useChatDockOverlays({
   >();
   const newChatOnClosed = useRef<(() => void) | undefined>(undefined);
   const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
+  const [newChatSelection, setNewChatSelection] =
+    useState<NewChatIntent['selection']>();
+  const [newChatHandoff, setNewChatHandoff] =
+    useState<NewChatIntent['handoff']>();
   const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
   const setShowNewChatModal = useCallback(
-    (
-      open: boolean,
-      options?: {
-        startWithDefault?: boolean;
-        initialPrompt?: string;
-        onClosed?: () => void;
-      },
-    ) => {
+    (open: boolean, options?: NewChatIntent) => {
       newChatOnClosed.current?.();
       newChatOnClosed.current = open ? options?.onClosed : undefined;
       setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
+      setNewChatSelection(open ? options?.selection : undefined);
+      setNewChatHandoff(open ? options?.handoff : undefined);
       if (open) {
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
@@ -163,6 +163,8 @@ export function useChatDockOverlays({
     newChatRequestEpoch,
     newChatStartWithDefault,
     newChatInitialPrompt,
+    newChatSelection,
+    newChatHandoff,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
