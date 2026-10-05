@@ -178,6 +178,15 @@ card label it:
 
 - A plain call to a tool grants every later call to that tool ("Allow Bash for
   this session"). Only this case mints a Station tool grant.
+- An authentic `station-browser` plain call also offers the server-wide choice
+  "Allow the Station browser for this session", computed by
+  `toolRequestServerGrant` and answered with `acceptForSession` plus the typed
+  `sessionGrantScope: 'server'`. The adapter records it on the session and
+  honours it only for a plain call it found authentic: the engine-generated
+  `mcp__station-browser__` name, the in-process server delivered to that
+  session and no authored server using the id. It is offered beside the
+  per-tool grant, never instead of it, and changes nothing in the #90 N2
+  auto-approval rule.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
   mode and full access, allows the call and forwards only the engine's
   `acceptEdits` mode change ("Auto-accept file edits for this session"). The

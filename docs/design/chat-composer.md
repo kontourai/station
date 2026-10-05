@@ -343,7 +343,7 @@ orchestration command union is broader than the public `/commands` schema:
 | Start/send through an authored Agent, including an external-engine binding | `POST /api/orchestration/chat` with `target` and `message` |
 | Continue an existing conversation | `POST /api/orchestration/chat/:conversationId/continue` with `message`; the persisted binding owns execution identity |
 | Request model/options for a turn | `target.model.override` / `target.model.options` on `/chat`, or a `model` object on `/continue`; support is engine-specific |
-| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` |
+| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser) |
 
 The [Session API](../reference/session-api.md) owns request details and refusal
 behavior. `POST /api/agents/:id/chat` is the Station-engine route; an

@@ -4930,6 +4930,23 @@ describe('ClaudeAdapter', () => {
         await adapter.stopSession('thread-browser-escalation');
       });
 
+      test('approval mode auto adds no coverage of a sensitive browser tool', async () => {
+        const { adapter, ask } = await grantHarness(
+          'thread-browser-auto-mode',
+          {
+            ...browserAgent({ autoApprove: ['*'] }),
+            modelOptions: { approvalMode: 'auto' },
+          },
+        );
+        const sensitive = await ask(
+          'mcp__station-browser__browser_snapshot',
+          {},
+        );
+        expect(sensitive.kind).toBe('prompted');
+        if (sensitive.kind === 'prompted') await sensitive.answer('decline');
+        await adapter.stopSession('thread-browser-auto-mode');
+      });
+
       test.each([['*'], ['station-*'], ['mcp__*']])(
         'auto mode and the %s auto-approve pattern still prompt for a sensitive browser tool (#90 N2)',
         async (pattern) => {
