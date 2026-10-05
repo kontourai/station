@@ -826,6 +826,7 @@ describe('runCli', () => {
       serverPort: 3242,
       consentPort: 3245,
       uiPort: 5274,
+      watch: false,
     });
   });
 

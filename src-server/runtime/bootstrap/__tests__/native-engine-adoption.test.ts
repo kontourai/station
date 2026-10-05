@@ -734,7 +734,9 @@ describe("the Station Agent's own definition (#3662)", () => {
       kind: 'station',
     });
     await expect(loader.loadAgent('station')).resolves.toMatchObject({
-      tools: { mcpServers: ['station-control', 'station-docs'] },
+      tools: {
+        mcpServers: ['station-control', 'station-knowledge', 'station-docs'],
+      },
     });
   });
 
