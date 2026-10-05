@@ -3948,14 +3948,13 @@ export class OrchestrationService {
       ...persistedByThread.keys(),
       ...this.sessionReadModel.keys(),
     ]);
-    const only = options?.threadIds ? new Set(options.threadIds) : undefined;
 
     // ONE timestamp for the whole read: this list is a single observation of
     // this process's state, not one observation per row.
     const observedAt = new Date().toISOString();
     const readableThreadIds = [...threadIds].filter(
       (threadId) =>
-        (!only || only.has(threadId)) &&
+        (!options?.threadIds || options.threadIds.includes(threadId)) &&
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
