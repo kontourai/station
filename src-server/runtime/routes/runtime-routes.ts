@@ -4422,6 +4422,8 @@ export function configureRuntimeRoutes(
           (connection) =>
             runtimeConnectionSummary({ ...connection, parseEngineId }),
         ),
+      getEngineConnectionIdentities: () =>
+        context.connectionService.listEngineConnectionIdentities(),
       getAgentConfigurationRevision: context.getAgentConfigurationRevision,
       logger: context.logger,
       // Home's recommendation and the Agents list read this reason.

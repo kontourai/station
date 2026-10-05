@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { GitReadLocation } from '@kontourai/station-sdk';
 import {
   useCallback,
@@ -23,6 +24,7 @@ import { workStatus, workStatusText } from '../../views/home/work-status';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
+import { hasBundledEngineMark } from '../icons/BrandIcon';
 import {
   CloseGlyph,
   DiscardGlyph,
@@ -128,7 +130,7 @@ export function moveFocusBeforeRemovingInboxRow(
  *   (`home-view-model.ts`'s `safeAgentLabel`) whose fallbacks include a bare
  *   provider id and the literal "Agent not reported" — matching artwork to
  *   one would be deriving an identity from a label.
- * - It never falls back to the ENGINE's product name the way
+ * - It never stands an ENGINE in for an UNRESOLVED agent the way
  *   `sessionIconAgent` does for a session row. That fallback is correct
  *   there, where the engine name is also the text beside the icon; here it
  *   would put an engine mark at the head of a row whose meta line names an
@@ -137,17 +139,39 @@ export function moveFocusBeforeRemovingInboxRow(
  *   therefore said 'Bedrock' beside a Station engine icon"). An unresolvable
  *   row shows no icon rather than a stand-in that implies an engine.
  *
- * The catalog entry is returned BY REFERENCE, never wrapped in a fresh
- * `{ … }`, so resolving it is allocation-free. This does not suppress
- * `<AgentIcon>` renders: reconciliation identity is determined by
- * type/key/position, and `AgentIcon` is not memoized.
+ * One fallback it does have (#3355): the agent RESOLVED, is bound to an
+ * engine connection, but the catalog could not report that engine's id. The
+ * row's own recorded `provider` — the engine its execution actually ran on —
+ * then supplies the mark, so a Codex agent does not degrade to "CO"
+ * initials. Only an engine with a bundled mark qualifies (anything else
+ * would draw the same initials anyway), never an ACP-bound agent (`'acp'`
+ * keeps its initials; its provider is not an engine's identity), and never an
+ * unbound agent, whose missing engine is the truth rather than a gap.
+ *
+ * The catalog entry is returned BY REFERENCE whenever no fallback applies,
+ * so resolving it is allocation-free; the fallback returns a copy carrying
+ * the provider's `engineId`. Neither suppresses `<AgentIcon>` renders:
+ * reconciliation identity is determined by type/key/position, and
+ * `AgentIcon` is not memoized.
  */
 export function inboxRowIconAgent(
   item: HomeWorkItem,
   agents: readonly SessionIconAgent[] | undefined,
 ): SessionIconAgent | null {
   if (!agents || !item.agentSlug) return null;
-  return agents.find((agent) => agent.slug === item.agentSlug) ?? null;
+  const agent = agents.find((candidate) => candidate.slug === item.agentSlug);
+  if (!agent) return null;
+  if (
+    agent.engineId ||
+    !agent.execution?.agentConnectionId ||
+    agent.engineConnectionType === 'acp'
+  ) {
+    return agent;
+  }
+  const provider = parseEngineId(item.provider);
+  return provider && provider !== 'acp' && hasBundledEngineMark(provider)
+    ? { ...agent, engineId: provider }
+    : agent;
 }
 
 /**
@@ -368,7 +392,8 @@ interface InboxRowProps {
    * (`SidebarOpenChats`) keeps today's layout byte-for-byte.
    *
    * Must be referentially stable across renders: it is what
-   * `inboxRowIconAgent` returns entries OF, and `ChatDockInboxPanel`'s
+   * `inboxRowIconAgent` returns entries OF (a copy only for its #3355
+   * engine fallback), and `ChatDockInboxPanel`'s
    * `memo()` wrap compares it shallowly.
    */
   agents?: readonly SessionIconAgent[];
