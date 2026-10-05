@@ -1,0 +1,7 @@
+{
+  "revision": "86afbfc4f90891db9f5002381472ff68ff1e00b1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Home rows-match-inbox change: re-read the row-anatomy and Chats and tasks picker passages against ChatDockInboxRows (new decorative project swatch from useProjectAccents), HomeWorkRow/HomeRecentWorkSection (gitLocation from the shared useGitLocationByThreadId) and the switcher's sidebar-allocated accents. Added the Home row swatch and Git-section sentence and the picker's colour dot; the accent-fallback-matches-the-sidebar claim is now the same allocation. Rendered Home, dock and phone sheet in both themes to confirm.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]}
+  ]
+}

@@ -21,7 +21,7 @@ import {
   CatalogUsagePricingSnapshotReader,
   stampUsageReceiptPrice,
 } from '../../analytics/usage-pricing-snapshot-reader.js';
-import type { EventStore } from './event-store.js';
+import type { EventStore, UsageReceiptEventRow } from './event-store.js';
 import { createIsolatedSessionTranscriptSearch } from './isolated-session-transcript-search.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists — and it avoids adding ANOTHER copy of the read-scope
@@ -47,6 +47,12 @@ interface SessionTranscriptReadsDeps {
     threadId: string,
   ) => { conversationId: string; slug?: string } | null | undefined;
   listEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
+  /**
+   * #3112: the durable conversation an execution Session belongs to (the
+   * thread itself when it has no lineage). A successor Session is not a
+   * conversation of its own.
+   */
+  conversationIdForThread?: (threadId: string) => string;
   listUsageEventRecords: (
     threadId: string,
   ) => ReturnType<EventStore['listEvents']>;
@@ -133,7 +139,8 @@ export class SessionTranscriptReads {
       .filter((row) => this.deps.canReadSession(row.threadId, authority))
       .slice(0, Math.min(Math.max(limit, 1), 20))
       .map((row) => ({
-        conversationId: row.threadId,
+        conversationId:
+          this.deps.conversationIdForThread?.(row.threadId) ?? row.threadId,
         // The transcript's stable ids are based on turn.started.  A user
         // row is its own anchor; an assistant row uses the turn anchor.
         messageId:
@@ -161,6 +168,25 @@ export class SessionTranscriptReads {
     // than absorbed (packages/shared/src/usage-fold.ts's drop contract).
     return foldUsageEvents(this.deps.listEventPayloads(threadId), (dropped) =>
       this.deps.reportDroppedUsageFigure(dropped),
+    );
+  }
+
+  /**
+   * #3112: one conversation's usage across its execution Sessions, folded in
+   * lineage order as one event stream, so cumulative figures sum and
+   * "latest" figures (context occupancy, model) come from the newest turn.
+   * A Session the authority cannot read contributes nothing, as in the
+   * conversation message read.
+   */
+  readConversationUsage(
+    threadIds: readonly string[],
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    return foldUsageEvents(
+      threadIds
+        .filter((threadId) => this.deps.canReadSession(threadId, authority))
+        .flatMap((threadId) => this.deps.listEventPayloads(threadId)),
+      (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
   }
 
@@ -288,72 +314,10 @@ export class SessionTranscriptReads {
       limit: pageSize,
     });
     const page = rows.slice(0, pageSize);
-    const receipts = page.flatMap(
-      ({ event, conversationId, taskId, model, processEpoch, accountKey }) => {
-        if (event.payload.method !== 'token-usage.updated' || !event.observedAt)
-          return [];
-        const usage = event.payload;
-        const common = {
-          ...(accountKey !== undefined ? { accountKey } : {}),
-          sourceEventId: event.id,
-          sourceSequence: event.sequence,
-          stationId,
-          provider: event.provider,
-          threadId: event.threadId,
-          ...(event.turnId ? { turnId: event.turnId } : {}),
-          conversationId,
-          ...(taskId ? { taskId } : {}),
-          ...(model ? { model } : {}),
-          occurredAt: event.createdAt,
-          observedAt: event.observedAt,
-        };
-        const tokenId =
-          providerUsageScope(event.provider) === 'session-cumulative'
-            ? `usage:${event.threadId}:${event.provider}:tokens`
-            : `usage:${event.id}:tokens`;
-        const unpricedTokenReceipt: UsageReceipt = {
-          id: tokenId,
-          ...common,
-          inputTokens: isReportedAmount(usage.promptTokens)
-            ? usage.promptTokens
-            : undefined,
-          outputTokens: isReportedAmount(usage.completionTokens)
-            ? usage.completionTokens
-            : undefined,
-          cacheReadTokens: isReportedAmount(usage.cacheReadTokens)
-            ? usage.cacheReadTokens
-            : undefined,
-          cacheWriteTokens: isReportedAmount(usage.cacheWriteTokens)
-            ? usage.cacheWriteTokens
-            : undefined,
-          // Pricing is deliberately stamped onto the receipt. This read path
-          // never asks a catalog or provider for a current price: doing so
-          // would rewrite history when a catalog changes.
-          pricing: { status: 'unpriced' },
-        };
-        const tokenReceipt =
-          usage.pricingSnapshot && model
-            ? stampUsageReceiptPrice(
-                unpricedTokenReceipt,
-                new CatalogUsagePricingSnapshotReader([usage.pricingSnapshot]),
-              )
-            : unpricedTokenReceipt;
-        const tokenReceipts = hasTokenMeasurements(usage) ? [tokenReceipt] : [];
-        if (!isReportedAmount(usage.reportedCostUsd)) return tokenReceipts;
-        const costId =
-          providerCostScope(event.provider) === 'engine-process-cumulative'
-            ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
-            : `usage:${event.id}:cost`;
-        return [
-          ...tokenReceipts,
-          {
-            id: costId,
-            ...common,
-            reportedCost: { amount: usage.reportedCostUsd, currency: 'USD' },
-            pricing: { status: 'unpriced' },
-          } satisfies UsageReceipt,
-        ];
-      },
+    // The windowed rollup counts only Station-observed receipts; a legacy row
+    // with no observation time has no place in an observation window.
+    const receipts = page.flatMap((row) =>
+      row.event.observedAt ? usageReceiptsForEventRow(row, stationId) : [],
     );
     const last = page.at(-1)?.event;
     const coverageEvidence = this.deps.listUsageCoverageEvents({
@@ -567,6 +531,90 @@ function decodeUsageCursor(
  * palette label.
  */
 export { messageSearchExcerpt } from './transcript-search-queries.js';
+
+/**
+ * The usage receipts one `token-usage.updated` row stands for: a token
+ * receipt when the engine reported any token figure (priced only from the
+ * snapshot captured with the event, never a current catalog), plus a
+ * reported-cost receipt when it reported a cost. A cumulative reporter's
+ * receipts share one id, so a later restatement is reconciled with the
+ * earlier one (`reconcileUsageReceiptObservations`) instead of adding to it.
+ * Shared by the windowed rollup and the conversation usage tree.
+ */
+export function usageReceiptsForEventRow(
+  {
+    event,
+    conversationId,
+    taskId,
+    model,
+    processEpoch,
+    accountKey,
+  }: UsageReceiptEventRow,
+  stationId: string,
+): UsageReceipt[] {
+  if (event.payload.method !== 'token-usage.updated') return [];
+  const usage = event.payload;
+  const common = {
+    ...(accountKey !== undefined ? { accountKey } : {}),
+    sourceEventId: event.id,
+    sourceSequence: event.sequence,
+    stationId,
+    provider: event.provider,
+    threadId: event.threadId,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
+    conversationId,
+    ...(taskId ? { taskId } : {}),
+    ...(model ? { model } : {}),
+    occurredAt: event.createdAt,
+    ...(event.observedAt ? { observedAt: event.observedAt } : {}),
+  };
+  const tokenId =
+    providerUsageScope(event.provider) === 'session-cumulative'
+      ? `usage:${event.threadId}:${event.provider}:tokens`
+      : `usage:${event.id}:tokens`;
+  const unpricedTokenReceipt: UsageReceipt = {
+    id: tokenId,
+    ...common,
+    inputTokens: isReportedAmount(usage.promptTokens)
+      ? usage.promptTokens
+      : undefined,
+    outputTokens: isReportedAmount(usage.completionTokens)
+      ? usage.completionTokens
+      : undefined,
+    cacheReadTokens: isReportedAmount(usage.cacheReadTokens)
+      ? usage.cacheReadTokens
+      : undefined,
+    cacheWriteTokens: isReportedAmount(usage.cacheWriteTokens)
+      ? usage.cacheWriteTokens
+      : undefined,
+    // Pricing is deliberately stamped onto the receipt. This read path
+    // never asks a catalog or provider for a current price: doing so
+    // would rewrite history when a catalog changes.
+    pricing: { status: 'unpriced' },
+  };
+  const tokenReceipt =
+    usage.pricingSnapshot && model
+      ? stampUsageReceiptPrice(
+          unpricedTokenReceipt,
+          new CatalogUsagePricingSnapshotReader([usage.pricingSnapshot]),
+        )
+      : unpricedTokenReceipt;
+  const tokenReceipts = hasTokenMeasurements(usage) ? [tokenReceipt] : [];
+  if (!isReportedAmount(usage.reportedCostUsd)) return tokenReceipts;
+  const costId =
+    providerCostScope(event.provider) === 'engine-process-cumulative'
+      ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
+      : `usage:${event.id}:cost`;
+  return [
+    ...tokenReceipts,
+    {
+      id: costId,
+      ...common,
+      reportedCost: { amount: usage.reportedCostUsd, currency: 'USD' },
+      pricing: { status: 'unpriced' },
+    } satisfies UsageReceipt,
+  ];
+}
 
 function isReportedAmount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;

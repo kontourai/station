@@ -116,7 +116,10 @@ Choose the simplest path for what you want to do:
 
 On Home, write what you want done and choose **Start a chat**. Station uses
 working defaults, waits for discovery, and carries your original request into
-the conversation. You do not need to choose an Agent, Model, or provider first.
+the conversation. You do not need to choose an Agent, Model, or provider first;
+Home shows the Agent and Model that **Start a chat** will use. A chat started
+from Home opens in the chat dock's current project (by default, the project
+you last opened), so that project's default Agent and Model apply.
 An already-ready engine can be prepared through the existing idempotent setup
 path; installed, unconnected apps can be connected when needed. Explicitly
 disabled apps remain disabled. A missing account, permission, or working target
@@ -169,6 +172,20 @@ Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
 **New chats** value lets you choose another default without leaving the workspace.
 The next sidebar project selection updates that default again.
+
+To give a project an icon, open its settings and choose the icon beside its
+name under **Basic info**. Station suggests artwork it finds in the project
+folder, such as a favicon, app icon or logo, but applies nothing until you
+pick it. You can also upload a PNG, JPEG, WebP or ICO image of up to 128 KB,
+type an emoji or short symbol, or choose **No icon**, then **Save**. The New
+Project dialog offers the same choices. Links and file paths are not accepted
+as icons; if a project's existing icon can't be shown any more, such as one
+saved as a link before that, its settings say so and ask you to choose a new
+one. The icon appears beside the project in
+the sidebar, the project switcher, Home and chat rows, their details, and on
+the project page. Without one, those rows show the project's colour and the
+project page shows its initials. A row for work on another Station shows
+neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
 
@@ -451,6 +468,11 @@ permission has recorded request evidence, **Inspect request** opens its current
 details. Choose **Approve once** or **Deny** only after reviewing the request.
 You can expand **Request identity** for its exact record or open the Session for
 more context.
+
+For a task that runs on a paired Station, the card shows **Allow** and **Deny**
+for that Station's approval when your access here permits it. The paired Station
+checks that the request is still open and makes the decision. Its questions are
+answered on that Station.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

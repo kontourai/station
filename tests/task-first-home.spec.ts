@@ -1,10 +1,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
-import type {
-  SkillExperienceInventoryV1,
-  SkillExperienceSessionViewV1,
-} from '@kontourai/station-contracts/skill-experience';
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -77,6 +74,12 @@ async function mockTaskFirstHome(
     historyCount?: number;
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
+    /**
+     * The project's own default Model, a second model the Codex runtime
+     * catalog also lists. Absent, the project names none and the agent
+     * default (`gpt-5.3-codex`) applies.
+     */
+    projectDefaultModel?: string;
   } = {},
 ) {
   const taskSession = {
@@ -234,7 +237,13 @@ async function mockTaskFirstHome(
       return;
     }
     if (path === '/api/projects/station') {
-      await route.fulfill(json(project));
+      await route.fulfill(
+        json(
+          options.projectDefaultModel
+            ? { ...project, defaultModel: options.projectDefaultModel }
+            : project,
+        ),
+      );
       return;
     }
     // The project-scoped launcher reads the portable identity. This fixture's
@@ -256,21 +265,6 @@ async function mockTaskFirstHome(
       });
       return;
     }
-    // BEGIN skill-experience-session-read (droppable: the shared fixture lane
-    // declares this route in tests/helpers)
-    if (
-      route.request().method() === 'GET' &&
-      /^\/api\/orchestration\/sessions\/[^/]+\/skill-experience$/.test(path)
-    ) {
-      const view: SkillExperienceSessionViewV1 = {
-        current: null,
-        history: [],
-        hasMore: false,
-      };
-      await route.fulfill(json(view));
-      return;
-    }
-    // END skill-experience-session-read
     // The New chat draft reads the skill-experience inventory (#3201). This
     // fixture installs none, which the route answers with an empty inventory.
     if (
@@ -552,6 +546,15 @@ async function mockTaskFirstHome(
                   name: 'gpt-5.3-codex',
                   originalId: 'gpt-5.3-codex',
                 },
+                ...(options.projectDefaultModel
+                  ? [
+                      {
+                        id: options.projectDefaultModel,
+                        name: options.projectDefaultModel,
+                        originalId: options.projectDefaultModel,
+                      },
+                    ]
+                  : []),
               ],
               builtInModels: [],
             },
@@ -865,6 +868,40 @@ async function mockStationModelProviders(page: Page) {
   );
 }
 
+/**
+ * The chat Start opened, in the dock, runs on `agent` and `model`: its own
+ * Agent and Model controls name them. The composer qualifies each ("Agent:
+ * Codex. Wait for…", "Model: Codex Runtime — gpt-5.4 (project default)"), so
+ * each is matched as a whole name segment, not a substring, and only inside
+ * the dock holding the started chat's transcript.
+ */
+async function expectStartedChatRuns(
+  page: Page,
+  prompt: string,
+  agent: string | undefined,
+  model: string | undefined,
+) {
+  const literal = (text = '') => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const chat = page
+    .getByRole('region', { name: 'Chat dock', exact: true })
+    .filter({
+      has: page.getByRole('log', { name: 'Conversation transcript' }),
+    });
+  await expect(
+    chat.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText(prompt);
+  await expect(
+    chat.getByRole('button', {
+      name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
+    }),
+  ).toBeVisible();
+  await expect(
+    chat.getByRole('button', {
+      name: new RegExp(`^Model: (?:.+ — )?${literal(model)}(?: \\(|$)`),
+    }),
+  ).toBeVisible();
+}
+
 test.describe('Task-first Home (#332, mocked)', () => {
   test('starts a written goal with working defaults and no configuration choices', async ({
     page,
@@ -873,13 +910,24 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await mockTaskFirstHome(page, { commands });
     await page.goto('/');
     const prompt = 'Reply exactly GOAL READY. Use no tools.';
+    // #3312: with work on the page the compact form names the Agent and
+    // Model Start will run on, beside Start. What it advertises is what the
+    // started chat runs on, read back below.
+    const form = page.locator('.home-view__goal--compact');
+    const start = form.getByRole('button', {
+      name: 'Start a chat',
+      exact: true,
+    });
+    const advertised = form.locator('.home-view__goal-identity');
+    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
+    await expect(start).toHaveAccessibleDescription('Codex · gpt-5.3-codex');
+    const [advertisedAgent, advertisedModel] = (
+      (await advertised.textContent()) ?? ''
+    ).split(' · ');
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
-    await page
-      .locator('.home-view__goal')
-      .getByRole('button', { name: 'Start a chat', exact: true })
-      .click();
+    await start.click();
     await expect
       .poll(() =>
         commands.some((command) => command.type === 'sendExecutionMessage'),
@@ -888,11 +936,71 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const sent = commands.find(
       (command) => command.type === 'sendExecutionMessage',
     );
-    expect(sent?.input).toMatchObject({ message: prompt });
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: { agent: 'codex-agent' },
+    });
     await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: 'Workspace: No workspace' }),
-    ).toHaveCount(0);
+    // The started chat's own Agent and Model controls name the advertised
+    // ones.
+    await expectStartedChatRuns(page, prompt, advertisedAgent, advertisedModel);
+    // No project is bound to the dock, so the chat names no workspace: the
+    // global context the advertised identity was resolved in.
+    expect(
+      (sent?.input as { target?: { workspace?: unknown } } | undefined)?.target
+        ?.workspace,
+    ).toBeUndefined();
+  });
+
+  // #3312 review HIGH: once the user has opened a project, the dock is bound
+  // to it and Start runs in that project's context, so its default Model
+  // applies. Home must name that Model, not the global default it would
+  // name for an unbound dock (`gpt-5.3-codex`, the agent default).
+  test('names the project default Start runs on when the dock is bound to a project', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: { chatDockProjectSlug: 'station' },
+        }),
+      );
+    });
+    await page.goto('/');
+    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const form = page.locator('.home-view__goal--compact');
+    const start = form.getByRole('button', {
+      name: 'Start a chat',
+      exact: true,
+    });
+    const advertised = form.locator('.home-view__goal-identity');
+    await expect(advertised).toHaveText('Codex · gpt-5.4');
+    await expect(start).toHaveAccessibleDescription('Codex · gpt-5.4');
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await start.click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: {
+        agent: 'codex-agent',
+        model: { override: 'gpt-5.4' },
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+    });
+    await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.4');
   });
 
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
@@ -1131,17 +1239,30 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/');
 
     await expect(page).toHaveURL(/\/$/);
+    // With work on the page Home leads with the start form and the work; the
+    // "What's next?" heading is an empty Station's (design round 2026-10, V1).
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
+    // The card's label is exactly "Continue", then the work it continues and
+    // that work's own Agent and Model (not "Continue most recent work").
     const continuation = page.getByRole('button', {
-      name: /Continue most recent work/i,
+      name: /^Continue Worker task · task first home Codex · gpt-5\.3-codex · /,
     });
-    await expect(continuation).toContainText('Codex · gpt-5.3-codex');
-    // Home's New chat button carries no identity line anymore (#3201); the
-    // concrete default identity is advertised under the goal field.
-    const advertised = page.locator('.home-view__goal-identity');
-    await expect(advertised).toHaveText('Using Codex · gpt-5.3-codex');
+    await expect(continuation).toBeVisible();
+    await expect(continuation.locator(':scope > span')).toHaveText('Continue');
+    // Home's New chat button carries no identity line anymore (#3201). With
+    // work on the page the goal field is the compact one-line form: no
+    // "Using …" caption (design round 2026-10, V1), but the identity Start
+    // will use stays beside Start (#3312). It is the one the New chat draft
+    // opens with, asserted below.
+    await expect(page.locator('.home-view__goal--compact')).toBeVisible();
+    const advertised = page.locator(
+      '.home-view__goal--compact .home-view__goal-identity',
+    );
+    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
+    await expect(page.getByText(/^Using /)).toHaveCount(0);
     await expect(
       page
         .locator('.home-view__goal-actions')
@@ -1152,34 +1273,36 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await expect(page.getByText('Default Model')).toHaveCount(0);
 
+    // A desktop continuation of project work opens the chat where it lives,
+    // the project's Coding layout, with that chat active (design round
+    // 2026-10, U1); only project-less work stays in the dock.
     await continuation.click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/projects/station/layouts/coding');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBe('task-first-home');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
+    // And the Coding layout's Chat shows that chat: its inbox row is the
+    // current one, not merely named in the URL.
+    const codingChat = page.getByRole('region', { name: 'Chat', exact: true });
     await expect(
-      page.locator('.chat-dock__active-identity').getByText('New chat'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Hide Chat', exact: true }),
-    ).toBeVisible();
-    await page.locator('.chat-dock__header').hover();
-    await page.getByRole('button', { name: 'Close chat' }).click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+      codingChat.getByRole('button', {
+        name: 'Worker task · task first home, station',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'true');
+
+    // Back on Home with the dock open and no chat in it.
+    await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
     await expect(page.getByText('No chat open')).toBeVisible();
 
     // The identity Home advertises is the one the New chat draft opens with,
     // as its Agent and Model controls.
-    await expect(advertised).toHaveText('Using Codex · gpt-5.3-codex');
+    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
     const { dialog, draft } = await openNewChatDraft(page);
     await expect(
       draft.getByRole('button', { name: 'Agent: Codex', exact: true }),
@@ -1194,7 +1317,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page
+      .getByRole('button', { name: 'Close new project', exact: true })
+      .click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -2314,7 +2439,7 @@ test('profiles Home with substantial session history', async ({
       await page.goto('/');
       expect((await (await response).json()).data).toHaveLength(1000);
       await expect(
-        page.getByRole('heading', { name: "What's next?" }),
+        page.getByRole('form', { name: 'Start work' }),
       ).toBeVisible();
       await expect(
         page.getByText('History session 0', { exact: true }).first(),

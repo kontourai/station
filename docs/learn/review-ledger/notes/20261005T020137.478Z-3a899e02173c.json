@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx change is client-side: the git location map moved into a shared hook reading the same orchestration session list, and project accents are client-derived. No HTTP endpoint, request or response shape changed; API reference claims remain accurate.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

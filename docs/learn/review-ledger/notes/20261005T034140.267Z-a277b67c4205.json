@@ -1,0 +1,7 @@
+{
+  "revision": "ad30dbea5f0eb5bc07431d5d233cf05b62725e6a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"project-service.ts now throws ProjectIconRefusedError for a new icon the contracts rule refuses in createProject/updateProject. The SDK reference only says useCreateProjectMutation/useUpdateProjectMutation create/update a project and invalidate ['projects']; that is unchanged (the routes already refused such icons with 400 via the schema). No prose change needed.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-service.ts"]}
+  ]
+}
