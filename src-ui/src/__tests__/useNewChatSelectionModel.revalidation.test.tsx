@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   readRevision: 0,
   refetchAgents: vi.fn(async () => ({})),
   projects: [] as unknown[],
+  projectDetailSuccess: true,
   picker: {
     agentConnections: [] as unknown[],
     modelConnections: [] as unknown[],
@@ -62,6 +63,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({
     data: {},
     isFetching: false,
+    isSuccess: state.projectDetailSuccess,
     error: null,
     refetch: async () => ({}),
   }),
@@ -93,6 +95,7 @@ beforeEach(() => {
   state.agents = [OLD];
   state.projects = [PROJECT];
   state.picker = { agentConnections: [], modelConnections: [] };
+  state.projectDetailSuccess = true;
   localStorage.clear();
 });
 afterEach(() => {
@@ -262,5 +265,21 @@ describe('the default selection stays current for a mounted surface', () => {
     expect(view.result.current.defaultSelection.effectiveModel.id).toBe(
       'newer',
     );
+  });
+
+  test('a project context is resolved only once its detail has loaded', () => {
+    state.projectDetailSuccess = false;
+    const select = (selectedContext: string) =>
+      renderHook(() =>
+        useNewChatSelectionModel({
+          agents: [OLD],
+          projects: [PROJECT],
+          selectedContext,
+        }),
+      ).result.current.selectedContextResolved;
+    expect(select('alpha')).toBe(false);
+    expect(select('__global__')).toBe(true);
+    state.projectDetailSuccess = true;
+    expect(select('alpha')).toBe(true);
   });
 });

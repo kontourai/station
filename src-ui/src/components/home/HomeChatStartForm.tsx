@@ -12,9 +12,11 @@ export function HomeChatStartForm({
 }: {
   /**
    * The Agent and Model "Start a chat" will run on: Home's `startIdentity`,
-   * read from the same `useNewChatSelectionModel` default selection that the
-   * start path's `startWorkingDefaults` opens on. Absent when no Agent is
-   * ready, so nothing is advertised that Start would not use.
+   * the `useNewChatSelectionModel` default selection for the context the
+   * start path opens in (`useNewChatStartContext`, the dock's remembered
+   * project or global), which is what `startWorkingDefaults` starts. Absent
+   * when no Agent is ready or that context's project is still loading, so
+   * nothing is advertised that Start would not use.
    */
   identity?: string;
   /**

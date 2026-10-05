@@ -91,6 +91,13 @@ const fixtures = vi.hoisted(() => ({
   tasksLoading: false,
   defaultAgent: { slug: 'codex-agent', name: 'Codex' } as any,
   defaultModelLabel: 'gpt-5.3-codex',
+  /** The dock's remembered project binding (device setting). */
+  chatDockProjectSlug: null as string | null,
+  selectedContextResolved: true,
+  selectionInputs: [] as Array<{
+    selectedContext: string;
+    revalidateSelection?: boolean;
+  }>,
   sessionsRefetch: vi.fn(),
   /** U1: a project's layouts, by slug; absent means none. */
   layoutsBySlug: {} as Record<string, Array<{ slug: string; type: string }>>,
@@ -270,6 +277,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     developerToolsEnabled: fixtures.developerToolsEnabled,
+    chatDockProjectSlug: fixtures.chatDockProjectSlug,
   }),
 }));
 // Home mounts the first-run chapter (UX audit RT-02). These fixtures put the
@@ -312,12 +320,19 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ selectedProject: null }),
 }));
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
-  useNewChatSelectionModel: () => ({
-    defaultSelection: {
-      agent: fixtures.defaultAgent,
-      effectiveModel: { label: fixtures.defaultModelLabel },
-    },
-  }),
+  useNewChatSelectionModel: (input: {
+    selectedContext: string;
+    revalidateSelection?: boolean;
+  }) => {
+    fixtures.selectionInputs.push(input);
+    return {
+      defaultSelection: {
+        agent: fixtures.defaultAgent,
+        effectiveModel: { label: fixtures.defaultModelLabel },
+      },
+      selectedContextResolved: fixtures.selectedContextResolved,
+    };
+  },
 }));
 // This suite owns the built-in Home lanes. The Home-role hook's dedicated
 // tests own its QueryClient-backed authority states; unresolved is the real
@@ -349,6 +364,10 @@ describe('HomeView', () => {
   beforeEach(() => {
     showSurface.mockClear();
     showSurfacePage.mockClear();
+    fixtures.projects = [{ id: 'p1', slug: 'station', name: 'Station' }];
+    fixtures.chatDockProjectSlug = null;
+    fixtures.selectedContextResolved = true;
+    fixtures.selectionInputs = [];
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -658,8 +677,9 @@ describe('HomeView', () => {
 
   // #3312: with work on the page the start form is the compact one, and it
   // still names the Agent and Model Start will run on. The note reads the
-  // same default selection (`useNewChatSelectionModel`) that the start path
-  // opens on, so changing that selection changes the note.
+  // default selection (`useNewChatSelectionModel`) for the context the start
+  // path opens in (`useNewChatStartContext`), so changing that selection
+  // changes the note.
   const workSession = () => ({
     threadId: 'work-thread',
     provider: 'codex',
@@ -697,6 +717,48 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const form = screen.getByRole('form', { name: 'Start work' });
     expect(form.classList.contains('home-view__goal--compact')).toBe(true);
+    expect(
+      within(form)
+        .getByRole('button', { name: 'Start a chat' })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+    expect(form.querySelector('.home-view__goal-identity')).toBeNull();
+  });
+
+  // #3312 review HIGH: Start runs in the dock's remembered project once the
+  // user has opened one, so Home resolves its identity in that context, not
+  // the route's (on `/` there is none). `revalidateSelection` matches the
+  // input `NewChatModal` passes for a `startWithDefault` request.
+  test.each([
+    ['a dock bound to a project with a directory', 'station', 'station'],
+    ['a dock bound to nothing', null, '__global__'],
+    ['a dock bound to a project that is gone', 'deleted', '__global__'],
+  ])(
+    'Home resolves its start identity in the context Start opens in: %s',
+    (_name, binding, expected) => {
+      fixtures.projects = [
+        {
+          id: 'p1',
+          slug: 'station',
+          name: 'Station',
+          workingDirectory: '/work/station',
+        } as any,
+      ];
+      fixtures.chatDockProjectSlug = binding;
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+      expect(fixtures.selectionInputs.length).toBeGreaterThan(0);
+      for (const input of fixtures.selectionInputs) {
+        expect(input.selectedContext).toBe(expected);
+        expect(input.revalidateSelection).toBe(true);
+      }
+    },
+  );
+
+  test('names no identity while the start context is unresolved', () => {
+    fixtures.selectedContextResolved = false;
+    fixtures.sessions = [workSession()];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const form = screen.getByRole('form', { name: 'Start work' });
     expect(
       within(form)
         .getByRole('button', { name: 'Start a chat' })

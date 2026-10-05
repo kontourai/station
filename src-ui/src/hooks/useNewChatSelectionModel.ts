@@ -559,6 +559,14 @@ export function useNewChatSelectionModel({
     setupFetching,
     projectCatalogResolved:
       projectCatalog.isSuccess && !projectCatalog.isFetching,
+    /**
+     * True once `defaultSelection` reflects `selectedContext`: always for the
+     * global context, and for a project only after its detail (default
+     * Model, default Agent, Agents filter) has loaded. Until then the default
+     * selection is the global one, which a project chat would not use.
+     */
+    selectedContextResolved:
+      !selectedProjectSlug || selectedProjectQuery.isSuccess,
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in
