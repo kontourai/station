@@ -45,6 +45,15 @@ describe('standalone Codex PR review workflow', () => {
         workflows: ['PR: Secret scan'],
         types: ['completed'],
       },
+      workflow_dispatch: {
+        inputs: {
+          pr_number: {
+            description: 'Pull request number to review at its current head',
+            required: true,
+            type: 'string',
+          },
+        },
+      },
     });
     expect(source).not.toMatch(/^\s+pull_request(?:_target)?:/m);
     expect(document.permissions).toEqual({ contents: 'read' });
@@ -52,12 +61,9 @@ describe('standalone Codex PR review workflow', () => {
 
   it('reviews only exact same-repository PR heads with the pinned report-only action', () => {
     const review = document.jobs.review;
-    expect(review.if).toContain(
-      "github.event.workflow_run.event == 'pull_request'",
-    );
-    expect(review.if).toContain(
-      'github.event.workflow_run.head_repository.full_name == github.repository',
-    );
+    expect(review.needs).toBe('gate');
+    expect(review.if).toContain("needs.gate.outputs.admit == 'true'");
+    expect(review.if).toContain("needs.gate.outputs.same_repository == 'true'");
     expect(review.permissions).toEqual({
       contents: 'read',
       'pull-requests': 'write',
@@ -67,10 +73,8 @@ describe('standalone Codex PR review workflow', () => {
       (step: Record<string, any>) => step.uses === CHECKOUT,
     );
     expect(checkout.with).toEqual({
-      repository: expression(
-        'github.event.workflow_run.head_repository.full_name',
-      ),
-      ref: expression('github.event.workflow_run.head_sha'),
+      repository: expression('needs.gate.outputs.head_repository'),
+      ref: expression('needs.gate.outputs.head_sha'),
       'fetch-depth': 0,
       'persist-credentials': false,
     });
@@ -95,13 +99,9 @@ describe('standalone Codex PR review workflow', () => {
       ),
       'github-token': expression('github.token'),
       repository: expression('github.repository'),
-      'pull-request': expression(
-        'github.event.workflow_run.pull_requests[0].number',
-      ),
-      'base-sha': expression(
-        'github.event.workflow_run.pull_requests[0].base.sha',
-      ),
-      'head-sha': expression('github.event.workflow_run.head_sha'),
+      'pull-request': expression('needs.gate.outputs.number'),
+      'base-sha': expression('needs.gate.outputs.base_sha'),
+      'head-sha': expression('needs.gate.outputs.head_sha'),
       model: 'gpt-5.6-sol',
       effort: 'xhigh',
     });
@@ -132,9 +132,9 @@ describe('standalone Codex PR review workflow', () => {
 
   it('records fork coverage as NOT_VERIFIED without either credential', () => {
     const fork = document.jobs['record-fork-gap'];
-    expect(fork.if).toContain(
-      'github.event.workflow_run.head_repository.full_name != github.repository',
-    );
+    expect(fork.needs).toBe('gate');
+    expect(fork.if).toContain("needs.gate.outputs.admit == 'true'");
+    expect(fork.if).toContain("needs.gate.outputs.same_repository != 'true'");
     expect(fork.permissions).toEqual({ contents: 'read' });
 
     const codex = fork.steps.find(
@@ -144,5 +144,41 @@ describe('standalone Codex PR review workflow', () => {
     expect(codex.with['github-token']).toBe('');
     expect(codex.name).toContain('NOT_VERIFIED');
     expect(fork.steps.some((step: Record<string, any>) => step.run)).toBe(true);
+  });
+
+  it('admits reviews only through a read-only gate that runs the trusted default branch', () => {
+    const gate = document.jobs.gate;
+    expect(gate.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+      actions: 'read',
+    });
+    const checkout = gate.steps.find(
+      (step: Record<string, any>) => step.uses === CHECKOUT,
+    );
+    expect(checkout.with).toEqual({
+      ref: expression('github.sha'),
+      'persist-credentials': false,
+    });
+    const run = gate.steps.find((step: Record<string, any>) => step.run);
+    expect(run.run).toBe('node scripts/advisory-review-gate.mjs');
+    expect(
+      gate.steps.find((step: Record<string, any>) => step.run).env,
+    ).toEqual({
+      GH_TOKEN: expression('github.token'),
+      EVENT_NAME: expression('github.event_name'),
+      PULL_REQUEST: expression(
+        'github.event.workflow_run.pull_requests[0].number || inputs.pr_number',
+      ),
+      EVENT_HEAD_SHA: expression('github.event.workflow_run.head_sha'),
+    });
+    // No credential beyond the workflow token reaches the gate.
+    expect(JSON.stringify(gate)).not.toMatch(/secrets\./);
+    // The review jobs must wait for the gate rather than run on every event.
+    for (const [name, job] of Object.entries<Record<string, any>>(
+      document.jobs,
+    )) {
+      if (name !== 'gate') expect(job.needs, name).toBe('gate');
+    }
   });
 });
