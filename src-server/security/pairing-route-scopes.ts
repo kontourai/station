@@ -2381,6 +2381,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
+    // #3160 Station Control's Session tools: agent-only at the route (each
+    // answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the
+    // family's tier reaches nothing. Send and interrupt mutate (the family's
+    // operate tier); the wait only reads.
+    { method: 'POST', path: '/api/orchestration/session-control/send' },
+    { method: 'POST', path: '/api/orchestration/session-control/interrupt' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-control/:sessionId/wait',
+    },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on

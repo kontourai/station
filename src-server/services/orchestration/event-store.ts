@@ -234,6 +234,11 @@ import {
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
 import {
+  createSqliteSessionControlRequestKeys,
+  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
+  type SessionControlRequestKeys,
+} from './session-control-request-keys.js';
+import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from './session-owner-attribution.js';
@@ -1871,6 +1876,7 @@ export class EventStore {
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
+  private sessionControlKeys?: SessionControlRequestKeys;
 
   constructor(
     dbPath: string,
@@ -2019,6 +2025,8 @@ export class EventStore {
         confirmed_turn_id TEXT,
         PRIMARY KEY (thread_id, client_input_id)
       )`);
+      // #3160: the request keys behind `send_to_session` / `interrupt_session`.
+      this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -11306,6 +11314,12 @@ export class EventStore {
       );
   }
 
+  /** #3160: the durable request keys of Station Control's Session tools. */
+  sessionControlRequestKeys(): SessionControlRequestKeys {
+    this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(this.db);
+    return this.sessionControlKeys;
+  }
+
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
   readSteerInput(input: {
     threadId: string;
@@ -12053,6 +12067,11 @@ export class EventStore {
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_steer_inputs WHERE thread_id = ?')
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM session_control_request_keys WHERE caller_session_id = ?',
+        )
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_request_state WHERE thread_id = ?')

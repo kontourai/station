@@ -302,7 +302,7 @@ const sessionOutputInspectSchema = z.object({}).strict();
  * The route's own `deps.executeForegroundMessage` is typed `Promise<unknown>`
  * (a generic Hono DI boundary), so this is a real type GUARD, not a cast —
  * a caller-injected value missing `conversationId` is simply not bound. */
-function isForegroundDispatchHandle(value: unknown): value is {
+export function isForegroundDispatchHandle(value: unknown): value is {
   conversationId: string;
   providerTurnId: string;
   target?: { id?: unknown };
@@ -336,7 +336,7 @@ function delegationRefusal(c: Context, error: unknown): Response | undefined {
   return c.json({ success: false, error: errorMessage(error), code }, 403);
 }
 
-function isForegroundIndeterminateShape(error: unknown): boolean {
+export function isForegroundIndeterminateShape(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -1250,7 +1250,7 @@ function describeOrchestrationStreamClient(request: Request): {
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-interface PrincipalResolutionContext {
+export interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;
@@ -1285,7 +1285,7 @@ interface PrincipalResolutionContext {
  * - Neither present — throws {@link PrincipalUnresolvedError}. There is no
  *   third branch that fabricates an "unknown-user" value.
  */
-function resolveActorPrincipal(
+export function resolveActorPrincipal(
   deps: {
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
     getUserId?: () => string;
@@ -1358,7 +1358,7 @@ export type AgentDispatchActor =
   | { readonly kind: 'verified'; readonly principalId: string }
   | { readonly kind: 'unattributed' };
 
-function resolveDispatchActor(
+export function resolveDispatchActor(
   deps: {
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
     getUserId?: () => string;

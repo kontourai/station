@@ -88,6 +88,11 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+An Agent that messages, interrupts, or waits on an existing Session uses
+station-control's [Session control](../guides/self-configuring-agent.md#session-control)
+tools, which call their own agent-only routes under
+`/api/orchestration/session-control` rather than the routes above.
+
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
