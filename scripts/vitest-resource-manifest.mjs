@@ -258,6 +258,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
+  // Runs the real capture barrier and the real capture entrypoint as child
+  // processes to prove the configured bound reaches them.
+  'scripts/__tests__/transfer-capture-barrier.test.ts',
+  // #3302: runs scripts/liveness-scale.mjs as a child to prove the exit status
+  // and stdout contract the pre-push hook consumes, and a real fallow spawn.
+  'scripts/__tests__/liveness-scale.test.ts',
   // #2355: creates real linked worktrees, removes them with `git worktree
   // remove`, and holds one open with a live child process whose cwd is inside
   // it, because the in-use probe (lsof/proc/ps) is the behavior under test.
@@ -277,6 +283,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and the stdio tools' own REST helper against an in-process guard, proving
   // a real pooled child reaches reads only; no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
+  // #3159: bounded single-shot Node children act as an external engine
+  // calling `read_conversation` over HTTP MCP against the production route
+  // composition on a loopback listener with a temporary SQLite EventStore;
+  // each child exits after its calls. No real services.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-conversation-read.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
   // envelopes; every child exits after its one requested operation. #2961
@@ -535,6 +546,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and its exit status when that ref is missing or malformed. Bounded,
   // single-shot children; the fixture is built with real `git init`/`commit`.
   'scripts/__tests__/nightly-cohort-decide.cli.test.ts',
+  // Runs the qualified-Nightly decide script as a real child process in a
+  // throwaway git repository, because the properties under test are that it
+  // reads the ledger from origin/main, peels real ledger commit-backs with
+  // git, and its exit status. Bounded, single-shot children.
+  'scripts/__tests__/nightly-qualification-decide.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a
@@ -568,6 +584,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // file landed via #3609 without a resource classification, which the
   // manifest gate itself requires for any direct child_process importer.
   'src-server/services/orchestration/__tests__/engine-start-seam.test.ts',
+  // #3163: one bounded `mkfifo` child proves a profile swapped for a FIFO is
+  // refused without blocking, like the plugin-build FIFO sibling above.
+  'src-server/providers/__tests__/claude-subagent-transcript.test.ts',
   // #2707: builds the SDK barrel import graph from the real repository through
   // `git ls-files` and `git grep -l` (via scripts/lib/sdk-barrel-selection.mjs)
   // — the same enumeration the changed lane uses, so the oracle is what git
@@ -943,6 +962,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
+  // #2875: the git-commit preparation adapter over real repositories, with
+  // planted repository config, and the delegation path reading a real
+  // checkout that a test moves between checks.
+  'src-server/services/execution-target/__tests__/execution-preparation.test.ts',
+  'src-server/tools/__tests__/station-control-delegation-preparation.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

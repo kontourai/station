@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"No prose change: grep found no claim about attention items, paired-Station requests, the delegated respond route or request-route access; contracts.md only adds the peer request fields paragraph.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

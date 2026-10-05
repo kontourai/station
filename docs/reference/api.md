@@ -804,13 +804,28 @@ Respect `hasMore` rather than assuming one response contains the entire history.
 ### Get Conversation Messages
 
 `GET /agents/:slug/conversations/:conversationId/messages` returns
-`{success: true, data: messages}`. The reader can restore authorized messages
-from orchestration when the file-memory path has no usable record. Messages
-carry the owner's current parts/metadata shape; do not depend on every message
-having the old `content: string`/`timestamp` pair.
+`{success: true, data: messages}`. A conversation can span several execution
+Sessions: a follow-up its current Session cannot take, such as one after a
+failed Station-agent turn, runs in a successor Session. The read covers every
+Session in the conversation's lineage, oldest first, and concatenates them
+([read seam](../../src-server/routes/chat/conversations.ts)). For each Session it
+reads the file-memory record first and, when that has no usable record, the
+authorized messages restored from orchestration. A successor stores only its
+own turns; earlier history reaches its model without being copied into its
+record. Export, fork and summary use the same read. A successor's own record
+is never listed as a conversation of its own, and conversation message search
+reports its hits under the conversation it continues. A conversation whose
+lineage exceeds 64 Sessions is refused with 422 `conversation_lineage_too_long`
+by this read, export, fork, summary and stats, rather than read partially. Messages carry the owner's current parts/metadata shape; do not depend on
+every message having the old `content: string`/`timestamp` pair.
 
-A `/chat` turn that failed before producing output is recorded as a user-role
-`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+A stored user turn is the typed text (and its attachments) alone. Ambient
+context such as `[Timezone: …]`, skill instructions, project rules and
+retrieved knowledge reach only the model's input for that turn.
+
+A `/chat` turn that failed before producing output is recorded as its prompt
+followed by a user-role `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message, with no
+empty assistant reply between them. `<text>` is never the model
 provider's own error message. It is one of: a status sentence such as
 "The model provider returned an error (HTTP 500).", "The model provider
 rejected the credentials.", "Stream aborted by client", or "The response
@@ -834,7 +849,9 @@ are refused. Use the orchestration operation for its owned history.
 
 `DELETE /agents/:slug/conversations/:conversationId` returns `{success: true}`
 after deleting file-memory history and its derived summary. Orchestration
-history is read-only through this path (409), and hosted requests return 404.
+history is read-only through this path (409), including a conversation whose
+later turns run in successor Sessions and each successor itself, and hosted
+requests return 404.
 A caller-scoped station-control deletion additionally checks the stored owner.
 This is not a general endpoint for deleting any Session visible in a list.
 
@@ -862,12 +879,22 @@ these file-memory mutations before invoking the owner.
 `{success: true, data: stats}` after the shared stats parser. The owner uses
 file-memory stats or authorized orchestration usage when available. Prompt/tool
 estimates, reported tokens, cost, and observed model/context values are distinct
-inputs; missing provider observations are not measurements of zero.
+inputs; missing provider observations are not measurements of zero. Like the
+message read, stats cover every Session in the conversation's lineage: stored
+cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
+records, and context occupancy comes from the newest one. Without a stored
+record, the orchestration usage fold runs over every authorized Session's
+events in lineage order.
 
 `contextWindowPercentage` is absent when the model's context window cannot be
 resolved. Render that as unavailable. See the
 [stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
 and [response contract](../../packages/contracts/src/runtime.ts).
+
+These statistics cover the conversation's own turns. Its usage with every
+subagent and delegated task under it, with a total that says what it leaves
+out, is the
+[conversation usage tree](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree).
 
 ---
 
@@ -1259,6 +1286,31 @@ are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
+
+### Read Usage Receipts and Rollups
+
+`GET /api/analytics/usage-rollup` reads authorized canonical observations, with
+an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
+`from` and `to` can supply the exact window. `groupBy` accepts `provider`,
+`model`, `station`, `conversation`, `task`, or `day`. `pageSize` accepts 1–100;
+`cursor` advances the receipt drilldown without changing the aggregate.
+`localOnly=1` excludes configured peer Stations. The normal response is
+`{success: true, data: {window, rows, coverage, receipts, nextCursor?}}`.
+
+The local aggregate selects at most 500 usage observations independently from
+the page. Source observation limits and the separate global 500-logical-receipt
+limit are disclosed as partial coverage. `localOnly=1&includeAggregate=1`
+adds bounded `aggregateReceipts` for leaf Station transfer, after logical
+replacement/deduplication. Context occupancy alone does not produce a token
+receipt or consumed-usage coverage.
+
+Cumulative token identities survive engine-process restarts; cumulative cost
+identities follow the declared cost-process epochs. `sourceSequence` orders
+same-Station/thread observations when ingestion timestamps tie. Sparse
+cumulative updates retain earlier measured dimensions; unsupported combined
+model/pricing attribution stays unknown or unpriced. The window records
+observations, not a billing statement or precise consumption dates. See
+[Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
 
 ### Get Achievements
 
@@ -2744,6 +2796,41 @@ Project storage, then file-memory adapters, then the authorized orchestration
 reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
+
+`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
+conversation's transcript: `{conversationId, access, notice, messageCount,
+messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
+refused with `conversation_read_limit_out_of_range`, and a page's serialized
+messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
+only after the read is admitted. A station-control caller that is not a bound
+operator is further limited to its own conversation, its scope, or a
+conversation a person referenced in its conversation, and reads as the
+session's owner; a bound operator keeps the operator's reach. An id Station
+has no record of answers `conversation_not_found`; see the
+[read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
+### Agent Conversation Title
+
+`POST /api/conversations/:id/agent-title` with `{title}` is the route behind the
+station-control `rename_session` tool. It answers only a station-control tool
+call with a verified caller (anything else gets `403`
+`station_control_caller_required`), and a store conversation only: a native
+Claude or Codex conversation answers `runtime_title_unsupported`, and
+`POST /api/search` hits are mostly those. Unless the caller is a bound operator
+it reaches only a conversation the calling Session's owner owns (another
+person's reads as `404`); a bound operator caller is not limited to one owner's
+conversations, as with `DELETE /agents/:slug/conversations/:id`. A title is one
+line of 1 to 80 characters with no control, line or paragraph separator, bidi
+embedding, override or isolate, zero-width space or byte-order-mark character
+(the zero-width joiner and non-joiner are allowed); anything else is a `400`,
+refused rather than truncated (leading and trailing spaces are trimmed). It stamps
+`titleSource: 'agent'` in the same serialized step that checks the stored title:
+a title with `titleSource: 'user'` answers `409` `person_title` and is left as
+it was, and a native Claude or Codex conversation answers `409`
+`runtime_title_unsupported`. The success body is
+`{success: true, data: {conversationId, title, titleSource: 'agent'}}`. The
+person's rename stays `PATCH /agents/:slug/conversations/:id`, which stamps
+`titleSource: 'user'`.
 
 ## Additional System Routes
 
