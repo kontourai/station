@@ -65,7 +65,9 @@ Live approval, connection, and working status sit above the composer, on the
 right of the Agent, Model, and Approval controls. Scroll to bottom appears
 immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
-together in a row above the settings. Scroll-button hover changes its background
+together in a row above the settings. In a dock too short to show the transcript
+(the composer has priority), there is nothing to scroll back to, so Scroll to
+bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 

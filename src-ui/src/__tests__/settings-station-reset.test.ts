@@ -155,6 +155,8 @@ describe('buildStationResetPlan', () => {
       'defaultMaxOutputTokens',
       'defaultWorkspaceIsolation',
       'workspaceCheckpoints',
+      // #3188: resume a usage-limit stop at the provider's reset.
+      'usageLimitAutoResume',
       // Chat
       'defaultChatFontSize',
     ]);

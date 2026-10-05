@@ -123,6 +123,15 @@ const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
   interrupted: 'Interrupted',
 };
 
+/**
+ * The ladder's word for one kind of owed decision, for a surface that marks
+ * that decision without a whole row to classify: the transcript's approval
+ * marker says the pill's "Needs approval" from here, not from a copy.
+ */
+export function attentionWord(kind: WorkAttentionKind): string {
+  return ATTENTION_WORDS[kind];
+}
+
 function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   if (item.controlMode === 'read-only-attached') {
     // The row's meta line already names the app; the word says only that

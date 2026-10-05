@@ -1277,6 +1277,17 @@
   padding-block: 0;
 }
 
+/* With no room for the transcript there is nothing to scroll back to, so the
+   transcript's Scroll to bottom control (portaled into the composer's activity
+   row) is not shown, and an activity row left with no status pill takes no
+   height. Under load the transcript can report a scroll while it is still
+   collapsing, and that phantom row pushed the composer below the viewport. */
+.chat-dock__body[data-composer-priority]
+  .chat-input__activity
+  .chat-scroll-to-bottom {
+  display: none;
+}
+
 /* Composer validation and attach-time notes sit in the fieldset's normal
    flow, BELOW the draft. They were absolutely positioned against the
    wrapper's bottom edge, which is where the textarea's last line is, so the
@@ -2797,6 +2808,13 @@
   }
 
   .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+    display: none;
+  }
+
+  /* In a dock too short for the transcript the Scroll to bottom button is not
+     shown (see data-composer-priority), so it cannot hold this row open. */
+  .chat-dock__body[data-composer-priority]
+  .chat-input__activity:not(:has(.chat-status-pill)) {
     display: none;
   }
 

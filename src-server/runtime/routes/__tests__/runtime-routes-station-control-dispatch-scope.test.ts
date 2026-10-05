@@ -1655,6 +1655,11 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       // read at all: it is rebuilt from the caller
       // (`createRequestDelegationResolver`, `deriveCallerChildDelegation`).
       'delegation.denyApprovals': 'tightens; attested claims only',
+      // An execution-preparation requirement (#2875), not an approval mode:
+      // it only narrows. The receiver refuses unless its own checkout is at
+      // the named version, and any mode but `existing-realization` is a
+      // typed refusal (`execution-preparation.ts`).
+      'target.workspace.preparation.mode': 'preparation requirement; narrows',
     };
     // Open bags that no engine reads as an option. A bag listed here is
     // user data, never applied to the engine's settings.
