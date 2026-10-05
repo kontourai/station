@@ -38,8 +38,8 @@ const PATH_CORE = String.raw`(?:\/|\.\/)?(?:[\w@.+-]{1,255}\/){0,64}[\w@+-][\w@.
  * The boundaries keep a mention from starting inside a word, a URL or another
  * path, and from ending before a further path segment. The leading boundary
  * is matched (the string start or one non-path character, group 1) rather
- * than looked behind: WebKit before 16.4 rejects lookbehind, which would
- * throw when this module loads on the iOS app's supported versions (#3399).
+ * than looked behind: WebKit before 16.4 rejects lookbehind, which throws
+ * when this module loads there (#3399).
  */
 const PATH_MENTION = new RegExp(
   String.raw`(?:^|([^\w/.@~:-]))(${PATH_CORE})(?![\w/])`,

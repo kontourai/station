@@ -10,14 +10,19 @@ import { describe, expect, test } from 'vitest';
  * unsupported literal to `new RegExp(...)` instead of refusing it.
  *
  * A source sweep on purpose: the failure is the syntax itself, on an engine
- * the test runner is not.
+ * the test runner is not. It covers Station's own sources only. Bundled
+ * dependencies still carry lookbehinds (mdast-util-gfm-autolink-literal 2.0.1,
+ * @kontourai/ui 1.18 tones, @pierre/diffs 1.4 constants), so this keeps
+ * Station from adding to them; it does not make iOS 14-16.3 work (#3399).
  */
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 
-/** Sources the WebView can load: the UI and the client packages. */
+/** Sources the WebView can load: the UI, shared code and client packages. */
 const SCANNED = [
   'src-ui/src',
+  // Imported by the UI through the `@shared` alias and relative paths.
+  'src-shared',
   ...readdirSync(join(ROOT, 'packages'))
     // The CLI runs in Node, never in the WebView.
     .filter((name) => name !== 'cli')
@@ -35,10 +40,7 @@ function* sourceFiles(dir: string): Generator<string> {
       yield* sourceFiles(full);
       continue;
     }
-    if (
-      (entry.endsWith('.ts') || entry.endsWith('.tsx')) &&
-      !entry.includes('.test.')
-    )
+    if (/\.(ts|tsx|js|mjs)$/.test(entry) && !entry.includes('.test.'))
       yield full;
   }
 }
@@ -52,17 +54,12 @@ describe('client sources use no regex lookbehind (#3399)', () => {
 
   test('no scanned source contains one', () => {
     const offenders: string[] = [];
-    let scanned = 0;
+    const counts: Record<string, number> = {};
     for (const dir of SCANNED) {
-      let exists = true;
-      try {
-        statSync(join(ROOT, dir));
-      } catch {
-        exists = false;
-      }
-      if (!exists) continue;
+      // A listed root that disappeared must fail, not shrink the sweep.
+      counts[dir] = 0;
       for (const file of sourceFiles(join(ROOT, dir))) {
-        scanned += 1;
+        counts[dir] += 1;
         readFileSync(file, 'utf8')
           .split('\n')
           .forEach((line, index) => {
@@ -71,8 +68,10 @@ describe('client sources use no regex lookbehind (#3399)', () => {
           });
       }
     }
-    // The sweep must have reached the UI and the SDK, or it proves nothing.
-    expect(scanned).toBeGreaterThan(500);
+    // Every root contributed sources, so the sweep reached each of them.
+    expect(Object.entries(counts).filter(([, count]) => count === 0)).toEqual(
+      [],
+    );
     expect(offenders).toEqual([]);
   });
 });
