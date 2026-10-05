@@ -46,10 +46,12 @@ const STATE_LABEL: Record<RequestCardState, string> = {
 };
 
 /**
- * Open/closed state for one request's sheet. `pending` is the request's own
- * openness: when it stops being pending — answered here, on another device,
- * or retired by a timeout or a stopped turn — the sheet closes in that same
- * render rather than an effect later (R7).
+ * Open/closed state for one request's sheet. `pending` covers the answer
+ * given HERE: once the caller's own action settles the request, the sheet
+ * closes in that same render rather than an effect later. A request resolved
+ * ELSEWHERE (another device, a timeout, a stopped turn) does not pass through
+ * this flag today: it leaves the pending list, which unmounts the card and
+ * its sheet with it (R7).
  */
 export function useRequestSheet(pending: boolean) {
   const [open, setOpen] = useState(false);
@@ -69,15 +71,26 @@ export function useRequestSheet(pending: boolean) {
 export function RequestSheetTrigger({
   onClick,
   ref,
+  compact = false,
 }: {
   onClick: () => void;
   ref: Ref<HTMLButtonElement>;
+  /**
+   * For a trigger beside a one-line transcript row: drawn small and
+   * secondary, with a hit area that is still at least 44px.
+   */
+  compact?: boolean;
 }) {
   return (
     <Button
       ref={ref}
-      variant="primary"
-      className="request-sheet-trigger"
+      variant={compact ? 'secondary' : 'primary'}
+      size={compact ? 'sm' : 'md'}
+      className={
+        compact
+          ? 'request-sheet-trigger request-sheet-trigger--compact'
+          : 'request-sheet-trigger'
+      }
       aria-haspopup="dialog"
       onClick={onClick}
     >
@@ -96,12 +109,18 @@ export function RequestCard({
   state,
   onAnswer,
   triggerRef,
+  notice,
 }: {
   asker: ReactNode;
   question: ReactNode;
   state: RequestCardState;
   onAnswer: () => void;
   triggerRef: Ref<HTMLButtonElement>;
+  /**
+   * Something the person must see while the sheet is closed — a failure
+   * that landed after they dismissed it.
+   */
+  notice?: ReactNode;
 }) {
   const headingId = useId();
   return (
@@ -118,6 +137,7 @@ export function RequestCard({
         </span>
       </div>
       <p className="request-card__question">{question}</p>
+      {notice}
       {state === 'pending' && (
         <RequestSheetTrigger ref={triggerRef} onClick={onAnswer} />
       )}

@@ -636,6 +636,27 @@ test.describe('Mobile request sheet (#3331)', () => {
     );
     const answer = row.getByRole('button', { name: 'Answer', exact: true });
     await expect(answer).toBeVisible();
+    // Drawn small beside a one-line row, but still a 44px target: a point
+    // 21px above, below, left and right of its centre lands on it.
+    expect((await answer.boundingBox())!.height).toBeLessThan(
+      MIN_TOUCH_TARGET_PX,
+    );
+    expect(
+      await answer.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        return [
+          [x, y - 21],
+          [x, y + 21],
+          [x - 21, y],
+          [x + 21, y],
+        ].map(([px, py]) => {
+          const hit = document.elementFromPoint(px, py);
+          return hit === button || button.contains(hit);
+        });
+      }),
+    ).toEqual([true, true, true, true]);
 
     const dialog = page.getByRole('dialog', { name: 'Approval needed' });
     const open = async () => {
@@ -670,6 +691,12 @@ test.describe('Mobile request sheet (#3331)', () => {
 
     await open();
     await allow.click();
+    // Accepted, not yet settled: the pressed button says so instead of the
+    // sheet sitting there with every control silently disabled.
+    const allowing = dialog.getByRole('button', { name: 'Allowing…' });
+    await expect(allowing).toBeVisible();
+    await expect(allowing).toHaveAttribute('aria-busy', 'true');
+    await expect(dialog.getByRole('button', { name: 'Deny' })).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
     expect(answers(posted)[0]).toMatchObject({
       type: 'respondToRequest',
@@ -678,6 +705,93 @@ test.describe('Mobile request sheet (#3331)', () => {
     });
     expect(answers(posted)[0].decision).not.toBe('deny');
     browserHealth.assertHealthy();
+  });
+
+  test('Deny in flight says so, and the settled request closes the sheet', async ({
+    page,
+  }) => {
+    const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE);
+    const row = page.locator('.tool-call[data-approval-id="approval-1"]');
+    await row.getByRole('button', { name: 'Answer', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Approval needed' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Deny' }).click();
+    const denying = dialog.getByRole('button', { name: 'Denying…' });
+    await expect(denying).toBeVisible();
+    await expect(denying).toHaveAttribute('aria-busy', 'true');
+    await expect(
+      dialog.getByRole('button', { name: 'Allow Once' }),
+    ).toBeDisabled();
+    await expect.poll(() => answers(posted).length).toBe(1);
+    expect(answers(posted)[0]).toMatchObject({
+      requestId: 'approval-1',
+      decision: 'decline',
+    });
+    await emitMockOrchestrationEvent(
+      page,
+      'orchestration:event',
+      {
+        event: {
+          method: 'request.resolved',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-1',
+          createdAt: '2026-04-05T12:00:09.000Z',
+          requestId: 'approval-1',
+          status: 'denied',
+        },
+      },
+      { sequence: APPROVAL_EVENTS.length + 1 },
+    );
+    await expect(dialog).toBeHidden();
+    // Settled, the row is no longer answerable and drops its request id.
+    await expect(
+      page
+        .locator('.tool-call', { hasText: 'rm -rf build' })
+        .getByText('User denied'),
+    ).toBeVisible();
+  });
+
+  test('a Send that fails after the sheet was dismissed is shown on the card', async ({
+    page,
+  }) => {
+    const posted = await openChatWith(page, ELICITATION_EVENTS, PHONE);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Registered after the fixture's own commands route, so it answers
+    // first: hold the Send until the sheet is gone, then refuse it.
+    await page.route('**/api/orchestration/commands', async (route) => {
+      posted.push(route.request().postDataJSON());
+      await held;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'The tool server stopped responding.',
+        }),
+      });
+    });
+    const card = page.locator('.request-card');
+    await card.getByRole('button', { name: 'Answer', exact: true }).click();
+    const dialog = page.getByRole('dialog', {
+      name: 'fixture needs your input',
+    });
+    await expect(dialog).toBeVisible();
+    await settled(dialog);
+    await dialog.getByRole('textbox', { name: /Name/ }).fill('Ada');
+    await dialog.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => answers(posted).length).toBe(1);
+    // Dismissed while the Send is still in flight.
+    await page.mouse.click(PHONE.width / 2, 6);
+    await expect(dialog).toBeHidden();
+    release();
+    await expect(card.getByRole('alert')).toContainText(
+      'The tool server stopped responding.',
+    );
+    await expect(card.getByRole('status')).toHaveText('Waiting for you');
   });
 
   test('R7: an approval resolved elsewhere closes the open sheet and the row shows the result', async ({

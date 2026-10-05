@@ -72,8 +72,9 @@ the feature's own action row below a scrolling body, fits its height to the
 content, and treats every dismissal path (backdrop, a swipe down on its grab
 strip, Escape, back, the close control) as hide-only: the request stays pending
 until one of its explicit actions answers it. `useRequestSheet(pending)` closes
-the sheet in the render where the request stops being pending, wherever it was
-resolved. Desktop keeps the feature's inline card.
+the sheet when an answer given on this page settles the request; a request
+resolved elsewhere leaves the pending list instead, which unmounts the card and
+its sheet together. Desktop keeps the feature's inline card.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,

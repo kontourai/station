@@ -373,8 +373,10 @@ type ApprovalPhase = 'idle' | 'sending' | 'sent' | 'already-settled';
 function useApprovalDecision(onApprove: ToolApprovalHandler) {
   const [phase, setPhase] = useState<ApprovalPhase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
   const decide = (action: 'once' | 'trust' | 'deny') => {
     if (phase !== 'idle') return;
+    setChosen(action);
     setPhase('sending');
     setFailure(null);
     // The handler is called in the click, and the buttons are disabled before
@@ -400,7 +402,7 @@ function useApprovalDecision(onApprove: ToolApprovalHandler) {
       },
     );
   };
-  return { phase, failure, decide, busy: phase !== 'idle' };
+  return { phase, failure, decide, chosen, busy: phase !== 'idle' };
 }
 
 function ApprovalDecisionStatus({
@@ -460,13 +462,21 @@ function ToolApprovalSheet({
   summary,
   details,
 }: ToolApprovalControlProps & { summary: ReactNode; details: ReactNode }) {
-  const { phase, failure, decide, busy } = useApprovalDecision(onApprove);
+  const { phase, failure, decide, chosen, busy } =
+    useApprovalDecision(onApprove);
   const sheet = useRequestSheet(true);
+  // Accepted but not yet settled reads as in progress, not as a frozen
+  // sheet: the row stays until the durable `request.resolved` removes it.
+  const inFlight = phase === 'sending' || phase === 'sent';
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   const status = <ApprovalDecisionStatus phase={phase} failure={failure} />;
   return (
     <>
-      <RequestSheetTrigger ref={sheet.triggerRef} onClick={sheet.show} />
+      <RequestSheetTrigger
+        ref={sheet.triggerRef}
+        onClick={sheet.show}
+        compact
+      />
       {!sheet.open && status}
       {sheet.open && (
         <RequestSheet
@@ -481,6 +491,8 @@ function ToolApprovalSheet({
                 <Button
                   variant="danger-outline"
                   disabled={busy}
+                  pending={inFlight && chosen === 'deny'}
+                  pendingLabel="Denying…"
                   onClick={() => decide('deny')}
                 >
                   Deny
@@ -490,6 +502,10 @@ function ToolApprovalSheet({
                 <Button
                   variant="primary"
                   disabled={busy}
+                  // The session grant is an allow too; its overflow item
+                  // cannot show progress, so Allow carries it.
+                  pending={inFlight && chosen !== 'deny'}
+                  pendingLabel="Allowing…"
                   onClick={() => decide('once')}
                 >
                   Allow Once

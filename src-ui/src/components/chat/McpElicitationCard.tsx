@@ -342,6 +342,11 @@ export function McpElicitationCard({
           state={done ? CARD_STATE[done] : 'pending'}
           onAnswer={sheet.show}
           triggerRef={sheet.triggerRef}
+          notice={
+            // A Send that fails after the sheet was dismissed would
+            // otherwise report only inside a sheet nobody can see.
+            !sheet.open && error ? <p role="alert">{error}</p> : null
+          }
         />
         {sheet.open && (
           <RequestSheet

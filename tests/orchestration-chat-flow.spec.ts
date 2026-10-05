@@ -912,6 +912,39 @@ test.describe('Orchestration Chat Flow', () => {
     );
     await expectClearLayout('desktop right dock refused');
     await expectActionsContained('desktop right dock refused');
+
+    // The disabled "no longer open" state of the inline buttons. Only a
+    // desktop renders them since #3331 (a phone answers in the request
+    // sheet), so this is where their disabled styling is pinned. The 720px
+    // label-row check this test once made has no subject any more: 720px is
+    // under the 768px phone query, where the row carries only Answer.
+    answer = 'settled';
+    const desktopEnabledWidths = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
+    await allowOnce.click();
+    await expect(card.getByRole('status')).toHaveText(
+      'This request is no longer open.',
+    );
+    await expect(allowOnce).toBeDisabled();
+    // Disabling restyles the buttons without resizing them: a border that
+    // appears only when disabled shifted every button by 2px on click.
+    const desktopDisabledWidths = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
+    expect(desktopDisabledWidths).toHaveLength(desktopEnabledWidths.length);
+    desktopDisabledWidths.forEach((width, index) => {
+      expect(
+        Math.abs(width - desktopEnabledWidths[index]),
+        `desktop button ${index} width change on disable`,
+      ).toBeLessThan(0.5);
+    });
+    await expectClearLayout('desktop right dock no longer open');
+    await expectLegibleButtons('desktop right dock no longer open');
     browserHealth.assertHealthy();
   });
 });
