@@ -472,12 +472,20 @@ conversation to another folder.
 - Ambiguous: refused, naming the candidates.
 - Unattributed: refused unless `target` is `{ kind: 'own-folder' }`, which
   creates a No project child (no `projectSlug`) confined to the cwd. That is
-  refused on a hosted runtime and for a folder too broad to confine an agent
-  to: the file system root, a folder directly under it, the home folder or a
-  folder containing it, the system temporary folder or a folder containing
-  it, and anything overlapping the Station runtime home.
+  refused on a hosted runtime. Otherwise the resolved cwd must be strictly
+  inside the resolved home folder (`noProjectFolderRefusal`), and not inside a
+  dot-folder directly under home (every one, not a list of credential
+  stores), `~/Library` or `~/AppData`, not the system temporary folder or a
+  folder containing it, and not overlapping the Station runtime home. The
+  recorded cwd must also equal its resolved form, so the folder the person
+  confirmed is the one the child runs in.
   `{ kind: 'project', projectSlug }` is refused, because the cwd is not part of
   any Project.
+
+Every adopted child records its resolved folder as
+`dispatchCanonicalCwd`, so a later engine start for it (a restart's
+recovery) refuses a folder that no longer resolves there
+(`assertDispatchCwdUnmoved`).
 
 `target` accepts only these two shapes; any other field, such as a path, is
 refused at the route. The Starter Work `continue-session` launch accepts the

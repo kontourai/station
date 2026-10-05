@@ -74,8 +74,8 @@ shows a reason when the engine or source configuration is unavailable. The
 child always runs in the Session's own folder, checked again at continuation:
 a worktree Session continues in its worktree under the Project its repository
 belongs to, and a **No project** Session continues as a No project chat
-confined to its folder once you confirm that choice, unless the folder is too
-broad to confine an agent to (see
+confined to its folder once you confirm that choice, and only in a folder
+inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
 An attached terminal Session stays read only. The first eligible **Continue in

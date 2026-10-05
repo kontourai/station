@@ -20,12 +20,12 @@
  *   worktree removed, replaced by a symlink, or given a forged `.git` since
  *   discovery is refused.
  * - a folder no project claims continues only when the caller chose
- *   `own-folder`: a No project chat confined to that folder, refused for a
- *   folder too broad to confine an agent to ({@link tooBroadFolderReason}).
+ *   `own-folder`: a No project chat confined to that folder, and only in a
+ *   folder {@link noProjectFolderRefusal} allows.
  */
 import { realpathSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { AdoptSessionTarget } from '@kontourai/station-contracts/orchestration';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import {
@@ -75,27 +75,40 @@ function canonicalOrLexical(path: string): string {
 }
 
 /**
- * Why `folder` (symlink-resolved) is too broad to confine a No project chat
- * to, or `undefined` when it is narrow enough. An agent confined to its
- * working directory may still read and change everything under it, so these
- * are refused:
- *
- * - the filesystem root, and any folder directly under it (`/tmp`,
- *   `/Users`, `/opt`, a drive's top folder);
- * - the home folder, and any folder that contains it;
- * - the system temporary folder, and any folder that contains it;
- * - Station's own data folder, anything inside it, and any folder that
- *   contains it: an agent there could rewrite Station's own state.
+ * Folders directly in the home folder that hold an operating system's
+ * per-user application data, settings and keychains: macOS `Library`,
+ * Windows `AppData`. Compared without case, as both file systems do.
  */
-export function tooBroadFolderReason(folder: string): string | undefined {
-  const parent = dirname(folder);
-  if (parent === folder) return 'it is the root of the file system';
-  if (dirname(parent) === parent) return 'it is a top-level system folder';
+const PROTECTED_HOME_FOLDERS = new Set(['library', 'appdata']);
+
+/**
+ * Why a No project chat may not be confined to `folder` (symlink-resolved),
+ * or `undefined` when it may. An agent confined to its working directory may
+ * still read and change everything under it, so this is an ALLOW rule, not a
+ * list of dangerous places: only a folder strictly inside the home folder is
+ * allowed, and not one of these:
+ *
+ * - inside a hidden folder directly in the home folder (`~/.ssh`, `~/.aws`,
+ *   `~/.config`, `~/.claude`, `~/.codex`, `~/.kube`, ...). Every one of
+ *   them, not a list of known credential stores: which tools keep secrets in
+ *   a dot-folder is open-ended, and none is a place people keep their work;
+ * - inside {@link PROTECTED_HOME_FOLDERS} (`~/Library`, `~/AppData`);
+ * - the system temporary folder, or a folder containing it;
+ * - Station's own data folder, anything inside it, or a folder containing
+ *   it: an agent there could rewrite Station's own state.
+ *
+ * Everything else, system folders such as `/etc`, `/tmp` and `/usr/local`
+ * included, is outside the home folder and refused.
+ */
+export function noProjectFolderRefusal(folder: string): string | undefined {
   const home = canonicalOrLexical(homedir());
-  if (isSameOrInside(folder, home))
-    return folder === home
-      ? 'it is your home folder'
-      : 'it contains your home folder';
+  if (folder === home) return 'it is your home folder';
+  if (!isSameOrInside(home, folder)) return 'it is outside your home folder';
+  const [first = ''] = relative(home, folder).split(sep);
+  if (first.startsWith('.'))
+    return `it is inside ~${sep}${first}, a hidden folder where tools keep their settings and credentials`;
+  if (PROTECTED_HOME_FOLDERS.has(first.toLowerCase()))
+    return `it is inside ~${sep}${first}, where the system keeps application data`;
   const temporary = canonicalOrLexical(tmpdir());
   if (isSameOrInside(folder, temporary))
     return 'it is or contains the system temporary folder';
@@ -172,10 +185,19 @@ export async function resolveContinuationPlace(input: {
     throw new Error(
       'This Station is hosted, so a conversation outside every project cannot be continued as a No project chat.',
     );
-  const tooBroad = tooBroadFolderReason(folder);
-  if (tooBroad)
+  const refusal = noProjectFolderRefusal(folder);
+  if (refusal)
     throw new Error(
-      `Station will not continue this conversation as a No project chat in ${folder}: ${tooBroad}, which is too broad to confine an agent to. Continue it in the original app, or start it again from a narrower folder.`,
+      `Station will not continue this conversation as a No project chat in ${folder}: ${refusal}. A No project chat may only work in a folder inside your home folder. Add a project for that folder, or keep working in the original app.`,
+    );
+  // The person confirmed the folder Activity showed them, which is the one
+  // the conversation recorded. A No project chat runs only there: when that
+  // path reaches another folder through a symbolic link, refuse rather than
+  // run somewhere they did not see.
+  const recorded = resolve(expandTilde(input.cwd));
+  if (recorded !== folder)
+    throw new Error(
+      `The conversation's folder ${recorded} leads to ${folder} through a symbolic link. Station will not continue it as a No project chat in a folder other than the one it shows. Add a project for ${folder}, or keep working in the original app.`,
     );
   return { cwd: folder, workingDirectory: folder };
 }

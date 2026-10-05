@@ -40,6 +40,7 @@ import {
   resolveContinuationPlace,
 } from './attached-session-continuation-place.js';
 import type { AttachedProjectRoot } from './attached-session-follow-service.js';
+import { DISPATCH_CANONICAL_CWD_METADATA_KEY } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
 import {
@@ -707,6 +708,11 @@ export class AttachedSessionAdoption {
                 : {}),
             }
           : {}),
+        // #3386: the folder the child was admitted into, symlink-resolved,
+        // so every later engine start for it (a restart, a recovery) checks
+        // the folder still resolves there and refuses if it was swapped
+        // (`assertDispatchCwdUnmoved`), as for an admitted dispatch.
+        [DISPATCH_CANONICAL_CWD_METADATA_KEY]: place.cwd,
         ...(userId !== undefined ? { userId } : {}),
         ...sessionOwnerAttributionMetadata(context.ownerAttribution),
         // #2493: server-built, so no strip is needed; absent is `workspace`.

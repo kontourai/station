@@ -21,7 +21,10 @@ import type {
   OrchestrationCommand,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import type { ProviderSession } from '@kontourai/station-contracts/provider';
+import type {
+  ProviderSession,
+  ProviderSessionStartInput,
+} from '@kontourai/station-contracts/provider';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -33,8 +36,8 @@ import type { ProviderSessionAdoptInput } from '../../../providers/adapter-shape
 import { FileTreeService } from '../../projects/file-tree-service.js';
 import { sessionWorkspaceDirectoryFor } from '../../projects/session-workspace-directory.js';
 import {
+  noProjectFolderRefusal,
   resolveContinuationPlace,
-  tooBroadFolderReason,
 } from '../attached-session-continuation-place.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -104,6 +107,16 @@ class AdoptingAdapter extends GateTestAdapter {
   }
 
   async discardSession(): Promise<void> {}
+
+  /** Every engine start Station asked for after adoption (a restart's respawn). */
+  readonly starts: ProviderSessionStartInput[] = [];
+
+  async startSession(
+    input: ProviderSessionStartInput,
+  ): Promise<ProviderSession> {
+    this.starts.push(input);
+    return super.startSession(input);
+  }
 }
 
 const tempDir = trackTempDirs();
@@ -113,6 +126,8 @@ let lane: string;
 let store: EventStore;
 let adapter: AdoptingAdapter;
 let service: OrchestrationService;
+/** Earlier processes of a restart test, shut down after it. */
+const retired: OrchestrationService[] = [];
 let projects: Array<{ slug: string; workingDirectory: string; id?: string }>;
 
 beforeEach(() => {
@@ -121,12 +136,17 @@ beforeEach(() => {
   // too-broad rules are exercised without touching the real ones.
   mkdirSync(join(dir, 'home'));
   vi.stubEnv('HOME', join(dir, 'home'));
-  vi.stubEnv('STATION_HOME', join(dir, 'station-home'));
+  vi.stubEnv('STATION_HOME', join(dir, 'home', 'station-data'));
   main = repository(join(dir, 'station'));
   lane = join(dir, 'station-worktrees', 'lane');
   git(main, 'worktree', 'add', '-q', '-b', 'lane', lane);
   projects = [{ slug: 'station', workingDirectory: main, id: 'project-1' }];
   store = new EventStore(join(dir, 'events.sqlite'));
+  startService();
+});
+
+/** A Station process on the shared store, with its own engine. */
+function startService(): void {
   adapter = new AdoptingAdapter();
   service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
@@ -136,10 +156,11 @@ beforeEach(() => {
     listProjects: () => projects,
     logger: { debug: () => {}, warn: () => {} },
   });
-});
+}
 
 afterEach(async () => {
   await service.shutdown();
+  for (const earlier of retired.splice(0)) await earlier.shutdown();
   store.close();
   vi.unstubAllEnvs();
 });
@@ -313,9 +334,52 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
   });
 });
 
+describe('after a restart (#3386)', () => {
+  async function adoptedThenRestarted(): Promise<string> {
+    const { threadId } = (await adopt(attached(lane))) as { threadId: string };
+    expect(adapter.adoptions[0]!.metadata).toMatchObject({
+      dispatchCanonicalCwd: lane,
+    });
+    await childSummary(threadId, 'station');
+    // A process that ended without a clean shutdown (a clean one closes
+    // its sessions): the child is still open, and the next process restores
+    // it and starts its engine on the next turn.
+    retired.push(service);
+    startService();
+    return threadId;
+  }
+
+  test('the child starts again in its worktree', async () => {
+    const threadId = await adoptedThenRestarted();
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'carry on' },
+    });
+    expect(adapter.starts.map((input) => input.cwd)).toEqual([lane]);
+  });
+
+  test('a worktree swapped for a link since adoption is refused before the engine starts', async () => {
+    const threadId = await adoptedThenRestarted();
+    const elsewhere = join(dir, 'elsewhere');
+    mkdirSync(elsewhere);
+    rmSync(lane, { recursive: true, force: true });
+    symlinkSync(elsewhere, lane);
+
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'carry on' },
+      }),
+    ).rejects.toThrow(
+      `Station will not start this session: it was admitted into ${lane}, and its working directory now resolves to ${elsewhere}.`,
+    );
+    expect(adapter.starts).toHaveLength(0);
+  });
+});
+
 describe('a conversation no project claims (#3386)', () => {
   test('is refused until the person chooses where it continues', async () => {
-    const folder = join(dir, 'scratch', 'app');
+    const folder = join(dir, 'home', 'code', 'app');
     mkdirSync(folder, { recursive: true });
     await expect(adopt(attached(folder))).rejects.toThrow(
       `The conversation's folder ${folder} belongs to no project. Choose to continue it as a No project chat`,
@@ -324,9 +388,9 @@ describe('a conversation no project claims (#3386)', () => {
   });
 
   test('continues as a No project chat confined to its own folder', async () => {
-    const folder = join(dir, 'scratch', 'app');
+    const folder = join(dir, 'home', 'code', 'app');
     mkdirSync(folder, { recursive: true });
-    writeFileSync(join(dir, 'scratch', 'secret.txt'), 'beside the folder');
+    writeFileSync(join(dir, 'home', 'code', 'secret.txt'), 'beside the folder');
 
     const result = (await adopt(attached(folder), {
       kind: 'own-folder',
@@ -346,7 +410,7 @@ describe('a conversation no project claims (#3386)', () => {
   });
 
   test('picking a project the folder does not belong to is refused, never moved there', async () => {
-    const folder = join(dir, 'scratch', 'app');
+    const folder = join(dir, 'home', 'code', 'app');
     mkdirSync(folder, { recursive: true });
     await expect(
       adopt(attached(folder), { kind: 'project', projectSlug: 'station' }),
@@ -356,21 +420,54 @@ describe('a conversation no project claims (#3386)', () => {
     expect(adapter.adoptions).toHaveLength(0);
   });
 
+  /** A folder inside the test's home folder, created. */
+  function inHome(...parts: string[]): string {
+    const folder = join(dir, 'home', ...parts);
+    mkdirSync(folder, { recursive: true });
+    return folder;
+  }
+
   test.each([
     ['the home folder', () => join(dir, 'home'), 'it is your home folder'],
     [
       'a folder containing the home folder',
       () => dir,
-      'it contains your home folder',
+      'it is outside your home folder',
     ],
-    ['the filesystem root', () => '/', 'it is the root of the file system'],
+    ['the filesystem root', () => '/', 'it is outside your home folder'],
+    // Real system folders, resolved as the host resolves them (on macOS
+    // `/tmp` and `/etc` are links into `/private`, one level deeper).
+    ['/tmp', () => '/tmp', 'it is outside your home folder'],
+    ['/etc', () => '/etc', 'it is outside your home folder'],
+    [
+      '~/.ssh',
+      () => inHome('.ssh', 'keys'),
+      'it is inside ~/.ssh, a hidden folder where tools keep their settings and credentials',
+    ],
+    [
+      '~/.claude',
+      () => inHome('.claude', 'projects'),
+      'it is inside ~/.claude, a hidden folder',
+    ],
+    [
+      '~/Library',
+      () => inHome('Library', 'Application Support'),
+      'it is inside ~/Library, where the system keeps application data',
+    ],
+    [
+      'a link in the home folder that leads outside it',
+      () => {
+        const outside = join(dir, 'outside');
+        mkdirSync(outside);
+        inHome('code');
+        symlinkSync(outside, join(dir, 'home', 'code', 'link'));
+        return join(dir, 'home', 'code', 'link');
+      },
+      `it is outside your home folder`,
+    ],
     [
       "Station's data folder",
-      () => {
-        const station = join(dir, 'station-home', 'logs');
-        mkdirSync(station, { recursive: true });
-        return station;
-      },
+      () => inHome('station-data', 'logs'),
       "it is or overlaps Station's own data folder",
     ],
   ])('refuses a No project chat in %s', async (_label, folder, reason) => {
@@ -379,17 +476,43 @@ describe('a conversation no project claims (#3386)', () => {
     ).rejects.toThrow(reason);
     expect(adapter.adoptions).toHaveLength(0);
   });
+
+  test('refuses a No project chat whose recorded folder leads elsewhere in the home folder', async () => {
+    const real = inHome('code', 'real');
+    symlinkSync(real, join(dir, 'home', 'code', 'shown'));
+    const shown = join(dir, 'home', 'code', 'shown');
+    await expect(
+      adopt(attached(shown), { kind: 'own-folder' }),
+    ).rejects.toThrow(
+      `The conversation's folder ${shown} leads to ${real} through a symbolic link.`,
+    );
+    expect(adapter.adoptions).toHaveLength(0);
+    // The folder it leads to is allowed when the conversation recorded it.
+    await adopt(attached(real), { kind: 'own-folder' });
+    expect(adapter.adoptions.map((input) => input.cwd)).toEqual([real]);
+  });
 });
 
 describe('the folder rules themselves', () => {
-  test('a top-level folder and the temporary folder are too broad; a project folder is not', () => {
-    expect(tooBroadFolderReason('/opt')).toBe(
-      'it is a top-level system folder',
+  test('only a folder inside the home folder, outside its hidden and system folders, is allowed', () => {
+    const home = join(dir, 'home');
+    expect(noProjectFolderRefusal(join(home, 'code', 'foo'))).toBeUndefined();
+    expect(noProjectFolderRefusal(join(home, 'Documents'))).toBeUndefined();
+    expect(noProjectFolderRefusal(join(home, '.aws'))).toBeDefined();
+    expect(noProjectFolderRefusal(join(home, '.config', 'gh'))).toBeDefined();
+    expect(noProjectFolderRefusal(join(home, 'library', 'x'))).toBeDefined();
+    expect(
+      noProjectFolderRefusal(join(home, 'AppData', 'Roaming')),
+    ).toBeDefined();
+    expect(noProjectFolderRefusal(realpathSync.native('/tmp'))).toBe(
+      'it is outside your home folder',
     );
-    // The temporary folder holds this test's home folder too, so either
-    // reason may name it; what matters is that it is refused.
-    expect(tooBroadFolderReason(realpathSync.native(tmpdir()))).toBeDefined();
-    expect(tooBroadFolderReason(main)).toBeUndefined();
+    expect(noProjectFolderRefusal(realpathSync.native(tmpdir()))).toBe(
+      'it is outside your home folder',
+    );
+    expect(noProjectFolderRefusal('/usr/local')).toBe(
+      'it is outside your home folder',
+    );
   });
 
   test('a hosted Station never continues a conversation outside every project', async () => {

@@ -476,12 +476,15 @@ continue:
   worktree. Station refuses if the worktree was removed or replaced, or if its
   `.git` does not lead back to the Project's repository.
 - A conversation under **No project** continues as a **No project** chat
-  confined to its own folder, after you confirm that choice. Station refuses
-  this for a folder too broad to confine an agent to: the file system root, a
-  folder directly under it, your home folder or a folder containing it,
-  the system temporary folder, and Station's own data folder. To continue it
-  under a Project instead, add a Project for that folder or its repository
-  first. Station does not move a conversation into another Project's folder,
+  confined to its own folder, after you confirm that choice. This is allowed
+  only for a folder inside your home folder. Station refuses your home folder
+  itself, every folder outside it (system folders included), any hidden
+  folder directly in your home folder and everything in it (such as `.ssh`,
+  `.aws` or `.config`), `Library` on macOS and `AppData` on Windows, the
+  system temporary folder, and Station's own data folder. It also refuses
+  when the folder shown reaches another folder through a symbolic link. To
+  continue such a conversation, add a Project for that folder or its
+  repository. Station does not move a conversation into another Project's folder,
   because its history refers to files in the folder it ran in.
 
 A hosted Station does not continue conversations outside your Projects.
