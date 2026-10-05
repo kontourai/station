@@ -1319,7 +1319,7 @@ describe('the Windows switch of `current` is install.ps1’s (#2675 W3)', () => 
             wait: (ms) => waits.push(ms),
           });
         } catch (error) {
-          thrown = errors.indexOf(error as Error);
+          thrown = errors.indexOf(error as (typeof errors)[number]);
         }
         return { calls, waits, thrown };
       };
