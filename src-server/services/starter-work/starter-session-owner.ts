@@ -71,9 +71,13 @@ export function createStarterSessionOwner(
       } catch (error) {
         const observed = error as {
           message?: string;
+          code?: string;
           receipt?: { commandId?: string };
           receiptStatus?: 'persisted' | 'unavailable';
         };
+        // #3386: a folder Station will not continue in is refused again on
+        // every retry, so the launch says retrying is not safe to offer.
+        const permanent = observed.code === 'continuation_place_refused';
         return {
           state:
             observed.receiptStatus === 'persisted'
@@ -82,7 +86,7 @@ export function createStarterSessionOwner(
           reason:
             observed.message ??
             'The Session continuation outcome is unavailable.',
-          retrySafe: true,
+          retrySafe: !permanent,
           ...(observed.receipt?.commandId
             ? { receiptId: observed.receipt.commandId }
             : {}),

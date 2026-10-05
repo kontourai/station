@@ -18061,7 +18061,7 @@ describe('OrchestrationService', () => {
     ).rejects.toThrow(
       // #3386: a folder no project claims continues only when the caller
       // chose a No project chat; the refusal names the folder and the choice.
-      `The conversation's folder ${realpathSync(scratch)} belongs to no project. Choose to continue it as a No project chat`,
+      "This conversation's folder belongs to no project. Choose to continue it as a No project chat",
     );
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });

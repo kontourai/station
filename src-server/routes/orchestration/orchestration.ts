@@ -106,6 +106,7 @@ import {
   beginActionOperationTracking,
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
+import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -4825,6 +4826,11 @@ export function createOrchestrationRoutes(
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
               ? { code: error.code, retryable: error.retryable }
+              : {}),
+            // #3386: a folder Station will not continue in; the same
+            // request is refused again, so clients offer no retry.
+            ...(error instanceof ContinuationPlaceRefusedError
+              ? { code: error.code, retryable: false }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError
               ? {

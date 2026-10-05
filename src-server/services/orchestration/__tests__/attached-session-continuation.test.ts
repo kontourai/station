@@ -277,7 +277,7 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
     git(main, 'worktree', 'remove', '--force', lane);
 
     await expect(adopt(source)).rejects.toThrow(
-      `The conversation's folder ${lane} no longer exists`,
+      "This conversation's folder no longer exists",
     );
     expect(adapter.adoptions).toHaveLength(0);
   });
@@ -290,7 +290,7 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
     symlinkSync(elsewhere, lane);
 
     await expect(adopt(source)).rejects.toThrow(
-      `The conversation's folder ${elsewhere} belongs to no project.`,
+      "This conversation's folder belongs to no project.",
     );
     // Not even as the project the conversation was filed under.
     await expect(
@@ -311,7 +311,7 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
     const source = attached(forged);
 
     await expect(adopt(source)).rejects.toThrow(
-      `The conversation's folder ${forged} belongs to no project.`,
+      "This conversation's folder belongs to no project.",
     );
     await expect(
       adopt(source, { kind: 'project', projectSlug: 'station' }),
@@ -377,11 +377,20 @@ describe('after a restart (#3386)', () => {
 });
 
 describe('a conversation no project claims (#3386)', () => {
+  test('a folder refusal carries its code to callers', async () => {
+    const folder = join(dir, 'outside');
+    mkdirSync(folder);
+    const error = await adopt(attached(folder), { kind: 'own-folder' }).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ code: 'continuation_place_refused' });
+  });
+
   test('is refused until the person chooses where it continues', async () => {
     const folder = join(dir, 'home', 'code', 'app');
     mkdirSync(folder, { recursive: true });
     await expect(adopt(attached(folder))).rejects.toThrow(
-      `The conversation's folder ${folder} belongs to no project. Choose to continue it as a No project chat`,
+      "This conversation's folder belongs to no project. Choose to continue it as a No project chat",
     );
     expect(adapter.adoptions).toHaveLength(0);
   });
@@ -414,7 +423,7 @@ describe('a conversation no project claims (#3386)', () => {
     await expect(
       adopt(attached(folder), { kind: 'project', projectSlug: 'station' }),
     ).rejects.toThrow(
-      `The conversation's folder ${folder} is not part of the project station`,
+      "This conversation's folder is not part of the project station",
     );
     expect(adapter.adoptions).toHaveLength(0);
   });
@@ -504,7 +513,7 @@ describe('a conversation no project claims (#3386)', () => {
     await expect(
       adopt(attached(shown), { kind: 'own-folder' }),
     ).rejects.toThrow(
-      `The conversation's folder ${shown} leads to ${real} through a symbolic link.`,
+      "This conversation's folder leads to another folder through a symbolic link.",
     );
     expect(adapter.adoptions).toHaveLength(0);
     // The folder it leads to is allowed when the conversation recorded it.

@@ -95,4 +95,31 @@ describe('createStarterSessionOwner (#2493)', () => {
       target: { kind: 'own-folder' },
     });
   });
+
+  test('a folder Station will not continue in is not offered a retry (#3386)', async () => {
+    const dispatchWithReceipt = vi.fn(async () => {
+      throw Object.assign(new Error('outside your home folder'), {
+        code: 'continuation_place_refused',
+        receipt: { commandId: 'receipt-2' },
+        receiptStatus: 'persisted' as const,
+      });
+    });
+    const owner = createStarterSessionOwner({
+      readSession: vi.fn(),
+      dispatchWithReceipt,
+    } as never);
+    await expect(
+      owner.continue({
+        sourceSessionId: 'attached',
+        operationId: 'op-5',
+        target: { kind: 'own-folder' },
+        fullAccessGrant: null,
+        owner: { ownerUserId: 'human:local:operator' },
+      }),
+    ).resolves.toMatchObject({
+      state: 'failed',
+      reason: 'outside your home folder',
+      retrySafe: false,
+    });
+  });
 });

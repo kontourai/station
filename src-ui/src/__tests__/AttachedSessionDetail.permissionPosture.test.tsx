@@ -697,4 +697,38 @@ describe('a conversation no project claims (#3386)', () => {
       screen.getByRole('button', { name: 'Continue in Station' }),
     ).toBeTruthy();
   });
+
+  test('a refusal Station will repeat is shown in its own words, with no retry', async () => {
+    adoptOrchestrationSession.mockReset();
+    const refusal =
+      'Station will not continue this conversation as a No project chat in /work/app: it is outside your home folder. A No project chat may only work in a folder inside your home folder. Add a project for that folder, or keep working in the original app.';
+    adoptOrchestrationSession.mockRejectedValue(
+      new AdoptSessionError({
+        failureClass: 'certain-response',
+        message: `Station rejected the continuation request (HTTP 400). ${refusal}`,
+        retryable: false,
+        status: 400,
+        refusal,
+      }),
+    );
+    renderAttached({
+      presentation: 'chat',
+      session: { projectSlug: undefined, cwd: '/work/app' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      `Station won't continue this conversation. ${refusal}`,
+    );
+    const action = screen.getByRole('button', {
+      name: 'Continue and send',
+    }) as HTMLButtonElement;
+    expect(action.disabled).toBe(true);
+    fireEvent.click(action);
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
 });

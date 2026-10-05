@@ -46,6 +46,20 @@ export interface ContinuationPlace {
   project?: { slug: string; id?: string };
 }
 
+/**
+ * #3386: Station will not continue this conversation where it asked, and
+ * asking again will not change that until the folder or the projects do.
+ * The code reaches callers through the dispatch wrapper, not retryable, so
+ * no client offers a retry that cannot succeed.
+ */
+export class ContinuationPlaceRefusedError extends Error {
+  readonly code = 'continuation_place_refused';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ContinuationPlaceRefusedError';
+  }
+}
+
 function realDirectory(path: string): string | undefined {
   try {
     const real = realpathSync.native(resolve(expandTilde(path)));
@@ -146,8 +160,9 @@ function recordedPathFollowsLink(recorded: string): boolean {
 
 /**
  * The place a continuation of an attached session whose recorded folder is
- * `cwd` runs. Throws an error whose message a person can act on when
- * Station refuses.
+ * `cwd` runs. Throws {@link ContinuationPlaceRefusedError} with a message a
+ * person can act on when Station refuses. Messages name no path: routes
+ * redact paths from errors, and the person already sees the folder.
  */
 export async function resolveContinuationPlace(input: {
   cwd: string;
@@ -160,8 +175,8 @@ export async function resolveContinuationPlace(input: {
 }): Promise<ContinuationPlace> {
   const folder = realDirectory(input.cwd);
   if (!folder)
-    throw new Error(
-      `The conversation's folder ${input.cwd} no longer exists, so Station cannot continue it there.`,
+    throw new ContinuationPlaceRefusedError(
+      "This conversation's folder no longer exists, so Station cannot continue it there.",
     );
   const attribution = await resolveAttachedSessionProject(
     folder,
@@ -171,19 +186,19 @@ export async function resolveContinuationPlace(input: {
   // archive#1462: adoption binds a session to one project, so an ambiguous
   // workspace refuses by name instead of adopting into an arbitrary winner.
   if (attribution.state === 'ambiguous')
-    throw new Error(
+    throw new ContinuationPlaceRefusedError(
       `The attached session workspace ${attribution.workingDirectory} is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,
     );
   if (attribution.state === 'attributed') {
     if (input.target?.kind === 'own-folder')
-      throw new Error(
+      throw new ContinuationPlaceRefusedError(
         `This conversation belongs to the project ${attribution.slug}. Continue it in that project.`,
       );
     if (
       input.target?.kind === 'project' &&
       input.target.projectSlug !== attribution.slug
     )
-      throw new Error(
+      throw new ContinuationPlaceRefusedError(
         `This conversation belongs to the project ${attribution.slug}, not ${input.target.projectSlug}.`,
       );
     const id = input.projects.find(
@@ -197,21 +212,21 @@ export async function resolveContinuationPlace(input: {
     };
   }
   if (input.target?.kind === 'project')
-    throw new Error(
-      `The conversation's folder ${folder} is not part of the project ${input.target.projectSlug}: it is neither inside the project's folder nor in a worktree of its repository. Station continues a conversation only in the folder it ran in. Continue it as a No project chat, or add a project for that folder.`,
+    throw new ContinuationPlaceRefusedError(
+      `This conversation's folder is not part of the project ${input.target.projectSlug}: it is neither inside the project's folder nor in a worktree of its repository. Station continues a conversation only in the folder it ran in. Continue it as a No project chat, or add a project for that folder.`,
     );
   if (input.target?.kind !== 'own-folder')
-    throw new Error(
-      `The conversation's folder ${folder} belongs to no project. Choose to continue it as a No project chat in that folder, or add a project for it.`,
+    throw new ContinuationPlaceRefusedError(
+      "This conversation's folder belongs to no project. Choose to continue it as a No project chat in that folder, or add a project for it.",
     );
   if (input.hosted)
-    throw new Error(
+    throw new ContinuationPlaceRefusedError(
       'This Station is hosted, so a conversation outside every project cannot be continued as a No project chat.',
     );
   const refusal = noProjectFolderRefusal(folder);
   if (refusal)
-    throw new Error(
-      `Station will not continue this conversation as a No project chat in ${folder}: ${refusal}. A No project chat may only work in a folder inside your home folder. Add a project for that folder, or keep working in the original app.`,
+    throw new ContinuationPlaceRefusedError(
+      `Station will not continue this conversation as a No project chat in its folder, because ${refusal}. A No project chat may only work in a folder inside your home folder. Add a project for that folder, or keep working in the original app.`,
     );
   // The person confirmed the folder Activity showed them, which is the one
   // the conversation recorded. A No project chat runs only there: when that
@@ -221,8 +236,8 @@ export async function resolveContinuationPlace(input: {
   // spelling on a file system that ignores both) is the same folder.
   const recorded = resolve(expandTilde(input.cwd));
   if (recorded !== folder && recordedPathFollowsLink(recorded))
-    throw new Error(
-      `The conversation's folder ${recorded} leads to ${folder} through a symbolic link. Station will not continue it as a No project chat in a folder other than the one it shows. Add a project for ${folder}, or keep working in the original app.`,
+    throw new ContinuationPlaceRefusedError(
+      "This conversation's folder leads to another folder through a symbolic link. Station will not continue it as a No project chat in a folder other than the one it shows. Add a project for the folder it leads to, or keep working in the original app.",
     );
   return { cwd: folder, workingDirectory: folder };
 }

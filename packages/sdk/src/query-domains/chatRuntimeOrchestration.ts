@@ -114,6 +114,11 @@ export class AdoptSessionError extends Error {
   readonly retryable: boolean;
   readonly status?: number;
   readonly cause?: unknown;
+  /**
+   * #3386: Station's own reason for a refusal it says will not change on
+   * retry (a folder Station will not continue in), for showing as written.
+   */
+  readonly refusal?: string;
 
   constructor(input: {
     failureClass: AdoptSessionFailureClass;
@@ -121,6 +126,7 @@ export class AdoptSessionError extends Error {
     retryable: boolean;
     status?: number;
     cause?: unknown;
+    refusal?: string;
   }) {
     super(input.message);
     this.name = 'AdoptSessionError';
@@ -128,6 +134,7 @@ export class AdoptSessionError extends Error {
     this.retryable = input.retryable;
     this.status = input.status;
     this.cause = input.cause;
+    if (input.refusal) this.refusal = input.refusal;
   }
 }
 
@@ -674,16 +681,24 @@ export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessi
 function rejectedContinuation(
   status: number,
   detail?: string,
+  retryable?: unknown,
 ): AdoptSessionError {
   const statusMessage =
     status === 401 || status === 403
       ? `Permission denied by Station (HTTP ${status}).`
       : `Station rejected the continuation request (HTTP ${status}).`;
+  // #3386: a refusal Station itself marks `retryable: false` (a coded,
+  // permanent refusal, such as a folder it will not continue in) is final:
+  // the same request is refused again, so no retry is offered. Any other
+  // refusal keeps the retryable default.
+  const permanent =
+    status >= 400 && status < 500 && retryable === false && Boolean(detail);
   return new AdoptSessionError({
     failureClass: 'certain-response',
     message: detail ? `${statusMessage} ${detail}` : statusMessage,
-    retryable: true,
+    retryable: !permanent,
     status,
+    ...(permanent && detail ? { refusal: detail } : {}),
   });
 }
 
@@ -737,6 +752,7 @@ export async function adoptOrchestrationSession(input: {
     success?: boolean;
     data?: AdoptedSessionResult;
     error?: string;
+    retryable?: unknown;
   };
   try {
     result = (await response.json()) as typeof result;
@@ -769,7 +785,11 @@ export async function adoptOrchestrationSession(input: {
     result = {};
   }
   if (!response.ok || !result.success)
-    throw rejectedContinuation(response.status, result.error?.trim());
+    throw rejectedContinuation(
+      response.status,
+      result.error?.trim(),
+      result.retryable,
+    );
   return result.data as AdoptedSessionResult;
 }
 

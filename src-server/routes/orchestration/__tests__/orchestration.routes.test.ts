@@ -43,6 +43,7 @@ import {
   installServerLogSink,
   resetServerLogSinkForTests,
 } from '../../../services/infra/server-log-store.js';
+import { ContinuationPlaceRefusedError } from '../../../services/orchestration/attached-session-continuation-place.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   EventStore,
@@ -3169,6 +3170,35 @@ describe('Orchestration Routes', () => {
 
     expect(response.status).toBe(413);
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('POST /commands answers a folder refusal as final: its reason, its code, not retryable (#3386)', async () => {
+    const reason =
+      'Station will not continue this conversation as a No project chat in its folder, because it is outside your home folder.';
+    const dispatchWithReceipt = vi
+      .fn()
+      .mockRejectedValue(new ContinuationPlaceRefusedError(reason));
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const res = await app.request('/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'adoptSession',
+        sourceThreadId: 'external:claude:source',
+        target: { kind: 'own-folder' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(await readJson(res)).toMatchObject({
+      success: false,
+      error: reason,
+      code: 'continuation_place_refused',
+      retryable: false,
+    });
   });
 
   test('POST /commands passes a named continuation target through and refuses one that carries a path (#3386)', async () => {

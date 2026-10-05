@@ -268,6 +268,11 @@ export function AttachedSessionDetail({
               : 'certain-response',
           message: outcome.reason,
           retryable: outcome.retrySafe,
+          // #3386: a settled refusal Station says retrying cannot change is
+          // shown in its own words.
+          ...(outcome.state === 'failed' && outcome.retrySafe === false
+            ? { refusal: outcome.reason }
+            : {}),
         });
       } catch (error) {
         if (error instanceof AdoptSessionError) throw error;
@@ -331,7 +336,15 @@ export function AttachedSessionDetail({
   const adoptionOutcomeUncertain =
     adoptionError?.failureClass === 'uncertain-no-response';
   const adoptionTransportFailed = isStationTransportFailure(adoption.error);
+  // #3386: Station refused this continuation for a reason a retry cannot
+  // change (a folder it will not continue in): say why, offer no retry.
+  const adoptionRefusal =
+    adoptionError?.failureClass === 'certain-response' &&
+    adoptionError.retryable === false
+      ? adoptionError.refusal
+      : undefined;
   const adoptionDisabled =
+    Boolean(adoptionRefusal) ||
     !continuationSupported ||
     adoption.isPending ||
     openingContinuation ||
@@ -372,16 +385,21 @@ export function AttachedSessionDetail({
   const continuationFeedback = (
     <>
       {adoption.error && (
-        <p className="sessions-detail__adoption-reason" role="alert">
-          {serverRejectedRetry
-            ? 'Station says this continuation cannot be retried safely from this state.'
-            : adoptionNonRetryable
-              ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
-              : adoptionDidNotReachStation ||
-                  adoptionOutcomeUncertain ||
-                  adoptionTransportFailed
-                ? "Couldn't start the continuation — Station isn't responding right now."
-                : "Couldn't start the continuation. Technical detail is under Details below."}
+        <p
+          className="sessions-detail__adoption-reason sessions-detail__adoption-folder"
+          role="alert"
+        >
+          {adoptionRefusal
+            ? `Station won't continue this conversation. ${adoptionRefusal}`
+            : serverRejectedRetry
+              ? 'Station says this continuation cannot be retried safely from this state.'
+              : adoptionNonRetryable
+                ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
+                : adoptionDidNotReachStation ||
+                    adoptionOutcomeUncertain ||
+                    adoptionTransportFailed
+                  ? "Couldn't start the continuation — Station isn't responding right now."
+                  : "Couldn't start the continuation. Technical detail is under Details below."}
         </p>
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (
