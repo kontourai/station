@@ -42,7 +42,11 @@
 
     "scripts/__tests__/qualification-repair.test.ts",
 
-    "scripts/merge-queue-dequeue.mjs"
+    "scripts/merge-queue-dequeue.mjs",
+
+    ".github/workflows/qualification-health.yml",
+
+    "scripts/qualification-health.mjs"
   ],
 
   "checks": [
