@@ -127,7 +127,9 @@ export async function detectClaudeAuthState(
     return 'authenticated';
   }
 
-  const configDir = env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude');
+  const configDir = (env.CLAUDE_CONFIG_DIR ?? join(home, '.claude')).normalize(
+    'NFC',
+  );
   const storageOverride = env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
   const storageDir =
     storageOverride === undefined
@@ -138,7 +140,7 @@ export async function detectClaudeAuthState(
       env,
       storageDir,
       storageOverride === undefined
-        ? !env.CLAUDE_CONFIG_DIR?.trim() && home === homedir()
+        ? !env.CLAUDE_CONFIG_DIR && home === homedir()
         : storageOverride.length === 0,
     );
     if (secure !== undefined) return secure;

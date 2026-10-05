@@ -141,6 +141,52 @@ describe('detectClaudeAuthState', () => {
     },
   );
 
+  test.each([
+    ['', 'Claude Code-credentials'],
+    [' /qa/config ', 'Claude Code-credentials-1c810106'],
+    ['   ', 'Claude Code-credentials-0aad7da7'],
+  ])(
+    'preserves the selected config value %j namespace',
+    async (config, service) => {
+      secure.result = JSON.stringify({
+        claudeAiOauth: { accessToken: 'fixture-token' },
+      });
+      await expect(
+        detectClaudeAuthState({ CLAUDE_CONFIG_DIR: config }, '/missing'),
+      ).resolves.toBe('authenticated');
+      expect(secure.calls).toEqual([
+        ['find-generic-password', '-a', 'fixture-user', '-w', '-s', service],
+      ]);
+    },
+  );
+
+  test('does not trim the selected config credential-file directory', async () => {
+    secure.platform = 'linux';
+    const home = makeTempDir('station-claude-auth-');
+    const selected = join(home, 'config ');
+    const other = join(home, 'config');
+    await mkdir(selected);
+    await mkdir(other);
+    await writeFile(
+      join(other, '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { accessToken: 'different-account' } }),
+      { mode: 0o600 },
+    );
+    const env = { CLAUDE_CONFIG_DIR: selected };
+    await expect(detectClaudeAuthState(env, home)).resolves.toBe(
+      'unauthenticated',
+    );
+    await writeFile(
+      join(selected, '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { refreshToken: 'selected-account' } }),
+      { mode: 0o600 },
+    );
+    await writeFile(join(other, '.credentials.json'), '{}', { mode: 0o600 });
+    await expect(detectClaudeAuthState(env, home)).resolves.toBe(
+      'authenticated',
+    );
+  });
+
   test('keeps credential-file fallback in the selected secure-storage directory', async () => {
     const home = makeTempDir('station-claude-auth-');
     const config = join(home, 'config');
