@@ -345,6 +345,66 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
     expect(mocks.dispatchForeground).not.toHaveBeenCalled();
     expect(chat().queuedMessages).toEqual(['held after stop']);
   });
+  // #3157: a usage-limit stop holds the queue on a reload or reconnect
+  // exactly as it does live; the snapshot carries the server's verdict.
+  test('a fallback snapshot after a usage-limit stop keeps the queued follow-up held', async () => {
+    chatWithQueue(['held after the limit']);
+    resumeWithoutSnapshot(API, open(104));
+    deliverSnapshot(API, {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: CONVERSATION,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: closed(105),
+        },
+        {
+          provider: 'claude',
+          threadId: CHILD,
+          status: 'error',
+          hasActiveTurn: false,
+          conversationId: CONVERSATION,
+          lastEventMethod: 'runtime.error',
+          lastRuntimeErrorMessage: "You've hit your session limit",
+          lastRuntimeErrorUsageLimit: true,
+          conversationActivity: closed(105),
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held after the limit']);
+  });
+
+  test('a fallback snapshot after an ordinary failure still drains', async () => {
+    chatWithQueue(['after a failure']);
+    resumeWithoutSnapshot(API, open(106));
+    deliverSnapshot(API, {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: CONVERSATION,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: closed(107),
+        },
+        {
+          provider: 'claude',
+          threadId: CHILD,
+          status: 'error',
+          hasActiveTurn: false,
+          conversationId: CONVERSATION,
+          lastEventMethod: 'runtime.error',
+          lastRuntimeErrorMessage: 'engine crashed',
+          conversationActivity: closed(107),
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+  });
+
   test("a lineage child's turn.completed drains the conversation's chat, though the chat names the root", async () => {
     chatWithQueue(['and then summarize it']);
     resumeWithoutSnapshot(API, open(10));
@@ -557,6 +617,29 @@ describe('#2309 the binding-routed drain acts only for an unrouted current child
       message: 'after the failure',
       apiBase: API,
     });
+  });
+
+  // #3157: the successor-Session path (`drainUnroutedConversationTurnEnd`)
+  // holds the queue on a usage-limit stop exactly like the routed one.
+  test('a usage-limit runtime.error on the unrouted current child holds the queue', async () => {
+    chatWithQueue(['held behind the limit']);
+    resumeWithoutSnapshot(API, open(100));
+    deliverEvent(
+      API,
+      {
+        ...runtimeError('claude', false),
+        code: 'engine-turn-failed',
+        details: {
+          usageLimit: true,
+          scope: 'account',
+          resetAt: '2026-09-23T01:00:00.000Z',
+        },
+      } as OrchestrationEvent,
+      closed(101),
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held behind the limit']);
   });
 
   test('a chat the terminal routes to is left to its own handler: the head is taken only after the answer is committed', async () => {

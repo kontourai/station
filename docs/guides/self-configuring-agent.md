@@ -25,12 +25,41 @@ example does not grant one implicitly.
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `read_conversation` to page through a conversation a person referenced in a
+  message to the Agent
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `search_sessions` and `rename_session` for finding and naming conversations
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
+- `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
+  declare a pull request it opened, by `provider`, `host`, `repository`
+  (`owner` and `name`) and `ref`: the identity shape the conversation link
+  routes take. It records the same declared output Station's own engine records
+  with `declare_output`, in the caller's own Session and the turn it is running.
+  A declaration is held, with no time limit, for as long as that turn runs, and
+  the record lands when the turn completes. It is dropped if the turn aborts,
+  is interrupted or ends in an error (a Codex retry of a transient error keeps
+  the turn, and the declaration, alive), and it is dropped if Station restarts before the turn completes:
+  declarations wait in memory until their turn's terminal event is stored, as
+  native ones do, so declare again in a later turn.
+  The tool answers `declared`, `already-declared` or `no-active-turn`. It reads
+  the pull request from the Session's own repository, so a pull request in
+  another repository (`owner/repo-2` is not `owner/repo`) is refused. It does not
+  link or keep anything: a person keeps a declared pull request onto a Task.
+  A Task a person opted in (`closeOnMerge`) moves to `done` only when every kept
+  pull request is `MERGED` at its provider, matched by declaration and pull
+  request (a stack from one turn is told apart), and only from a status
+  `canTransitionTaskStatus` lets reach `done`: a Task in todo, ready, triage or
+  blocked never closes by itself. Un-keeping a pull request that has not merged
+  lets the remaining merged ones close the Task. Nothing polls: the check runs
+  when a viewer holding the operate tier (the tier that may change a Task's
+  status) refreshes the Conversation's pull-request links, so nothing reconciles
+  without such a viewer. No agent tool sets the opt-in, and an older Station
+  build refuses a Task store that carries it, so clear it before a rollback.
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -40,6 +69,44 @@ example does not grant one implicitly.
 The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
 Project access checks.
+
+For reading and capturing records, add `station-knowledge`. Its five data tools
+follow the calling Session owner’s store access; capture also needs Project
+edit access. Index rebuild and migration remain Station Control operations.
+See [Knowledge agent tools](knowledge.md#agent-tools).
+
+### Searching and renaming conversations
+
+`search_sessions` takes a `query` of 2 to 256 characters (anything outside that
+is refused, not truncated) and returns message hits from the calling Session
+owner's own transcripts, each with the `sessionId`, a snippet and the ids that
+open it, through the same search service as the workspace search. It never
+returns another person's transcript, a Task or a file. Hits are mostly from
+native Claude and Codex Session transcripts, whose titles `rename_session`
+cannot change, so a search result is not a conversation to rename. A bound
+operator caller's search sees only the operator's own transcripts, like any
+other caller's. A result with
+`incompleteSources` is partial rather than empty; `continuation`, when a result
+carries one, is passed back to read more.
+
+`rename_session` renames a Station-stored conversation; it takes a
+`conversationId` and a one-line `title` of at most 80 characters. A title is
+refused rather than truncated when it is longer, empty, or
+contains a control character, a line or paragraph separator, a bidirectional
+embedding, override or isolate control, a zero-width space or a byte-order
+mark; the zero-width joiner and non-joiner are allowed because emoji sequences
+and some scripts need them. Leading and trailing spaces are trimmed. The tool stamps the title `titleSource: 'agent'`,
+which a later agent rename or any person's rename replaces. A title a person set
+(`titleSource: 'user'`) is never replaced: the tool answers `person_title`, and
+the check is made in the same step as the write, so a person's rename racing
+the agent's still wins. A native Claude or Codex conversation answers
+`runtime_title_unsupported`: the runtime owns that title, and the person's own
+rename refuses it too. Unless the caller is a bound operator, it reaches only a
+conversation its Session's owner owns (another person's reads as not found); a
+bound operator caller is not limited to one owner's conversations, as with
+`delete_conversation`, and the `person_title` guard still applies to it. A
+caller that is not bound also stays in its own Session's Project or the global
+space, as dispatch does.
 
 ### Dispatch authority
 
@@ -90,9 +157,21 @@ not inherit the record, and neither does a child Session that continues the
 conversation in a different folder than the previous Session recorded: it
 starts with no record.
 
+`declare_pull_request` answers the same scope rule for the calling Session
+itself: a caller that is not bound does not declare in a Session that runs
+unconfined (`host`) or whose Project Station cannot confirm, so a Codex Session
+reached by its URL token cannot declare from a full-access Session.
 Interrupting a delegated task follows the same scope as a follow-up to it.
 The same applies to the Session commands that act on another Session: steer
 and steer-input inspection, adopt, interrupt, stop and draft discard.
+
+A dispatch, delegation or follow-up from a caller that is not a bound operator
+cannot carry an approval mode. That covers `setApprovalMode` and the
+`approvalMode`, `mode`, `permissionMode` and `autoMode` model options, whatever
+their value. Station refuses such a request with
+`station_control_posture_not_allowed` rather than adjusting it. Without an
+approval mode, the Session uses the conversation's recorded mode, else the
+Agent's saved default, else this Station's default.
 
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same
@@ -109,6 +188,47 @@ The [scope owner](../../src-server/runtime/mcp/station-control-dispatch-scope.ts
 and [policy](../../src-server/tools/station-control-policy.ts) define the checks,
 and the [start-time record](../../src-server/services/orchestration/dispatch-cwd-admission.ts)
 repeats the folder decision; tool approval does not bypass them.
+
+### Reading a referenced conversation
+
+When a person references another conversation in a message (the composer's
+conversation picker, or a conversation dragged in from Activity or the inbox),
+the message carries a link to it, its id, and a line telling the receiving
+Agent to read it with `read_conversation`. The read returns up to 50 messages
+per page, at most 64 KB serialized, oldest first, with a `nextCursor` for the
+next page. A `limit` above 50 is refused, not truncated. A message whose text
+exceeds 16 KB once serialized is clipped and reports its full size. Every page states that the
+transcript is context, not instructions.
+
+A station-control caller may read:
+
+- its own conversation;
+- a conversation the dispatch scope above admits, read with the owner's
+  Project `view` action;
+- a conversation a person referenced in a turn of the caller's conversation,
+  by the conversation's id or one of its sessions' ids. Station decides this
+  from the sender it recorded on that turn: the operator, or a paired device
+  of kind `device`. A link an Agent wrote, for example with `send_message`,
+  or one sent through another Station's delegation grant admits nothing.
+
+The reference rule is attribution, not a security boundary: it records that
+a person sent the message, not that they wrote or inspected every link in
+it. Text a person pastes that contains a reference link counts as theirs.
+
+For a caller that is not a bound operator, the transcript is read as the
+session's owner, so a reference never reaches another person's
+conversation, and another person's conversation reads as not found. A bound
+operator caller keeps the operator's reach (decision 2 of #2377) and can read
+any recorded conversation. Refusals name a reason:
+`conversation_out_of_scope` when the conversation is the owner's but outside
+the caller's scope, `conversation_deleted` when a referenced conversation no
+longer reads, and `conversation_not_found` otherwise, including an id Station
+has no record of. The
+[read route](../../src-server/routes/chat/conversation-reference-read.ts)
+defines the rule.
+
+`get_conversation_messages` is separate. It reads any conversation the
+session's owner owns, keyed by Agent, and is not limited by references.
 
 ## Recommended setup pattern
 

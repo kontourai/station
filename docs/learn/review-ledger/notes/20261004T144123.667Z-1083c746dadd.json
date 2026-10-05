@@ -1,0 +1,7 @@
+{
+  "revision": "0e4cc2ff9afda08bfe3b0d24990cd8e08d974318",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Changed inputs add only an opt-in start/dev --watch flag, a dev-proxy in vite.config.ts and an unexported-prefix module split; nothing this document claims about its topic changes. No prose change.","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "af849d12b1c8ea9ac86eb8fe98bdaee5f2049c41",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"2026-10-03 new record. Current-state owners checked by source inspection at c2c67c2f25: project-portable variant and resolution receipt (execution-target.ts); portable admission, no-onward-hop, peer handshake gating and the #485 claim lifecycle in delegateTask (station-control-delegation.ts); claim store reserve/refused tombstones (delegation-attempt-claim-store.ts); receiver admission capture and recheck (project-contribution-service.ts); judged-config repository reads (git-read-repository.ts); static handshake flags (station-capability-flags.ts); local-only non-portable resources and git-checkout/local-directory bindings (project-identity.ts). Owner decisions recorded as decisions, not behavior. No tests executed for this record.","inputs":["docs/design/remote-execution-preparation.md"]}
+  ]
+}
