@@ -128,7 +128,9 @@ first; the two chips under the text box show what **Start** will use:
   shows each project's folder, and the folder this chat will run in. For a
   project linked to a checkout on this Station, that is the folder in the
   checkout the project chooses. If Station can't start a chat in a project, the chip
-  says why instead of naming a folder. A project with no folder
+  says why instead of naming a folder. If Station couldn't check a project's
+  folder in time, the list marks it **Not checked**; you can still start
+  there, and the start checks it. A project with no folder
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
