@@ -46,14 +46,6 @@ export interface ContinuationPlace {
   project?: { slug: string; id?: string };
 }
 
-/** Thrown when Continue in Station refuses the folder; the message is for the person. */
-export class ContinuationPlaceError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ContinuationPlaceError';
-  }
-}
-
 function realDirectory(path: string): string | undefined {
   try {
     const real = realpathSync.native(resolve(expandTilde(path)));
@@ -118,8 +110,8 @@ export function tooBroadFolderReason(folder: string): string | undefined {
 
 /**
  * The place a continuation of an attached session whose recorded folder is
- * `cwd` runs. Throws {@link ContinuationPlaceError} with a reason a person
- * can act on when Station refuses.
+ * `cwd` runs. Throws an error whose message a person can act on when
+ * Station refuses.
  */
 export async function resolveContinuationPlace(input: {
   cwd: string;
@@ -132,7 +124,7 @@ export async function resolveContinuationPlace(input: {
 }): Promise<ContinuationPlace> {
   const folder = realDirectory(input.cwd);
   if (!folder)
-    throw new ContinuationPlaceError(
+    throw new Error(
       `The conversation's folder ${input.cwd} no longer exists, so Station cannot continue it there.`,
     );
   const attribution = await resolveAttachedSessionProject(
@@ -143,19 +135,19 @@ export async function resolveContinuationPlace(input: {
   // archive#1462: adoption binds a session to one project, so an ambiguous
   // workspace refuses by name instead of adopting into an arbitrary winner.
   if (attribution.state === 'ambiguous')
-    throw new ContinuationPlaceError(
+    throw new Error(
       `The attached session workspace ${attribution.workingDirectory} is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,
     );
   if (attribution.state === 'attributed') {
     if (input.target?.kind === 'own-folder')
-      throw new ContinuationPlaceError(
+      throw new Error(
         `This conversation belongs to the project ${attribution.slug}. Continue it in that project.`,
       );
     if (
       input.target?.kind === 'project' &&
       input.target.projectSlug !== attribution.slug
     )
-      throw new ContinuationPlaceError(
+      throw new Error(
         `This conversation belongs to the project ${attribution.slug}, not ${input.target.projectSlug}.`,
       );
     const id = input.projects.find(
@@ -169,20 +161,20 @@ export async function resolveContinuationPlace(input: {
     };
   }
   if (input.target?.kind === 'project')
-    throw new ContinuationPlaceError(
+    throw new Error(
       `The conversation's folder ${folder} is not part of the project ${input.target.projectSlug}: it is neither inside the project's folder nor in a worktree of its repository. Station continues a conversation only in the folder it ran in. Continue it as a No project chat, or add a project for that folder.`,
     );
   if (input.target?.kind !== 'own-folder')
-    throw new ContinuationPlaceError(
+    throw new Error(
       `The conversation's folder ${folder} belongs to no project. Choose to continue it as a No project chat in that folder, or add a project for it.`,
     );
   if (input.hosted)
-    throw new ContinuationPlaceError(
+    throw new Error(
       'This Station is hosted, so a conversation outside every project cannot be continued as a No project chat.',
     );
   const tooBroad = tooBroadFolderReason(folder);
   if (tooBroad)
-    throw new ContinuationPlaceError(
+    throw new Error(
       `Station will not continue this conversation as a No project chat in ${folder}: ${tooBroad}, which is too broad to confine an agent to. Continue it in the original app, or start it again from a narrower folder.`,
     );
   return { cwd: folder, workingDirectory: folder };
