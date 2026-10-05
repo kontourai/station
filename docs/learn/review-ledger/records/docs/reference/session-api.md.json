@@ -76,7 +76,9 @@
 
     "src-server/services/orchestration/attached-session-poll-snapshot.ts",
 
-    "src-server/providers/sessions/grok-session-index.ts"
+    "src-server/providers/sessions/grok-session-index.ts",
+
+    "src-server/services/acp/managed-acp-workspace.ts"
   ],
 
   "checks": [
