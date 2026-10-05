@@ -129,7 +129,7 @@ export function pairedDeviceMayNotChooseDirectory(
   grantedScope: string | undefined,
 ): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-  if (principal?.kind === 'internal') return false;
+  // Station's own internal principal carries no credential authority.
   if (principal?.authority !== 'device-credential') return false;
   return !mayChooseWorkingDirectory(request, grantedScope);
 }
