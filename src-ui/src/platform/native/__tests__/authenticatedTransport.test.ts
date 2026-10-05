@@ -894,7 +894,11 @@ describe('Station envelope marker through the native broker (#3166)', () => {
       },
     ]);
 
-    await (await authenticatedFetch(`${origin}/api/anything`)).json();
+    const answer = await authenticatedFetch(`${origin}/api/anything`);
+    // The seam itself: an origin that never marked falls back to body shape
+    // and would also read as Station's, so the outcome alone proves nothing.
+    expect(answer.headers.get(MARKER)).toBe('1');
+    await answer.json();
     const error = await refusalFrom(origin);
 
     expect(error.status).toBe(403);
