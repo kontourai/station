@@ -1,0 +1,7 @@
+{
+  "revision": "6b491071c48fae50f685ff005c6dc4dceff2ee51",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"#3149 adds native-platform:ratchet to the ci:fast statics; hook composition, lint, typecheck and code-health claims are unchanged and the code-health gate passes on this diff.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}
