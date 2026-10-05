@@ -243,11 +243,39 @@ function resolverInput(overrides = {}) {
 }
 
 describe('CI verification workflow contracts', () => {
+  it('resolves every workflow_run reference to an existing workflow name', () => {
+    const documents = readWorkflowDocuments().map(({ file, document }) => ({
+      file,
+      document: document as {
+        name: string;
+        on?: { workflow_run?: { workflows?: string[] } };
+      },
+    }));
+    const names = documents.map(({ document }) => document.name);
+    expect(names.length).toBeGreaterThan(0);
+    expect(new Set(names).size).toBe(names.length);
+    for (const { file, document } of documents) {
+      const trigger = document.on?.workflow_run;
+      if (!trigger) continue;
+      expect(
+        trigger.workflows,
+        `${file}: workflow_run.workflows`,
+      ).toBeInstanceOf(Array);
+      expect(trigger.workflows?.length).toBeGreaterThan(0);
+      for (const name of trigger.workflows ?? []) {
+        expect(
+          names,
+          `${file}: stale workflow_run reference ${name}`,
+        ).toContain(name);
+      }
+    }
+  });
+
   it('keeps always-on secret scanning independent from heavy CI concurrency', () => {
     const ci = workflow('ci.yml');
     const secretScan = workflow('secret-scan.yml');
 
-    expect(secretScan).toMatch(/^name: Secret Scan$/m);
+    expect(secretScan).toMatch(/^name: "PR: Secret scan"$/m);
     expect(secretScan).toContain('    name: Secret Scan');
     expect(secretScan).toMatch(/^ {2}push:\n {4}branches: \[main\]$/m);
     expect(secretScan).toMatch(/^ {2}pull_request:\n {4}branches: \[main\]$/m);
@@ -317,7 +345,7 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(trigger).toContain('types: [completed]');
-    expect(trigger).not.toContain('Main pipeline health');
+    expect(trigger).not.toContain('Main: Health');
     // `contents: read` was added for one reason — checking out the default
     // branch so the failure job can import its comment-policy module (#1811).
     // Pinned as an exact object rather than a `not.toContain`, so the next
@@ -461,7 +489,7 @@ describe('CI verification workflow contracts', () => {
           {
             number: 42,
             state: issueState,
-            title: 'Main pipeline red: Backlog disposition policy',
+            title: 'Main pipeline red: Repo: Backlog policy',
           },
         ];
       }),
@@ -476,7 +504,7 @@ describe('CI verification workflow contracts', () => {
         env: {
           // The Linux workflow uses this value only as an import base.
           GITHUB_WORKSPACE: pathToFileURL(root).href,
-          WORKFLOW_NAME: 'Backlog disposition policy',
+          WORKFLOW_NAME: 'Repo: Backlog policy',
           RUN_URL: 'https://example.test/run/123',
           HEAD_SHA: 'a'.repeat(40),
         },
@@ -489,7 +517,7 @@ describe('CI verification workflow contracts', () => {
   function recordedComment(failure: string) {
     return renderMainHealthComment(
       {
-        workflowName: 'Backlog disposition policy',
+        workflowName: 'Repo: Backlog policy',
         runUrl: 'https://example.test/run/1',
         headSha: 'a'.repeat(40),
       },
@@ -1024,7 +1052,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
+  it('keeps Tool: CI extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverageShard = extended.slice(
@@ -1224,7 +1252,7 @@ describe('CI verification workflow contracts', () => {
     const gallery = workflow('nightly-gallery.yml');
     const runBodies = extractRunBodies(gallery);
 
-    expect(gallery).toMatch(/^name: Nightly gallery$/m);
+    expect(gallery).toMatch(/^name: "Nightly: Gallery"$/m);
     expect(gallery).toContain("- cron: '30 7 * * *'");
     expect(gallery).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(gallery).toContain(`group: nightly-gallery-\${{ github.ref }}`);
@@ -2883,7 +2911,9 @@ describe('CI verification workflow contracts', () => {
   it('keeps full Windows Vitest diagnostics complete, manual, and honestly red', () => {
     const diagnostic = workflow('windows-vitest-diagnostic.yml');
 
-    expect(diagnostic).toMatch(/^name: Windows Full Vitest Diagnostic$/m);
+    expect(diagnostic).toMatch(
+      /^name: "Tool: Windows full vitest diagnostic"$/m,
+    );
     expect(diagnostic).toContain('workflow_dispatch:');
     expect(diagnostic).not.toContain('push:');
     expect(diagnostic).not.toContain('continue-on-error');
@@ -2900,7 +2930,7 @@ describe('CI verification workflow contracts', () => {
     const recovery = workflow('recover-terminal-capacity-owner.yml');
 
     expect(recovery).toMatch(
-      /^name: Recover terminal physical-host capacity owner$/m,
+      /^name: "Tool: Recover terminal capacity owner"$/m,
     );
     expect(recovery).toContain('workflow_dispatch:');
     expect(recovery).not.toContain('push:');

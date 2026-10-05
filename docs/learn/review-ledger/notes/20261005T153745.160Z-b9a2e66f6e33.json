@@ -1,0 +1,7 @@
+{
+  "revision": "d7677e9e459c20ca98ea65cf6d49f52bcb4efb89",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Rechecked lines 146-160 after the #3166 test edit: the native adapter tests still cover recovery, exhaustion, cancellation and authority, and the edit only adds an assertion that the native transport hands x-station-envelope to the SDK; the guide's claim that adapter tests are not real WebView/IPC evidence still holds and still applies to these tests.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts"]}
+  ]
+}

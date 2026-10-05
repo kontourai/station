@@ -22,8 +22,12 @@ a direct IPv4, IPv6, or IPv4-mapped loopback peer. A public tailnet Host is
 remote even when a Station-owned proxy's next hop is loopback. Every
 non-loopback peer is remote, and missing peer metadata fails closed.
 
-`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored. Station has no
-generic trusted-proxy mode. Raw Tailscale identity headers are also stripped.
+`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored as authority:
+they never make a request more local or more trusted. Their presence only
+marks a raw operator-credential use as off-host in the #2894 telemetry below,
+and Station's UI proxy reports when its own client sent one
+(`x-station-proxy-client-forwarded`). Station has no generic trusted-proxy
+mode. Raw Tailscale identity headers are also stripped.
 If `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` names the exact HTTPS origin, the
 loopback-only UI proxy accepts Tailscale Serve's sanitized, WhoIs-backed user
 headers for that authority when Funnel is absent, converts them into a bounded
@@ -393,13 +397,18 @@ default to the historical four-token grant rather than Standard:
   pairing request.
 
 Beyond the presets, the operator adds elevated scopes to an already-paired
-device, never at pairing: in the desktop app (**Paired devices** → the device
-→ **Change access**) or on the Station host with `station environment access
-scope <device> --add|--remove|--set <scope>` (#1796). Both use
+device, never at pairing, on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). That uses
 `POST /api/pairing/devices/:id/scope`, which only the operator credential
 reaches; the CLI verbs additionally refuse any non-loopback target before
 reading a credential, so a paired remote CLI cannot run them, and there is no
-remote operator authentication. `access:manage` is not grantable this way.
+remote operator authentication. The **Paired devices** panel offers **Change
+access**, but the host desktop app presents its local-grant device credential,
+not the operator credential, so the route answers it 401. From the panel,
+only a browser that presents the operator credential itself, as its saved
+connection credential or pasted for the write, reaches it
+([operator device access](../design/operator-device-access.md), #2894).
+`access:manage` is not grantable this way.
 Each change is sent with the scope it replaces (`expectedScope`) and a
 concurrent change returns 409 `scope_changed` instead of being overwritten;
 the change drops the device's live terminal and voice leases. One such scope,
@@ -1185,6 +1194,22 @@ grepping for approvals does not return both. Neither carries device or network
 identity. That is the only signal distinguishing an ordinary first-run approval
 from the residue being exercised, which is why it is covered by tests rather
 than left to inspection.
+
+**Detection for off-host operator-credential use (#2894 S1).** The four
+device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
+record removal) record each raw operator-credential use with its host position.
+A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
+any forwarding header, including Station's UI proxy reporting that its client
+sent one) is still allowed. It is logged at warn with the message `Operator
+credential used off-host for device administration` and the record's `event`
+field `station.pairing.operator_credential_used`, carrying a per-process
+count, and every use is counted in
+`station.device_pairing.operator_credential_uses` by route and position, with
+no device or network identity. The position is telemetry, not proof: a
+same-host proxy or tunnel that strips forwarding headers makes a remote caller
+read as on-host. Refusing the raw credential is a later step of
+[operator device access](../design/operator-device-access.md) and must rest on
+proof of a host-only secret.
 
 **The rest of the family, assessed then.** These were reachable on the
 old floor, each because it was the operator's own panel doing its job before any

@@ -2081,7 +2081,7 @@ function hasExactPullRequestSecretScanWorkflow(file, document) {
       'concurrency',
       'jobs',
     ]) &&
-    document.name === 'Secret Scan' &&
+    document.name === 'PR: Secret scan' &&
     hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
     hasExactMainBranchTrigger(document.on.push) &&
     hasExactMainBranchTrigger(document.on.pull_request) &&
@@ -2110,7 +2110,7 @@ function hasExactSecurityAnalysisWorkflow(document) {
       'concurrency',
       'jobs',
     ]) &&
-    document?.name === 'Security analysis' &&
+    document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
       'push',
       PULL_REQUEST_TARGET,
@@ -2624,7 +2624,7 @@ function primaryCiRouterFindings(file, document) {
 // This credentialed ingress executes only trusted base policy, never PR code.
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '94dd1a86e579bd4d1ab948ce86064c841d83d9d43cbd018555cf344f1817f3f7';
+  'b552afc755befa7871d1c96dc52ef4dfdc5072b393a71fdc6b4235ed8d8edcf8';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')

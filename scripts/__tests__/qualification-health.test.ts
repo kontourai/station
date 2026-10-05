@@ -453,7 +453,7 @@ describe('qualification watchdog workflow authority', () => {
     };
     expect(workflow.on.schedule).toEqual([{ cron: '43 * * * *' }]);
     expect(workflow.on.workflow_run).toEqual({
-      workflows: ['Main qualification'],
+      workflows: ['Main: Qualification'],
       types: ['completed'],
     });
     expect(Object.keys(workflow.on)).toContain('workflow_dispatch');

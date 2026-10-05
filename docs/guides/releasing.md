@@ -20,14 +20,14 @@ The authorities are [CI](../../.github/workflows/ci.yml),
 [merge integration](../../.github/workflows/merge-queue-regression.yml), and
 [hosted qualification](../../.github/workflows/full-regression.yml).
 `Merge-queue regression` remains the required check's legacy name for ruleset
-compatibility; its workflow is now `Merge integration` and checks the candidate
+compatibility; its workflow is now `PR: Merge integration` and checks the candidate
 diff. The required `fast-checks`, security, Windows portable floor and relevant
 iOS checks retain their integration protections. The merge path does not run
 the full corpus.
 
 ## Qualification cadence and evidence reuse
 
-[Main qualification](../../.github/workflows/main-qualification.yml) runs at
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 00:17, 06:17, 12:17 and 18:17 UTC. It tests one exact workflow-event SHA from
 `main`, independently of platform publishing. Matrices do not cancel siblings
 on failure, and the phase driver continues through failed phases. A prerequisite
@@ -39,7 +39,7 @@ only after every planned job succeeds. The receipt names source, producer run,
 runner/Node environment, job results and any reused producer.
 The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
 successful run for the same exact source from an admitted main, Nightly,
-release or manual-CI workflow, within 24 hours. It requires the successful
+release or manual `PR: CI` workflow, within 24 hours. It requires the successful
 qualification job, all four ordinary corpus jobs and an unexpired receipt
 artifact. A reused run cannot become another reuse source and extend the
 original evidence's age. The same source binds the checked-in workflow,
@@ -87,14 +87,14 @@ command above; failed-source repair stays in its existing bounded episode.
 
 ## One repair sweep per failure episode
 
-[Qualification repair](../../.github/workflows/qualification-repair.yml) reacts
+[Main: Qualification repair](../../.github/workflows/qualification-repair.yml) reacts
 to completed canonical main-qualification runs. It keeps one P1 issue titled
 `Main qualification repair`, with failed source/run, job outcomes, an owner,
 state and a deadline 24 hours after the episode opens.
 
 The first failure starts one bounded agent attempt. Further failures update the
 same episode without starting another agent. Out-of-order older successes cannot
-close a newer failure. After a repair lands and main CI succeeds, [Qualify landed repair](../../.github/workflows/qualification-after-repair.yml)
+close a newer failure. After a repair lands and main CI succeeds, [Main: Qualify landed repair](../../.github/workflows/qualification-after-repair.yml)
 dispatches one fresh main qualification. A later successful qualification closes
 the episode.
 A failed, incomplete or empty agent attempt records `needs-owner`; it does not
@@ -130,7 +130,7 @@ receive the repair sweep while unrelated fast-green work can continue.
 ## Landing without agent monitoring
 
 The `station-autoland` label expresses standing intent to land a PR. After a
-successful PR CI run, [Landing automation](../../.github/workflows/landing-automation.yml)
+successful PR CI run, [Repo: Landing automation](../../.github/workflows/landing-automation.yml)
 checks its current head, same-repository ownership, draft/conflict status and
 label, then arms auto-merge once. Adding the label or marking a PR ready also
 triggers trusted-base automation, which first verifies successful CI for its
@@ -160,7 +160,7 @@ for local automation credentials and the repository instructions for arm/confirm
    Record unverified provider/device paths explicitly. Use
    [native operations](native-releases.md) and [mobile release](mobile-release.md)
    for their platform-specific authorities.
-5. Dispatch and approve `Publish Station release` for that draft tag. It validates
+5. Dispatch and approve `Release: Publish` for that draft tag. It validates
    the draft, inventory and provenance, and re-admits exact-source qualification
    before changing public release/update authorities. An old staged draft can
    require fresh qualification; source qualification from an ancestor is refused. Confirm the actual public artifacts and installed behavior.

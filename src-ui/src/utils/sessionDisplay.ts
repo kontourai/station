@@ -298,6 +298,10 @@ export interface SessionIconAgent {
   icon?: string;
   slug?: string;
   iconUrl?: string;
+  /** The engine connection the agent is bound to, when the catalog says. */
+  execution?: { agentConnectionId?: string };
+  /** `'acp'` for an ACP-bound agent; see `inboxRowIconAgent`. */
+  engineConnectionType?: string;
 }
 
 /**

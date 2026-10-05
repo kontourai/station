@@ -1,4 +1,4 @@
-name: Container smoke
+name: "Main: Container smoke"
 
 on:
   workflow_dispatch:

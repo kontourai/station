@@ -316,7 +316,10 @@ GET /api/agents
 The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
 persisted definitions, registry defaults, and runtime observations. Rows can
 include execution binding, availability/validation findings, and activation
-failures; inclusion in the list is not proof that a chat can launch. The example
+failures; inclusion in the list is not proof that a chat can launch. A bound
+row's `engineId` and `engineConnectionType` come from the connection record and
+its Adapter, so they survive a failed or timed-out runtime inspection;
+`engineDisplayName` and availability still need that live read. The example
 below is a field excerpt, not a fixed response for every Agent.
 
 
@@ -1340,8 +1343,10 @@ adds bounded `aggregateReceipts` for leaf Station transfer, after logical
 replacement/deduplication. Context occupancy alone does not produce a token
 receipt or consumed-usage coverage.
 
-Cumulative token identities survive engine-process restarts; cumulative cost
-identities follow the declared cost-process epochs. `sourceSequence` orders
+Cumulative token identities survive engine-process restarts. A cumulative cost
+identity spans one running total: a resumed Claude process continues its
+predecessor's total, while a restart without resume or a lower figure starts
+another. `sourceSequence` orders
 same-Station/thread observations when ingestion timestamps tie. Sparse
 cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records

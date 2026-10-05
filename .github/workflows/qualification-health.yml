@@ -1,11 +1,11 @@
-name: Main qualification health
+name: "Main: Qualification health"
 
 on:
   schedule:
     - cron: '43 * * * *'
   workflow_dispatch:
   workflow_run:
-    workflows: [Main qualification]
+    workflows: ["Main: Qualification"]
     types: [completed]
 
 permissions:
