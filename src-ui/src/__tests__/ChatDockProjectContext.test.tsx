@@ -12,6 +12,18 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 function render(ui: ReactNode) {
   return renderWithoutNavigation(<NavigationProvider>{ui}</NavigationProvider>);
 }
@@ -133,7 +145,7 @@ describe('ChatDockProjectContext', () => {
    * 110-character worktree path on the reporter's own machine — is the badge's
    * tooltip, and "Copy project path" in the dock header's More menu is how you
    * get at it. The coding-layout link the path's leaf used to carry is that
-   * menu's "Open code layout" row.
+   * menu's "Open in Coding" row.
    */
   test('names the project and keeps the full path as the badge tooltip, not as a visible segment', () => {
     renderRow({});

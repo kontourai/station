@@ -476,6 +476,60 @@ const SESSION_INVENTORY_GROUP_METHODS: Readonly<
 };
 
 /**
+ * The receipt facts joined onto each `token-usage.updated` row: its
+ * conversation, task, model and credential account. The cost segment is
+ * not a per-row join: it is replayed over each thread's whole history by
+ * `cumulativeCostSegmentsFor`.
+ * Shared by the windowed usage rollup and the per-conversation usage tree so
+ * the two cannot attribute one event differently.
+ */
+const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
+                e.created_at, e.observed_at, e.sequence, e.global_sequence,
+                COALESCE(cs.conversation_id, h.thread_id) AS conversation_id,
+                (SELECT json_extract(config.payload, '$.metadata.taskId')
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method IN ('session.started', 'session.configured')
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.taskId') = 'text'
+                  ORDER BY config.sequence DESC LIMIT 1) AS task_id,
+                (SELECT COALESCE(json_extract(config.payload, '$.metadata.effectiveModel'), json_extract(config.payload, '$.model'))
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method = 'session.configured'
+                    AND json_valid(config.payload)
+                    AND (json_type(config.payload, '$.metadata.effectiveModel') = 'text'
+                      OR json_type(config.payload, '$.model') = 'text')
+                  ORDER BY config.sequence DESC LIMIT 1) AS model,
+                (SELECT json_quote(json_extract(config.payload, '$.metadata.usageAccountKey'))
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method IN ('session.started', 'session.configured')
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
+                    AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
+                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
+`;
+
+/** One `token-usage.updated` row with the receipt facts joined onto it. */
+export interface UsageReceiptEventRow {
+  event: PersistedRuntimeEvent;
+  conversationId: string;
+  taskId?: string;
+  model?: string;
+  /**
+   * The `CumulativeCostSegments` key of this event's cost figure when its
+   * provider's cost is `engine-process-cumulative`; figures sharing a key
+   * restate one running total (station#3320).
+   */
+  costSegment?: string;
+  accountKey?: string;
+}
+
+/**
  * `IN (?, ...)` placeholders for a usage read's owner set. An empty set would
  * be `IN ()`, which is not SQL and is never a meaningful request: a caller
  * with no owner reads nothing, so it must say so before reaching the store.
@@ -4560,51 +4614,11 @@ export class EventStore {
     to: string;
     after?: { observedAt: string; eventId: string };
     limit: number;
-  }): Array<{
-    event: PersistedRuntimeEvent;
-    conversationId: string;
-    taskId?: string;
-    model?: string;
-    /**
-     * The `CumulativeCostSegments` key of this event's cost figure when its
-     * provider's cost is `engine-process-cumulative`; figures sharing a key
-     * restate one running total.
-     */
-    costSegment?: string;
-    accountKey?: string;
-  }> {
+  }): UsageReceiptEventRow[] {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
       .prepare(
-        `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
-                e.created_at, e.observed_at, e.sequence, e.global_sequence,
-                COALESCE(cs.conversation_id, h.thread_id) AS conversation_id,
-                (SELECT json_extract(config.payload, '$.metadata.taskId')
-                   FROM orchestration_events config
-                  WHERE config.thread_id = e.thread_id
-                    AND config.sequence <= e.sequence
-                    AND config.method IN ('session.started', 'session.configured')
-                    AND json_valid(config.payload)
-                    AND json_type(config.payload, '$.metadata.taskId') = 'text'
-                  ORDER BY config.sequence DESC LIMIT 1) AS task_id,
-                (SELECT COALESCE(json_extract(config.payload, '$.metadata.effectiveModel'), json_extract(config.payload, '$.model'))
-                   FROM orchestration_events config
-                  WHERE config.thread_id = e.thread_id
-                    AND config.sequence <= e.sequence
-                    AND config.method = 'session.configured'
-                    AND json_valid(config.payload)
-                    AND (json_type(config.payload, '$.metadata.effectiveModel') = 'text'
-                      OR json_type(config.payload, '$.model') = 'text')
-                  ORDER BY config.sequence DESC LIMIT 1) AS model,
-                (SELECT json_quote(json_extract(config.payload, '$.metadata.usageAccountKey'))
-                   FROM orchestration_events config
-                  WHERE config.thread_id = e.thread_id
-                    AND config.sequence <= e.sequence
-                    AND config.method IN ('session.started', 'session.configured')
-                    AND json_valid(config.payload)
-                    AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
-                    AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
-                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
+        `${USAGE_RECEIPT_EVENT_SELECT}
            FROM orchestration_events e
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
@@ -4636,21 +4650,177 @@ export class EventStore {
         )
         .map((row) => row.thread_id as string),
     );
-    return rows.map((row) => {
-      const accountKey: unknown =
-        typeof row.credential_profile_json === 'string'
-          ? JSON.parse(row.credential_profile_json)
-          : undefined;
-      const costSegment = costSegments.get(row.id);
-      return {
-        event: this.mapEventRow(row),
-        conversationId: row.conversation_id,
-        ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
-        ...(typeof row.model === 'string' ? { model: row.model } : {}),
-        ...(typeof accountKey === 'string' ? { accountKey } : {}),
-        ...(costSegment !== undefined ? { costSegment } : {}),
-      };
-    });
+    return rows.map((row) => this.mapUsageReceiptEventRow(row, costSegments));
+  }
+
+  private mapUsageReceiptEventRow(
+    row: any,
+    costSegments: ReadonlyMap<string, string>,
+  ): UsageReceiptEventRow {
+    const costSegment = costSegments.get(row.id);
+    const accountKey: unknown =
+      typeof row.credential_profile_json === 'string'
+        ? JSON.parse(row.credential_profile_json)
+        : undefined;
+    return {
+      event: this.mapEventRow(row),
+      conversationId: row.conversation_id,
+      ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
+      ...(typeof row.model === 'string' ? { model: row.model } : {}),
+      ...(typeof accountKey === 'string' ? { accountKey } : {}),
+      ...(costSegment !== undefined ? { costSegment } : {}),
+    };
+  }
+
+  /**
+   * Every usage observation of the given session threads, in observation
+   * order, with the same receipt facts {@link listUsageReceiptEvents} joins.
+   * Not windowed: a usage tree covers the conversation's whole life. Reads at
+   * most `limit` rows; the caller passes its bound plus one so a tree past its
+   * bound is refused rather than silently cut. Authorization is the caller's:
+   * it passes only threads the reader may read.
+   */
+  listUsageReceiptEventsForThreads(
+    threadIds: readonly string[],
+    limit: number,
+  ): UsageReceiptEventRow[] {
+    const unique = [...new Set(threadIds)];
+    if (unique.length === 0 || limit < 1) return [];
+    const rows: UsageReceiptEventRow[] = [];
+    // Segments replay each thread's whole history, not just the rows read.
+    const costSegments = this.cumulativeCostSegmentsFor(unique);
+    for (
+      let offset = 0;
+      offset < unique.length && rows.length < limit;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = unique.slice(offset, offset + EVENT_STORE_BATCH_CHUNK_SIZE);
+      const found = this.db
+        .prepare(
+          `${USAGE_RECEIPT_EVENT_SELECT}
+           FROM orchestration_events e
+           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
+           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
+          WHERE e.method = 'token-usage.updated'
+            AND e.thread_id IN (${chunk.map(() => '?').join(', ')})
+          ORDER BY e.global_sequence ASC
+          LIMIT ?`,
+        )
+        .all(...chunk, limit - rows.length) as unknown[];
+      for (const row of found)
+        rows.push(this.mapUsageReceiptEventRow(row, costSegments));
+    }
+    return rows;
+  }
+
+  /**
+   * Sessions that name one of `parentIds` as the conversation that launched
+   * them, and how:
+   *
+   * - `delegation-context`: the delegation context Station stamped at launch
+   *   (`metadata.delegation.parentConversationId`), or the copy a
+   *   paired-Station dispatch record keeps (`metadata.parentConversationId`).
+   *   For an agent's station-control call Station derives it from the calling
+   *   session's own record; for a direct request it is the requester's claim.
+   * - `parent-task-id`: only `metadata.parentTaskId`, which a delegation
+   *   request may set itself. Used only when there is no delegation context.
+   *
+   * Every session.started/session.configured row is examined once for the
+   * whole batch of parents (one level of a tree read), through the method
+   * index; there is no index on the JSON fields. Reads one candidate past
+   * `limit` per chunk of parents and reports `truncated` when a chunk has
+   * more than `limit`, so the caller can refuse rather than read a cut list.
+   */
+  listSessionsNamingParents(
+    parentIds: readonly string[],
+    limit: number,
+  ): {
+    sessions: Array<{
+      threadId: string;
+      parentId: string;
+      binding: 'delegation-context' | 'parent-task-id';
+    }>;
+    truncated: boolean;
+  } {
+    const unique = [...new Set(parentIds)];
+    const result: Array<{
+      threadId: string;
+      parentId: string;
+      binding: 'delegation-context' | 'parent-task-id';
+    }> = [];
+    let truncated = false;
+    if (unique.length === 0 || limit < 1)
+      return { sessions: result, truncated };
+    const seen = new Set<string>();
+    for (
+      let offset = 0;
+      offset < unique.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = unique.slice(offset, offset + EVENT_STORE_BATCH_CHUNK_SIZE);
+      const list = chunk.map(() => '?').join(', ');
+      const rows = this.db
+        .prepare(
+          `SELECT e.thread_id AS thread_id,
+                  MAX(COALESCE(
+                    json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
+                    json_extract(e.payload, '$.metadata.parentConversationId'))) AS verified_parent,
+                  MAX(json_extract(e.payload, '$.metadata.parentTaskId')) AS claimed_parent,
+                  MIN(e.global_sequence) AS first_sequence
+             FROM orchestration_events e
+            WHERE e.method IN ('session.started', 'session.configured')
+              AND json_valid(e.payload)
+              AND (json_extract(e.payload, '$.metadata.delegation.parentConversationId') IN (${list})
+                OR json_extract(e.payload, '$.metadata.parentConversationId') IN (${list})
+                OR json_extract(e.payload, '$.metadata.parentTaskId') IN (${list}))
+            GROUP BY e.thread_id
+            ORDER BY first_sequence ASC
+            LIMIT ?`,
+        )
+        .all(...chunk, ...chunk, ...chunk, limit + 1) as Array<{
+        thread_id: string;
+        verified_parent: unknown;
+        claimed_parent: unknown;
+      }>;
+      // One row past the bound proves there is more than it allows.
+      if (rows.length > limit) truncated = true;
+      const named = new Set(chunk);
+      for (const row of rows) {
+        // Matched by another chunk's parents already.
+        if (seen.has(row.thread_id)) continue;
+        // A delegation context decides; a parent task id counts only when
+        // there is none.
+        const verified =
+          typeof row.verified_parent === 'string'
+            ? row.verified_parent
+            : undefined;
+        const claimed =
+          typeof row.claimed_parent === 'string'
+            ? row.claimed_parent
+            : undefined;
+        if (verified !== undefined) {
+          // Pushed by the chunk that names the verified parent, if any.
+          if (named.has(verified)) {
+            seen.add(row.thread_id);
+            result.push({
+              threadId: row.thread_id,
+              parentId: verified,
+              binding: 'delegation-context',
+            });
+          }
+          continue;
+        }
+        if (claimed !== undefined && named.has(claimed)) {
+          seen.add(row.thread_id);
+          result.push({
+            threadId: row.thread_id,
+            parentId: claimed,
+            binding: 'parent-task-id',
+          });
+        }
+      }
+    }
+    return { sessions: result, truncated };
   }
 
   /**
@@ -11440,13 +11610,21 @@ export class EventStore {
   private claimRecoveryDispatch(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /**
+     * #3157: the user's own "Resume now" on a usage-limit stop. It claims a
+     * waiting (`armed`) or left-to-the-user (`manual`) usage-limit intent
+     * before its due time, and is still an ordinary `due` dispatch.
+     */
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
     now: string;
   }): ConnectionRecoveryIntent | null {
-    const eligibility =
-      input.kind === 'due'
+    const immediate = input.kind === 'due' && input.immediate === true;
+    const eligibility = immediate
+      ? "outcome IN ('armed', 'manual') AND usage_limit = 1"
+      : input.kind === 'due'
         ? "outcome = 'armed' AND due_at IS NOT NULL AND due_at <= ?"
         : "outcome IN ('armed', 'manual')";
     const row = this.db
@@ -11474,7 +11652,7 @@ export class EventStore {
         input.owner.identityKind,
         input.now,
         input.fingerprint,
-        ...(input.kind === 'due' ? [input.now] : []),
+        ...(input.kind === 'due' && !immediate ? [input.now] : []),
       ) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
   }
@@ -11821,9 +11999,11 @@ export class EventStore {
    * cancel request itself so startup fences it before any timer is rebuilt.
    *
    * #3157: a usage-limit intent that is only waiting for its provider reset,
-   * or that the user was left to resume, holds no dispatch to stop. It is not fenced: a
-   * restart rebuilds its timer (`reconcile`), and the coordinator re-checks
-   * the Session before any dispatch. */
+   * or that the user was left to resume (`manual`, whether the setting was off
+   * or the provider gave no reset), holds no dispatch to stop. It is not
+   * fenced: a restart rebuilds its timer (`reconcile`), a manual one is never
+   * dispatched on its own, and the coordinator re-checks the Session before
+   * any dispatch. */
   private cancelShutdownRecoveries(now: string): RecoveryTransition {
     const result = this.db
       .prepare(
@@ -11835,8 +12015,7 @@ export class EventStore {
              AND COALESCE(usage_limit, 0) = 1
              AND (
                (outcome = 'armed' AND decision = 'wait-until-reset')
-               OR (outcome = 'manual'
-                   AND COALESCE(outcome_reason, '') = 'auto-resume-off')
+               OR outcome = 'manual'
              )
            )`,
       )

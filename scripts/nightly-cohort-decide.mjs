@@ -130,7 +130,7 @@ function emitSummary(lines) {
  */
 function isStrictAncestorFromGit(repoRoot, ancestor, descendant) {
   if (ancestor === descendant) return false;
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     'git',
     ['merge-base', '--is-ancestor', ancestor, descendant],
     { cwd: repoRoot, encoding: 'utf8', windowsHide: true },

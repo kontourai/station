@@ -1,14 +1,12 @@
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
-import { relativeTimeAgo } from '../../utils/relativeTime';
+import { relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
-import { SkeletonBlock } from '../state';
-import { HomeChatStartForm } from './HomeChatStartForm';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
 
@@ -17,7 +15,7 @@ interface HomeActionSectionProps {
   model: HomeViewModel;
   onNavigate: (view: NavigationView) => void;
   /**
-   * Whether to render the "continue most recent work" card. Kept from
+   * Whether to render the Continue card. Kept from
    * archive#3122, where a host offering its own Resume affordance above the
    * fold would otherwise put the identical item on screen twice. Home passes
    * nothing and gets the card.
@@ -55,7 +53,8 @@ interface HomeActionCardProps {
   className?: string;
   label: string;
   title: string;
-  detail: string;
+  /** A third line only where it says something the title does not. */
+  detail?: string;
   onClick: () => void;
 }
 
@@ -74,31 +73,29 @@ function HomeActionCard({
     >
       <span>{label}</span>
       <strong>{title}</strong>
-      <small>{detail}</small>
+      {detail ? <small>{detail}</small> : null}
     </button>
   );
 }
 
-function projectAvailability(count: number): string {
-  return count
-    ? `${count} project${count === 1 ? '' : 's'} already available`
-    : 'Choose a working directory';
-}
-
-/** Continue-card subtitle: omit "Model not reported", include Failed + time. */
+/**
+ * Continue-card subtitle: the agent, a model only when one was reported,
+ * Failed when it is, and the compact time. No kind word ("Session", "Direct
+ * chat"): the card already says it continues work.
+ */
 export function continueWorkDetail(
   item: Pick<
     HomeWorkItem,
-    'kindLabel' | 'agentLabel' | 'modelLabel' | 'lifecycleLabel' | 'updatedAt'
+    'agentLabel' | 'modelLabel' | 'lifecycleLabel' | 'updatedAt'
   >,
   now = Date.now(),
 ): string {
-  const parts = [item.kindLabel, item.agentLabel];
+  const parts = [item.agentLabel];
   if (item.modelLabel && item.modelLabel !== 'Model not reported') {
     parts.push(item.modelLabel);
   }
   if (item.lifecycleLabel === 'Failed') parts.push('Failed');
-  if (item.updatedAt > 0) parts.push(relativeTimeAgo(item.updatedAt, now));
+  if (item.updatedAt > 0) parts.push(relativeTime(item.updatedAt, now));
   return parts.join(' · ');
 }
 
@@ -113,44 +110,39 @@ export function HomeActionSection({
 
   return (
     <section className="home-view__actions" aria-label="Work actions">
+      {/* V2: a label, the thing, and a detail only where one says something
+          the title does not. The helper lines ("Resume your previous
+          workspace", "1 project already available") explained the cards. */}
       {showPrimary && model.primaryWorkItem && (
         <HomeActionCard
           className="home-view__action--primary"
-          label="Continue most recent work"
+          label="Continue"
           title={model.primaryWorkItem.title}
           detail={continueWorkDetail(model.primaryWorkItem)}
           onClick={() => model.continueWork(model.primaryWorkItem!)}
         />
       )}
-      <HomeChatStartForm
-        identity={model.startReady ? model.startIdentity : undefined}
-      />
-      {model.actionsLoading ? (
-        <SkeletonBlock count={1} label="Finding available ways to help" />
-      ) : null}
       <HomeActionCard
-        label="Explore agents"
-        title="Choose an AI app or create an agent"
-        detail="See what is ready and what needs setup"
+        label="Agents"
+        title="Explore agents"
         onClick={() => onNavigate({ type: 'agents' })}
       />
       {showLocalProject ? (
         <HomeActionCard
-          label="Open local project"
+          label="Project"
           // "This Station", not "this computer": the folder lives on the
           // Station host, which is a different machine when this UI runs as
           // a remote client (e.g. the phone app paired to a desktop).
-          title="Add a folder on this Station"
-          detail={projectAvailability(model.projects.length)}
+          title="Open local project"
+          detail="Add a folder on this Station"
           onClick={() => onNavigate({ type: 'project-new' })}
         />
       ) : null}
       {continuation && (
         <HomeActionCard
           className="home-view__action--quiet"
-          label="Open last project"
+          label="Last project"
           title={continuationProjectLabel(continuation, model.projects)}
-          detail="Resume your previous workspace"
           onClick={() => onNavigate(continuation)}
         />
       )}

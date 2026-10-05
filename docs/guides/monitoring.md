@@ -116,6 +116,46 @@ live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
 [receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
 The Muse serve fixture replay also exercises per-answer usage visibility.
 
+### Usage with children
+
+The conversation statistics dialog shows **Usage with children**: one total
+for the conversation and everything that ran under it, and a breakdown (own
+turns, then each subagent and delegated task, nested) with tokens, cost, tool
+uses and duration. Each child says in words whether the total counts it. The
+read is the [conversation usage tree](../reference/session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree),
+and the per-engine rules live in
+[the tree fold](../../packages/shared/src/thread-usage-tree.ts):
+
+| Child | Tokens | Cost | Evidence |
+| --- | --- | --- | --- |
+| Station-delegated task (this Station) | Added | Added | A delegate is its own session with its own receipts |
+| Station-delegated task (paired Station) | Not counted | Not counted | Its usage is recorded on the other Station |
+| Claude Code subagent | Not counted | Already in the parent's | The SDK documents `result.usage` as main-loop only and `total_cost_usd` as covering Task subagents. A measured run matched both. A subagent's own `total_tokens` equals its last request's size, not its consumption, in recorded transcripts, so it is shown as "last request", never as tokens used |
+| Codex subagent | Added | Not counted | Each child is its own thread; in the recorded collab captures the parent's cumulative total is the sum of its own calls only |
+| Muse workflow subagent | Added | Not counted | In the recorded `muse serve` captures the session's cumulative figures exclude the child's usage |
+| Any other engine | Not counted | Not counted | Undeclared; never guessed |
+
+"Not counted" makes the total partial, and the dialog lists why. A subagent's
+own figure is still shown in the breakdown. The token total is input + output
+only, unlike the dialog's own "Total", which adds cache where that is backed;
+the breakdown says whether its input figures exclude cached input, says so when
+that isn't established for an engine, and says the sum mixes measures only when
+two engines are declared to count cached input differently. Costs in different
+currencies, and estimates under different price snapshots, are listed side by
+side and not added together. The tree covers sessions on this Station only.
+
+Delegated tasks are found from the delegation context Station stamps at
+launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+session's `delegate_task` call Station derives the context from the calling
+session's own record; for Station's own agent the runtime attests it from the
+conversation the tool call ran in. A task launched through a caller-less
+station-control process (as a Strands-runtime agent uses) names neither, so it
+is not found and not shown as missing. Sessions you can't read are ignored,
+so in hosted mode a delegate launched by a caller-less internal request
+(Station's own agent or a Strands-runtime agent), which the Station operator
+owns, isn't counted and doesn't make the total partial. The tree refreshes every 15 seconds while the
+dialog is open, and stops after a 404 or 422.
+
 **People paired with this Station** reads the existing paired-device registry
 through a captured API/authority scope. Only active interactive devices with an
 approved person binding contribute. Account issuer plus subject (or approved

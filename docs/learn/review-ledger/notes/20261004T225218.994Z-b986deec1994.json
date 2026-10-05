@@ -1,0 +1,7 @@
+{
+  "revision": "4d4f27ae8d2c00d0d4de2a2e3ca56ab905744a41",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Only removed an unused re-export of the lineage refusal error from conversations.ts; no route, status or wording described here changed.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts"]}
+  ]
+}

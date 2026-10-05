@@ -52,6 +52,37 @@ describe('packaged local browser open', () => {
     // Minting replaced any unspent link; the output says so.
     expect(lines.join('\n')).toContain('replaces any earlier unspent link');
   });
+  test.each([
+    ['127.0.0.1', '127.0.0.1'],
+    ['::1', '[::1]'],
+    ['192.168.1.20', '192.168.1.20'],
+    ['0.0.0.0', 'localhost'],
+    ['::', 'localhost'],
+    ['::0', 'localhost'],
+    ['0:0:0:0:0:0:0:0', 'localhost'],
+    [undefined, 'localhost'],
+  ])(
+    '--print links to the host the instance bound (%s) (#3304)',
+    async (host, expected) => {
+      const token = 'c'.repeat(43);
+      const stdout = vi.fn();
+      await runOpenCommand(['--instance=preview', '--print'], {
+        readRegistry: () => ({
+          version: 1,
+          instances: {
+            preview: { ...instance, ...(host ? { host } : {}) },
+          },
+        }),
+        isLive: () => true,
+        mintToken: vi.fn().mockResolvedValue(token),
+        stdout,
+      });
+      const lines = stdout.mock.calls.map(([line]) => line);
+      expect(lines).toContain(
+        `http://${expected}:5492/#station-ui-bootstrap=${token}`,
+      );
+    },
+  );
   test('--print takes no value', async () => {
     await expect(
       runOpenCommand(['--print=yes'], {
