@@ -493,10 +493,12 @@ already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
 barrel, Veritas readiness and typecheck; biome, the governance proof and the
 commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
-second parent must be on `origin/main`, and each merge's tree must equal the
-conflict-free automatic merge of its parents. A conflict resolution, an edit
-amended into the merge, a new non-merge commit, a new branch, or any Git
-failure runs every lane. The required CI checks still gate the combined head.
+second parent must be on `main` as the remote itself reports it (`git
+ls-remote`, never a local ref such as `origin/main`), and each merge's tree
+must equal the conflict-free automatic merge of its parents. Replace objects
+and grafts are disabled for every Git read. A conflict resolution, an edit
+amended into the merge, a new non-merge commit, a new branch, a tag, or any
+Git or network failure runs every lane. The required CI checks still gate the combined head.
 
 **Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
 capture is bounded by a liveness timeout that defaults to 60 000 ms,
