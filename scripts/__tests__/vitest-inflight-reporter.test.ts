@@ -88,9 +88,23 @@ describe('Vitest in-flight reporter', () => {
       path.resolve(import.meta.dirname, '..', '..', 'vitest.config.ts'),
       'utf8',
     );
+    // #3309: each budget is `scaleLivenessMs(<const>)` over a numeric const
+    // in the same file. The scale only widens a budget, so the base value is
+    // the smallest budget the heartbeat must tick inside.
+    const literal = (text: string) => Number(text.replace(/_/g, ''));
+    const constant = (name: string) => {
+      const match = config.match(
+        new RegExp(`const ${name}\\s*=\\s*([0-9_]+)\\s*;`),
+      );
+      return match ? literal(match[1]!) : Number.NaN;
+    };
     const budgets = [
-      ...config.matchAll(/(?:testTimeout|hookTimeout):\s*([0-9_]+)/g),
-    ].map((match) => Number(match[1]!.replace(/_/g, '')));
+      ...config.matchAll(
+        /(?:testTimeout|hookTimeout):\s*(?:([0-9_]+)|scaleLivenessMs\(([A-Z_][A-Z0-9_]*)\))/g,
+      ),
+    ].map((match) =>
+      match[1] !== undefined ? literal(match[1]) : constant(match[2]!),
+    );
     // Guards against a rename making this vacuous: no match would leave an
     // empty array, and `every` on an empty array is trivially true.
     expect(budgets.length).toBeGreaterThanOrEqual(2);
