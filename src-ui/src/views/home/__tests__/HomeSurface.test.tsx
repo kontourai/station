@@ -25,8 +25,11 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
   useGitLocationByThreadId: () => new Map(),
 }));
+const accentProbe = vi.hoisted(() => ({
+  accents: new Map<string, string>(),
+}));
 vi.mock('../../../hooks/useProjectAccents', () => ({
-  useProjectAccents: () => new Map(),
+  useProjectAccents: () => accentProbe.accents,
 }));
 
 // The start composer owns its own tests (`HomeStartComposer.test.tsx`); here
@@ -294,10 +297,13 @@ describe('HomeSurface composition', () => {
   });
 
   test('Last project carries the project accent the sidebar uses', () => {
+    accentProbe.accents = new Map([['station', 'rgb(1, 2, 3)']]);
     renderHome({}, vi.fn(), { type: 'project', slug: 'station' });
     const card = screen.getByRole('button', { name: /Last project/ });
     const accent = card.querySelector<HTMLElement>('.home-view__action-accent');
-    expect(accent?.style.backgroundColor).toBeTruthy();
+    // The sidebar's colour for this project, from the one shared map.
+    expect(accent?.style.backgroundColor).toBe('rgb(1, 2, 3)');
+    accentProbe.accents = new Map();
   });
 
   test.each([true, false])(

@@ -70,7 +70,6 @@ import '../chat-start/ChatStart.css';
 import { HomeFolderLabel } from '../HomeFolderLabel';
 import { ArrowDownGlyph, WarningGlyph } from '../icons/Glyph';
 import { LayoutIcon } from '../icons/LayoutIcon';
-import { projectAccents } from '../project-sidebar/projectAccent';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -128,6 +127,8 @@ const StartModelPicker = React.lazy(() =>
 /** Re-exported for callers that imported it from here before it moved. */
 export { ContextPickerOptions };
 
+const NO_ACCENTS: ReadonlyMap<string, string> = new Map();
+
 export interface NewChatModalMode {
   kind: 'fork';
   /** The current Agent is the default target; alternates are explicit. */
@@ -180,14 +181,14 @@ interface NewChatModalProps {
    * binding.
    */
   projectBindable?: boolean;
-  /**
-   * The project set the sidebar colours, so the chip's accent matches it
-   * even when this dock offers fewer projects. Defaults to `projects`.
-   * TODO(useProjectAccents): switch to the shared hook once it lands.
-   */
-  accentProjectSlugs?: string[];
   /** False while `projects` is the pending, not-yet-loaded list (#3350). */
   projectsLoaded?: boolean;
+  /**
+   * The sidebar's colours over its whole project list (`useProjectAccents`,
+   * read by the dock), so a dock scoped to one project still paints that
+   * project in the sidebar's colour.
+   */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
 }
 
 /** "Global" sentinel for the context picker */
@@ -208,8 +209,8 @@ export function NewChatModal({
   handoff,
   selectionInvalid = false,
   projectBindable = false,
-  accentProjectSlugs,
   projectsLoaded = true,
+  projectAccentBySlug = NO_ACCENTS,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   // In the automatic start, "Chat options" (or a start that cannot use
@@ -1182,9 +1183,7 @@ export function NewChatModal({
 
   // The composer's chips: a skeleton while the start path cannot yet say
   // what it will use, never a guess.
-  const accents = projectAccents(
-    accentProjectSlugs ?? projects.map((project) => project.slug),
-  );
+  const accents = projectAccentBySlug;
   const draftModelLabel = draftAgent
     ? start.modelFor(draftAgent).label
     : undefined;

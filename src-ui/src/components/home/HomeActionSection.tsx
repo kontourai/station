@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
@@ -8,7 +10,6 @@ import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
-import { projectAccents } from '../project-sidebar/projectAccent';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -95,11 +96,8 @@ export function HomeActionSection({
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
   const showLocalProject = hasLocalStationForProfile(profile);
-  // TODO(useProjectAccents): the sibling lane adds a shared hook; until then
-  // the same set the sidebar colours.
-  const accents = projectAccents(
-    (model.projects ?? []).map((project: { slug: string }) => project.slug),
-  );
+  // The sidebar's colours, from the one project list it shows.
+  const accents = useProjectAccents();
   const continuationSlug = continuation
     ? continuation.type === 'layout'
       ? continuation.projectSlug
@@ -159,6 +157,9 @@ export function HomeActionSection({
 export function HomeContinueCard({ model }: { model: HomeViewModel }) {
   const coarsePointer = useCoarsePointer();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // The lanes' own row inputs, so the row reads exactly as theirs do.
+  const gitLocationByThreadId = useGitLocationByThreadId();
+  const projectAccentBySlug = useProjectAccents();
   const primary = model.primaryWorkItem;
   if (!primary) return null;
   return (
@@ -181,6 +182,8 @@ export function HomeContinueCard({ model }: { model: HomeViewModel }) {
             detailsFor,
             setDetailsFor,
             chrome: coarsePointer ? 'touch' : 'hover',
+            gitLocationByThreadId,
+            projectAccentBySlug,
           },
         })}
       </ul>

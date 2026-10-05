@@ -4,6 +4,7 @@ import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
 import {
   useBindStartProject,
   useStartSelection,
@@ -28,7 +29,6 @@ import {
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
 } from '../modals/new-chat-modal-utils';
-import { projectAccents } from '../project-sidebar/projectAccent';
 import { describeReadFailure, SkeletonList } from '../state';
 
 // The pickers and setup guidance load on first use, outside Home's bundle.
@@ -261,9 +261,8 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         modelLabel,
         needsSetup: agent ? !agentRunnability(agent).runnable : false,
       };
-  // TODO(useProjectAccents): the sibling lane adds a shared hook; until then
-  // the same set the sidebar colours (`useProjects`, this same query).
-  const accents = projectAccents(projects.map((project) => project.slug));
+  // The sidebar's colours, from the one project list it shows.
+  const accents = useProjectAccents();
   const option = viewModel.currentContextOption;
   const isGlobal = context === GLOBAL_CONTEXT;
   const workspaceHint = resolveNewChatWorkspaceHint({

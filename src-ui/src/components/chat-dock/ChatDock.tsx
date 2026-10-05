@@ -2954,10 +2954,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatHandoff,
           newChatSelectionInvalid,
           projectBindable: !hasImmutableProjectScope && !forkSource,
-          accentProjectSlugs: projects.map((project) => project.slug),
           // A confirmed list only: an errored read must not resolve the
           // bound project to a guessed No project.
           projectsLoaded: projectsConfirmed,
+          projectAccentBySlug,
           recentChats: {
             items: taskItems,
             pending: taskItemsPending,

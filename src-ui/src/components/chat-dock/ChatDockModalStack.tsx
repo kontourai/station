@@ -72,8 +72,8 @@ interface ChatDockModalStackProps {
   newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
   newChatSelectionInvalid?: boolean;
   projectBindable?: boolean;
-  accentProjectSlugs?: string[];
   projectsLoaded?: boolean;
+  projectAccentBySlug?: ReadonlyMap<string, string>;
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
@@ -135,8 +135,8 @@ export function ChatDockModalStack({
   newChatHandoff,
   newChatSelectionInvalid,
   projectBindable,
-  accentProjectSlugs,
   projectsLoaded,
+  projectAccentBySlug,
   recentChats,
   showChatSettings,
   showSessionPicker,
@@ -187,8 +187,8 @@ export function ChatDockModalStack({
             handoff: forkMode ? undefined : newChatHandoff,
             selectionInvalid: forkMode ? false : newChatSelectionInvalid,
             projectBindable,
-            accentProjectSlugs,
             projectsLoaded,
+            projectAccentBySlug,
             startSurface: true,
             recentChats,
             activeProjectSlug:
