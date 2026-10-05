@@ -1,0 +1,7 @@
+{
+  "revision": "eb673aaa6b3b3b8268958b0c4b4e8780be78dc59",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#3382 review round: the Web Push guide only gained a sentence that titles and bodies are sent in display form; this page links to the guide for current behavior and makes no claim about payload text. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]}
+  ]
+}
