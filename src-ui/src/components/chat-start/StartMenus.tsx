@@ -292,8 +292,6 @@ export function StartProjectMenu({
   );
 }
 
-/** The provider rail the Model picker shows, one row per connection. */
-
 /**
  * The Model picker for one Agent, with its runtime options (reasoning effort
  * and the rest). Runtime options apply to this start only; the Model is

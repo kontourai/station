@@ -61,6 +61,11 @@ function startAgentChipText(chip: StartAgentChip): string {
 /** The compact text box grows with its text up to this many lines. */
 const COMPACT_MAX_LINES = 5;
 
+function clearFittedSize(element: HTMLTextAreaElement) {
+  element.style.removeProperty('height');
+  element.style.removeProperty('overflow-y');
+}
+
 /**
  * Size a compact text box to its content, up to `COMPACT_MAX_LINES`, then
  * scroll. Done here rather than with `field-sizing: content`, which the
@@ -71,7 +76,7 @@ function fitCompactTextarea(element: HTMLTextAreaElement) {
   const content = element.scrollHeight;
   // Not laid out (hidden, or no layout engine): leave the CSS size alone.
   if (!content) {
-    element.style.removeProperty('height');
+    clearFittedSize(element);
     return;
   }
   const style = getComputedStyle(element);
@@ -145,7 +150,12 @@ export function StartComposer({
   // Typed, restored or cleared: the compact box fits what it now holds.
   // biome-ignore lint/correctness/useExhaustiveDependencies: prompt is the trigger; the element is read from the ref.
   useLayoutEffect(() => {
-    if (compact && fieldRef.current) fitCompactTextarea(fieldRef.current);
+    const field = fieldRef.current;
+    if (!field) return;
+    if (compact) fitCompactTextarea(field);
+    // Home flips one instance between compact and full as work comes and
+    // goes; the full composer sizes from CSS, so drop what compact set.
+    else clearFittedSize(field);
   }, [compact, prompt]);
   const agentText = startAgentChipText(agent);
   return (

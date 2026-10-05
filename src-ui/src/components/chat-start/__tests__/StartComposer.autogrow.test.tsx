@@ -47,8 +47,10 @@ function renderComposer(prompt: string, compact = true) {
   });
   return {
     field,
-    rerender: (next: string) =>
-      view.rerender(<StartComposer {...props} prompt={next} />),
+    rerender: (next: string, nextCompact = compact) =>
+      view.rerender(
+        <StartComposer {...props} compact={nextCompact} prompt={next} />,
+      ),
   };
 }
 
@@ -70,6 +72,19 @@ describe('compact start composer auto-grow', () => {
     ui.rerender('');
     expect(ui.field().style.height).toBe('38px');
     expect(scrollHeight).toHaveBeenCalled();
+  });
+
+  test('turning full-size (the last work item left Home) drops the fitted size', () => {
+    const ui = renderComposer('');
+    contentHeight = 56;
+    ui.rerender('Line one\nline two');
+    expect(ui.field().style.height).toBe('58px');
+    expect(ui.field().style.overflowY).toBe('hidden');
+
+    contentHeight = 400;
+    ui.rerender('long\n'.repeat(6), false);
+    expect(ui.field().style.height).toBe('');
+    expect(ui.field().style.overflowY).toBe('');
   });
 
   test('the full-size composer keeps its own height', () => {
