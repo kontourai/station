@@ -114,6 +114,55 @@ export function rmDirSyncRetrying(path: string, options?: RmOptions): void {
   });
 }
 
+/**
+ * Renames a file or directory, retrying a refusal Windows gives while
+ * another process (an antivirus scanner, the search indexer) briefly holds a
+ * handle inside it: EPERM, EACCES or EBUSY, up to `attempts` tries `delayMs`
+ * apart (10 over about 4.5 s by default), then the first error is thrown.
+ * Any other error, and every error off Windows, is thrown at once (#3363).
+ */
+export function renamePathSyncRetrying(
+  source: string,
+  destination: string,
+  options: {
+    platform?: NodeJS.Platform;
+    attempts?: number;
+    delayMs?: number;
+    rename?: (source: string, destination: string) => void;
+    wait?: (milliseconds: number) => void;
+  } = {},
+): void {
+  const platform = options.platform ?? process.platform;
+  const attempts = options.attempts ?? 10;
+  const rename = options.rename ?? renameSync;
+  const wait =
+    options.wait ??
+    ((milliseconds: number) =>
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        milliseconds,
+      ));
+  let first: unknown;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      rename(source, destination);
+      return;
+    } catch (error) {
+      const transient =
+        platform === 'win32' &&
+        ['EPERM', 'EACCES', 'EBUSY'].includes(
+          (error as NodeJS.ErrnoException).code ?? '',
+        );
+      if (!transient) throw first ?? error;
+      first ??= error;
+      if (attempt >= attempts) throw first;
+      wait(options.delayMs ?? 500);
+    }
+  }
+}
+
 /** Preserve atomic replacement when a Windows reader briefly holds the target.
  * Never unlink the destination. Permanent faults still throw, after at most
  * 75ms of waiting; POSIX failures are propagated immediately. */

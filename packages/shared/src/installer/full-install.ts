@@ -42,6 +42,7 @@ import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { STATION_CHANNEL_PORTS_DATA } from '../channel-ports.generated.js';
+import { renamePathSyncRetrying } from '../fs-windows-compat.js';
 import {
   ServiceUpdateAlreadyRequestedError,
   serviceUpdatePaths,
@@ -101,7 +102,7 @@ export function pointCurrentAt(installRoot: string, target: string): void {
   // 'junction' is ignored off Windows, where this makes a symlink.
   symlinkSync(target, next, 'junction');
   if (process.platform === 'win32' && isLink(current)) unlinkSync(current);
-  renameSync(next, current);
+  renamePathSyncRetrying(next, current);
 }
 
 /**
@@ -114,7 +115,7 @@ export function recoverCurrent(installRoot: string): void {
   const next = join(installRoot, CURRENT_NEXT);
   if (!isLink(next)) return;
   if (isLink(current) || existsSync(current)) unlinkSync(next);
-  else renameSync(next, current);
+  else renamePathSyncRetrying(next, current);
 }
 
 function removeCurrent(installRoot: string): void {
@@ -233,7 +234,7 @@ function restoreFile(path: string, bytes: Buffer | null, mode: number): void {
   const stage = `${path}.restore.${process.pid}`;
   if (existsSync(stage)) unlinkSync(stage);
   writeExclusive(stage, bytes.toString('utf8'), mode);
-  renameSync(stage, path);
+  renamePathSyncRetrying(stage, path);
 }
 
 type Ports = { server: number; ui: number };
@@ -938,7 +939,7 @@ function switchToRelease(
       if (displaced !== null) {
         if (existsSync(releaseDir) || isLink(releaseDir))
           removeTree(releaseDir);
-        renameSync(displaced, releaseDir);
+        renamePathSyncRetrying(displaced, releaseDir);
         previous = releaseDir;
       }
       if (previous !== null) {
@@ -982,9 +983,9 @@ function switchToRelease(
       // moves aside (it stays the rollback target) and the verified one
       // takes its name, which `current` already names.
       displaced = `${releaseDir}.replaced.${process.pid}`;
-      renameSync(releaseDir, displaced);
+      renamePathSyncRetrying(releaseDir, displaced);
       previous = displaced;
-      renameSync(release.incoming, releaseDir);
+      renamePathSyncRetrying(release.incoming, releaseDir);
       sealTree(releaseDir);
       pointCurrentAt(paths.installRoot, releaseDir);
     } else if (previous === null || !same(previous, releaseDir)) {

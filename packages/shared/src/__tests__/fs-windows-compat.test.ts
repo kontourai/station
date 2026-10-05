@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,6 +14,7 @@ import {
   fsyncDirectorySync,
   fsyncFileSync,
   renameFileSyncRetrying,
+  renamePathSyncRetrying,
   rmDirSyncRetrying,
 } from '../fs-windows-compat.js';
 
@@ -128,4 +130,73 @@ test('rename retry never hides an absent source or removes the existing destinat
     waiting.mockRestore();
     rmDirSyncRetrying(root);
   }
+});
+
+describe('renamePathSyncRetrying (#3363)', () => {
+  const refused = (code: string) =>
+    Object.assign(new Error(`${code}: operation not permitted, rename`), {
+      code,
+    });
+
+  test('retries a transient Windows refusal of a real directory rename until it clears', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-rename-'));
+    const source = join(dir, '.incoming.1');
+    mkdirSync(source);
+    writeFileSync(join(source, 'file'), 'x');
+    let refusals = 2;
+    const waits: number[] = [];
+    renamePathSyncRetrying(source, join(dir, '1.0.0'), {
+      platform: 'win32',
+      rename: (from, to) => {
+        if (refusals > 0) {
+          refusals -= 1;
+          throw refused('EPERM');
+        }
+        renameSync(from, to);
+      },
+      wait: (ms) => waits.push(ms),
+    });
+    expect(readFileSync(join(dir, '1.0.0', 'file'), 'utf8')).toBe('x');
+    expect(waits).toEqual([500, 500]);
+  });
+
+  test('a refusal that persists surfaces the original error after ten tries', () => {
+    const errors = ['EBUSY', 'EPERM', 'EACCES'].map(refused);
+    let calls = 0;
+    const thrown = (() => {
+      try {
+        renamePathSyncRetrying('a', 'b', {
+          platform: 'win32',
+          rename: () => {
+            throw errors[Math.min(calls++, 2)];
+          },
+          wait: () => undefined,
+        });
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(thrown).toBe(errors[0]);
+    expect(calls).toBe(10);
+  });
+
+  test('is not retried off Windows, nor for any other error', () => {
+    let calls = 0;
+    const once = (platform: NodeJS.Platform, code: string) => {
+      calls = 0;
+      expect(() =>
+        renamePathSyncRetrying('a', 'b', {
+          platform,
+          rename: () => {
+            calls += 1;
+            throw refused(code);
+          },
+          wait: () => undefined,
+        }),
+      ).toThrow(code);
+      return calls;
+    };
+    expect(once('linux', 'EPERM')).toBe(1);
+    expect(once('win32', 'ENOENT')).toBe(1);
+  });
 });
