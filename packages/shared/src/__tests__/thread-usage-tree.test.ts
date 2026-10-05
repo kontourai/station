@@ -210,6 +210,40 @@ describe('roll-up', () => {
     });
   });
 
+  test('#3323: unreadable delegates anywhere in the tree are summed into one reason, and add no node or figure', () => {
+    const tree = buildThreadUsageTree(
+      conversation({
+        receipts: [receipt('t', { inputTokens: 3, outputTokens: 1 })],
+        unreadableDelegateCount: 1,
+        delegates: [
+          {
+            location: 'local',
+            item: {
+              producer: 'station-delegate',
+              reporterThreadId: 'child',
+              childId: 'child',
+              status: 'completed',
+            },
+            source: conversation({
+              conversationId: 'child',
+              receipts: [receipt('c', { inputTokens: 5, outputTokens: 5 })],
+              unreadableDelegateCount: 2,
+            }),
+          },
+        ],
+      }),
+    );
+    expect(tree.nodeCount).toBe(2);
+    expect(tree.total.tokens).toMatchObject({
+      totalTokens: 14,
+      complete: false,
+    });
+    expect(tree.total.cost.complete).toBe(false);
+    expect(tree.total.partialReasons).toEqual([
+      "3 delegated tasks run under an owner you can't read, so their usage is not counted.",
+    ]);
+  });
+
   test('a not-reported child makes the total partial with one reason per cause', () => {
     const tree = buildThreadUsageTree(
       conversation({

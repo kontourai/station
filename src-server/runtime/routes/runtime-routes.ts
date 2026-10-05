@@ -21,6 +21,13 @@ import {
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import {
+  classifyOperatorCredentialPosition,
+  isHostLocalOperatorCredentialUse,
+  type OperatorCredentialUseRecord,
+  reportOperatorCredentialUse,
+  usesOperatorCredential,
+} from '../../security/host-operator-credential.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
@@ -306,6 +313,7 @@ import { createOperatingStateRoutes } from '../../routes/orchestration/operating
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
+import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -606,6 +614,7 @@ import {
   connectedClientPresenceOps,
   devicePairingRequests,
   deviceSessionExchanges,
+  operatorCredentialDeviceAdminUses,
   reviewEvidenceDuration,
   reviewEvidenceOperations,
 } from '../../telemetry/metrics.js';
@@ -2480,6 +2489,12 @@ export function configureRuntimeRoutes(
       relayEnrollment: context.relayEnrollment,
       resetFullAccessGrantedBy: (input) =>
         context.orchestrationService.resetFullAccessGrantedBy(input),
+      // #2894 S1 (D2, observe first): count every use, warn on off-host ones.
+      observeOperatorCredentialUse: (record) =>
+        reportOperatorCredentialUse(record, {
+          counter: operatorCredentialDeviceAdminUses,
+          logger: context.logger,
+        }),
       operatorPasskeys: context.operatorPasskeys,
     },
   );
@@ -4378,6 +4393,33 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
     }),
   );
+  // #3160: Station Control's Session tools (send, interrupt, wait). Agent-only
+  // leaves with their own scope check; their own prefix so the dispatch
+  // routes above stay exactly as they are.
+  if (context.orchestrationEventStore) {
+    context.app.route(
+      '/api/orchestration/session-control',
+      createSessionAgentControlRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        eventBus: context.eventBus,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        resolveAgentDispatchActor,
+        hostedTenantRegistry,
+        continueForegroundMessage: stationServerEntry((input) =>
+          continueExecutionTargetMessage(
+            {
+              ...input,
+              readAuthority: readAuthorityForExecution(input.userId),
+            },
+            context.orchestrationService,
+            remoteStations,
+          ),
+        ),
+      }),
+    );
+  }
 
   const runtimeContext = context.buildRuntimeContext();
 
@@ -8262,6 +8304,9 @@ export interface PairingApprovalAuditRecord {
   readonly timestamp: number;
 }
 
+/** #2894 S1: see `security/host-operator-credential.ts`. */
+export type { OperatorCredentialUseRecord };
+
 /**
  * Durable, secret-safe public pairing failure evidence. The raw source is
  * intentionally absent: it is used only as an in-memory limiter key, never
@@ -8322,11 +8367,39 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    /** #2894 S1: every raw operator-credential use on a device-admin route. */
+    observeOperatorCredentialUse?: (
+      record: OperatorCredentialUseRecord,
+    ) => void;
     /** #3257 (S2b): operator passkey administration for the host CLI. */
     operatorPasskeys?: OperatorPasskeyEnrollmentService;
   },
 ): void {
   const audit = options.audit;
+  // #2894 S1: counted per process, so the log line itself carries the total.
+  let offHostOperatorCredentialUses = 0;
+  const observeOperatorCredentialUse = (
+    c: Parameters<typeof isHostLocalOperatorCredentialUse>[0],
+    route: OperatorCredentialUseRecord['route'],
+  ): void => {
+    // Observe-only, structurally: nothing here may fail the request or keep
+    // it from reaching its mutation.
+    try {
+      if (!usesOperatorCredential(c)) return;
+      const hostLocal = isHostLocalOperatorCredentialUse(c);
+      if (!hostLocal) offHostOperatorCredentialUses += 1;
+      options.observeOperatorCredentialUse?.({
+        event: 'station.pairing.operator_credential_used',
+        route,
+        position: classifyOperatorCredentialPosition(c),
+        hostLocal,
+        offHostUses: offHostOperatorCredentialUses,
+        timestamp: Date.now(),
+      });
+    } catch {
+      // Dropped observation: the counter and the log are telemetry.
+    }
+  };
   /**
    * #1796: the revocation's report, added to the route's answer. The scope
    * change or revoke has already happened; a reset that fails is reported
@@ -8691,6 +8764,7 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.get('/api/pairing/devices', (c) => {
+    observeOperatorCredentialUse(c, 'GET /api/pairing/devices');
     const devices = pairing.listDevices();
     const connected = options.connectedClientPresence?.snapshot(
       devices
@@ -8729,6 +8803,7 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
       const device = pairing.revokeDevice(deviceId, 'operator-credential');
       options.connectedClientPresence?.disconnectDevice(deviceId);
@@ -8760,6 +8835,10 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(
+        c,
+        'POST /api/pairing/devices/:deviceId/scope',
+      );
       const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
@@ -8845,6 +8924,10 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(
+        c,
+        'DELETE /api/pairing/devices/:deviceId/record',
+      );
       return c.json(
         pairing.removeRevokedDevice(
           c.req.param('deviceId'),

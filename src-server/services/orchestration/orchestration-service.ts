@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
@@ -58,12 +59,14 @@ import {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   ApprovalMode,
+  DelegationProvenance,
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
@@ -512,6 +515,8 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
+  delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
@@ -1043,6 +1048,8 @@ interface PeerDelegationActivityDispatch {
    * conversation that launched it.
    */
   parentConversationId?: string;
+  /** #3323: how the route came by that context; stamped beside it. */
+  delegationProvenance?: DelegationProvenance;
 }
 
 /**
@@ -3807,6 +3814,11 @@ export class OrchestrationService {
         ...(input.parentConversationId
           ? { parentConversationId: input.parentConversationId }
           : {}),
+        ...(input.parentConversationId && input.delegationProvenance
+          ? {
+              [DELEGATION_PROVENANCE_METADATA_KEY]: input.delegationProvenance,
+            }
+          : {}),
       },
     });
     return threadId;
@@ -5993,6 +6005,27 @@ export class OrchestrationService {
                 ...startInput.metadata,
                 conversationId: internal.conversationIdentity.conversationId,
                 environmentId: internal.conversationIdentity.environmentId,
+              },
+            };
+          }
+          // #3323: how the dispatch route came by this start's delegation
+          // context, re-stamped after the reserved-key strip removed any
+          // caller-supplied value, and only when the start carries exactly
+          // the context the route resolved: the stamp travels with that
+          // context, so a start with any other context is never stamped.
+          if (
+            internal?.delegationProvenance &&
+            isDeepStrictEqual(
+              startInput.metadata?.delegation,
+              internal.delegationProvenance.context,
+            )
+          ) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DELEGATION_PROVENANCE_METADATA_KEY]:
+                  internal.delegationProvenance.provenance,
               },
             };
           }

@@ -8,6 +8,7 @@ import {
   type ChildWorkRegistryState,
   childWorkForReporter,
   childWorkKey,
+  childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
   projectDelegateChildWork,
@@ -116,6 +117,163 @@ describe('applyChildWorkDelta', () => {
       }),
     );
     expect(identical).toBe(enriched);
+  });
+
+  test('#3308 a running usage figure the first settle left is replaced by the later settle that reports usage', () => {
+    // Claude's frame order: task_progress (upsert), task_updated completed
+    // (settle, no usage), task_notification completed (settle, final usage).
+    const progressed = fold(
+      snapshot(item('a', { title: 'Background task test' })),
+      {
+        kind: 'upsert',
+        item: item('a', {
+          title: 'Background task test',
+          usage: { totalTokens: 40141, toolUses: 1, durationMs: 1854 },
+        }),
+      },
+    );
+    const firstSettle = applyChildWorkDelta(
+      progressed,
+      settle('a', 'completed'),
+    );
+    expect(get(firstSettle, 'a')).toMatchObject({
+      status: 'completed',
+      usage: { totalTokens: 40141 },
+      usageProvisional: true,
+    });
+
+    const final = applyChildWorkDelta(
+      firstSettle,
+      settle('a', 'completed', {
+        result: { summary: 'background-ok' },
+        usage: { totalTokens: 41833, toolUses: 1, durationMs: 3677 },
+      }),
+    );
+    expect(get(final, 'a')).toEqual(
+      item('a', {
+        status: 'completed',
+        title: 'Background task test',
+        usage: { totalTokens: 41833, toolUses: 1, durationMs: 3677 },
+        result: { summary: 'background-ok' },
+      }),
+    );
+
+    // Once a settle reported usage it is sticky: a stale duplicate is a no-op.
+    const stale = applyChildWorkDelta(
+      final,
+      settle('a', 'completed', { usage: { totalTokens: 40141 } }),
+    );
+    expect(stale).toBe(final);
+    // Identity and result stay fill-only on the replacing settle.
+    const titled = applyChildWorkDelta(
+      firstSettle,
+      settle('a', 'completed', {
+        usage: { totalTokens: 41833 },
+        identity: { title: 'renamed' },
+      }),
+    );
+    expect(get(titled, 'a')?.title).toBe('Background task test');
+  });
+
+  test('#3308 usage a settle reported stays sticky against a later settle', () => {
+    const settled = fold(
+      snapshot(item('a', { usage: { totalTokens: 10 } })),
+      settle('a', 'completed', { usage: { totalTokens: 50 } }),
+    );
+    expect(get(settled, 'a')?.usageProvisional).toBeUndefined();
+    expect(
+      applyChildWorkDelta(
+        settled,
+        settle('a', 'completed', { usage: { totalTokens: 10 } }),
+      ),
+    ).toBe(settled);
+  });
+
+  test('#3308 a child left unresolved keeps a provisional running figure; producers cannot set the flag', () => {
+    const unresolved = fold(
+      snapshot(item('a', { usage: { totalTokens: 7 } })),
+      snapshot(),
+    );
+    expect(get(unresolved, 'a')).toMatchObject({
+      status: 'unresolved',
+      usageProvisional: true,
+    });
+    // A running item never carries it, whatever the producer sent.
+    const running = fold(
+      snapshot(
+        item('b', { usage: { totalTokens: 1 }, usageProvisional: true }),
+      ),
+    );
+    expect(get(running, 'b')?.usageProvisional).toBeUndefined();
+    // A tombstone's usage came from its settle.
+    const tomb = fold(
+      settle('c', 'completed', {
+        usage: { totalTokens: 3 },
+        identity: { usageProvisional: true } as never,
+      }),
+    );
+    expect(get(tomb, 'c')?.usageProvisional).toBeUndefined();
+  });
+
+  test('#3308 a duration-only settle over a running figure leaves it provisional until the token figure arrives', () => {
+    const partial = fold(
+      snapshot(item('a', { usage: { totalTokens: 40141, toolUses: 1 } })),
+      settle('a', 'completed', { usage: { durationMs: 3000 } }),
+    );
+    expect(get(partial, 'a')).toMatchObject({
+      usage: { totalTokens: 40141, toolUses: 1, durationMs: 3000 },
+      usageProvisional: true,
+    });
+    const final = applyChildWorkDelta(
+      partial,
+      settle('a', 'completed', {
+        usage: { totalTokens: 41833, toolUses: 1, durationMs: 3677 },
+      }),
+    );
+    expect(get(final, 'a')?.usage).toEqual({
+      totalTokens: 41833,
+      toolUses: 1,
+      durationMs: 3677,
+    });
+    expect(get(final, 'a')?.usageProvisional).toBeUndefined();
+  });
+
+  test('#3308 childWorkSettleFromItem keeps provisional usage provisional through a replay', () => {
+    const live = fold(
+      snapshot(item('a', { usage: { totalTokens: 40141 } })),
+      settle('a', 'completed'),
+    );
+    const stored = get(live, 'a') as ChildWorkItem;
+    const replay = childWorkSettleFromItem(stored);
+    expect(replay).toMatchObject({
+      kind: 'settle',
+      usage: { totalTokens: 40141 },
+      usageProvisional: true,
+    });
+    expect(replay?.identity).not.toHaveProperty('usageProvisional');
+    const finalSettle = settle('a', 'completed', {
+      usage: { totalTokens: 41833 },
+    });
+    // Replayed into an empty registry (a cold seed or a fresh client)…
+    const cold = fold(replay as ChildWorkDelta, finalSettle);
+    expect(get(cold, 'a')?.usage).toEqual({ totalTokens: 41833 });
+    // …or onto the live provisional item: the replay changes nothing.
+    expect(applyChildWorkDelta(live, replay as ChildWorkDelta)).toBe(live);
+    // A provisional replay never displaces usage a settle reported.
+    const settled = fold(
+      settle('b', 'completed', { usage: { totalTokens: 9 } }),
+    );
+    expect(
+      applyChildWorkDelta(
+        settled,
+        settle('b', 'completed', {
+          usage: { totalTokens: 1 },
+          usageProvisional: true,
+        }),
+      ),
+    ).toBe(settled);
+    // A running item has no settle.
+    expect(childWorkSettleFromItem(item('c'))).toBeUndefined();
   });
 
   test('a reconnect snapshot that omits a running child marks it unresolved, not completed', () => {

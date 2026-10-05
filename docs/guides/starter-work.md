@@ -45,8 +45,9 @@ never creates another Task.
 1. Open a local project.
 2. Create a Task for durable work, or start a direct chat for an immediate
    conversation.
-3. For a direct chat, write the request on Home and use working defaults.
-   Open **Chat options** only when you want to choose the Agent, Model, or workspace.
+3. For a direct chat, write the request in Home's start composer and use its
+   defaults. Change the Agent or project chip only when you want another
+   Agent, Model, or workspace.
 4. Keep gate state, evidence, route-backs, and receipts with the work as it
    progresses.
 

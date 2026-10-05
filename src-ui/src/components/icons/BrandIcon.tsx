@@ -58,6 +58,33 @@ function isGlyph(value: unknown): value is string {
   );
 }
 
+/**
+ * Whether a glyph is one grapheme (an emoji, even a ZWJ sequence, or one
+ * letter) rather than a short text label such as an engine default's "MV".
+ * Only a single grapheme may fill the tile; two letters at that size overflow
+ * it. Without `Intl.Segmenter`, code points stand in, which can only
+ * under-count a sequence as several and draw it at the smaller text size.
+ */
+function isSingleGrapheme(value: string): boolean {
+  const Segmenter = (
+    Intl as typeof Intl & {
+      Segmenter?: new (
+        locale?: string,
+        options?: { granularity?: string },
+      ) => { segment(input: string): Iterable<unknown> };
+    }
+  ).Segmenter;
+  if (!Segmenter) return Array.from(value).length === 1;
+  let count = 0;
+  for (const _ of new Segmenter(undefined, { granularity: 'grapheme' }).segment(
+    value,
+  )) {
+    count += 1;
+    if (count > 1) return false;
+  }
+  return count === 1;
+}
+
 function safeSameOriginImage(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   if (
@@ -221,7 +248,11 @@ export function BrandIcon({
       {...(alt ? { role: 'img', 'aria-label': alt } : { 'aria-hidden': true })}
     >
       {content ? (
-        <span className="brand-icon__glyph">{content}</span>
+        <span
+          className={`brand-icon__glyph${isSingleGrapheme(content) ? '' : ' brand-icon__glyph--text'}`}
+        >
+          {content}
+        </span>
       ) : explicitBrandKey ? (
         <Mark brand={explicitBrandKey} />
       ) : imageSource && failedImageSource !== imageSource ? (

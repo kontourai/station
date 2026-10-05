@@ -42,6 +42,11 @@ let sessions: Array<Record<string, unknown> | OrchestrationSessionSummary> = [];
 // The Project list every accent is allocated over (`useProjectAccents`).
 let projectList: ProjectMetadata[] = [];
 
+// Home's start composer reads the server through React Query; this suite
+// compares the work surfaces, so it stands in as the bare form.
+vi.mock('../../../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: () => <form aria-label="Start work" />,
+}));
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
   useShowSurfacePage: () => vi.fn(),

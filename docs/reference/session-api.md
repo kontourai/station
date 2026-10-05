@@ -88,6 +88,11 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+An Agent that messages, interrupts, or waits on an existing Session uses
+station-control's [Session control](../guides/self-configuring-agent.md#session-control)
+tools, which call their own agent-only routes under
+`/api/orchestration/session-control` rather than the routes above.
+
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
@@ -642,13 +647,29 @@ currency and price snapshot. Buckets are never summed together, and reported
 cost is never mixed with estimates.
 
 The read is authorized like the conversation transcript: every session in a
-conversation's lineage must be readable. A session you can't read that names
-your conversation is ignored, neither shown nor counted as missing: a real
-delegate of your conversation is your own work. One exception follows from
-that rule: in hosted mode, a delegate launched by a caller-less internal
-request (Station's own agent or a Strands-runtime agent) is owned by the
-Station operator, so another reader's tree doesn't count it and its total
-isn't marked partial for it. A delegate that ran on a
+conversation's lineage must be readable. A session you can't read is never
+read, named or figured. What happens to it depends on how its launch came to
+name your conversation, which the dispatch route records at launch in the
+reserved start metadata key `stationDelegationProvenance` (a request can't
+set it; Station strips any value a caller supplies):
+
+- `caller-derived` (from the calling session's own record) or
+  `runtime-attested` (Station's own runtime vouched for it): the session is
+  real work of your conversation that runs under another owner. In hosted
+  mode that happens when Station can't attribute the dispatch to a bound
+  caller (for example a Codex session calling through its URL token), so the
+  delegate is the Station operator's. It is counted as not visible: no node,
+  and the total is partial with one line saying how many such tasks there are.
+  The stamp counts only on the session's start record, beside the parent it
+  names.
+- `direct-claim` (passed through from a request outside this Station's
+  process, such as an operator, device, hosted-user or peer Station
+  credential), or no stamp (a launch from before it existed, or a
+  `parentTaskId`-only link): the link is only a claim, so the session is
+  ignored, neither shown nor counted as missing. Counting it would let anyone
+  mark someone else's total partial.
+
+A delegate that ran on a
 paired Station is shown from this Station's own record, with `not-reported`
 usage, and no peer is contacted. Responses are `Cache-Control: private,
 no-store`. `404` means no conversation you can read. `422` means the tree is

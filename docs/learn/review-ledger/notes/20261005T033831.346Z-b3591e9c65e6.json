@@ -1,0 +1,7 @@
+{
+  "revision": "eeefbc0f3678c99bd76345220fd4d06fef280204",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"After merging main (whose mobile-chat-composer changes touched this page's sources), re-read Starting and resuming work: replaced 'Home's quick-start recommendation remains runnable' with what HomeStartComposer does now (the remembered Agent, repair included, via useStartSelection; quick-start preparation only when no Agent is offered, as HomeStartComposer sends a selection without agentSlug). Main's merged text in this section is unchanged and consistent with the composer.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}
