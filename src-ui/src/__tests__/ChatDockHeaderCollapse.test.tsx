@@ -78,9 +78,10 @@ function renderHeader({
 }
 
 // archive#800: this label read "Start a chat" and carried a pointer cursor, but was
-// inert text — the click it appeared to offer only toggled the dock open (the
-// header's own handler), leaving the user to hunt for "New".
-describe('collapsed dock "Start a chat" affordance (#800)', () => {
+// inert text. It became a worded "Start a chat" button, which then sat beside
+// the dock's "New chat" as a second name for one act. The collapsed bar now
+// carries the same icon-only New chat action as every other chrome.
+describe('collapsed dock New chat action (#800)', () => {
   beforeEach(() => {
     setDockState.mockClear();
     onNewChat.mockClear();
@@ -89,11 +90,18 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     isDockOpen = true;
   });
 
-  test('is a real control that starts a chat', () => {
+  test('is the icon-only New chat action, and it opens the start composer', () => {
     isDockOpen = false;
     renderHeader();
 
-    const control = screen.getByRole('button', { name: 'Start a chat' });
+    const controls = screen.getAllByRole('button', { name: 'New chat' });
+    expect(controls).toHaveLength(1);
+    const [control] = controls;
+    // Icon-only: the glyph and its accessible name, no worded label.
+    expect(control.className).toContain('new-chat-action--icon');
+    expect(control.textContent?.trim()).toBe('');
+    // No second wording for the same act.
+    expect(screen.queryByText('Start a chat')).toBeNull();
     fireEvent.click(control);
 
     expect(onNewChat).toHaveBeenCalledTimes(1);
@@ -101,16 +109,13 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(setDockState).not.toHaveBeenCalled();
   });
 
-  // archive#800: the header renders unconditionally, so without an open-state
-  // guard the dock-open-and-empty state showed two identical "Start a chat"
-  // controls — the header's and the body's — and any role-based query would
-  // resolve to both.
-  test('yields to the body CTA once the dock is open: no second "Start a chat" at all', () => {
+  // archive#800: the header renders unconditionally; without an open-state
+  // guard an open, empty dock showed the bar's action beside the pane's own.
+  test('yields to the open pane: the collapsed action is gone once the dock is open', () => {
     isDockOpen = true;
-    renderHeader();
+    const { container } = renderHeader();
 
-    expect(screen.queryByRole('button', { name: 'Start a chat' })).toBeNull();
-    // Not even as inert text (V13): the pane's own New is in the bar.
+    expect(container.querySelector('.chat-dock__collapsed-new')).toBeNull();
     expect(screen.queryByText('Start a chat')).toBeNull();
   });
 

@@ -12,6 +12,19 @@ vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
   useShowSurfacePage: () => showSurfacePage,
 }));
+// The rows' git locations and project colours are read from the session
+// and Project queries (the dock's own hooks), and this file mounts no query
+// client. The cross-surface agreement is pinned in ActivityList.test and
+// ChatInboxHoverCard.test, which feed those reads.
+vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
+  useGitLocationByThreadId: () => new Map(),
+}));
+vi.mock('../../../hooks/useProjectAccents', () => ({
+  useProjectAccents: () => new Map(),
+}));
+vi.mock('../../../hooks/useProjectIcons', () => ({
+  useProjectIcons: () => new Map(),
+}));
 
 import { HomeSurface } from '../HomeSurface';
 
@@ -189,6 +202,21 @@ describe('HomeSurface composition', () => {
     const card = screen.getByRole('button', { name: /Last project/ });
     expect(card.textContent).toContain('retired-project');
   });
+
+  // #3312: a section and the form inside it were both named "Start work",
+  // two landmarks with one name. The form is the one.
+  test.each([[[]], [[item('a', 'Some work', 'Station', 3, 'Running')]]])(
+    'Home has one "Start work" landmark, the form (work: %#)',
+    (workItems) => {
+      renderHome({ workItems });
+      expect(screen.getAllByRole('form', { name: 'Start work' })).toHaveLength(
+        1,
+      );
+      expect(screen.queryAllByRole('region', { name: 'Start work' })).toEqual(
+        [],
+      );
+    },
+  );
 
   test('the start card names the agent it can actually open on', () => {
     renderHome();

@@ -12,6 +12,18 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 function render(ui: ReactNode) {
   return renderWithoutNavigation(<NavigationProvider>{ui}</NavigationProvider>);
 }

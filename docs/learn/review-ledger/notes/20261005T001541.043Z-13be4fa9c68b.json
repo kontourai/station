@@ -1,0 +1,15 @@
+{
+  "revision": "3d778744c21570437f9bd6cab0d972a603466f4b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read for the one-entry change to the dispatch-scope posture guard test (target.workspace.preparation.mode added to REVIEWED as an execution-preparation requirement that only narrows). The document makes no claim about that guard's reviewed-exception list or about the execution-preparation mode, so its prose stays accurate.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-read for the one-entry change to the dispatch-scope posture guard test (target.workspace.preparation.mode added to REVIEWED as an execution-preparation requirement that only narrows). The document makes no claim about that guard's reviewed-exception list or about the execution-preparation mode, so its prose stays accurate.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-read for the one-entry change to the dispatch-scope posture guard test (target.workspace.preparation.mode added to REVIEWED as an execution-preparation requirement that only narrows). The document makes no claim about that guard's reviewed-exception list or about the execution-preparation mode, so its prose stays accurate.","inputs":["docs/reference/cli.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-read for the one-entry change to the dispatch-scope posture guard test (target.workspace.preparation.mode added to REVIEWED as an execution-preparation requirement that only narrows). The document makes no claim about that guard's reviewed-exception list or about the execution-preparation mode, so its prose stays accurate.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-read for the one-entry change to the dispatch-scope posture guard test (target.workspace.preparation.mode added to REVIEWED as an execution-preparation requirement that only narrows). The document makes no claim about that guard's reviewed-exception list or about the execution-preparation mode, so its prose stays accurate.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts"]}
+  ]
+}

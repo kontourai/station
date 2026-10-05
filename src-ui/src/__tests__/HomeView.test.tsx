@@ -92,6 +92,13 @@ const fixtures = vi.hoisted(() => ({
   tasksLoading: false,
   defaultAgent: { slug: 'codex-agent', name: 'Codex' } as any,
   defaultModelLabel: 'gpt-5.3-codex',
+  /** The dock's remembered project binding (device setting). */
+  chatDockProjectSlug: null as string | null,
+  selectedContextResolved: true,
+  selectionInputs: [] as Array<{
+    selectedContext: string;
+    revalidateSelection?: boolean;
+  }>,
   sessionsRefetch: vi.fn(),
   /** U1: a project's layouts, by slug; absent means none. */
   layoutsBySlug: {} as Record<string, Array<{ slug: string; type: string }>>,
@@ -271,6 +278,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     developerToolsEnabled: fixtures.developerToolsEnabled,
+    chatDockProjectSlug: fixtures.chatDockProjectSlug,
   }),
 }));
 // Home mounts the first-run chapter (UX audit RT-02). These fixtures put the
@@ -313,12 +321,19 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ selectedProject: null }),
 }));
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
-  useNewChatSelectionModel: () => ({
-    defaultSelection: {
-      agent: fixtures.defaultAgent,
-      effectiveModel: { label: fixtures.defaultModelLabel },
-    },
-  }),
+  useNewChatSelectionModel: (input: {
+    selectedContext: string;
+    revalidateSelection?: boolean;
+  }) => {
+    fixtures.selectionInputs.push(input);
+    return {
+      defaultSelection: {
+        agent: fixtures.defaultAgent,
+        effectiveModel: { label: fixtures.defaultModelLabel },
+      },
+      selectedContextResolved: fixtures.selectedContextResolved,
+    };
+  },
 }));
 // This suite owns the built-in Home lanes. The Home-role hook's dedicated
 // tests own its QueryClient-backed authority states; unresolved is the real
@@ -350,6 +365,10 @@ describe('HomeView', () => {
   beforeEach(() => {
     showSurface.mockClear();
     showSurfacePage.mockClear();
+    fixtures.projects = [{ id: 'p1', slug: 'station', name: 'Station' }];
+    fixtures.chatDockProjectSlug = null;
+    fixtures.selectedContextResolved = true;
+    fixtures.selectionInputs = [];
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -418,12 +437,13 @@ describe('HomeView', () => {
       screen.getByRole('status', { name: 'Finding available ways to help' }),
     ).toBeTruthy();
     // Where the cards will stand (Q3), not under the start form: the start
-    // section holds the form alone.
+    // wrapper holds the form alone.
+    const start = container.querySelector<HTMLElement>('.home-view__start');
+    expect(start).toBeTruthy();
     expect(
-      within(screen.getByRole('region', { name: 'Start work' })).queryByRole(
-        'status',
-        { name: 'Finding available ways to help' },
-      ),
+      within(start!).queryByRole('status', {
+        name: 'Finding available ways to help',
+      }),
     ).toBeNull();
     expect(container.querySelector('.home-view__goal textarea')).toBeTruthy();
     expect(screen.queryByText('No agent is ready yet')).toBeNull();
@@ -472,7 +492,7 @@ describe('HomeView', () => {
   });
 
   // #1582 B9: a chat created and never typed into is not work. It produced a
-  // "Continue most recent work → New chat" card that a reload erased, because
+  // Continue card naming "New chat" that a reload erased, because
   // Home read the same unfiltered selection the inboxes do. Home takes
   // `useOpenWorkChats`; swapping it back for `useOpenChats` reddens this.
   test('a chat nothing has been put into produces no continue-work card', () => {
@@ -656,6 +676,98 @@ describe('HomeView', () => {
     unregister();
   });
 
+  // #3312: with work on the page the start form is the compact one, and it
+  // still names the Agent and Model Start will run on. The note reads the
+  // default selection (`useNewChatSelectionModel`) for the context the start
+  // path opens in (`useNewChatStartContext`), so changing that selection
+  // changes the note.
+  const workSession = () => ({
+    threadId: 'work-thread',
+    provider: 'codex',
+    status: 'ready',
+    createdAt: '2026-07-13T00:00:00Z',
+    updatedAt: '2026-07-13T00:00:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 3,
+  });
+  test.each([
+    ['gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'Codex · gpt-5.4'],
+    ['Model not reported', 'Codex'],
+  ])(
+    'the compact start form names the default selection (%s) beside Start',
+    (modelLabel, expected) => {
+      fixtures.defaultModelLabel = modelLabel;
+      fixtures.sessions = [workSession()];
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+      const form = screen.getByRole('form', { name: 'Start work' });
+      expect(form.classList.contains('home-view__goal--compact')).toBe(true);
+      const start = within(form).getByRole('button', { name: 'Start a chat' });
+      const note = document.getElementById(
+        start.getAttribute('aria-describedby') ?? '',
+      );
+      expect(note?.textContent).toBe(expected);
+    },
+  );
+
+  test('the compact start form names no identity when no Agent is ready', () => {
+    fixtures.defaultAgent = undefined;
+    fixtures.sessions = [workSession()];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const form = screen.getByRole('form', { name: 'Start work' });
+    expect(form.classList.contains('home-view__goal--compact')).toBe(true);
+    expect(
+      within(form)
+        .getByRole('button', { name: 'Start a chat' })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+    expect(form.querySelector('.home-view__goal-identity')).toBeNull();
+  });
+
+  // #3312 review HIGH: Start runs in the dock's remembered project once the
+  // user has opened one, so Home resolves its identity in that context, not
+  // the route's (on `/` there is none). `revalidateSelection` matches the
+  // input `NewChatModal` passes for a `startWithDefault` request.
+  test.each([
+    ['a dock bound to a project with a directory', 'station', 'station'],
+    ['a dock bound to nothing', null, '__global__'],
+    ['a dock bound to a project that is gone', 'deleted', '__global__'],
+  ])(
+    'Home resolves its start identity in the context Start opens in: %s',
+    (_name, binding, expected) => {
+      fixtures.projects = [
+        {
+          id: 'p1',
+          slug: 'station',
+          name: 'Station',
+          workingDirectory: '/work/station',
+        } as any,
+      ];
+      fixtures.chatDockProjectSlug = binding;
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+      expect(fixtures.selectionInputs.length).toBeGreaterThan(0);
+      for (const input of fixtures.selectionInputs) {
+        expect(input.selectedContext).toBe(expected);
+        expect(input.revalidateSelection).toBe(true);
+      }
+    },
+  );
+
+  test('names no identity while the start context is unresolved', () => {
+    fixtures.selectedContextResolved = false;
+    fixtures.sessions = [workSession()];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const form = screen.getByRole('form', { name: 'Start work' });
+    expect(
+      within(form)
+        .getByRole('button', { name: 'Start a chat' })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+    expect(form.querySelector('.home-view__goal-identity')).toBeNull();
+  });
+
   test('uses honest identity fallbacks and selects exact orchestration continuation', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
@@ -685,7 +797,7 @@ describe('HomeView', () => {
 
   // #2310 review M3: the newest session is a Draft (nothing ever sent). The
   // card must continue the most recent WORK, not an empty session.
-  test('"Continue most recent work" skips a newer Draft', () => {
+  test('the Continue card skips a newer Draft', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
     fixtures.defaultModelLabel = 'Model not reported';
@@ -1575,7 +1687,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
   // read-only remote card (no local work at all), the primary CTA — which
   // can only ever continue a LOCAL item — must not render rather than
   // silently target a remote card that no-ops on click.
-  test('AC1: the "Continue most recent work" CTA does not render when only remote sessions exist', () => {
+  test('AC1: the Continue card does not render when only remote sessions exist', () => {
     fixtures.remoteSessionsResult = {
       environments: [
         {

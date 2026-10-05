@@ -1,0 +1,7 @@
+{
+  "revision": "a9f4e5245bdd2a9ff154ccd7f68f3e73cd15f9f5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#3312 review fix: task-first-home adds a dock-bound-project case (project default gpt-5.4 differs from the agent default) asserting Home names it and the started chat sends and shows it in that project; the Agent/Model checks are scoped to the Chat dock and the vacuous Workspace count is replaced by the sent target workspace. Row ownership and surfaces unchanged, so no table change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts","tests/coding-layout-plan-panel.spec.ts","tests/project-architecture.spec.ts","tests/root-route-restore.spec.ts"]}
+  ]
+}

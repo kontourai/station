@@ -294,10 +294,12 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { createOperatorPasskeyHostRoutes } from '../../routes/operator-passkeys/operator-passkey-host-routes.js';
 import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
@@ -392,6 +394,7 @@ import {
   resolveClientOriginForRequest,
   resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
+  runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
@@ -462,6 +465,7 @@ import {
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
+import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
@@ -538,6 +542,7 @@ import type { ProposedChangeService } from '../../services/projects/proposed-cha
 import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
+import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
@@ -772,6 +777,8 @@ export interface ConfigureRuntimeRoutesContext {
    * state. Approval routes consult it before minting a review URL.
    */
   consentChannel: ConsentChannelService;
+  /** #3257 (S2b): operator passkey enrollment; absent on hosted tenants. */
+  operatorPasskeys?: OperatorPasskeyEnrollmentService;
   /**
    * The app config as it stood when routes were constructed.
    *
@@ -2408,6 +2415,17 @@ export function configureRuntimeRoutes(
       resolveRecord: resolveStationControlCallerRecord,
     }),
   );
+  // #3161 `declare_pull_request`'s REST side: its own leaf, the verified
+  // caller's own session, the one dispatch scope rule.
+  context.app.route(
+    '/api/orchestration',
+    createDeclarePullRequestRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      declare: (input) =>
+        context.orchestrationService.declareStationControlPullRequest(input),
+    }),
+  );
   context.app.route(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
@@ -2462,6 +2480,7 @@ export function configureRuntimeRoutes(
       relayEnrollment: context.relayEnrollment,
       resetFullAccessGrantedBy: (input) =>
         context.orchestrationService.resetFullAccessGrantedBy(input),
+      operatorPasskeys: context.operatorPasskeys,
     },
   );
 
@@ -5260,6 +5279,17 @@ export function configureRuntimeRoutes(
   const conversationPullRequestLinks = new ConversationPullRequestLinkStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #3161: a Task a person opted in closes when every pull request kept on it
+  // is merged. It rides the conversation refresh below: no timer, no poller.
+  const taskCloseOut = createTaskCloseOut({
+    taskGraph: context.taskGraphService,
+    providers: () =>
+      listProviders('pullRequest').map((entry) => entry.provider),
+    onError: (error) =>
+      context.logger.warn('Task close-out reconciliation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  });
   context.app.route(
     '/api/conversation-pull-requests',
     createConversationPullRequestLinkRoutes(
@@ -5284,6 +5314,43 @@ export function configureRuntimeRoutes(
               conversationId,
             ) ?? []
           ).map((linked) => linked.sessionId),
+        observed: (request, conversationId, observations) => {
+          // A refresh is a read; moving a Task to done is not. Only a viewer
+          // who could `PATCH /api/tasks/:id/status` itself triggers it
+          // (the same pairing scope, current now), and never an agent's tool
+          // call, whose status changes the authority guard refuses. The
+          // internal-principal clause is defense in depth: the guard already
+          // answers a tool's request to this refresh route `route_unmapped`
+          // (pinned by runtime-routes-declare-pull-request-engine.test.ts),
+          // and an internal principal would otherwise count as current.
+          if (
+            getRuntimeAuthenticatedRequestPrincipal(request)?.kind ===
+              'internal' ||
+            !runtimeRequestPrincipalMayAccessHttpRoute(
+              request,
+              context.environmentSecurityService,
+              { method: 'PATCH', path: '/api/tasks/close-out/status' },
+            )
+          )
+            return;
+          const merged = observations.filter(
+            (observation) =>
+              observation.status.state === 'current' &&
+              observation.status.pullRequestState === 'MERGED',
+          );
+          if (merged.length === 0) return;
+          taskCloseOut.afterMergeObserved(
+            [
+              conversationId,
+              ...(
+                context.orchestrationEventStore?.conversationSessions(
+                  conversationId,
+                ) ?? []
+              ).map((linked) => linked.sessionId),
+            ],
+            merged,
+          );
+        },
         declared: async (request, conversationId) => {
           if (
             !context.orchestrationService.canUserReadConversation(
@@ -8255,6 +8322,8 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    /** #3257 (S2b): operator passkey administration for the host CLI. */
+    operatorPasskeys?: OperatorPasskeyEnrollmentService;
   },
 ): void {
   const audit = options.audit;
@@ -8312,6 +8381,15 @@ export function configureDevicePairingHostRoutes(
       return false;
     }
   };
+  if (options.operatorPasskeys) {
+    app.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({
+        service: options.operatorPasskeys,
+        isOperator: (c) => currentOperator(c, (c as Context).req.raw),
+      }),
+    );
+  }
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {

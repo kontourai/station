@@ -1,20 +1,19 @@
 /**
- * The Windows installer core (#2675 slice W1). install.ps1 is a thin
+ * The Windows installer core (#2675 slice W). install.ps1 is a thin
  * PowerShell bootstrap: it finds a Node.js (host, the channel's installed
  * runtime, or the pinned official zip) and runs this module, bundled into
  * install.ps1 as a generated block, with the caller's environment. It is the
  * same contract as install.sh, in the same variables and messages, for the
  * prebuilt `station-server-win32-x64.zip` archive.
  *
- * W1 implements the stage-only mode (STATION_INSTALL_STAGE_ONLY=1), which the
- * service launcher's child runs to stage an update, and which is also the
- * first half of every install: download and verify the signed manifest,
- * download the archive within its signed size and check its sha256, refuse
- * any unsafe zip entry, read its marker and provenance, extract it into
- * `<install root>/versions/<version>`, run its own `--version`, write the
- * completion sentinel and seal it read-only. It changes nothing else: not
- * `current`, not a launcher, not the install state, not a service. A full
- * install, uninstall, the `current` junction and ACLs arrive with W2.
+ * This module holds what every mode shares: the request and path rules, the
+ * signed-manifest and archive checks, and staging a verified version into
+ * `<install root>/versions/<version>` (download and verify the signed
+ * manifest, download the archive within its signed size and check its
+ * sha256, refuse any unsafe zip entry, read its marker and provenance,
+ * extract, run its own `--version`, write the completion sentinel and seal
+ * it read-only). STATION_INSTALL_STAGE_ONLY=1 stops there (slice W1);
+ * full-install.ts makes it the active install and uninstalls (slice W2).
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -25,7 +24,6 @@ import {
   fsyncSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
@@ -33,16 +31,21 @@ import {
   realpathSync,
   renameSync,
   rmdirSync,
-  rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join, parse, resolve, sep } from 'node:path';
 import { STATION_RELEASE_RINGS_DATA } from '../channel-ports.generated.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
 import type { ReleaseManifestPayload } from '../release-manifest.mjs';
 import { STATION_RELEASE_MANIFEST_KEYS as PINNED_MANIFEST_SIGNING_KEYS } from '../release-manifest-keys.generated.js';
+import {
+  assertWindowsPathsTrusted,
+  hardenWindowsPathsTrusted,
+  runWindowsTrustCommand,
+} from '../windows-path-trust.js';
 import { DownloadTooLarge, downloadCapped } from './download.js';
 import {
   ManifestRefusal,
@@ -64,13 +67,16 @@ export const MANIFEST_MAX_BYTES = 1_048_576;
 const ARCHIVE_ROOT = 'station';
 const PREBUILT_ARCHIVE_MARKER = '.station-prebuilt-archive';
 const PREBUILT_ARCHIVE_SIGNATURE = 'station-prebuilt-archive-v1\n';
-const INSTALL_ROOT_MARKER = '.station-portable-install-root';
-const INSTALL_ROOT_SIGNATURE = 'station-portable-install-root-v1\n';
+export const INSTALL_ROOT_MARKER = '.station-portable-install-root';
+export const INSTALL_ROOT_SIGNATURE = 'station-portable-install-root-v1\n';
+export const DATA_ROOT_MARKER = '.station-portable-data-root';
+export const DATA_ROOT_SIGNATURE = 'station-portable-data-root-v1\n';
+export const STATE_FILE = '.station-release-state.json';
 const VERSION_SENTINEL = '.station-install-complete';
 const SELF_CHECK_TIMEOUT_MS = 120_000;
 
-type Ring = { runtimeChannel: string; prerelease: boolean };
-const RINGS: Record<string, Ring> = STATION_RELEASE_RINGS_DATA;
+type Ring = { runtimeChannel: string; prerelease: boolean; launcher: string };
+export const RINGS: Record<string, Ring> = STATION_RELEASE_RINGS_DATA;
 const PRERELEASE_RINGS = new Set(
   Object.entries(RINGS)
     .filter(([, ring]) => ring.prerelease)
@@ -80,7 +86,7 @@ const PRERELEASE_RINGS = new Set(
 /** A refusal: the installer prints `Station install failed: <message>`. */
 export class InstallRefusal extends Error {}
 
-function fail(message: string): never {
+export function fail(message: string): never {
   throw new InstallRefusal(message);
 }
 
@@ -92,7 +98,7 @@ export type InstallerIo = {
 export type InstallerEnv = Readonly<Record<string, string | undefined>>;
 
 /** The ring an installable runtime channel installs as, or undefined. */
-function ringOfRuntime(channel: string): string | undefined {
+export function ringOfRuntime(channel: string): string | undefined {
   return Object.entries(RINGS).find(
     ([, ring]) => ring.runtimeChannel === channel,
   )?.[0];
@@ -100,15 +106,15 @@ function ringOfRuntime(channel: string): string | undefined {
 
 const foldsCase = process.platform === 'win32' || process.platform === 'darwin';
 const fold = (value: string) => (foldsCase ? value.toLowerCase() : value);
-const same = (left: string, right: string) => fold(left) === fold(right);
-const inside = (child: string, parent: string) =>
+export const same = (left: string, right: string) => fold(left) === fold(right);
+export const inside = (child: string, parent: string) =>
   same(child, parent) || fold(child).startsWith(`${fold(parent)}${sep}`);
 
 /**
  * `path` absolute, with every existing prefix resolved through its links, as
  * install.sh's canonicalize_path does.
  */
-function canonicalize(path: string): string {
+export function canonicalize(path: string): string {
   const absolute = resolve(path);
   const { root } = parse(absolute);
   const segments = absolute.slice(root.length).split(sep).filter(Boolean);
@@ -128,7 +134,8 @@ function canonicalize(path: string): string {
   return resolve(cursor);
 }
 
-const owner = typeof process.getuid === 'function' ? process.getuid() : null;
+export const owner =
+  typeof process.getuid === 'function' ? process.getuid() : null;
 
 /** A same-user directory nobody else can write (POSIX modes; ACLs are W2). */
 function assertSafeDirectory(path: string): boolean {
@@ -140,40 +147,130 @@ function assertSafeDirectory(path: string): boolean {
   );
 }
 
-function prepareSafeDirectory(path: string): void {
+export function prepareSafeDirectory(path: string): void {
   if (!existsSync(path)) mkdirSync(path, { recursive: true, mode: 0o700 });
   if (!assertSafeDirectory(path))
     fail(`directory must be same-user and not group/world writable: ${path}`);
 }
 
-/** install.sh's prepare_owned_root with the `reject` policy. */
-function prepareOwnedInstallRoot(root: string): void {
+/**
+ * install.sh's prepare_owned_root. Creates `root` when missing; an existing
+ * root must be a same-user directory that carries `signature` in `marker`,
+ * or be empty, when the marker is written (`created`). A non-empty root with
+ * no marker is refused (`reject`) or used without claiming it (`preserve`,
+ * for the data home). Returns null for a root it refuses.
+ */
+export function prepareOwnedRoot(
+  root: string,
+  markerName: string,
+  signature: string,
+  policy: 'reject' | 'preserve',
+): 'managed' | 'created' | 'preserved' | null {
   if (!existsSync(root)) mkdirSync(root, { recursive: true, mode: 0o700 });
-  const refuse = () =>
-    fail(
-      `STATION_INSTALL_ROOT is not an empty or installer-owned directory: ${root}`,
-    );
-  if (!assertSafeDirectory(root)) refuse();
-  const marker = join(root, INSTALL_ROOT_MARKER);
+  if (!assertSafeDirectory(root)) return null;
+  const marker = join(root, markerName);
   if (existsSync(marker)) {
     const info = lstatSync(marker);
     if (
       !info.isFile() ||
       info.isSymbolicLink() ||
       (owner !== null && (info.uid !== owner || (info.mode & 0o077) !== 0)) ||
-      readFileSync(marker, 'utf8') !== INSTALL_ROOT_SIGNATURE
+      readFileSync(marker, 'utf8') !== signature
     )
-      refuse();
-    return;
+      return null;
+    return 'managed';
   }
-  if (readdirSync(root).length > 0) refuse();
+  if (readdirSync(root).length > 0)
+    return policy === 'preserve' ? 'preserved' : null;
   const fd = openSync(marker, 'wx', 0o600);
   try {
-    writeFileSync(fd, INSTALL_ROOT_SIGNATURE);
+    writeFileSync(fd, signature);
     fsyncSync(fd);
   } finally {
     closeSync(fd);
   }
+  return 'created';
+}
+
+/**
+ * Why an existing install root is not trusted, or null when it is. On
+ * Windows the install root is restricted to the current user (#2675 W2), as
+ * `windows-path-trust.ts` restricts Station's own trust paths; anything else
+ * may hold a version another account planted (a version's sentinel is only
+ * its published sha256). POSIX installs keep install.sh's owner and mode
+ * checks, so this is null there. STATION_INSTALL_TEST_UNTRUSTED_ROOT=1
+ * (test-only, behind STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1) reports
+ * any root as untrusted, so the refusal and uninstall paths run on every OS.
+ */
+export function installRootTrustProblem(
+  root: string,
+  env: InstallerEnv,
+): string | null {
+  if (env.STATION_INSTALL_TEST_UNTRUSTED_ROOT === '1') {
+    if (env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS !== '1')
+      fail(
+        'STATION_INSTALL_TEST_UNTRUSTED_ROOT is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+      );
+    return 'test-only override';
+  }
+  if (process.platform !== 'win32') return null;
+  try {
+    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: root },
+    ]);
+    return null;
+  } catch (error) {
+    return plainPowerShellMessage((error as Error).message);
+  }
+}
+
+/**
+ * A root this run created gets a protected DACL with one FullControl entry
+ * for the current user, inherited by everything installed in it (Windows
+ * only); a root that already existed must still have it, or it is refused
+ * with the way out: uninstall, which runs nothing from it.
+ */
+function secureInstallRoot(
+  root: string,
+  created: boolean,
+  env: InstallerEnv,
+): void {
+  if (created) {
+    if (process.platform !== 'win32') return;
+    try {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'directory', path: root },
+      ]);
+    } catch (error) {
+      fail(
+        `could not restrict the install root to your account: ${plainPowerShellMessage((error as Error).message)}`,
+      );
+    }
+    return;
+  }
+  const problem = installRootTrustProblem(root, env);
+  if (problem !== null)
+    fail(
+      `the install root ${root} is not restricted to your account, so nothing in it is trusted (${problem}). Remove it with a freshly downloaded install.ps1 run as \`powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 uninstall\` (it runs nothing from that root and keeps your data), then install again`,
+    );
+}
+
+/**
+ * The install root, owned by this installer, restricted to the current user
+ * on Windows.
+ */
+export function prepareOwnedInstallRoot(root: string, env: InstallerEnv): void {
+  const state = prepareOwnedRoot(
+    root,
+    INSTALL_ROOT_MARKER,
+    INSTALL_ROOT_SIGNATURE,
+    'reject',
+  );
+  if (state === null)
+    fail(
+      `STATION_INSTALL_ROOT is not an empty or installer-owned directory: ${root}`,
+    );
+  secureInstallRoot(root, state === 'created', env);
 }
 
 /**
@@ -236,7 +333,39 @@ function sha256File(path: string): string {
   return hash.digest('hex');
 }
 
-/** Makes a tree writable again (an installed version is sealed) and removes it. */
+/**
+ * Runs a removal, retrying briefly where Windows refuses to delete a file
+ * a process that is just exiting still holds (a stopped Station's node.exe).
+ */
+function removeWithRetries(remove: () => void): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      remove();
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (code === 'ENOENT') return;
+      if (
+        attempt >= 10 ||
+        !['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY'].includes(code)
+      )
+        throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+  }
+}
+
+/**
+ * Removes a tree an installed version is sealed in, without ever following
+ * a link: each entry is lstat'ed, a link (the `current` junction, or one
+ * another account placed in a root it could write) is unlinked itself,
+ * files are unlinked and directories removed only once empty. Nothing is
+ * removed recursively by path, so a directory swapped for a link during the
+ * walk is unlinked, not descended into by a later recursive removal. (Node
+ * offers no handle-relative removal, so a swap between an lstat and the
+ * readdir that follows it remains possible; that window is the walk's
+ * only one.)
+ */
 export function removeTree(path: string): void {
   let info: ReturnType<typeof lstatSync>;
   try {
@@ -245,13 +374,66 @@ export function removeTree(path: string): void {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
-  if (info.isDirectory() && !info.isSymbolicLink()) {
-    chmodSync(path, info.mode | 0o700);
-    for (const name of readdirSync(path)) removeTree(join(path, name));
-  } else if (!info.isSymbolicLink()) {
-    chmodSync(path, info.mode | 0o200);
+  if (info.isSymbolicLink()) {
+    removeWithRetries(() => unlinkSync(path));
+    return;
   }
-  rmSync(path, { recursive: true, force: true });
+  if (!info.isDirectory()) {
+    // Writable again (an installed version is sealed read-only); chmod
+    // follows links, so only after lstat showed a plain file.
+    chmodSync(path, info.mode | 0o200);
+    removeWithRetries(() => unlinkSync(path));
+    return;
+  }
+  chmodSync(path, info.mode | 0o700);
+  for (const name of readdirSync(path)) removeTree(join(path, name));
+  removeWithRetries(() => rmdirSync(path));
+}
+
+/**
+ * Removes an install root with its ownership marker last, so a removal
+ * that fails partway (a file a running process still holds) leaves a root
+ * this installer still recognizes, and the uninstall can simply be rerun.
+ */
+export function removeInstallRoot(root: string, env: InstallerEnv): void {
+  const failOn = env.STATION_INSTALL_TEST_FAIL_REMOVE ?? '';
+  if (failOn && env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS !== '1')
+    fail(
+      'STATION_INSTALL_TEST_FAIL_REMOVE is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+    );
+  try {
+    for (const name of readdirSync(root).sort()) {
+      if (name === INSTALL_ROOT_MARKER) continue;
+      if (name === failOn)
+        throw new Error(`test-only failure removing ${join(root, name)}`);
+      removeTree(join(root, name));
+    }
+    removeTree(join(root, INSTALL_ROOT_MARKER));
+    removeWithRetries(() => rmdirSync(root));
+  } catch (error) {
+    fail(
+      `could not remove all of ${root} (${(error as Error).message}); it is still marked as this installer's, so rerun the uninstall once nothing uses it`,
+    );
+  }
+}
+
+/**
+ * A PowerShell error as one readable line: Windows PowerShell reports a
+ * redirected error stream as CLIXML (`#< CLIXML …`), progress records and
+ * all; this keeps the text before it and the first error record.
+ */
+export function plainPowerShellMessage(message: string): string {
+  const start = message.indexOf('#< CLIXML');
+  if (start < 0) return message;
+  const first = /<S S="Error">([^<]*)<\/S>/.exec(message.slice(start))?.[1];
+  const error = (first ?? '')
+    .replace(/_x000D__x000A_/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .trim();
+  return `${message.slice(0, start)}${error}`.trim();
 }
 
 /**
@@ -259,7 +441,7 @@ export function removeTree(path: string): void {
  * immutable, and lifecycle state lives outside it (#2675 B1). On Windows
  * this sets each file's ReadOnly attribute; directories are left alone there.
  */
-function sealTree(path: string): void {
+export function sealTree(path: string): void {
   const info = lstatSync(path);
   if (info.isSymbolicLink()) return;
   if (info.isDirectory()) {
@@ -270,30 +452,35 @@ function sealTree(path: string): void {
   chmodSync(path, info.mode & ~0o222);
 }
 
-type Paths = {
+export type Paths = {
   channel: string;
   ring: string;
   stationRoot: string;
   installRoot: string;
   versions: string;
   current: string;
+  stationHome: string;
+  /** Whether the caller named STATION_HOME (the default home is guarded). */
+  homeRequested: boolean;
+  binDir: string;
+  launcher: string;
+  stateFile: string;
 };
 
 /**
- * Why `installRoot` may not be used on Windows, or null. Until install.ps1
- * applies and checks the install root's ACL (#2675 slice W2), the only
- * directories this installer trusts on Windows are those beneath the user's
- * profile, which Windows gives the user, SYSTEM and Administrators alone. A
- * root elsewhere (C:\station, say) typically inherits write access for every
- * local user, who could then plant a version the installer reuses. Both
- * paths are canonical (links resolved).
+ * Why `installRoot` may not be used on Windows, or null. The installer
+ * trusts only directories beneath the user's profile, which Windows gives
+ * the user, SYSTEM and Administrators alone: a root elsewhere (C:\station,
+ * say) typically inherits write access for every local user, who could plant
+ * a version there between its creation and the installer restricting it to
+ * the user. Both paths are canonical (links resolved).
  */
 export function windowsInstallRootRefusal(
   installRoot: string,
   profile: string,
 ): string | null {
   if (inside(installRoot, profile) && !same(installRoot, profile)) return null;
-  return `on Windows, install.ps1 installs only beneath your user profile (${profile}) until it checks install-root permissions (#2675 slice W2); ${installRoot} is outside it`;
+  return `on Windows, install.ps1 installs only beneath your user profile (${profile}); ${installRoot} is outside it`;
 }
 
 /**
@@ -316,6 +503,7 @@ function assertAbsoluteRoots(env: InstallerEnv): void {
     'STATION_ROOT',
     'STATION_INSTALL_ROOT',
     'STATION_HOME',
+    'STATION_BIN_DIR',
   ] as const) {
     const value = (env[name] ?? '').trim();
     if (value !== '' && !isAbsoluteRoot(value))
@@ -323,14 +511,102 @@ function assertAbsoluteRoots(env: InstallerEnv): void {
   }
 }
 
-function resolvePaths(env: InstallerEnv, channel: string, ring: string): Paths {
+const UNSAFE_RUNTIME_PATHS =
+  'Station runtime paths are invalid, protected, or contain an unsafe selected link';
+
+function isLinkOrThrow(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+/**
+ * install.sh's normalize_runtime_paths: the Station root's shared
+ * directories are real directories, the selected home and install root are
+ * not links, the home is not a protected or shared Station directory, and
+ * neither the home nor the install root contains the Station root.
+ */
+function assertRuntimePaths(
+  paths: Pick<Paths, 'stationRoot' | 'installRoot' | 'stationHome'>,
+  rawHome: string,
+  rawInstallRoot: string,
+): void {
+  const { stationRoot: root, installRoot, stationHome: home } = paths;
+  for (const directory of [
+    root,
+    ...['config', 'cache', 'installs', 'instances'].map((name) =>
+      join(root, name),
+    ),
+    join(root, 'instances', 'dev'),
+  ]) {
+    let info: ReturnType<typeof lstatSync>;
+    try {
+      info = lstatSync(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    if (!info.isDirectory() || info.isSymbolicLink())
+      fail(UNSAFE_RUNTIME_PATHS);
+  }
+  if (isLinkOrThrow(rawHome) || isLinkOrThrow(rawInstallRoot))
+    fail(UNSAFE_RUNTIME_PATHS);
+  if (
+    same(home, root) ||
+    ['config', 'cache', 'installs'].some((name) =>
+      inside(home, join(root, name)),
+    ) ||
+    same(home, join(root, 'instances')) ||
+    same(home, join(root, 'instances', 'dev')) ||
+    inside(root, home) ||
+    inside(root, installRoot)
+  )
+    fail(UNSAFE_RUNTIME_PATHS);
+  if (inside(home, installRoot) || inside(installRoot, home))
+    fail(
+      'STATION_HOME and STATION_INSTALL_ROOT must not overlap so uninstall can preserve data',
+    );
+}
+
+/** install.sh's assert_safe_remove_target, for a root this installer may remove. */
+export function assertSafeRemoveTarget(target: string): void {
+  if (isLinkOrThrow(target))
+    fail(`refusing to remove a symlinked root: ${target}`);
+  if (existsSync(target) && owner !== null && lstatSync(target).uid !== owner)
+    fail(`refusing to remove a root owned by another user: ${target}`);
+  const canonical = canonicalize(target);
+  if (inside(canonicalize(homedir()), canonical))
+    fail(`refusing to remove HOME or its ancestor: ${target}`);
+  if (same(canonical, parse(canonical).root))
+    fail(`refusing to remove ${target}`);
+}
+
+export function resolvePaths(
+  env: InstallerEnv,
+  channel: string,
+  ring: string,
+): Paths {
   assertAbsoluteRoots(env);
   const stationRoot = canonicalize(
     (env.STATION_ROOT ?? '').trim() || join(homedir(), '.station'),
   );
   const rawInstallRoot =
     env.STATION_INSTALL_ROOT || join(stationRoot, 'installs', channel);
+  const rawHome = env.STATION_HOME || join(stationRoot, 'instances', channel);
   const installRoot = canonicalize(rawInstallRoot);
+  const stationHome = canonicalize(rawHome);
+  const binDir = canonicalize(
+    env.STATION_BIN_DIR || join(homedir(), '.local', 'bin'),
+  );
+  assertRuntimePaths(
+    { stationRoot, installRoot, stationHome },
+    rawHome,
+    rawInstallRoot,
+  );
+  assertSafeRemoveTarget(installRoot);
   assertInstallRootIsChannelLeaf(
     installRoot,
     stationRoot,
@@ -351,6 +627,11 @@ function resolvePaths(env: InstallerEnv, channel: string, ring: string): Paths {
     installRoot,
     versions: join(installRoot, 'versions'),
     current: join(installRoot, 'current'),
+    stationHome,
+    homeRequested: Boolean(env.STATION_HOME),
+    binDir,
+    launcher: join(binDir, `${RINGS[ring].launcher}.cmd`),
+    stateFile: join(installRoot, STATE_FILE),
   };
 }
 
@@ -400,7 +681,7 @@ function verifyProvenance(
   return { runtimeChannel: ring.runtimeChannel, bytes };
 }
 
-function versionPaths(dir: string) {
+export function versionPaths(dir: string) {
   return {
     node: join(dir, 'runtime', 'node.exe'),
     entry: join(dir, 'bin', 'station.mjs'),
@@ -424,7 +705,7 @@ function isCompleteVersion(dir: string, sha256: string): boolean {
 }
 
 /** The version directory `current` names, or null when there is no `current`. */
-function activeVersionDir(current: string): string | null {
+export function activeVersionDir(current: string): string | null {
   try {
     if (!lstatSync(current).isSymbolicLink()) return null;
     return realpathSync(current);
@@ -466,13 +747,13 @@ function selfCheck(
   );
 }
 
-type Context = {
+export type Context = {
   env: InstallerEnv;
   io: InstallerIo;
   tmp: string;
 };
 
-type StageRequest = {
+export type StageRequest = {
   requested: string;
   ring: string;
   manifestUrl: string;
@@ -482,8 +763,11 @@ type StageRequest = {
   version: string;
 };
 
-/** The caller's environment, validated as install.sh validates it. */
-function readStageRequest(env: InstallerEnv): StageRequest {
+/** The requested runtime channel and the ring it installs, validated. */
+export function readChannel(env: InstallerEnv): {
+  requested: string;
+  ring: string;
+} {
   const requested = env.STATION_CHANNEL || 'stable';
   if (requested === 'preview')
     fail(
@@ -496,10 +780,21 @@ function readStageRequest(env: InstallerEnv): StageRequest {
         .map((entry) => entry.runtimeChannel)
         .join(' ')}`,
     );
+  return { requested, ring };
+}
+
+/** The caller's environment, validated as install.sh validates it. */
+export function readStageRequest(
+  env: InstallerEnv,
+  mode: 'stage' | 'install',
+): StageRequest {
+  const { requested, ring } = readChannel(env);
   const manifestUrl = env.STATION_INSTALL_PUBLIC_MANIFEST_URL ?? '';
   if (!manifestUrl)
     fail(
-      'STATION_INSTALL_STAGE_ONLY=1 stages only from a signed public manifest (STATION_INSTALL_PUBLIC_MANIFEST_URL)',
+      mode === 'stage'
+        ? 'STATION_INSTALL_STAGE_ONLY=1 stages only from a signed public manifest (STATION_INSTALL_PUBLIC_MANIFEST_URL)'
+        : 'install.ps1 installs only from a signed public manifest; set STATION_INSTALL_PUBLIC_MANIFEST_URL to the release channel manifest',
     );
   const allowTest = env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === '1';
   const testKeyUrl = env.STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL ?? '';
@@ -674,11 +969,39 @@ async function downloadVerifiedArchive(
   return { archive, actualChecksum };
 }
 
-async function stageArchive(context: Context): Promise<number> {
+/** A verified release, ready for the caller (see prepareRelease). */
+export type PreparedRelease = {
+  payload: ReleaseManifestPayload;
+  releaseDir: string;
+  actualChecksum: string;
+  /** The version directory `current` named before this run, or null. */
+  previous: string | null;
+  /**
+   * `nothing-to-do`: the active version already is this release.
+   * `ready`: `releaseDir` holds the complete, sealed release.
+   * `replacement`: the active version is being replaced, as explicitly
+   * requested, by different bytes of the same version; they are complete in
+   * `incoming` and take `releaseDir`'s name only once Station has stopped.
+   */
+  outcome: 'nothing-to-do' | 'ready' | 'replacement';
+  incoming?: string;
+};
+
+/**
+ * The first half of every install, and all of stage-only: verify the signed
+ * manifest, download and check the archive, read its identity, run the
+ * downgrade check against `current`, then (after `prepare`, which claims the
+ * roots it needs) reuse or extract `versions/<version>`. Nothing on disk
+ * changes before `prepare`.
+ */
+export async function prepareRelease(
+  context: Context,
+  request: StageRequest,
+  paths: Paths,
+  mode: 'stage' | 'install',
+  prepare: () => void,
+): Promise<PreparedRelease> {
   const { env, io, tmp } = context;
-  const request = readStageRequest(env);
-  const { requested } = request;
-  const paths = resolvePaths(env, requested, request.ring);
   const { payload, artifact } = await fetchVerifiedRelease(request, io, tmp);
   const { archive, actualChecksum } = await downloadVerifiedArchive(
     artifact,
@@ -688,7 +1011,7 @@ async function stageArchive(context: Context): Promise<number> {
   );
 
   const releaseDir = join(paths.versions, payload.version);
-  return withZipOrRefuse(archive, (fd, entries) => {
+  return withZipOrRefuse(archive, (fd, entries): PreparedRelease => {
     // Identity first, from the verified archive, before anything on disk
     // changes.
     const marker = readNamedEntry(
@@ -708,12 +1031,13 @@ async function stageArchive(context: Context): Promise<number> {
     if (marker.toString('utf8') !== PREBUILT_ARCHIVE_SIGNATURE)
       fail('release archive marker is invalid');
     const provenance = verifyProvenance(provenanceBytes, payload);
-    if (provenance.runtimeChannel !== requested)
+    if (provenance.runtimeChannel !== request.requested)
       fail('verified release does not match the requested runtime channel');
 
     const previous = activeVersionDir(paths.current);
     const isActive =
       previous !== null && same(previous, canonicalize(releaseDir));
+    const result = { payload, releaseDir, actualChecksum, previous };
     if (previous !== null) {
       const outcome = checkAgainstInstalled(
         env,
@@ -724,19 +1048,16 @@ async function stageArchive(context: Context): Promise<number> {
         actualChecksum,
         isActive,
       );
-      if (outcome === 'nothing-to-do') {
-        io.out(`STATION_STAGED_VERSION=${payload.version}`);
-        return 0;
-      }
+      if (outcome === 'nothing-to-do')
+        return { ...result, outcome: 'nothing-to-do' };
     }
-    prepareOwnedInstallRoot(paths.installRoot);
-    prepareSafeDirectory(paths.versions);
+    prepare();
 
     if (isCompleteVersion(releaseDir, actualChecksum)) {
       io.out('Station release already installed; reusing verified files.');
-      io.out(`STATION_STAGED_VERSION=${payload.version}`);
-      return 0;
+      return { ...result, outcome: 'ready' };
     }
+    let replacement = false;
     if (existsSync(releaseDir) || isLink(releaseDir)) {
       if (isActive) {
         if (!existsSync(join(releaseDir, VERSION_SENTINEL)))
@@ -745,11 +1066,15 @@ async function stageArchive(context: Context): Promise<number> {
           );
         // The running version stays where it is: the service launcher moves
         // off it only after a trial of a staged one.
-        fail(
-          `cannot replace the running Station ${payload.releaseTag} in place under the service launcher; nothing was changed`,
-        );
+        if (mode === 'stage')
+          fail(
+            `cannot replace the running Station ${payload.releaseTag} in place under the service launcher; nothing was changed`,
+          );
+        // An explicit replacement: it moves aside only once Station stops.
+        replacement = true;
+      } else {
+        removeTree(releaseDir);
       }
-      removeTree(releaseDir);
     }
     io.out(`Extracting Station ${payload.releaseTag}...`);
     const stage = join(paths.versions, `.stage.${process.pid}`);
@@ -792,6 +1117,7 @@ async function stageArchive(context: Context): Promise<number> {
       );
     }
     writeFileSync(join(incoming, VERSION_SENTINEL), `${actualChecksum}\n`);
+    if (replacement) return { ...result, outcome: 'replacement', incoming };
     try {
       renameSync(incoming, releaseDir);
       sealTree(releaseDir);
@@ -801,12 +1127,28 @@ async function stageArchive(context: Context): Promise<number> {
       removeTree(releaseDir);
       fail('could not place the verified release');
     }
-    io.out(`STATION_STAGED_VERSION=${payload.version}`);
-    return 0;
+    return { ...result, outcome: 'ready' };
   });
 }
 
-function isLink(path: string): boolean {
+/**
+ * Stage-only (STATION_INSTALL_STAGE_ONLY=1, #2675 slice W1): stage the
+ * verified version and change nothing else, not `current`, not a launcher,
+ * not the install state, not a service. The last line names the version now
+ * staged, which is the active one when the manifest names nothing newer.
+ */
+export async function stageArchive(context: Context): Promise<number> {
+  const request = readStageRequest(context.env, 'stage');
+  const paths = resolvePaths(context.env, request.requested, request.ring);
+  const release = await prepareRelease(context, request, paths, 'stage', () => {
+    prepareOwnedInstallRoot(paths.installRoot, context.env);
+    prepareSafeDirectory(paths.versions);
+  });
+  context.io.out(`STATION_STAGED_VERSION=${release.payload.version}`);
+  return 0;
+}
+
+export function isLink(path: string): boolean {
   try {
     return lstatSync(path).isSymbolicLink();
   } catch {
@@ -814,10 +1156,10 @@ function isLink(path: string): boolean {
   }
 }
 
-function withZipOrRefuse(
+function withZipOrRefuse<T>(
   archive: string,
-  use: (fd: number, entries: ZipEntry[]) => number,
-): number {
+  use: (fd: number, entries: ZipEntry[]) => T,
+): T {
   try {
     return withZip(archive, ARCHIVE_ROOT, use);
   } catch (error) {
@@ -897,51 +1239,4 @@ function checkAgainstInstalled(
   fail(
     `refusing to downgrade Station from ${installedTag} to ${tag}; to roll back deliberately, set STATION_VERSION=${tag} and STATION_INSTALL_ALLOW_ROLLBACK=1`,
   );
-}
-
-/**
- * Runs the installer for `argv` (`install` or `uninstall [--purge-data]`)
- * and returns its exit status. Every refusal prints
- * `Station install failed: <reason>` and returns 1.
- */
-export async function runInstaller(
-  argv: readonly string[],
-  env: InstallerEnv,
-  io: InstallerIo,
-): Promise<number> {
-  const provided = env.STATION_INSTALLER_TEMP;
-  let tmp: string;
-  let ownsTmp = false;
-  if (provided) {
-    tmp = provided;
-  } else {
-    tmp = mkdtempSync(join(tmpdir(), 'station-install.'));
-    ownsTmp = true;
-  }
-  try {
-    const action = argv[0] ?? 'install';
-    if (action === 'uninstall')
-      fail(
-        'install.ps1 cannot uninstall yet; uninstall arrives with the full Windows install (#2675 slice W2)',
-      );
-    if (action !== 'install')
-      fail('usage: install.ps1 [install|uninstall [-PurgeData]]');
-    if (argv.length > 1) fail(`unexpected argument: ${argv[1]}`);
-    if (env.STATION_INSTALL_STAGE_ONLY !== '1')
-      fail(
-        'install.ps1 supports only STATION_INSTALL_STAGE_ONLY=1 so far; the full Windows install arrives with #2675 slice W2',
-      );
-    return await stageArchive({ env, io, tmp });
-  } catch (error) {
-    if (error instanceof InstallRefusal) {
-      io.err(`Station install failed: ${error.message}`);
-      return 1;
-    }
-    io.err(
-      `Station install failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-    );
-    return 1;
-  } finally {
-    if (ownsTmp) removeTree(tmp);
-  }
 }
