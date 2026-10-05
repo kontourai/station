@@ -2944,7 +2944,14 @@ describe('AttachedSessionFollowService', () => {
     expect(after).toHaveLength(5);
     expect(after.filter((item) => item.eventId === 'event-1')).toHaveLength(1);
     expect(
-      after.slice(3).map((item) => item.metadata?.projectAttribution),
+      after
+        .slice(3)
+        .map((item) =>
+          item.method === 'session.started' ||
+          item.method === 'session.configured'
+            ? item.metadata?.projectAttribution
+            : item.method,
+        ),
     ).toEqual(['unattributed', 'unattributed']);
     expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(
       1,
