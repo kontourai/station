@@ -322,9 +322,10 @@ with `station.member-agent/v1` views of Agents whose
 [audience](config.md#audience) admits it; `/api/boot`'s `agents` section
 carries the same views. Any other or unknown Agent slug, in a path or as an
 orchestration `target.agent`, returns `404 Agent not found`. A turn on an
-admitted Agent returns `403 member_agent_turns_unavailable`, and creating,
-materializing, updating or deleting an Agent, or editing its tools or
-workflows, returns `403 member_agent_catalog_read_only`. All of these gate
+admitted Agent returns `403 member_agent_turns_unavailable`. Creating or
+materializing an Agent, and updating, deleting or editing the tools or
+workflows of an admitted one, returns `403 member_agent_catalog_read_only`
+(a hidden slug stays `404`). All of these gate
 responses are `no-store`. See
 [Agent audience](../design/project-membership.md#agent-audience).
 
