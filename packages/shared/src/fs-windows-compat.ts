@@ -49,6 +49,40 @@ export function fsyncDirectorySync(
 }
 
 /**
+ * fsync a file's data. Windows flushes a file (FlushFileBuffers) only through
+ * a handle opened for writing, and a read-only handle fails with EPERM (it
+ * failed every supervised update's home backup on Windows, #2675 W3). A file
+ * carrying the read-only attribute cannot be opened for writing at all, and
+ * is left unflushed there rather than having its attributes changed.
+ * Elsewhere the file is opened read-only and never through a symbolic link.
+ */
+export function fsyncFileSync(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  let descriptor: number;
+  if (platform === 'win32') {
+    try {
+      descriptor = openSync(path, constants.O_RDWR);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EPERM' || code === 'EACCES') return;
+      throw error;
+    }
+  } else {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+  }
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/**
  * Recursively remove a directory, retrying on Windows.
  *
  * Right after a child process exits, Windows can briefly hold a file-handle

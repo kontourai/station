@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,9 +11,35 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   fsyncDirectorySync,
+  fsyncFileSync,
   renameFileSyncRetrying,
   rmDirSyncRetrying,
 } from '../fs-windows-compat.js';
+
+describe('fsyncFileSync (#2675 W3)', () => {
+  test('flushes a writable file on every platform rule', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-fsync-file-'));
+    const file = join(dir, 'data');
+    writeFileSync(file, 'x');
+    expect(() => fsyncFileSync(file, 'win32')).not.toThrow();
+    expect(() => fsyncFileSync(file, 'linux')).not.toThrow();
+  });
+
+  test('the Windows rule opens for writing, and leaves a read-only file unflushed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-fsync-file-'));
+    const file = join(dir, 'data');
+    writeFileSync(file, 'x');
+    chmodSync(file, 0o444);
+    // Read-only: POSIX flushes it through a read-only handle; the Windows
+    // rule, which needs a writable handle, cannot open one and skips it.
+    expect(() => fsyncFileSync(file, 'linux')).not.toThrow();
+    expect(() => fsyncFileSync(file, 'win32')).not.toThrow();
+    // A missing file is still an error under both.
+    expect(() => fsyncFileSync(join(dir, 'missing'), 'win32')).toThrow(
+      /ENOENT/,
+    );
+  });
+});
 
 describe('fsyncDirectorySync', () => {
   let dir: string;

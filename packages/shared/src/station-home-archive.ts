@@ -6,7 +6,6 @@ import {
   copyFileSync,
   existsSync,
   fstatSync,
-  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -30,7 +29,7 @@ import {
   relative,
   resolve,
 } from 'node:path';
-import { fsyncDirectorySync } from './fs-windows-compat.js';
+import { fsyncDirectorySync, fsyncFileSync } from './fs-windows-compat.js';
 import { SQLITE_CORRUPTION_MARKER_FILE } from './sqlite-corruption-marker.js';
 import { openAndCheckSqliteIntegrity } from './sqlite-store-integrity.js';
 import {
@@ -506,15 +505,7 @@ function syncDirectoryTree(
 }
 
 function syncFile(path: string): void {
-  const descriptor = openSync(
-    path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
-  );
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
+  fsyncFileSync(path);
 }
 
 /**
