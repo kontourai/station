@@ -6,6 +6,7 @@ import {
   type ToolCallLike,
 } from '../components/chat/tool-call-groups';
 import {
+  callLabel,
   classifyToolName,
   isToolCallAwaitingApproval,
   toolCallPhase,
@@ -935,5 +936,126 @@ describe('mutating and unknown tools are labelled by what they do (#3364)', () =
   test('a delete or write word outranks a read word in the same name', () => {
     expect(classifyToolName('read_and_delete')).toBe('delete');
     expect(classifyToolName('view_edit')).toBe('write');
+  });
+});
+
+/**
+ * #3364 review: a file verb in a tool's NAME is not a file. Station's own
+ * control tools (src-server/tools/station-control-*-tools.ts) take slugs and
+ * ids, so their rows and batches must name a tool, never claim a file, and
+ * never put the verb in front of a name that already says it.
+ */
+describe('file verbs without a file stay tool calls (#3364 review)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test.each([
+    ['delete_agent', { slug: 'helper' }, 'Used delete agent'],
+    ['delete_conversation', { id: 'c1' }, 'Used delete conversation'],
+    ['delete_integration', { id: 'i1' }, 'Used delete integration'],
+    ['remove_plugin', { name: 'p' }, 'Used remove plugin'],
+    ['list_agents', {}, 'Used list agents'],
+    ['list_integrations', {}, 'Used list integrations'],
+    ['read_conversation', { conversationId: 'c1' }, 'Used read conversation'],
+    [
+      'mcp__station-control__list_agents',
+      {},
+      'Used mcp station-control list agents',
+    ],
+    [
+      'station-control/delete_agent',
+      { slug: 'x' },
+      'Used station-control/delete agent',
+    ],
+  ])('%s reads "%s"', (toolName, args, label) => {
+    const group = settled(toolName, args);
+    expect(group.calls[0]!.kind).toBe('other');
+    expect(group.summary).toBe(label);
+  });
+
+  test('a batch of Station-control calls counts tools, not files', () => {
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'list_agents', args: {} }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'delete_agent',
+        args: { slug: 'helper' },
+      }),
+      toolCall({
+        toolCallId: 'c',
+        toolName: 'read_conversation',
+        args: { conversationId: 'c1' },
+      }),
+    ]);
+    expect(group.aggregateSummary).toBe('Used 3 tools');
+    expect(group.aggregateSummary).not.toMatch(/file/);
+  });
+
+  test.each([
+    ['delete_file', 'Used delete file'],
+    ['mkdir', 'Used mkdir'],
+    ['list_files', 'Used list files'],
+    ['Read', 'Used Read'],
+  ])('%s with no target never doubles its verb: "%s"', (toolName, label) => {
+    expect(settled(toolName, {}).summary).toBe(label);
+  });
+
+  test('a file verb with a notebook_path or filename keeps its verb', () => {
+    expect(settled('Read', { notebook_path: '/r/a.ipynb' }).summary).toBe(
+      'Read a.ipynb',
+    );
+    expect(settled('delete_file', { filename: 'b.txt' }).summary).toBe(
+      'Deleted b.txt',
+    );
+  });
+});
+
+describe('names that mention a delete without deleting (#3364 review)', () => {
+  test.each([
+    ['undo_delete', 'other'],
+    ['cancel_delete', 'other'],
+    ['restore_from_trash', 'other'],
+    ['undeleteFile', 'other'],
+    ['list_trash', 'read'],
+    ['list_deleted_items', 'read'],
+    ['mcp__trash__list_trash', 'read'],
+    ['remove_background', 'other'],
+    ['remove_watermark', 'other'],
+    ['model_del', 'other'],
+  ])('%s classifies as %s', (toolName, kind) => {
+    expect(classifyToolName(toolName)).toBe(kind);
+  });
+
+  test('none of them read "Deleted" even with a path', () => {
+    for (const toolName of [
+      'undo_delete',
+      'cancel_delete',
+      'restore_from_trash',
+      'list_trash',
+      'remove_background',
+      'model_del',
+    ]) {
+      const group = classifyFirstRun([
+        toolCall({ toolCallId: 'a', toolName, args: { path: '/r/photo.png' } }),
+      ]);
+      expect(group.summary).not.toMatch(/^Delet/);
+    }
+  });
+});
+
+describe('the unknown-tool target (#3364 review)', () => {
+  test('display text is shown as written, never with "on <target>"', () => {
+    expect(
+      callLabel('other', 'Fetch the docs page', { path: '/v1/docs' }, 'done'),
+    ).toBe('Used Fetch the docs page');
+  });
+
+  test.each([
+    ['notebook_path', '/r/a.ipynb', 'Used frobnicate on a.ipynb'],
+    ['filename', 'b.txt', 'Used frobnicate on b.txt'],
+  ])('a %s argument is the target', (key, value, label) => {
+    expect(callLabel('other', 'frobnicate', { [key]: value }, 'done')).toBe(
+      label,
+    );
   });
 });

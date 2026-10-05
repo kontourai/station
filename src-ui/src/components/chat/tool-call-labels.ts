@@ -169,7 +169,6 @@ const WRITE_TOKENS = new Set([
 /** Calls that destroy something. Labelled "Deleting", never as a read. */
 const DELETE_TOKENS = new Set([
   'delete',
-  'del',
   'remove',
   'rm',
   'rmdir',
@@ -188,6 +187,30 @@ const EXEC_TOKENS = new Set([
   'command',
 ]);
 const SEARCH_TOKENS = new Set(['search', 'grep', 'find', 'glob', 'query']);
+/** Words that reverse or abandon a deletion (`undo_delete`,
+ * `restore_from_trash`): the name mentions a delete that does not happen. */
+const DELETE_NEGATIONS = new Set([
+  'undo',
+  'undelete',
+  'restore',
+  'recover',
+  'cancel',
+  'revert',
+  'untrash',
+]);
+/** Things whose "removal" edits content rather than deleting a file
+ * (`remove_background` on an image). No honest verb is known, so these stay
+ * neutral. */
+const NON_DELETION_OBJECTS = new Set([
+  'background',
+  'watermark',
+  'noise',
+  'whitespace',
+  'duplicates',
+]);
+/** A leading listing verb keeps the call a read whatever it lists
+ * (`list_trash`, `list_deleted_items`). */
+const LEADING_READ_TOKENS = new Set(['list', 'ls']);
 
 function tokenize(value: string): string[] {
   return value
@@ -197,10 +220,14 @@ function tokenize(value: string): string[] {
     .filter(Boolean);
 }
 
-/** MCP tool calls are often named `server/tool` — classify on the tool half. */
+/** MCP tool calls are often named `server/tool` or `mcp__server__tool` —
+ * classify on the tool half. */
 function baseToolName(toolName: string): string {
   const slashIndex = toolName.lastIndexOf('/');
-  return slashIndex >= 0 ? toolName.slice(slashIndex + 1) : toolName;
+  const tail = slashIndex >= 0 ? toolName.slice(slashIndex + 1) : toolName;
+  if (!tail.startsWith('mcp__')) return tail;
+  const scopeIndex = tail.lastIndexOf('__');
+  return scopeIndex > 3 ? tail.slice(scopeIndex + 2) : tail;
 }
 
 export function classifyToolName(toolName: string | undefined): ToolCallKind {
@@ -209,7 +236,11 @@ export function classifyToolName(toolName: string | undefined): ToolCallKind {
   // destructive classes first: a name with both a read and a write word
   // shown as a read is the unsafe direction.
   const tokens = tokenize(baseToolName(toolName));
-  if (tokens.some((t) => DELETE_TOKENS.has(t))) return 'delete';
+  if (LEADING_READ_TOKENS.has(tokens[0] ?? '')) return 'read';
+  if (tokens.some((t) => DELETE_TOKENS.has(t))) {
+    if (tokens.some((t) => NON_DELETION_OBJECTS.has(t))) return 'other';
+    if (!tokens.some((t) => DELETE_NEGATIONS.has(t))) return 'delete';
+  }
   if (tokens.some((t) => WRITE_TOKENS.has(t))) return 'write';
   if (tokens.some((t) => READ_TOKENS.has(t))) return 'read';
   if (tokens.some((t) => EXEC_TOKENS.has(t))) return 'exec';
@@ -242,6 +273,39 @@ function stringField(args: Record<string, unknown>, keys: string[]) {
   return undefined;
 }
 
+/** The argument names the engines use for the one file a call acts on. */
+const FILE_PATH_KEYS = [
+  'file_path',
+  'path',
+  'filePath',
+  'filepath',
+  'notebook_path',
+  'filename',
+];
+
+function filePathArgument(args: Record<string, unknown>): string | undefined {
+  return stringField(args, FILE_PATH_KEYS);
+}
+
+/**
+ * Whether the call names what it acts on: a file path, a patch's change
+ * list, or a raw string argument (an ACP pass-through, shown as written).
+ * Without one, a read/write/delete word in a tool's name says nothing about
+ * FILES — `delete_agent {slug}` deletes an agent — so the row must not claim
+ * a file and must not repeat the verb in front of the name.
+ */
+function hasCallTarget(args: unknown): boolean {
+  if (typeof args === 'string') return args.trim().length > 0;
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
+  const a = args as Record<string, unknown>;
+  if (filePathArgument(a)) return true;
+  if (!Array.isArray(a.changes) || a.changes.length === 0) return false;
+  const first = a.changes[0];
+  if (!first || typeof first !== 'object') return false;
+  const f = first as Record<string, unknown>;
+  return Boolean(stringField(f, ['path', 'file_path', 'filePath']));
+}
+
 /**
  * Classify by the arguments' SHAPE, for a call whose name is display text.
  * The field names are the ones the engines actually send: OpenCode's shell
@@ -263,7 +327,7 @@ function classifyToolArgs(args: unknown): ToolCallKind {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return 'other';
   const a = args as Record<string, unknown>;
   if (hasCommandArgument(a)) return 'exec';
-  const path = stringField(a, ['file_path', 'filePath', 'filepath', 'path']);
+  const path = filePathArgument(a);
   if (
     path &&
     ['content', 'oldString', 'newString', 'old_string', 'new_string', 'patch']
@@ -309,6 +373,11 @@ export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
   const name = call.toolName?.trim();
   if (name && !/\s/.test(name)) {
     const byName = classifyToolName(name);
+    if (byName === 'read' || byName === 'write' || byName === 'delete') {
+      // A file verb with no file: the name ("Used delete agent") says what
+      // happened, and the batch counts a tool, never a file.
+      return hasCallTarget(call.args) ? byName : 'other';
+    }
     if (byName !== 'other') return byName;
   }
   return classifyToolArgs(call.args);
@@ -440,12 +509,7 @@ function extractTarget(
   }
 
   // An unrecognised tool: its path is the target, its name says what it did.
-  const pathValue = stringField(a, [
-    'file_path',
-    'filePath',
-    'filepath',
-    'path',
-  ]);
+  const pathValue = filePathArgument(a);
   return pathValue ? basename(pathValue) : null;
 }
 

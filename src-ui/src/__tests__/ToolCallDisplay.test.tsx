@@ -5,6 +5,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
+import {
+  DiscardGlyph,
+  DocumentGlyph,
+  PlugGlyph,
+} from '../components/icons/Glyph';
 
 // archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
 // here is exactly the flat `tool-invocation` shape the LIVE orchestration
@@ -503,5 +508,45 @@ describe('ToolCallDisplay — a delete is never worded as a read (#3364)', () =>
     const row = document.querySelector('.tool-call__line')!;
     expect(row.textContent).toContain('Deleting secret.txt');
     expect(row.textContent).not.toMatch(/Reading/);
+  });
+
+  // The row's icon is the glyph's own path, rendered independently here so
+  // the expectation is not read from the component's own map.
+  function glyphPath(Glyph: React.ComponentType): string {
+    const { container, unmount } = render(<Glyph />);
+    const d = container.querySelector('path')!.getAttribute('d')!;
+    unmount();
+    return d;
+  }
+
+  function rowGlyphPath(toolName: string, args: unknown): string {
+    const { container, unmount } = render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't1',
+          toolName,
+          args,
+          state: 'completed',
+          result: 'ok',
+        }}
+      />,
+    );
+    const d = container
+      .querySelector('.tool-call__glyph path')!
+      .getAttribute('d')!;
+    unmount();
+    return d;
+  }
+
+  test('a delete row shows the trash glyph; a path-less delete_agent the tool glyph', () => {
+    const trash = glyphPath(DiscardGlyph);
+    expect(rowGlyphPath('delete_file', { path: 'secret.txt' })).toBe(trash);
+    expect(rowGlyphPath('delete_file', { path: 'secret.txt' })).not.toBe(
+      glyphPath(DocumentGlyph),
+    );
+    expect(rowGlyphPath('delete_agent', { slug: 'a' })).toBe(
+      glyphPath(PlugGlyph),
+    );
   });
 });
