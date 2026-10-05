@@ -342,6 +342,18 @@ async function shot(
     await page.evaluate((value) => {
       document.documentElement.setAttribute('data-theme', value);
     }, theme);
+    // A theme switch transitions colours; capture the settled paint, not a
+    // frame halfway between the two themes.
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          // Transitions only: an infinite animation never finishes.
+          .filter((animation) => animation instanceof CSSTransition)
+          // A transition a later one replaces rejects; either way it is over.
+          .map((animation) => animation.finished.catch(() => undefined)),
+      ),
+    );
     await page.screenshot({
       path: testInfo.outputPath(`${name}-${theme}.png`),
       fullPage: false,

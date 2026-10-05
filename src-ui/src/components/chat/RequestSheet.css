@@ -123,6 +123,13 @@
   background: none;
 }
 
+/* A tool call's detail panel is indented and height-capped to sit under its
+   transcript row; in the sheet it is the body, and the body scrolls. */
+.request-sheet__body > .tool-call__details {
+  margin: 0;
+  max-height: none;
+}
+
 /* R5 / #2021: iOS zooms the page when a control under 16px takes focus. The
    sheet's panel sets a 14px body size and feature cards set `font: inherit`
    on their inputs, so the floor is restated here for every editable control. */

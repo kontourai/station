@@ -152,7 +152,8 @@ export function RequestSheet({
   children,
   actions,
 }: {
-  title: ReactNode;
+  /** Also the dialog's accessible name. */
+  title: string;
   subtitle?: ReactNode;
   /** Hides the sheet. Never answers the request. */
   onDismiss: () => void;
@@ -162,7 +163,6 @@ export function RequestSheet({
   /** The feature's own answer actions, pinned to the bottom edge. */
   actions: ReactNode;
 }) {
-  const titleId = useId();
   const bodyRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<DragGesture | null>(null);
   const [offset, setOffset] = useState(0);
@@ -233,7 +233,7 @@ export function RequestSheet({
     <ResponsiveDialogSurface
       layer="dialog"
       onClose={onDismiss}
-      ariaLabelledBy={titleId}
+      ariaLabel={title}
       historyMode="entry"
       returnFocusTarget={returnFocusTarget}
       overlayClassName="request-sheet__overlay"
@@ -254,7 +254,7 @@ export function RequestSheet({
       >
         <span className="request-sheet__handle" aria-hidden="true" />
         <ResponsiveDialogHeader
-          title={<span id={titleId}>{title}</span>}
+          title={title}
           subtitle={subtitle}
           closeLabel="Close and answer later"
           onClose={onDismiss}
