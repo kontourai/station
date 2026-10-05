@@ -39,6 +39,7 @@ import {
   InboxRowStatusLine,
 } from '../inbox-row/InboxRowStatus';
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
+import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { LazyBoundary } from '../LazyBoundary';
 import {
@@ -965,8 +966,8 @@ export interface InboxGroupListProps {
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
   /**
    * Project accents by slug (`useProjectAccents`). Rows resolve their own
-   * `projectAccent` from `item.projectSlug`. Referentially stable, like the
-   * other shared props.
+   * `projectAccent` through `rowProjectMarks`. Referentially stable, like
+   * the other shared props.
    */
   projectAccentBySlug?: ReadonlyMap<string, string>;
   /** Project icons by slug (`useProjectIcons`), resolved like the accents. */
@@ -1063,14 +1064,7 @@ export function InboxGroupList({
           item.orchestrationThreadId ?? item.chatSessionId ?? '',
         ) ?? undefined
       }
-      projectAccent={
-        item.projectSlug
-          ? projectAccentBySlug?.get(item.projectSlug)
-          : undefined
-      }
-      projectIcon={
-        item.projectSlug ? projectIconBySlug?.get(item.projectSlug) : undefined
-      }
+      {...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
     />
   );
   // #2312: Drafts untouched for a day fold under one disclosure. Nothing is

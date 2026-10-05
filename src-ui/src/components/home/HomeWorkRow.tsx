@@ -3,6 +3,7 @@ import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
+import { rowProjectMarks } from '../inbox-row/row-project-marks';
 
 interface HomeWorkRowProps {
   task: HomeLaneItem;
@@ -95,16 +96,11 @@ export function renderHomeWorkRow({
         gitLocation={context.gitLocationByThreadId?.get(
           task.orchestrationThreadId ?? task.chatSessionId ?? '',
         )}
-        projectAccent={
-          task.projectSlug
-            ? context.projectAccentBySlug?.get(task.projectSlug)
-            : undefined
-        }
-        projectIcon={
-          task.projectSlug
-            ? context.projectIconBySlug?.get(task.projectSlug)
-            : undefined
-        }
+        {...rowProjectMarks(
+          task,
+          context.projectAccentBySlug,
+          context.projectIconBySlug,
+        )}
         onActivate={() => onOpen(task)}
         onSnoozeWake={
           onSnooze

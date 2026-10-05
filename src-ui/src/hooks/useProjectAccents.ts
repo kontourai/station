@@ -16,7 +16,9 @@ import { useProjects } from '../contexts/ProjectsContext';
  */
 export function useProjectAccents(): ReadonlyMap<string, string> {
   const { projects } = useProjects();
-  const slugKey = JSON.stringify(projects.map((project) => project.slug));
+  const slugKey = JSON.stringify(
+    projects.map((project) => project.slug).sort(),
+  );
   return useMemo(
     () => projectAccents(JSON.parse(slugKey) as string[]),
     [slugKey],
