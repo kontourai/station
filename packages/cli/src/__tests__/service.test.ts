@@ -3598,6 +3598,60 @@ describe('what an installed service runs (#2675 slice C)', () => {
     expect(order).toEqual(['end-task', 'stop']);
   });
 
+  test('ends a launcher that outlived its stop budget only when its start time proves the pid (#2675 W3)', async () => {
+    const { waitForServiceLauncherExit } = await import(
+      '../commands/service.js'
+    );
+    const installRoot = makeTempDir('station-launcher-lock-');
+    mkdirSync(join(installRoot, 'runtime'));
+    // A live process stands in for the launcher that holds the lock.
+    const holder = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+      },
+    );
+    const pid = holder.pid as number;
+    writeFileSync(
+      join(installRoot, 'runtime', 'service-state.lock'),
+      `${JSON.stringify({ pid, birth: 'recorded-birth', token: 't' })}\n`,
+    );
+    const kill = vi.fn();
+    try {
+      // Its start time cannot be read: nothing proves the pid is still the
+      // launcher's, so it is not signalled and the stop is refused.
+      await expect(
+        waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+          deadlineMs: 0,
+          birthOf: () => null,
+          kill,
+        }),
+      ).rejects.toThrow(
+        `The Station service launcher (pid ${pid}, lock ${join(installRoot, 'runtime', 'service-state.lock')}) did not stop within 0s, and its start time could not be read`,
+      );
+      expect(kill).not.toHaveBeenCalled();
+      // Proven by its start time: it is ended.
+      await waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+        deadlineMs: 0,
+        birthOf: () => 'recorded-birth',
+        kill,
+      });
+      expect(kill).toHaveBeenCalledWith(pid);
+      // Another start time: the pid was reused, the lock is stale, nothing
+      // is signalled and there is nothing to wait for.
+      kill.mockClear();
+      await waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+        deadlineMs: 0,
+        birthOf: () => 'another-birth',
+        kill,
+      });
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      holder.kill('SIGKILL');
+    }
+  });
+
   test('refuses to install from an inactive installer version, before touching the backend', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
     const { resolveLifecycleCodeRoot } = await import(

@@ -31,13 +31,40 @@ describe('fsyncFileSync (#2675 W3)', () => {
     writeFileSync(file, 'x');
     chmodSync(file, 0o444);
     // Read-only: POSIX flushes it through a read-only handle; the Windows
-    // rule, which needs a writable handle, cannot open one and skips it.
+    // rule, which needs a writable handle, cannot open one, skips it and
+    // says so.
     expect(() => fsyncFileSync(file, 'linux')).not.toThrow();
-    expect(() => fsyncFileSync(file, 'win32')).not.toThrow();
+    const reported: string[] = [];
+    expect(() =>
+      fsyncFileSync(file, 'win32', (message) => reported.push(message)),
+    ).not.toThrow();
+    expect(reported).toEqual([
+      `${file} is read-only, so it was not flushed to disk (Windows flushes only through a writable handle)`,
+    ]);
     // A missing file is still an error under both.
     expect(() => fsyncFileSync(join(dir, 'missing'), 'win32')).toThrow(
       /ENOENT/,
     );
+  });
+
+  test('the Windows rule throws a refusal that is not the read-only case', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-fsync-file-'));
+    const locked = join(dir, 'locked');
+    mkdirSync(locked);
+    const file = join(locked, 'data');
+    writeFileSync(file, 'x');
+    // A writable file behind a directory that cannot be searched: the open
+    // is refused (EACCES), and the file is not read-only, so it throws.
+    chmodSync(locked, 0o000);
+    const reported: string[] = [];
+    try {
+      expect(() =>
+        fsyncFileSync(file, 'win32', (message) => reported.push(message)),
+      ).toThrow(/EACCES/);
+      expect(reported).toEqual([]);
+    } finally {
+      chmodSync(locked, 0o700);
+    }
   });
 });
 

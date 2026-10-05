@@ -444,11 +444,16 @@ async function waitForWindowsSupervisorExit(
   );
 }
 
-/** Whether a lock's recorded holder is a live process, birth and all. */
+/**
+ * Whether a lock's recorded holder is a live process, birth and all.
+ * `proven`: its start time was read and matches the lock's, so the pid is
+ * the launcher's; an unreadable start time keeps the lock held, unproven.
+ */
 function launcherLockHeld(
   fs: ServiceFs,
   lock: string,
-): { held: boolean; pid?: number } {
+  birthOf: (pid: number) => string | null,
+): { held: boolean; pid?: number; proven?: boolean } {
   let holder: { pid?: unknown; birth?: unknown };
   try {
     holder = JSON.parse(String(fs.readFileSync(lock, 'utf8')));
@@ -465,40 +470,48 @@ function launcherLockHeld(
     if ((error as NodeJS.ErrnoException).code === 'ESRCH')
       return { held: false };
   }
-  const birth = lookupProcessBirthFingerprint(pid as number);
-  return {
-    held: birth === null || birth === holder.birth,
-    pid: pid as number,
-  };
+  const birth = birthOf(pid as number);
+  if (birth !== null && birth !== holder.birth) return { held: false };
+  return { held: true, pid: pid as number, proven: birth !== null };
 }
 
 /**
  * Waits for a Windows launcher service's launcher (#2675 W3) to finish
  * stopping: `/End` ends only its cmd.exe wrapper, and the launcher, seeing
  * that, stops its Station in order and exits, releasing its lock. A launcher
- * still there after its whole stop budget is ended by pid (after its start
- * time is checked), and the caller's `stop` by record stops what it ran.
+ * still there after its whole stop budget is ended by pid only when its
+ * start time proves the pid is still the launcher's; otherwise the stop is
+ * refused with the pid named, and nothing is signalled.
  */
-async function waitForServiceLauncherExit(
+export async function waitForServiceLauncherExit(
   installRoot: string,
-  dependencies: ServiceDependencies,
+  dependencies: Pick<ServiceDependencies, 'sleep'>,
   fs: ServiceFs,
+  options: {
+    deadlineMs?: number;
+    birthOf?: (pid: number) => string | null;
+    kill?: (pid: number) => void;
+  } = {},
 ): Promise<void> {
   const lock = join(installRoot, 'runtime', 'service-state.lock');
-  const deadline = Date.now() + WINDOWS_LAUNCHER_STOP_WAIT_MS;
+  const waitMs = options.deadlineMs ?? WINDOWS_LAUNCHER_STOP_WAIT_MS;
+  const birthOf = options.birthOf ?? lookupProcessBirthFingerprint;
+  const deadline = Date.now() + waitMs;
   for (;;) {
-    const holder = launcherLockHeld(fs, lock);
+    const holder = launcherLockHeld(fs, lock, birthOf);
     if (!holder.held) return;
     if (Date.now() >= deadline) {
+      if (holder.pid === undefined || !holder.proven)
+        throw new Error(
+          `The Station service launcher (pid ${holder.pid ?? 'unknown'}, lock ${lock}) did not stop within ${waitMs / 1_000}s, and its start time could not be read to prove that pid is still the launcher, so it was not signalled. Check that process, end it if it is the launcher, then retry.`,
+        );
       console.error(
-        `The Station service launcher (pid ${holder.pid ?? 'unknown'}) did not stop within ${WINDOWS_LAUNCHER_STOP_WAIT_MS / 1_000}s; ending it.`,
+        `The Station service launcher (pid ${holder.pid}) did not stop within ${waitMs / 1_000}s; ending it.`,
       );
-      if (holder.pid !== undefined) {
-        try {
-          process.kill(holder.pid);
-        } catch {
-          // Gone meanwhile.
-        }
+      try {
+        (options.kill ?? ((pid: number) => process.kill(pid)))(holder.pid);
+      } catch {
+        // Gone meanwhile.
       }
       return;
     }

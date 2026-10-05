@@ -773,7 +773,11 @@ export async function installArchive(context: Context): Promise<number> {
   const legacy = services.filter((service) => !service.launcher);
   if (legacy.length > 0)
     fail(
-      `Station service(s) ${legacy.map((service) => service.id).join(' ')} run this install's version directly, not through the service launcher that updates it; reinstall each with: ${paths.launcher} service install --instance=<name>, then retry. Nothing was changed`,
+      // The installed version's own CLI cannot install a launcher service
+      // on Windows (it predates W3), so reinstalling the service before
+      // upgrading would register the same kind again; the new version's
+      // CLI must do it, once the install has switched with no service.
+      `Station service(s) ${legacy.map((service) => service.id).join(' ')} run this install's version directly, not through the service launcher that updates it, and that version cannot install one. Migrate each in this order: 1) ${paths.launcher} service uninstall --instance=<name>; 2) rerun this installer with STATION_INSTALL_NO_START=1; 3) ${paths.launcher} service install --instance=<name> (now the new version's). Nothing was changed`,
     );
   const launcherState = assertLauncherStateSettled(paths);
   const active: string[] = [];

@@ -17,6 +17,7 @@ import {
   renameSync,
   rmSync,
   type Stats,
+  statSync,
 } from 'node:fs';
 
 /**
@@ -52,13 +53,15 @@ export function fsyncDirectorySync(
  * fsync a file's data. Windows flushes a file (FlushFileBuffers) only through
  * a handle opened for writing, and a read-only handle fails with EPERM (it
  * failed every supervised update's home backup on Windows, #2675 W3). A file
- * carrying the read-only attribute cannot be opened for writing at all, and
- * is left unflushed there rather than having its attributes changed.
+ * carrying the read-only attribute cannot be opened for writing at all: only
+ * that case is left unflushed, and reported through `onUnflushed`, rather
+ * than having its attributes changed. Any other refusal still throws.
  * Elsewhere the file is opened read-only and never through a symbolic link.
  */
 export function fsyncFileSync(
   path: string,
   platform: NodeJS.Platform = process.platform,
+  onUnflushed: (message: string) => void = (message) => console.warn(message),
 ): void {
   let descriptor: number;
   if (platform === 'win32') {
@@ -66,8 +69,18 @@ export function fsyncFileSync(
       descriptor = openSync(path, constants.O_RDWR);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'EPERM' || code === 'EACCES') return;
-      throw error;
+      if (code !== 'EPERM' && code !== 'EACCES') throw error;
+      let readOnly = false;
+      try {
+        readOnly = (statSync(path).mode & 0o200) === 0;
+      } catch {
+        // Unreadable too: not the read-only case.
+      }
+      if (!readOnly) throw error;
+      onUnflushed(
+        `${path} is read-only, so it was not flushed to disk (Windows flushes only through a writable handle)`,
+      );
+      return;
     }
   } else {
     descriptor = openSync(

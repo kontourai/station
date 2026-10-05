@@ -643,7 +643,7 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
       // A service installed before the launcher ran Windows services
       // (its node.exe is the version's own, through `current`).
       message:
-        "Station service(s) svc run this install's version directly, not through the service launcher that updates it; reinstall each with:",
+        "Station service(s) svc run this install's version directly, not through the service launcher that updates it, and that version cannot install one. Migrate each in this order: 1)",
     },
     {
       name: 'default nightly home data it does not own',
@@ -916,6 +916,52 @@ describe('install.ps1 installer core: a launcher service in the update path (#26
     expect(result.stderr).toContain(message);
     expect(versionDirs(f)).toEqual(['0.7.0-nightly.12']);
     expect(takeCliRuns(f)).toEqual([]);
+  });
+
+  it('migrates a pre-W3 service in the order the refusal names: uninstall, install with no start, then the new version installs the service', () => {
+    const f = serviceInstalled();
+    const manifest = join(f.home, 'service', 'svc.json');
+    // As a pre-W3 CLI registered it: the version's node.exe through current.
+    const legacy = JSON.parse(readFileSync(manifest, 'utf8'));
+    writeFileSync(
+      manifest,
+      JSON.stringify({
+        ...legacy,
+        nodePath: join(legacy.installRoot, 'current', 'runtime', 'node.exe'),
+      }),
+    );
+    unlinkSync(join(f.installRoot, 'runtime', 'service-state.json'));
+    const refused = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      STATION_TEST_SERVICE_UNIT: unit(true),
+    });
+    expect(refused.status).toBe(1);
+    const message = refused.stderr;
+    const steps = [
+      `1) ${real(f.binDir)}`,
+      'service uninstall --instance=<name>',
+      '2) rerun this installer with STATION_INSTALL_NO_START=1',
+      '3) ',
+      'service install --instance=<name> (now the new version',
+    ].map((step) => message.indexOf(step));
+    expect(
+      steps.every((index) => index >= 0),
+      message,
+    ).toBe(true);
+    expect([...steps].sort((a, b) => a - b)).toEqual(steps);
+    // The old CLI's reinstall would only register the same kind again; the
+    // sequence instead removes it first (step 1, its manifest goes)...
+    expect(versionDirs(f)).toEqual(['0.7.0-nightly.12']);
+    unlinkSync(manifest);
+    // ...then step 2 switches with no service and starts nothing, so step 3
+    // runs the new version's CLI.
+    const migrated = install(
+      f,
+      buildWindowsArchive(f.dir, '0.7.0-nightly.13'),
+      { STATION_INSTALL_NO_START: '1' },
+    );
+    expect(migrated.status, migrated.stderr).toBe(0);
+    expect(currentVersion(f)).toBe('0.7.0-nightly.13');
+    expect(verbs(takeCliRuns(f))).toEqual(['stop@0.7.0-nightly.12']);
   });
 
   it('refuses when the service backend cannot say whether the service runs', () => {
