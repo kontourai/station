@@ -126,8 +126,9 @@ first; the two chips under the text box show what **Start** will use:
 - The **project** chip shows the project's colour and name, or **No
   project**. Open it to choose a project. The list shows each project's
   folder, and the folder this chat will run in. A project with no folder
-  can be chosen too; its chats run in your home folder, and the chip and
-  list say so.
+  can be chosen too. Its chats run in your home folder, or, for an ACP
+  engine, in that engine's own Working Directory or else a private folder
+  Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
@@ -158,10 +159,11 @@ starting another Agent. If what Home sent cannot be read, or its Model is
 no longer offered, the dock says so and keeps your message for you to choose
 again.
 
-Home's message is never lost. **Start** from Home removes the text it sent
-once the chat has started, and keeps anything you typed while it started; if
-you close the dock's draft instead, the message stays on Home. If no chat dock
-is open to take it, Home keeps the message and says so.
+Home keeps your message while you work. **Start** from Home removes the text
+it sent once the chat has started, and keeps anything you typed while it
+started. If you close the dock's draft instead, the message comes back to Home
+as you left it in the dock, the same way as a draft from setup (below). If no
+chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the pencil on the collapsed bar),
 **⌘T**, and **New chat** in **Chats and tasks** open the same composer.
@@ -175,7 +177,8 @@ that draft or cancel the setup return, the message comes back to Home as you
 left it in the dock. If Home's text box is empty, it goes straight back in.
 If you have typed something new meanwhile, Home keeps your new text and offers
 **Restore your earlier draft** (which swaps the two, so neither is lost) or
-**Discard it**.
+**Discard it**. A draft waiting to come back survives reloading the page,
+but not closing the tab.
 **Enable** prepares an Agent in place on either surface.
 
 Context handed to a new chat, such as a prepared request from a plugin page,

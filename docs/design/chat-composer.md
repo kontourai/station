@@ -43,16 +43,18 @@ detail, with a Back to list control, instead of squeezing both columns.
 New chat opens the start composer, the same component Home renders inline: a
 text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
 readiness, repair and Model picker), a project chip (accent, name, folder, No
-project; a project with no folder can be chosen and runs in the home folder,
-which the chip and list say), and, beside
+project; a project with no folder can be chosen and runs where the server
+puts it: the home folder, or for an ACP engine its connection folder or a
+private Station-managed workspace, which the chip and list say), and, beside
 Start, an overflow for visual skills. Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says
 so (the intent is cancelable); Home keeps its message until the chat starts,
-then removes only the text it sent. A dismissed dock draft comes back as
-edited there: into an empty field directly, otherwise behind Restore your
-earlier draft (a swap) and Discard it, so no ordering of dismiss, hand-off and
-start loses text.
+then removes only the text it sent. A dismissed dock draft (from a hand-off
+or a Start) comes back as edited there: into an empty field directly,
+otherwise behind Restore your earlier draft (a swap) and Discard it, with a
+polite announcement. Waiting drafts are kept in the tab's session storage, so
+they survive a reload but not closing the tab.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 When Continue holds Home's only item of work, Recent work is not shown and
