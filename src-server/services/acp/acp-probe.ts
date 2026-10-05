@@ -15,6 +15,7 @@ import {
   type AcpInboundExtensionHandler,
   createAcpInboundExtensionRequestHandler,
 } from './acp-inbound-extension-policy.js';
+import { acquireProbeSession } from './acp-probe-session.js';
 import {
   ACPProcess,
   assertACPProviderRouteSupported,
@@ -441,6 +442,15 @@ function createProbeClient(onExtMethod: AcpInboundExtensionHandler): Client {
 }
 
 export class ACPProbe {
+  /**
+   * #3411: the session this probe created or reattached to, kept so the next
+   * probe can reattach to it instead of creating another. Keyed by `cwd`
+   * because a session belongs to the directory it was created in.
+   */
+  private retainedProbeSession: { sessionId: string; cwd: string } | null =
+    null;
+  private probeSessionReattachSuspended = false;
+  private warnedUnmanagedProbeSession = false;
   cachedModes: Array<{ id: string; name: string; description?: string }> = [];
   cachedConfigOptions: any[] = [];
   cachedCapabilities: any = null;
@@ -642,6 +652,19 @@ export class ACPProbe {
    * model pickers. `initialize` alone does not carry them.
    */
   private async probeCwd(): Promise<string> {
+    return (await this.resolveProbeCwd()).cwd;
+  }
+
+  /**
+   * {@link ACPProbe.probeCwd}, plus whether the directory is Station's private
+   * probe workspace. Only that directory is known to hold nothing but probe
+   * sessions, which is what lets #3411 recover a retained probe session with
+   * `session/list` after a restart.
+   */
+  private async resolveProbeCwd(): Promise<{
+    cwd: string;
+    managed: boolean;
+  }> {
     // `resolve`, not just `expandTilde`: a relative `config.cwd` is free text
     // from the Connections form and the route schema does not constrain its
     // shape. Unresolved, `spawn` interprets it against Station's own directory
@@ -652,13 +675,14 @@ export class ACPProbe {
     const configured = this.config.cwd
       ? resolve(expandTilde(this.config.cwd))
       : '';
-    return (
-      configured ||
-      (await prepareManagedAcpWorkspace(
+    if (configured) return { cwd: configured, managed: false };
+    return {
+      cwd: await prepareManagedAcpWorkspace(
         { kind: 'probe', connectionId: this.config.id },
         this.managedWorkspaceHomeDir,
-      ))
-    );
+      ),
+      managed: true,
+    };
   }
 
   /**
@@ -745,8 +769,9 @@ export class ACPProbe {
     if (this.disposed) return false;
 
     let cwd: string;
+    let managedCwd: boolean;
     try {
-      cwd = await this.probeCwd();
+      ({ cwd, managed: managedCwd } = await this.resolveProbeCwd());
     } catch (error) {
       this.lastProbeAt = Date.now();
       this.lastSuccess = false;
@@ -815,12 +840,45 @@ export class ACPProbe {
       );
       if (this.disposed) return false;
       probePhase = 'session creation';
+      // #3411: reattach to (or delete) the probe's session instead of leaving
+      // a new stored session behind on every run. See acp-probe-session.ts.
+      const retained =
+        this.retainedProbeSession?.cwd === cwd
+          ? this.retainedProbeSession.sessionId
+          : null;
       const sessionResult = await this.runWithinProbeDeadline(
-        process.newSession(cwd),
+        acquireProbeSession({
+          process,
+          agentCapabilities: initResult.agentCapabilities,
+          cwd,
+          retainedSessionId: retained,
+          recoverFromList: managedCwd,
+          allowReattach: !this.probeSessionReattachSuspended,
+          onReattachFailed: (error, step) =>
+            this.logger.warn(
+              'ACPProbe could not reattach its probe session; creating a new one',
+              { err: error, id: this.config.id, step },
+            ),
+        }),
         'session creation',
         remainingHandshakeMs(),
         probeBudgetMs,
       );
+      this.probeSessionReattachSuspended = false;
+      this.retainedProbeSession =
+        sessionResult.disposition === 'retain'
+          ? { sessionId: sessionResult.sessionId, cwd }
+          : null;
+      if (
+        sessionResult.disposition === 'unmanaged' &&
+        !this.warnedUnmanagedProbeSession
+      ) {
+        this.warnedUnmanagedProbeSession = true;
+        this.logger.warn(
+          'ACP agent advertises no session resume, load, or delete; each capability probe leaves a new session in its store',
+          { id: this.config.id },
+        );
+      }
       if (this.disposed) return false;
 
       this.cachedModes = sessionResult.modes?.availableModes ?? [];
@@ -838,7 +896,29 @@ export class ACPProbe {
       } catch {
         // Best-effort enrichment never fails a successful handshake.
       }
+      if (sessionResult.disposition === 'delete') {
+        // The capabilities are already recorded; a failed delete costs one
+        // stored session, never the probe's result.
+        try {
+          await this.runWithinProbeDeadline(
+            process.deleteSession(sessionResult.sessionId),
+            'session deletion',
+            Math.max(remainingHandshakeMs(), 1),
+            probeBudgetMs,
+          );
+        } catch (error) {
+          this.logger.warn('ACPProbe could not delete its probe session', {
+            err: error,
+            id: this.config.id,
+          });
+        }
+      }
     } catch (err) {
+      if (probePhase === 'session creation') {
+        // A reattach that hangs past the deadline would otherwise be retried,
+        // and time out, on every later probe. One probe skips reattaching.
+        this.probeSessionReattachSuspended = true;
+      }
       if (this.disposed) {
         this.lastSuccess = false;
         return false;

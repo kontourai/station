@@ -97,7 +97,9 @@ See `src-server/providers/adapters/acp-adapter.ts` and
 
 ### Connection Lifecycle (Connections Hub)
 
-Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, calling `initialize()`/`newSession()`, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity:
+Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity.
+
+The probe does not leave a new stored session behind on each run (#3411). Agents that persist sessions would otherwise collect one per probe, about 240 a day per connection. If the agent advertises `session/delete`, the probe deletes its session after reading it. Otherwise, if it advertises `session/resume` or `loadSession`, the probe reattaches to the session it created earlier, so at most one probe session exists per connection and directory. After a restart, the probe finds that session with `session/list`, but only in Station's private probe workspace, never in a directory the user configured. An agent that advertises none of these still gets a new session on every probe, and Station logs a warning once per connection. `session/close` is not used because it frees runtime resources and does not remove the stored session. Sessions that leaked before this change are not deleted by Station; remove them with the agent's own tooling. The owner is `src-server/services/acp/acp-probe-session.ts`.
 
 | Status | Meaning |
 |---|---|

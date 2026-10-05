@@ -15,6 +15,7 @@ import {
   type ContentBlock,
   type DisableProviderResponse,
   type ListProvidersResponse,
+  type ListSessionsResponse,
   type McpServer,
   ndJsonStream,
   PROTOCOL_VERSION,
@@ -508,15 +509,59 @@ export class ACPProcess extends EventEmitter {
     return result;
   }
 
-  /** Load an existing session by ID. */
+  /**
+   * Load an existing session by ID. The response carries the same `modes`
+   * and `configOptions` a `session/new` would, so a caller reattaching to a
+   * session it created earlier observes the same capability evidence.
+   */
   async loadSession(
     sessionId: string,
     cwd: string,
     mcpServers: McpServer[] = [],
-  ): Promise<void> {
+  ): Promise<Omit<SessionResult, 'sessionId'>> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    await this.connection.loadSession({ sessionId, cwd, mcpServers });
+    const result = (await this.connection.loadSession({
+      sessionId,
+      cwd,
+      mcpServers,
+    })) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
+    return result ?? {};
+  }
+
+  /**
+   * Reattach to an existing session without replaying its history
+   * (`session/resume`, gated on `sessionCapabilities.resume`).
+   */
+  async resumeSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers: McpServer[] = [],
+  ): Promise<Omit<SessionResult, 'sessionId'>> {
+    if (!this.connection) throw new Error('ACPProcess not started');
+    const result = (await this.connection.resumeSession({
+      sessionId,
+      cwd,
+      mcpServers,
+    })) as Omit<SessionResult, 'sessionId'> | undefined;
+    this._sessionId = sessionId;
+    return result ?? {};
+  }
+
+  /**
+   * One page of the agent's stored sessions for `cwd` (`session/list`, gated
+   * on `sessionCapabilities.list`).
+   */
+  async listSessions(cwd: string): Promise<ListSessionsResponse> {
+    if (!this.connection) throw new Error('ACPProcess not started');
+    return this.connection.listSessions({ cwd });
+  }
+
+  /** Delete a stored session (`session/delete`, gated on `sessionCapabilities.delete`). */
+  async deleteSession(sessionId: string): Promise<void> {
+    if (!this.connection) throw new Error('ACPProcess not started');
+    await this.connection.deleteSession({ sessionId });
+    if (this._sessionId === sessionId) this._sessionId = null;
   }
 
   /** Set the active mode for the current session. */
