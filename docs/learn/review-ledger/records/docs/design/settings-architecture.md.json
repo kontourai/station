@@ -30,15 +30,15 @@
 
     "src-server/routes/system/config.ts",
 
+    "src-ui/src/components/project-sidebar/CustomizeDialog.tsx",
+
     "src-ui/src/lib/device-settings-store.ts",
 
     "src-ui/src/views/SettingsView.tsx",
 
-    "src-ui/src/views/settings/settings-catalog.ts",
-
-    "src-ui/src/components/project-sidebar/CustomizeDialog.tsx",
-
     "src-ui/src/views/settings/SettingDescription.tsx",
+
+    "src-ui/src/views/settings/settings-catalog.ts",
 
     "src-ui/src/views/settings/settings-pages.ts"
   ],

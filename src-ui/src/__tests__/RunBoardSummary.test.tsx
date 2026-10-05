@@ -41,7 +41,7 @@ describe('RunBoardSummary', () => {
     render(<RunBoardSummary members={members} onFocusMember={vi.fn()} />);
 
     expect(screen.getByTestId('run-board').getAttribute('aria-label')).toBe(
-      '1 needs attention, 2 running, 1 completed',
+      '1 needs you, 2 running, 1 done',
     );
     expect(
       screen.getByTestId('run-board-cluster-Needs attention').textContent,
@@ -76,7 +76,7 @@ describe('RunBoardSummary', () => {
     );
 
     const board = screen.getByTestId('run-board');
-    expect(board.getAttribute('aria-label')).toBe("1 can't answer here");
+    expect(board.getAttribute('aria-label')).toBe('1 elsewhere');
     expect(board.textContent).not.toContain('Unanswerable');
   });
 

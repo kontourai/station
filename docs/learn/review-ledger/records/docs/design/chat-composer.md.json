@@ -84,7 +84,9 @@
 
     "src-ui/src/components/chat-start/RecentChatList.tsx",
 
-    "src-ui/src/components/modals/NewChatModal.tsx"
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
   ],
 
   "checks": [

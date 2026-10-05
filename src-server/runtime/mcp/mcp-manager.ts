@@ -48,6 +48,7 @@ import {
   isHostedTenantExecutionRequired,
 } from '../bootstrap/runtime-tenant-context.js';
 import {
+  builtinStationApiServerId,
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
@@ -62,6 +63,7 @@ import { markTrustedNativeStationControlTool } from '../tools/tool-provenance.js
 import { createBuiltinVendedTool } from '../tools/vended-tool-compat.js';
 import { isMCPAppsToolVisibleTo } from './mcp-apps-metadata.js';
 import { sameMCPConnectionDefinition } from './mcp-definition-currentness.js';
+import { createNativeStationKnowledgeTools } from './station-knowledge-native-tools.js';
 import {
   describeLoaderFailure,
   isLoaderProgrammingFailure,
@@ -548,6 +550,56 @@ export async function loadAgentTools(
       if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
 
       if (toolDef.enabled === false) {
+        mcpConnectionStatus.set(toolId, { connected: false });
+        continue;
+      }
+
+      if (builtinStationApiServerId(toolId, toolDef) === 'station-knowledge') {
+        const native = createNativeStationKnowledgeTools(
+          toolDef,
+          serverPort,
+          claim,
+          custody,
+        );
+        const registered = native.tools;
+        const normalized = normalizeLoadedMCPTools(
+          agentSlug,
+          registered.map((tool) => ({
+            ...tool,
+            name: `${toolId}_${tool.name}`,
+          })),
+          toolNameMapping,
+          toolNameReverseMapping,
+          provenanceGeneration,
+          toolId,
+          (tool) => ({
+            serverId: toolId,
+            originalToolName: originalMcpToolName(toolId, tool.name),
+          }),
+          logger,
+        );
+        tools.push(
+          ...wrapPlatformMutationGatedTools(
+            normalized.filter(
+              (tool) =>
+                !mcpToolDisabled(
+                  toolId,
+                  originalMcpToolName(
+                    toolId,
+                    toolNameMapping.get(tool.name)?.original ?? tool.name,
+                  ),
+                  toolDef.disabledTools,
+                ),
+            ),
+            { agentSlug, toolId },
+          ),
+        );
+        retained = native.retained;
+        integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: 'streamable-http',
+          toolCount: registered.length,
+        });
         mcpConnectionStatus.set(toolId, { connected: false });
         continue;
       }

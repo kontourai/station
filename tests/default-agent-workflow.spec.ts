@@ -38,6 +38,8 @@ async function seedDefaultAgentRoutes(
   page: import('@playwright/test').Page,
   options?: {
     chatFailure?: boolean;
+    /** Fail every chat request after this many have succeeded. */
+    failAfterRequests?: number;
     inventorySource?: 'store' | 'runtime';
     initialConversations?: Array<{
       id: string;
@@ -386,7 +388,11 @@ async function seedDefaultAgentRoutes(
         message?: string;
       };
       executionRequests.push(request);
-      if (options?.chatFailure) {
+      if (
+        options?.chatFailure ||
+        (options?.failAfterRequests !== undefined &&
+          executionRequests.length > options.failAfterRequests)
+      ) {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -438,7 +444,23 @@ async function seedDefaultAgentRoutes(
   return { executionRequests };
 }
 
-async function openDefaultAgentDraft(page: import('@playwright/test').Page) {
+/**
+ * Opens the dock's New chat draft and checks the identity it advertises, then
+ * (when `firstMessage` is given) Sends it. With exactly one chat-ready agent —
+ * all this fixture seeds — the draft opens with that agent preselected and no
+ * card list; choosing an Agent or Model never starts an engine, Send does
+ * (#3201, `docs/design/chat-composer.md` "Starting and resuming work").
+ * Without `firstMessage` the dock is left empty so a test can open an existing
+ * conversation instead.
+ */
+async function openDefaultAgentSession(
+  page: import('@playwright/test').Page,
+  options?: {
+    firstMessage?: string;
+    /** When given, the opening turn is answered so the composer is idle. */
+    answerWith?: Array<{ message?: string; conversationId?: string }>;
+  },
+) {
   await page.addInitScript(() => {
     localStorage.setItem(
       'station-connect-connections',
@@ -458,51 +480,69 @@ async function openDefaultAgentDraft(page: import('@playwright/test').Page) {
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
   await expect(
-    page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
-  ).toBeVisible({ timeout: 15_000 });
-  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
-  // #3201: the dock's New opens a draft and starts no engine; a chat begins
-  // with its first message. The draft names the Agent and Model the chat
-  // will start with, so the seeded default agent and its model are pinned
-  // here, before anything is sent.
-  const draft = page.getByRole('form', { name: 'New chat draft' });
-  await expect(
-    draft.getByRole('button', { name: 'Agent: Station', exact: true }),
-  ).toBeVisible({ timeout: 10_000 });
-  await expect(
-    draft.getByRole('button', { name: 'Model: llama3.2', exact: true }),
-  ).toBeVisible();
-  await waitForMockOrchestrationSse(page);
-  return draft;
-}
-
-/** Starts the default agent's chat from the draft with its first message. */
-async function startDefaultAgentChat(
-  page: import('@playwright/test').Page,
-  firstMessage: string,
-) {
-  const draft = await openDefaultAgentDraft(page);
-  await draft
-    .getByRole('textbox', { name: 'Message', exact: true })
-    .fill(firstMessage);
-  await draft.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByRole('form', { name: 'New chat draft' })).toHaveCount(
-    0,
-  );
-  // The chat opens on its first turn; the composer stays in queue mode until
-  // that turn completes.
-  await expect(
     page
-      .getByRole('log', { name: 'Conversation transcript' })
-      .getByText(firstMessage, { exact: true }),
+      .locator('.chat-dock__tab-actions')
+      .getByRole('button', { name: 'New chat', exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  if (options?.firstMessage === undefined) return;
+
+  await page
+    .locator('.chat-dock__tab-actions')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
+  const draft = page
+    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('form', { name: 'Start work' });
+  // The right agent and model are preselected: the start composer's Agent
+  // chip names both, and its project chip the context they resolve in.
+  await expect(
+    draft.getByRole('button', {
+      name: 'Agent: Station · llama3.2',
+      exact: true,
+    }),
   ).toBeVisible({ timeout: 10_000 });
+  await expect(draft.getByRole('button', { name: /^Project: / })).toBeVisible();
+  await draft
+    .getByRole('textbox', { name: 'What would you like done?', exact: true })
+    .fill(options.firstMessage);
+  await draft.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
+  // The dock now holds the chat the draft started, bound to the same identity.
+  await expect(
+    page.getByRole('button', { name: /^Model: \S+ — llama3\.2/ }),
+  ).toBeVisible({ timeout: 10_000 });
+  await waitForMockOrchestrationSse(page);
+  if (options.answerWith) {
+    const requests = options.answerWith;
+    await expect
+      .poll(() =>
+        requests.some((request) => request.message === options.firstMessage),
+      )
+      .toBe(true);
+    const threadId = requests.find(
+      (request) => request.message === options.firstMessage,
+    )?.conversationId;
+    expect(threadId).toBeTruthy();
+    await emitDefaultReply(
+      page,
+      threadId!,
+      'turn-open-1',
+      options.firstMessage,
+      'Chat ready.',
+    );
+    await expect(
+      page.locator('textarea[placeholder*="Type a message"]'),
+    ).toBeVisible({ timeout: 10_000 });
+  }
 }
 
 async function emitDefaultReply(
   page: import('@playwright/test').Page,
   threadId: string,
+  turnId = 'turn-default-1',
+  prompt = 'say hi in 3 words',
+  reply = 'Hi from Station!',
 ) {
-  const turnId = 'turn-default-1';
   const event = (suffix: string, method: string, extra = {}) =>
     emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
@@ -516,10 +556,10 @@ async function emitDefaultReply(
       },
     });
 
-  await event('started', 'turn.started', { prompt: 'say hi in 3 words' });
+  await event('started', 'turn.started', { prompt });
   await event('delta', 'content.text-delta', {
-    itemId: 'item-default-1',
-    delta: 'Hi from Station!',
+    itemId: `item-${turnId}`,
+    delta: reply,
   });
   await event('completed', 'turn.completed');
 }
@@ -529,26 +569,17 @@ test.describe('Default agent workflow', () => {
     page,
   }) => {
     const { executionRequests } = await seedDefaultAgentRoutes(page);
-    // #3201: a chat starts with its first message, sent from the draft.
-    await startDefaultAgentChat(page, 'say hi in 3 words');
+    await openDefaultAgentSession(page, {
+      firstMessage: 'open the chat',
+      answerWith: executionRequests,
+    });
+    // The draft's Send is the only thing that has reached the engine so far.
+    expect(executionRequests.map((request) => request.message)).toEqual([
+      'open the chat',
+    ]);
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     const sendButton = page.getByRole('button', { name: 'Send', exact: true });
-
-    await expect
-      .poll(() =>
-        executionRequests.some(
-          (request) => request.message === 'say hi in 3 words',
-        ),
-      )
-      .toBe(true);
-    const threadId = executionRequests.find(
-      (request) => request.message === 'say hi in 3 words',
-    )?.conversationId;
-    expect(threadId).toBeTruthy();
-    await emitDefaultReply(page, threadId!);
-    await expect(page.locator('body')).toContainText('Hi from Station!');
-    const turnsBeforeCommands = executionRequests.length;
 
     for (const [command, matcher] of [
       [
@@ -565,15 +596,36 @@ test.describe('Default agent workflow', () => {
       // (`src-ui/src/slashCommands/builtins.ts:70-115`), and with no custom
       // commands and no command skills seeded it says so.
       ['/commands', /No commands defined/],
-      ['/stats', /Conversation Statistics/],
     ] as const) {
       await textarea.fill(command);
       await sendButton.click();
       await expect(page.locator('body')).toContainText(matcher);
     }
 
-    // Slash commands are answered by the composer, never sent to the engine.
-    expect(executionRequests).toHaveLength(turnsBeforeCommands);
+    // Slash commands are answered locally: none of them reached the engine.
+    expect(executionRequests.map((request) => request.message)).toEqual([
+      'open the chat',
+    ]);
+
+    await textarea.fill('say hi in 3 words');
+    await sendButton.click();
+    await expect
+      .poll(() =>
+        executionRequests.some(
+          (request) => request.message === 'say hi in 3 words',
+        ),
+      )
+      .toBe(true);
+    const threadId = executionRequests.find(
+      (request) => request.message === 'say hi in 3 words',
+    )?.conversationId;
+    expect(threadId).toBeTruthy();
+    await emitDefaultReply(page, threadId!);
+    await expect(page.locator('body')).toContainText('Hi from Station!');
+
+    await textarea.fill('/stats');
+    await sendButton.click();
+    await expect(page.locator('body')).toContainText('Conversation Statistics');
 
     // /clear and /new announce themselves with the same notice, so /new is
     // only observable as a second one: the first alone would satisfy a
@@ -589,11 +641,9 @@ test.describe('Default agent workflow', () => {
     await sendButton.click();
     await expect(clearedNotices).toHaveCount(2);
 
-    expect(executionRequests).toHaveLength(turnsBeforeCommands);
-
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
-      'History (1)',
+      'History · 1',
     );
     await expect(page.locator('.conversation-history')).toContainText(
       'Station Chat',
@@ -748,16 +798,11 @@ test.describe('Default agent workflow', () => {
         ),
     );
 
-    await openDefaultAgentDraft(page);
-    // Reopening a recorded conversation needs no new chat: leave the draft.
-    await page
-      .getByRole('dialog', { name: 'New chat', exact: true })
-      .press('Escape');
-    await expect(
-      page.getByRole('form', { name: 'New chat draft' }),
-    ).toHaveCount(0);
-    await page.locator('.chat-dock__tab-actions .chat-dock__open').click();
-    const picker = page.getByRole('dialog', { name: 'Open Conversation' });
+    await openDefaultAgentSession(page);
+    // "Open chat…" is a row of the dock's ⋯ menu (design round 2026-10, B1).
+    await page.getByRole('button', { name: /^More dock actions/ }).click();
+    await page.getByRole('menuitem', { name: /^Open chat…/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Open chat' });
     await expect(picker).toBeVisible();
     await picker
       .getByRole('button', { name: /Authoritative conversation/ })
@@ -787,23 +832,35 @@ test.describe('Default agent workflow', () => {
   test('surfaces provider errors ephemerally instead of silently no-oping', async ({
     page,
   }) => {
-    await seedDefaultAgentRoutes(page, { chatFailure: true });
-    const draft = await openDefaultAgentDraft(page);
-    await draft
-      .getByRole('textbox', { name: 'Message', exact: true })
-      .fill('trigger failure');
-    await draft.getByRole('button', { name: 'Send', exact: true }).click();
+    const { executionRequests } = await seedDefaultAgentRoutes(page, {
+      failAfterRequests: 1,
+    });
+    // The draft's Send opens the chat and succeeds; the failing send is the
+    // follow-up typed into the dock's own composer.
+    await openDefaultAgentSession(page, {
+      firstMessage: 'open the chat',
+      answerWith: executionRequests,
+    });
 
-    // archive#191 R1: the SDK client parses the server's JSON error body
+    const textarea = page.locator('textarea[placeholder*="Type a message"]');
+    await textarea.fill('trigger failure');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    // archive#191 R1: the SDK client now parses the server's JSON error body
     // instead of discarding it behind a bare 'HTTP ${status}' string, so the
-    // ephemeral notice shows the real failure reason. The notice renders the
-    // translated title on its own line above the body (#2527), so the title
-    // and the server's message are separate visible blocks.
-    const notice = page.locator('.ephemeral-message');
-    await expect(notice.getByText('Error', { exact: true })).toBeVisible();
+    // error card shows the real failure reason. The card is titled "Error"
+    // with the reason as its body (`formatChatErrorDisplay`), not one
+    // "Error: <reason>" string, and offers Retry.
+    const transcript = page.getByRole('log', {
+      name: 'Conversation transcript',
+    });
+    await expect(transcript).toContainText('Synthetic provider failure');
     await expect(
-      notice.getByText('Synthetic provider failure', { exact: true }),
+      transcript.getByRole('button', { name: 'Retry' }),
     ).toBeVisible();
+    expect(executionRequests.map((request) => request.message)).toEqual([
+      'open the chat',
+      'trigger failure',
+    ]);
   });
 
   test('renders a persisted [SYSTEM_EVENT][CHAT_ERROR] marker with the same translated copy shown live (#191 R2 persistence-gap fix)', async ({
@@ -859,12 +916,12 @@ test.describe('Default agent workflow', () => {
     await page.goto('/?dock=open');
     await dismissSetupLauncher(page);
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({
       timeout: 15_000,
     });
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Failed Chat',
     );
@@ -927,12 +984,12 @@ test.describe('Default agent workflow', () => {
     await page.goto('/?dock=open');
     await dismissSetupLauncher(page);
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({
       timeout: 15_000,
     });
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     const history = page.locator('.conversation-history');
     await expect(history).toContainText('Alpha Chat');
     await expect(history).toContainText('Beta Chat');

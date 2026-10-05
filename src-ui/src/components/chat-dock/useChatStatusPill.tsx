@@ -9,6 +9,7 @@ import {
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
@@ -62,13 +63,13 @@ export function useChatStatusPill({
   const onUnavailable = useCallback(() => setView('unavailable'), []);
   // Requests still waiting on the user: open on the server and not yet
   // answered here (an answered one stays open until `request.resolved`).
-  const answeredApprovals = activeSession.answeredApprovals;
   const pendingApprovals = useMemo(
     () =>
-      (activeSession.pendingApprovals ?? []).filter(
-        (id) => !answeredApprovals?.includes(id),
-      ),
-    [activeSession.pendingApprovals, answeredApprovals],
+      requestsWaitingOnUser({
+        pendingApprovals: activeSession.pendingApprovals,
+        answeredApprovals: activeSession.answeredApprovals,
+      }),
+    [activeSession.pendingApprovals, activeSession.answeredApprovals],
   );
   const approvalCount = pendingApprovals.length;
   const input: ChatStatusInput = {

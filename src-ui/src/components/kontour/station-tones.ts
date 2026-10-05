@@ -80,7 +80,7 @@ const SESSION_STATE_TONES: Record<SessionStateLabel, SemanticTone> = {
  * A session's canonical state (`orchestrationLifecycleLabel`) on the kit's
  * semantic scale. Keyed by the fold's own label type, so a new canonical state
  * is a typecheck failure here rather than a badge that silently goes neutral.
- * The badge TEXT stays `sessionStatusWord`; this only chooses its tone.
+ * The badge TEXT is the status ladder's word; this only chooses its tone.
  */
 export function sessionStateTone(state: SessionStateLabel): SemanticTone {
   return SESSION_STATE_TONES[state];

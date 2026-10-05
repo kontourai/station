@@ -1,0 +1,7 @@
+{
+  "revision": "582aef22350835c5e1238229168bc834617dcdd3",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Updated D1: the collapsed bar affordance is now the icon-only New chat action (ChatDockHeader renders NewChatAction, icon variant), replacing \"Start a chat\". index.css changed only comments.","inputs":["docs/design/placement.md","src-ui/src/index.css"]}
+  ]
+}

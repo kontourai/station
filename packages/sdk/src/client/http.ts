@@ -28,7 +28,6 @@ import {
   envelopeCode,
   envelopeError,
   envelopeSentence,
-  parseRetryAfterMs,
   StationHttpError,
 } from './api-error-message';
 import { boundResponse } from './bounded-response.js';
@@ -39,6 +38,10 @@ import {
   StationRequestTimeoutError,
   unlessDeadline,
 } from './request-deadline';
+import {
+  forgetStationOrigin,
+  observeStationResponse,
+} from './station-envelope';
 
 // Defined beside the envelope rule that builds it (#2708), so the rule and
 // the error need no import cycle; every existing `./http` import still works.
@@ -850,6 +853,18 @@ export async function authenticatedFetch(
   input: Parameters<typeof fetch>[0],
   ...args: [init?: AuthenticatedFetchInit]
 ): Promise<Response> {
+  // `...args` keeps the caller's arity, which `dispatchAuthenticatedFetch`
+  // preserves down to `fetch`.
+  return observeStationResponse(
+    input instanceof Request ? input.url : input.toString(),
+    await dispatchAuthenticatedFetch(input, ...args),
+  );
+}
+
+async function dispatchAuthenticatedFetch(
+  input: Parameters<typeof fetch>[0],
+  ...args: [init?: AuthenticatedFetchInit]
+): Promise<Response> {
   const { timeoutMs: initTimeoutMs, readOnly, ...rest } = args[0] ?? {};
   const init = args[0] === undefined ? undefined : (rest as RequestInit);
   const hasInitArgument = args.length > 0;
@@ -1067,9 +1082,12 @@ export async function getJson(
     maximum === undefined
       ? response
       : boundResponse(response, maximum, assertAuthority);
-  return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(result, assertAuthority)
-    : result;
+  return observeStationResponse(
+    url,
+    needsAuthorityGuard(url, requestOptions, configured)
+      ? guardResponseAuthority(result, assertAuthority)
+      : result,
+  );
 }
 
 /**
@@ -1152,9 +1170,12 @@ export async function mutateJson(
     maximum === undefined
       ? response
       : boundResponse(response, maximum, assertAuthority);
-  return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(result, assertAuthority)
-    : result;
+  return observeStationResponse(
+    url,
+    needsAuthorityGuard(url, requestOptions, configured)
+      ? guardResponseAuthority(result, assertAuthority)
+      : result,
+  );
 }
 
 export interface FetchSseMessage {
@@ -1326,6 +1347,8 @@ function removeCredentialChangeListener(
  * origin (`https://host:port`) or a full request URL on that origin works.
  */
 export function notifyCredentialChanged(origin: string): void {
+  // A new credential may reach a different Station at the same origin.
+  forgetStationOrigin(origin);
   const listeners = credentialChangeListeners.get(requestOrigin(origin));
   if (!listeners) return;
   for (const listener of listeners) listener();
@@ -1491,12 +1514,10 @@ async function consumeSseResponse(
   stallTimeoutMs?: number,
 ): Promise<void> {
   if (!response.ok) {
-    const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
-    throw new StationHttpError(
-      response.status,
-      `SSE request failed with HTTP ${response.status}`,
-      ...(retryAfterMs !== undefined ? [{ retryAfterMs }] : []),
-    );
+    // The body is left unread: a refused stream's body has no deadline. The
+    // helper still keeps the status and `Retry-After`.
+    const message = `SSE request failed with HTTP ${response.status}`;
+    throw envelopeError(response, undefined, message, { message });
   }
   if (!response.body) throw new Error('SSE response body is unavailable');
   const reader = response.body.getReader();

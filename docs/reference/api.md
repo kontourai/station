@@ -19,6 +19,16 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Station MCP endpoints
+
+`/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
+serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
+Both accept only loopback connections with a live, session-scoped credential
+for that exact server. They use MCP authentication rather than a paired Device
+credential. Tokens for one server cannot open the other, and in-process tokens
+cannot be presented over HTTP. Ordinary API and Project authorization still
+apply to each tool operation.
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
@@ -49,6 +59,78 @@ before commit. See the [ownership and failure contract](../design/task-room-agen
 and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
+
+### Keep a declared output
+
+`POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts
+`{operationId}` and resolves the declaration from the authorized Session owner.
+The [route](../../src-server/routes/orchestration/task-outputs.ts) captures the
+Task's Project, creation time and workspace. Its publication witness refuses a
+changed Task incarnation, Project or workspace, including at the pull-request
+commit boundary. Reusing an ID and path does not make a replacement Task the
+original target.
+
+The [Session output owner](../../src-server/services/orchestration/session-outputs-module.ts)
+checks the durable declaration and source workspace. File curation reaches the
+[immutable output store](../../src-server/services/projects/task-output-module.ts),
+which checks declared digest/length against captured bytes and rechecks the
+publication witness under its lock. A successful keep is `201` with a
+`task-declared-output-keep/v1` result; conflicts are `409`, previously deleted kept outputs
+are `410`, unavailable storage is `503`, and lost current authority is opaque
+`404`. A keep preserves an artifact or reference; it does not establish agent
+attribution, accepted quality or feedback. Exact-version review is described below; it remains a human statement rather than Task acceptance.
+
+An agent on any engine declares a pull request with the Station Control
+`declare_pull_request` tool, which writes the same declared-output record as
+Station's own `declare_output` (see [the tool](../guides/self-configuring-agent.md)).
+Its REST side, `POST /api/orchestration/station-control/declare-pull-request`, is
+for Station's own tool code only: it answers 404 to any request the runtime
+boundary did not accept as Station's internal principal, derives the Session and
+its running turn from the verified caller, takes a body of exactly
+`{provider, host, repository: {owner, name}, ref, label?}` (the conversation link
+identity), and answers `{status}` with `declared`, `already-declared` or
+`no-active-turn`. A pull request in another repository than the Session's, or one
+the provider cannot return at that identity, is `409`. The declaration lands with
+the turn's completion: it is held, with no time limit, while the turn runs, and
+is dropped if the turn is aborted, interrupted, ends in an error or is replaced
+(a retried transient error keeps the turn alive), or if Station
+restarts before the turn completes (declarations wait in memory until the
+terminal event is stored). The keep above applies to it unchanged.
+
+`PUT /api/tasks/:taskId/close-on-merge` accepts `{enabled}` and sets or clears the
+Task's `closeOnMerge` flag. It is a person's opt-in: no Station Control tool
+reaches it, and the authority guard refuses an agent's request to it. A Task with
+the flag moves to `done` when every pull request kept on it reports `MERGED` at its
+provider, matched by declaration and pull request (one turn's declarations share
+an event, so the event alone is not the match), if it is still the same Task
+incarnation, nothing was kept since the reads, and `canTransitionTaskStatus` allows
+`done`: a Task in todo, ready, triage or blocked never closes by itself. A pull
+request closed without merging does not complete it; un-keeping an unmerged pull
+request lets the remaining merged ones close it. The check rides the conversation
+pull request refresh (`GET /api/conversation-pull-requests/:conversationId`): a
+refresh that observes a merged pull request reconciles the Tasks that kept it, in
+the background, but only when the viewer holds the pairing scope
+`PATCH /api/tasks/:taskId/status` needs (`orchestration:operate`), and never for a
+Station Control tool call. There is no timer, so a merge is noticed when an
+operate-tier viewer next refreshes that conversation, and nothing reconciles
+without one. A store carrying the flag is refused by older Station builds: clear
+it before a rollback.
+
+New snapshots store their Task creation identity and, for admitted Session
+declarations, the declaration's Session/event/turn/tool identities privately.
+Public output records remain schema version 1 and omit those private fields.
+Reads and operation receipts for new outputs do not cross a Task incarnation;
+legacy outputs retain unknown provenance rather than receiving invented values.
+Legacy deletion receipts conservatively continue to block the same declared
+candidate under a fresh operation ID.
+
+The private index becomes schema version 2 on the first new snapshot. The new
+reader accepts existing version 1 rows; older binaries reject the version 2
+index, so downgrade requires an explicit migration. Task deletion clears its
+retained identity reservations only while the Task remains absent under the
+output lock. This module contract has no current mounted cascade caller and
+does not establish a joint transaction with TaskGraph.
+
 
 ## Table of Contents
 
@@ -214,7 +296,7 @@ starts its configuration and connection surfaces; that does not prove the
 Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
-loads `station-control` and `station-docs` on the Station-engine path, installs
+loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
 approval hooks and memory, and processes the configured system prompt. This is
 not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
@@ -471,7 +553,7 @@ service refuses changes that would create a shadow copy.
 ### Delete Integration
 
 `DELETE /integrations/:id` returns `{success: true}` after deletion.
-Runtime-managed built-ins such as `station-control` and `station-docs` return
+Runtime-managed built-ins such as `station-control`, `station-knowledge`, and `station-docs` return
 409 because startup recreates them. Package-supplied definitions must be
 removed through their owning package instead.
 
@@ -758,13 +840,28 @@ Respect `hasMore` rather than assuming one response contains the entire history.
 ### Get Conversation Messages
 
 `GET /agents/:slug/conversations/:conversationId/messages` returns
-`{success: true, data: messages}`. The reader can restore authorized messages
-from orchestration when the file-memory path has no usable record. Messages
-carry the owner's current parts/metadata shape; do not depend on every message
-having the old `content: string`/`timestamp` pair.
+`{success: true, data: messages}`. A conversation can span several execution
+Sessions: a follow-up its current Session cannot take, such as one after a
+failed Station-agent turn, runs in a successor Session. The read covers every
+Session in the conversation's lineage, oldest first, and concatenates them
+([read seam](../../src-server/routes/chat/conversations.ts)). For each Session it
+reads the file-memory record first and, when that has no usable record, the
+authorized messages restored from orchestration. A successor stores only its
+own turns; earlier history reaches its model without being copied into its
+record. Export, fork and summary use the same read. A successor's own record
+is never listed as a conversation of its own, and conversation message search
+reports its hits under the conversation it continues. A conversation whose
+lineage exceeds 64 Sessions is refused with 422 `conversation_lineage_too_long`
+by this read, export, fork, summary and stats, rather than read partially. Messages carry the owner's current parts/metadata shape; do not depend on
+every message having the old `content: string`/`timestamp` pair.
 
-A `/chat` turn that failed before producing output is recorded as a user-role
-`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+A stored user turn is the typed text (and its attachments) alone. Ambient
+context such as `[Timezone: …]`, skill instructions, project rules and
+retrieved knowledge reach only the model's input for that turn.
+
+A `/chat` turn that failed before producing output is recorded as its prompt
+followed by a user-role `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message, with no
+empty assistant reply between them. `<text>` is never the model
 provider's own error message. It is one of: a status sentence such as
 "The model provider returned an error (HTTP 500).", "The model provider
 rejected the credentials.", "Stream aborted by client", or "The response
@@ -788,7 +885,9 @@ are refused. Use the orchestration operation for its owned history.
 
 `DELETE /agents/:slug/conversations/:conversationId` returns `{success: true}`
 after deleting file-memory history and its derived summary. Orchestration
-history is read-only through this path (409), and hosted requests return 404.
+history is read-only through this path (409), including a conversation whose
+later turns run in successor Sessions and each successor itself, and hosted
+requests return 404.
 A caller-scoped station-control deletion additionally checks the stored owner.
 This is not a general endpoint for deleting any Session visible in a list.
 
@@ -816,12 +915,22 @@ these file-memory mutations before invoking the owner.
 `{success: true, data: stats}` after the shared stats parser. The owner uses
 file-memory stats or authorized orchestration usage when available. Prompt/tool
 estimates, reported tokens, cost, and observed model/context values are distinct
-inputs; missing provider observations are not measurements of zero.
+inputs; missing provider observations are not measurements of zero. Like the
+message read, stats cover every Session in the conversation's lineage: stored
+cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
+records, and context occupancy comes from the newest one. Without a stored
+record, the orchestration usage fold runs over every authorized Session's
+events in lineage order.
 
 `contextWindowPercentage` is absent when the model's context window cannot be
 resolved. Render that as unavailable. See the
 [stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
 and [response contract](../../packages/contracts/src/runtime.ts).
+
+These statistics cover the conversation's own turns. Its usage with every
+subagent and delegated task under it, with a total that says what it leaves
+out, is the
+[conversation usage tree](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree).
 
 ---
 
@@ -1214,6 +1323,31 @@ Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
 
+### Read Usage Receipts and Rollups
+
+`GET /api/analytics/usage-rollup` reads authorized canonical observations, with
+an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
+`from` and `to` can supply the exact window. `groupBy` accepts `provider`,
+`model`, `station`, `conversation`, `task`, or `day`. `pageSize` accepts 1–100;
+`cursor` advances the receipt drilldown without changing the aggregate.
+`localOnly=1` excludes configured peer Stations. The normal response is
+`{success: true, data: {window, rows, coverage, receipts, nextCursor?}}`.
+
+The local aggregate selects at most 500 usage observations independently from
+the page. Source observation limits and the separate global 500-logical-receipt
+limit are disclosed as partial coverage. `localOnly=1&includeAggregate=1`
+adds bounded `aggregateReceipts` for leaf Station transfer, after logical
+replacement/deduplication. Context occupancy alone does not produce a token
+receipt or consumed-usage coverage.
+
+Cumulative token identities survive engine-process restarts; cumulative cost
+identities follow the declared cost-process epochs. `sourceSequence` orders
+same-Station/thread observations when ingestion timestamps tie. Sparse
+cumulative updates retain earlier measured dimensions; unsupported combined
+model/pricing attribution stays unknown or unpriced. The window records
+observations, not a billing statement or precise consumption dates. See
+[Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns
@@ -1427,6 +1561,33 @@ returns unexpected failures as a generic 500 with
 still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
+
+Every JSON response the runtime writes itself, success or refusal, carries the
+response header `x-station-envelope: 1`
+(`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
+exposes it. Because there is no universal envelope, a reverse proxy or gateway
+can answer with JSON in a Station shape; the header is how a client tells
+Station's own answer from one written in between. The header is set by
+[one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
+every handler. The refusals Station writes outside that app set it
+themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
+(its admission refusals, and the 502 that replaces an app answer which tried
+to set a cookie) and the self-hosted broker's
+[gated application](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts)
+(retired trust, forbidden origin). It
+describes one hop: a response relayed from another Station through
+`fetchRemoteStation` leaves without it. Non-JSON bodies (event streams, files,
+plain text) do not carry it. A Station older than the header never sends it,
+so its absence proves nothing about such a Station.
+
+The SDK treats a missing header as "not Station's answer" only for an origin
+that has already sent it, and forgets an origin when its credential changes
+or the client switches Station. One case it cannot tell apart: Stations of
+different versions behind one origin (a rolling deploy, or a downgrade). Until
+the origin is forgotten, the older Station's refusals read as an
+intermediary's, so a queued chat message is retried instead of dropped and may
+be refused again on each retry until a reload. That fails toward retrying,
+never toward dropping a message.
 
 Clients must check HTTP status and the family's body/stream result. Treat 202
 as acceptance with pending work when the response says so, 409 indeterminate
@@ -2672,6 +2833,41 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
+conversation's transcript: `{conversationId, access, notice, messageCount,
+messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
+refused with `conversation_read_limit_out_of_range`, and a page's serialized
+messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
+only after the read is admitted. A station-control caller that is not a bound
+operator is further limited to its own conversation, its scope, or a
+conversation a person referenced in its conversation, and reads as the
+session's owner; a bound operator keeps the operator's reach. An id Station
+has no record of answers `conversation_not_found`; see the
+[read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
+### Agent Conversation Title
+
+`POST /api/conversations/:id/agent-title` with `{title}` is the route behind the
+station-control `rename_session` tool. It answers only a station-control tool
+call with a verified caller (anything else gets `403`
+`station_control_caller_required`), and a store conversation only: a native
+Claude or Codex conversation answers `runtime_title_unsupported`, and
+`POST /api/search` hits are mostly those. Unless the caller is a bound operator
+it reaches only a conversation the calling Session's owner owns (another
+person's reads as `404`); a bound operator caller is not limited to one owner's
+conversations, as with `DELETE /agents/:slug/conversations/:id`. A title is one
+line of 1 to 80 characters with no control, line or paragraph separator, bidi
+embedding, override or isolate, zero-width space or byte-order-mark character
+(the zero-width joiner and non-joiner are allowed); anything else is a `400`,
+refused rather than truncated (leading and trailing spaces are trimmed). It stamps
+`titleSource: 'agent'` in the same serialized step that checks the stored title:
+a title with `titleSource: 'user'` answers `409` `person_title` and is left as
+it was, and a native Claude or Codex conversation answers `409`
+`runtime_title_unsupported`. The success body is
+`{success: true, data: {conversationId, title, titleSource: 'agent'}}`. The
+person's rename stays `PATCH /agents/:slug/conversations/:id`, which stamps
+`titleSource: 'user'`.
+
 ## Additional System Routes
 
 ### Get Runtime Info
@@ -3019,6 +3215,29 @@ The promotion satisfies the pending-request route scope without granting
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 
+## Operator passkey administration (host)
+
+`GET /api/pairing/operator-passkeys` lists enrollment availability, active
+passkeys (metadata only: id, label, relying-party ID, origin, transports,
+timestamps) and pending enrollment requests **without their codes**.
+Each pending request carries `requester` (`kind`, the first eight characters of
+`deviceId`, `pairedAt`, `scope`) from the pairing registry, beside the
+device-chosen `deviceLabel`. `POST .../requests/inspect` takes
+`{ "code" }` and returns that without confirming. `POST .../requests/approve`
+takes `{ "code", "device"? }`; `device`, when sent, must be a prefix (at least
+four characters) of the requesting device's id or nothing is confirmed (409
+`device_mismatch`). `POST .../requests/deny` takes `{ "code" }` and also
+withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
+are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
+a passkey. Only the operator credential is accepted; a paired device holding
+`access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
+(429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
+(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
+consent origin under `/operator/passkeys/enroll`; see the
+[enrollment guide](../guides/operator-passkeys.md). Owner:
+[host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),
+[service](../../src-server/services/identity/operator-passkey-enrollment.ts).
+
 ## Bind a paired device to its verified person
 
 ```http
@@ -3060,3 +3279,41 @@ The [pairing panel](../../packages/connect/src/react/DevicePairingPanel.tsx) off
 explicit choice through the [CLI owner](../../packages/cli/src/commands/environment.ts).
 See [Project membership and enrollment](../design/project-membership.md) for the
 separate account-binding and membership paths.
+
+
+### Review an immutable Task output
+
+In personal Station, `POST /api/tasks/:taskId/room/output-feedback` accepts
+`{proposalId, occurredAt, target: {outputId, digest, taskCreatedAt}, review, text}`.
+`digest` is the retained output's `sha256:` value, `taskCreatedAt` identifies the
+Task incarnation, and `review` is `comment`, `changes-requested` or `accepted`.
+The server derives the human principal and requires current room message-write
+authority. Agents cannot append this body. A fresh statement must resolve an
+output in that Task and Project with the exact digest and Task incarnation.
+
+The statement enters the same ordered, attributed room history and stream as
+conversation messages. `accepted` means that reviewer accepted this version;
+it does not change Task status, approve a workflow, or establish quality. Room
+history labels feedback from a different Task creation time as an earlier Task
+version; retained review never establishes acceptance of a replacement Task.
+Use the same proposal ID and unchanged payload after an uncertain response.
+Current authority is rechecked before a duplicate receipt is returned; exact
+retries survive output deletion and room-record retention. Changed content
+under that ID conflicts. Fresh statements about a deleted output are refused.
+
+Rooms retain existing v2 record bytes. The first output review and later writes
+use v3; a durable per-room database trigger rejects v2 inserts after that room
+has adopted v3, including after its feedback records have expired. Legacy
+readers may be unable to read a room once it contains v3 records.
+
+The Task output UI offers review only after authorized downloaded bytes match
+the selected version's length, ETag and SHA-256 digest. Supported plain-HTTP
+browser connections use the pinned portable SHA-256 implementation when
+SubtleCrypto is absent. Text/JSON previews are
+bounded and safe PNG previews retain the existing download policy. Other media
+remain download-only; loading bytes does not prove a person inspected them.
+Drafts and uncertain retries are guarded when hiding or deleting the output.
+Invited/public result reads currently omit output feedback: their human-history
+projection includes conversation messages only. Invited/public participation,
+browser acceptance and installed delivery require separate evidence from these
+source contracts.

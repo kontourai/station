@@ -260,25 +260,26 @@ const activityService = new Proxy(
 
 // The two dispatch effects: what the child session would be started with.
 // A saved Environment is forwarded exactly as the runtime composition does.
-const delegateTask = vi.fn(async (input: { delegation?: unknown }) =>
-  namesSavedEnvironment(input)
-    ? forwardDelegateTask(
-        input as never,
-        activityService as never,
-        remoteStations,
-      )
-    : {
-        taskId: 'task:1',
-        sessionId: 'task:1',
-        conversationId: 'task:1',
-        status: 'dispatched',
-        resumable: true,
-        target: { kind: 'agent', id: 'writer' },
-        observedDelegation: input.delegation ?? null,
-      },
+const delegateTask = vi.fn(
+  async (input: { delegation?: unknown; delegationProvenance?: unknown }) =>
+    namesSavedEnvironment(input)
+      ? forwardDelegateTask(
+          input as never,
+          activityService as never,
+          remoteStations,
+        )
+      : {
+          taskId: 'task:1',
+          sessionId: 'task:1',
+          conversationId: 'task:1',
+          status: 'dispatched',
+          resumable: true,
+          target: { kind: 'agent', id: 'writer' },
+          observedDelegation: input.delegation ?? null,
+        },
 );
 const executeForegroundMessage = vi.fn(
-  async (input: { delegation?: unknown }) =>
+  async (input: { delegation?: unknown; delegationProvenance?: unknown }) =>
     namesSavedEnvironment(input)
       ? forwardForegroundMessage(
           input as never,
@@ -564,6 +565,14 @@ function stampedDelegation(
   return recorder.mock.calls[0]![0].delegation;
 }
 
+/** #3323: how the route came by the context it stamped. */
+function stampedProvenance(
+  recorder: typeof delegateTask | typeof executeForegroundMessage,
+): unknown {
+  expect(recorder).toHaveBeenCalledTimes(1);
+  return recorder.mock.calls[0]![0].delegationProvenance;
+}
+
 const DELEGATE_ARGS = { prompt: 'Draft the plan', agent: 'writer' };
 const SEND_ARGS = { agent: 'writer', message: 'Draft the plan' };
 
@@ -611,6 +620,7 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
       rootConversationId: 'conversation-root',
       blockedTools: expect.arrayContaining(['station-control_delegate_task']),
     });
+    expect(stampedProvenance(delegateTask)).toBe('caller-derived');
   });
 
   test('a verified child session that omits _delegation starts a grandchild under the TRUE root', async () => {
@@ -674,6 +684,7 @@ describe('#2601 send_message stamps lineage from the verified caller', () => {
       parentConversationId: 'conversation-child',
       rootConversationId: 'conversation-root',
     });
+    expect(stampedProvenance(executeForegroundMessage)).toBe('caller-derived');
   });
 
   test('a forged _delegation (with a forged attestation) is ignored', async () => {
@@ -731,6 +742,9 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
     );
     expect(response.status).toBe(200);
     expect(stampedDelegation(executeForegroundMessage)).toEqual(delegation);
+    expect(stampedProvenance(executeForegroundMessage)).toBe(
+      'runtime-attested',
+    );
   });
 
   test('an unattested context, or one whose attestation vouches for a different context, is dropped: the session starts as a root', async () => {
@@ -759,6 +773,7 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       );
       expect(response.status).toBe(200);
       expect(stampedDelegation(executeForegroundMessage)).toBeUndefined();
+      expect(stampedProvenance(executeForegroundMessage)).toBeUndefined();
     }
   });
 });
@@ -911,6 +926,11 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
       conversationId: 'conversation-peer-child',
       userId: (delegateTask.mock.calls[0]![0] as { userId?: string }).userId,
       environment: { id: PEER_ENVIRONMENT_ID, name: 'Peer', kind: 'peer' },
+      // The calling session's own conversation, from the derived context the
+      // route resolved, never the forged claim: the usage tree finds the
+      // peer record by it.
+      parentConversationId: 'conversation-child',
+      delegationProvenance: 'caller-derived',
     });
     expect((delegateTask.mock.calls[0]![0] as { userId?: string }).userId).toBe(
       LOCAL_OPERATOR_PRINCIPAL_ID,

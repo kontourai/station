@@ -6,6 +6,21 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
+import type { ProjectMetadata } from '../contexts/ProjectsContext';
+
+// The Project list the sidebar shows, which every surface's accents are
+// allocated over (`useProjectAccents`). Defaults to the sheet's own list.
+const sidebarProjects = vi.hoisted(() => ({
+  list: undefined as ProjectMetadata[] | undefined,
+}));
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: sidebarProjects.list ?? PROJECTS,
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
 
 const PROJECTS = [
   {
@@ -71,6 +86,55 @@ function row(name: string) {
 }
 
 describe('ChatDockProjectSwitcherSheet', () => {
+  test("draws a project's icon in place of its colour bar, and the bar for one without", () => {
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    const projects = [
+      { ...PROJECTS[0], icon: image },
+      { ...PROJECTS[1], icon: '/Users/me/secrets/logo.png' },
+    ];
+    sidebarProjects.list = projects;
+    try {
+      renderSheet({ projects });
+      const alpha = row('Alpha').querySelector(
+        '.chat-dock__project-switcher-icon',
+      );
+      expect(alpha?.querySelector('img')?.getAttribute('src')).toBe(image);
+      // The bar's sizing class stays on the bar: an icon is not a 3px bar.
+      expect(alpha?.querySelector('.chat-dock__project-switcher-accent')).toBe(
+        null,
+      );
+      // A refused value is not an icon: Beta keeps its colour bar.
+      const beta = row('Beta').querySelector<HTMLElement>(
+        '.chat-dock__project-switcher-accent',
+      );
+      expect(beta?.querySelector('img')).toBeNull();
+      expect(beta?.classList.contains('project-icon--bar')).toBe(true);
+      expect(beta?.style.backgroundColor).toBe('var(--event-agent-complete)');
+    } finally {
+      sidebarProjects.list = undefined;
+    }
+  });
+
+  test("paints a project with the sidebar's colour, whatever list the sheet is handed", () => {
+    // The sidebar holds three projects; `beta` is the second in sorted order
+    // there. Handed only `beta`, an allocation over the sheet's own list
+    // would give it the palette's first colour instead.
+    sidebarProjects.list = [
+      { ...PROJECTS[0] },
+      { ...PROJECTS[1] },
+      { ...PROJECTS[1], id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
+    ];
+    try {
+      renderSheet({ projects: [PROJECTS[1]], boundProjectSlug: 'beta' });
+      const accent = row('Beta').querySelector<HTMLElement>(
+        '.chat-dock__project-switcher-accent',
+      );
+      expect(accent?.style.backgroundColor).toBe('var(--event-agent-complete)');
+    } finally {
+      sidebarProjects.list = undefined;
+    }
+  });
+
   test('renders as a dialog labeled "Switch project"', () => {
     renderSheet();
     expect(screen.getByRole('dialog', { name: 'Projects' })).toBeTruthy();

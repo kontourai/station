@@ -265,11 +265,12 @@ async function seedRoutes(page: import('@playwright/test').Page) {
  * handle ("Reorder Alpha"), and, once the project is selected, a layout chip
  * row labelled "Alpha layouts" (#2063, which retired the expand/collapse
  * chevron archive#1629 added). Target the row's project-navigation button by
- * its full accessible name (icon + name) so a non-exact match cannot resolve
- * one of those instead.
+ * its exact accessible name so a non-exact match cannot resolve one of those
+ * instead. The project's icon is decorative (`ProjectIcon` is aria-hidden
+ * beside the name), so the name is the project's name alone.
  */
 function alphaProjectButton(page: Page) {
-  return page.getByRole('button', { name: '🚀 Alpha', exact: true });
+  return page.getByRole('button', { name: 'Alpha', exact: true });
 }
 
 async function openCustomize(page: Page) {
@@ -958,12 +959,18 @@ test.describe('ChatDock', () => {
     // beside the point: the region is Chat's either way.
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
-    // The dock counter shows a session count, or invites a chat when empty.
-    // Scoped to the dock: the Home empty state carries similar copy, which
-    // made the unscoped matcher ambiguous under strict mode.
+    // A collapsed dock with no chat invites one; it no longer prints a
+    // session count (design round 2026-10, B1/V13), and the invitation is
+    // the one icon-only New chat action, not a second "Start a chat" wording
+    // (owner, 2026-10).
+    const collapsedNew = page
+      .locator('.chat-dock')
+      .getByRole('button', { name: 'New chat', exact: true });
+    await expect(collapsedNew).toBeVisible();
+    await expect(collapsedNew).toHaveClass(/new-chat-action--icon/);
     await expect(
-      page.locator('.chat-dock').getByText(/Start a chat|\d+ session/),
-    ).toBeVisible();
+      page.locator('.chat-dock').getByText('Start a chat', { exact: true }),
+    ).toHaveCount(0);
 
     // #2143: an occupied region's toolbar control is a toggle, so a JOIN is
     // made the way a user makes one — show Activity in the empty Right region

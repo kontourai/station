@@ -68,6 +68,21 @@ const MINIMAL_ARGS: Record<string, Record<string, unknown>> = {
   },
 };
 
+/**
+ * The context the MCP SDK hands every handler: `mcpReq` is always present
+ * (its `signal` is the request's cancellation). `wait_session` forwards that
+ * signal to its held route call, so a bare `{}` is not a shape any host
+ * produces; it threw a TypeError that this test then read as the tool
+ * throwing.
+ */
+const REQUEST_CONTEXT = () => ({
+  mcpReq: {
+    id: 1,
+    method: 'tools/call',
+    signal: new AbortController().signal,
+  },
+});
+
 async function run(
   name: string,
   handler: Handler,
@@ -88,7 +103,7 @@ async function run(
             }
           : null,
     },
-    () => handler(MINIMAL_ARGS[name] ?? {}, {}),
+    () => handler(MINIMAL_ARGS[name] ?? {}, REQUEST_CONTEXT()),
   );
   let timer: NodeJS.Timeout | undefined;
   try {

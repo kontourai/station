@@ -479,6 +479,8 @@ export class ActiveChatsStore {
       content: string;
       attachments?: any[];
       action?: { label: string; handler: () => void };
+      sendFailure?: boolean;
+      queuedRetry?: boolean;
     },
   ) {
     const chat = this.chats[sessionId];

@@ -600,6 +600,14 @@ export class ACPProbe {
       typeof acpProbeCleanupRetention,
       'add'
     > = acpProbeCleanupRetention,
+    /**
+     * Called after a handshake is recorded. The manager wires the OpenCode
+     * per-model capability listing here; it must not throw into the probe and
+     * is absent for a bare probe so tests never launch an engine CLI.
+     */
+    private readonly onHandshakeObserved?: (
+      config: ACPConnectionConfig,
+    ) => void,
   ) {
     this.inboundExtensionPolicy = createAcpInboundExtensionRequestHandler({
       logger: this.logger,
@@ -825,6 +833,11 @@ export class ACPProbe {
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
       this.lastError = null;
+      try {
+        this.onHandshakeObserved?.(this.config);
+      } catch {
+        // Best-effort enrichment never fails a successful handshake.
+      }
     } catch (err) {
       if (this.disposed) {
         this.lastSuccess = false;

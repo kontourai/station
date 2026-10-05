@@ -1,0 +1,7 @@
+{
+  "revision": "598186649919fea1f9131f5b02ea17206d126939",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"path-read-pin-boundary.test.ts only classifies install-ps1-full.test.ts (lists the versions directory of its temporary install roots), as install-ps1.test.ts already is; the testing guide's whole-tree scan rules are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

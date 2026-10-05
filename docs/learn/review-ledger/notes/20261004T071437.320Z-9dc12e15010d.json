@@ -1,0 +1,7 @@
+{
+  "revision": "d4de48257efc544d0da07cc06f2295e1d2cc4d3b",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3036: vitest-resource-manifest.mjs only gained review-ledger-guards.test.ts in the process-heavy list beside documentation-freshness.test.ts; the routing and rules in this file are unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

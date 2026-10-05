@@ -179,24 +179,50 @@
   flex-wrap: wrap;
   gap: 0.55rem;
 }
+/* A pill never outgrows the field (#2799): its label stays on one line and
+   the path inside wraps at any character, so the whole value stays readable.
+   The radius is the control radius, not a full round — a wrapped pill is
+   several lines tall. */
 .project-settings__path-pill {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.35rem;
   padding: 0.35rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--k-radius-md);
+  white-space: nowrap;
   background: color-mix(in srgb, var(--bg-secondary) 86%, white 14%);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
 }
 .project-settings__path-pill code {
+  min-width: 0;
   color: var(--text-primary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* #2799: PageSection's actions slot never shrinks (it holds buttons), so an
+   unbreakable working directory in the identity preview took the whole row
+   and squeezed the heading to one word per line. Here the slot holds text:
+   let it shrink, and reserve half the row for the heading so the description
+   keeps its measure. No breakpoint: when the shared header stacks (column
+   direction) the percentage basis has no height to resolve against and falls
+   back to content size. */
+.project-settings__section--hero .page-section__heading {
+  flex: 1 0 50%;
+}
+.project-settings__section--hero .page-section__actions {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .project-settings__identity-preview {
   display: flex;
   gap: 0.85rem;
   align-items: flex-start;
+  min-width: 0;
+}
+.project-settings__identity-copy {
+  flex: 1 1 auto;
   min-width: 0;
 }
 .project-settings__identity-icon {
@@ -225,7 +251,23 @@
   font-family: var(--font-mono);
   font-size: 0.76rem;
   line-height: 1.5;
-  word-break: break-word;
+  /* One line of inline text, cut at its START: an rtl line overflows on the
+     left and puts the ellipsis there, so the leaf folder stays in view and a
+     cut path always shows "…". A path that fits starts at the left. The
+     parent and leaf are inline spans (not flex items), so the path reads and
+     copies as one string. The whole path is also the element's title. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.project-settings__identity-path--unset {
+  white-space: normal;
+  direction: ltr;
+}
+.project-settings__identity-path-leaf {
+  color: var(--text-secondary);
 }
 .project-settings__identity-card {
   padding: 1rem;
@@ -262,13 +304,30 @@
   gap: 8px;
   align-items: center;
 }
-.project-settings__icon-input {
-  width: 48px;
-  text-align: center;
-  flex-shrink: 0;
+.project-settings__icon-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  cursor: pointer;
+}
+.project-settings__icon-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 .project-settings__name-input {
   flex: 1;
+}
+
+.project-settings__icon-notice {
+  /* Bottom space ties the notice to the icon row above it, not Description. */
+  margin: var(--space-2) 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
 }
 .project-settings__actions {
   margin-top: 16px;
@@ -310,7 +369,6 @@
     min-width: 0;
     max-width: 100%;
   }
-  .project-settings__identity-path,
   .project-settings__identity-card-name {
     overflow-wrap: anywhere;
     word-break: break-word;

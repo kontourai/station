@@ -374,11 +374,11 @@ describe('#2309 what the turn is doing', () => {
       ),
     );
     // `sleep 290`: no event for minutes, yet the row keeps counting.
-    expect(progressText()).toBe('Running bash · 4m 5s');
+    expect(progressText()).toBe('Running bash · 4m');
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(progressText()).toBe('Running bash · 4m 35s');
+    expect(progressText()).toBe('Running bash · 4m');
 
     // The call completes (the binding on tool.completed): between tools.
     const completedAt = iso(Date.now());
@@ -432,7 +432,9 @@ describe('#2309 what the turn is doing', () => {
         }),
       ),
     );
-    expect(progressText()).toBe('Last: bash · done· No output for 12m 0s');
+    expect(progressText()).toBe(
+      'Last: bash · done· No progress from Claude Code for 12m',
+    );
   });
 
   test('when the turn ends there is no working row and no Stop', () => {
@@ -760,6 +762,6 @@ describe('#2309 review F7: one clock, one silence', () => {
         ),
       ),
     );
-    expect(progressText()).toBe('Running bash · 4m 10s');
+    expect(progressText()).toBe('Running bash · 4m');
   });
 });
