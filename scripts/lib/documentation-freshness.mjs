@@ -16,9 +16,14 @@ import {
   touchedReviewInputs,
 } from './review-history.mjs';
 import {
+  isNoteArchiveFile,
+  listNoteArchiveFilesAt,
+  listReviewLedgerFiles,
   listReviewNoteFilesAt,
+  parseNoteArchive,
   REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
+  readGitObjects,
   readReviewState,
   readReviewStateAt,
 } from './review-ledger-store.mjs';
@@ -184,6 +189,95 @@ function unreviewedSourceDrops(kind, before, current, changedPaths, exists) {
   return problems;
 }
 
+const noteProblem = (path, rule, problem) => ({
+  kind: 'note',
+  path,
+  inputs: [],
+  changed: [],
+  rule,
+  problem,
+});
+
+/**
+ * Notes are append-only (#3036) and note archives immutable (#3394), judged
+ * against the merge base, so a note another PR landed later is never mistaken
+ * for this change's deletion. A loose note may leave only into an archive this
+ * change adds, carrying its exact bytes; that is what
+ * `docs:review:record -- --advance-baseline` writes.
+ * @param {string} root
+ * @param {string} mergeBase
+ */
+function appendOnlyNoteProblems(root, mergeBase) {
+  const problems = [];
+  const reader = createLearningSourceReader(root);
+  const blobs = (ref, files) =>
+    readGitObjects(
+      root,
+      files.map((file) => `${ref}:${file}`),
+    ).map((bytes) => bytes?.toString('utf8'));
+  const baseArchives = listNoteArchiveFilesAt(root, mergeBase);
+  const [baseBytes, headBytes] = [mergeBase, 'HEAD'].map((ref) =>
+    blobs(ref, baseArchives),
+  );
+  baseArchives.forEach((file, index) => {
+    const disk = reader.exists(file)
+      ? reader.read(file).toString('utf8')
+      : undefined;
+    if (headBytes[index] !== baseBytes[index] || disk !== baseBytes[index])
+      problems.push(
+        noteProblem(
+          file,
+          'archive-changed',
+          `note archive ${file} exists at the merge base but was ${disk === undefined || headBytes[index] === undefined ? 'removed' : 'modified'}; archives are immutable; restore it and add notes with npm run docs:review:record`,
+        ),
+      );
+  });
+  /** @type {Map<string, { archive: string, bytes: string }>} */
+  const archived = new Map();
+  const landed = new Set(baseArchives);
+  for (const archive of listReviewLedgerFiles(root).filter(
+    (file) => isNoteArchiveFile(file) && !landed.has(file),
+  ))
+    for (const [file, bytes] of parseNoteArchive(
+      archive,
+      reader.read(archive).toString('utf8'),
+    ))
+      archived.set(file, { archive, bytes });
+  const baseNotes = listReviewNoteFilesAt(root, mergeBase);
+  const landedNotes = new Set(baseNotes);
+  const archivedFiles = [...archived.keys()];
+  const archivedAtBase = blobs(mergeBase, archivedFiles);
+  // An added archive may hold only notes that were loose at the merge base,
+  // byte for byte; anything else would put unlanded text out of review's sight.
+  archivedFiles.forEach((file, index) => {
+    const { archive, bytes } = archived.get(file);
+    if (!landedNotes.has(file) || archivedAtBase[index] !== bytes)
+      problems.push(
+        noteProblem(
+          archive,
+          'archive-unbacked',
+          `note archive ${archive} holds ${file}, which is not a note at the merge base with those exact bytes; an archive only moves landed notes (npm run docs:review:record -- --advance-baseline)`,
+        ),
+      );
+  });
+  const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
+  const gone = baseNotes.filter(
+    (file) => !currentNotes.has(file) || !existsSync(join(root, file)),
+  );
+  const goneBytes = blobs(mergeBase, gone);
+  gone.forEach((file, index) => {
+    if (archived.get(file)?.bytes === goneBytes[index]) return;
+    problems.push(
+      noteProblem(
+        file,
+        'note-removed',
+        `note file ${file} exists at the merge base but is gone; notes are append-only; re-record instead (npm run docs:review:record -- <doc> --note "<what you checked>")`,
+      ),
+    );
+  });
+  return problems;
+}
+
 /**
  * Resolve the freshness policy for a checkout.
  * @param {{ root?: string, env?: NodeJS.ProcessEnv, ledger?: { records: any[] }, media?: { captures: any[] } }} [input]
@@ -324,20 +418,9 @@ export function resolveDocumentationFreshness({
   const layoutV3 = current.ledger?.layoutVersion === 3;
   if (layoutV3) {
     const baseState = readReviewStateAt(root, base);
-    // Notes are append-only: any note file at the merge base must still exist.
-    // Comparing with the merge base (not the base branch tip) means a note
-    // another PR landed later is never mistaken for this change's deletion.
-    const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
-    for (const file of listReviewNoteFilesAt(root, selection.mergeBase))
-      if (!currentNotes.has(file) || !existsSync(join(root, file)))
-        appendOnlyProblems.push({
-          kind: 'note',
-          path: file,
-          inputs: [],
-          changed: [],
-          rule: 'note-removed',
-          problem: `note file ${file} exists at the merge base but is gone; notes are append-only; re-record instead (npm run docs:review:record -- <doc> --note "<what you checked>")`,
-        });
+    appendOnlyProblems.push(
+      ...appendOnlyNoteProblems(root, selection.mergeBase),
+    );
     for (const [kind, [before, now]] of Object.entries(entries)) {
       const landed = byPath(
         kind === 'review'

@@ -152,4 +152,9 @@ targetRules = ["generic-api-key"]
 condition = "AND"
 regexTarget = "secret"
 regexes = ['''^labels/captions$''']
-paths = ['''(^|/)docs/learn/review-ledger/notes/20261001T130629\.148Z-544c9256a5b7\.json$''']
+# A baseline advance moves the note, byte for byte, into a note archive (#3394);
+# the exact-secret condition still applies there.
+paths = [
+  '''(^|/)docs/learn/review-ledger/notes/20261001T130629\.148Z-544c9256a5b7\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
+]

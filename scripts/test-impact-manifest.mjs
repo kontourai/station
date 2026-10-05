@@ -1283,6 +1283,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/documentation-freshness.test.ts',
       'scripts/__tests__/documentation-review-notes.test.ts',
+      'scripts/__tests__/review-ledger-guards.test.ts',
     ],
     reason: 'scoped documentation freshness CLI and its exit status',
   },
@@ -1291,6 +1292,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/documentation-freshness.test.ts',
       'scripts/__tests__/documentation-review-notes.test.ts',
+      'scripts/__tests__/review-ledger-guards.test.ts',
     ],
     reason: 'review-ledger record command and its refusals',
   },
