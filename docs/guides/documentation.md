@@ -104,6 +104,12 @@ it cannot erase outstanding gaps. HEAD must be reachable from `origin/main`;
 fetch remote main before retrying if that ref is missing or stale. PR-only
 commits cannot become the baseline because a squash merge does not retain them.
 
+The scoped PR check enforces the same rule on a direct edit: a change that
+alters `coverageBaseline` blocks unless the new value is a commit reachable from
+the change's merge base and strict freshness passes at that commit. Otherwise
+the check names `--advance-baseline`, so a hand edit cannot skip an uncovered
+main commit.
+
 Both modes report files with no known documentation dependency. Trace those
 through actual callers, add missing source relationships, or give a concrete
 no-documentation-impact reason in the PR. Shallow or unavailable history is
