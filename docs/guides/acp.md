@@ -111,7 +111,7 @@ Each configured ACP engine connection owns **one persisted default Agent** in th
 
 This is a deliberate, adapter-inherited scope reduction: per-mode virtual agents (the previous `{connectionId}-{modeId}` slug shape, e.g. `kiro-chat` / `kiro-agent`) could not be routed through the orchestration seam regardless of slug format, so collapsing to one agent per connection is the shape the adapter can serve today.
 
-Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker when the connection has modes, and shows nothing when it advertised none. Remaining permission-policy gaps (OpenCode HTTP rulesets, engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
+Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker, captioned Mode, when the connection has modes, and shows nothing when it advertised none. It sits beside the approval control, not in place of it: OpenCode's `build` and `plan` are agents, a choice separate from how much asks ([which side decides](#which-side-decides-which-calls-ask)). Remaining permission-policy gaps (engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
 `engineConnectionType` for engine grouping and connection-method display. For an
@@ -306,6 +306,31 @@ The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) ri
 ### Tool Approval (Runtime → User)
 
 When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow write for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session".
+
+#### Which side decides which calls ask
+
+ACP standardizes how a client answers `session/request_permission`, not which calls must reach it: each engine decides that from its own configuration. So Station's approval mode governs an ACP engine only where Station can set that configuration. Which side decides is a property of the connection (`acpApprovalControl` in `@kontourai/station-contracts/engine-capability-matrix`), read from the command it launches.
+
+**OpenCode (`station`).** A connection whose command is the `opencode` executable (any directory; a wrapper such as `npx opencode-ai` is not recognized) is launched with `OPENCODE_CONFIG_CONTENT` carrying rules for its `build` and `plan` agents ([launch configuration](../../src-server/services/acp/opencode-approval-launch.ts)):
+
+- `bash`, `edit`, `webfetch`, `websearch`, `codesearch`, `external_directory` (any path outside the project) and every MCP tool ask before they run. Reads are left to OpenCode's defaults and your own rules; OpenCode asks before reading a `.env` file.
+- `task` is denied, so no subagent starts: OpenCode never forwards a child session's permission request over ACP, and a subagent runs with its own rules, so Station could not govern it.
+- `plan` keeps edits denied at every approval mode, except a plan file under `.opencode/plans/`.
+
+The value is merged into any `OPENCODE_CONFIG_CONTENT` Station itself was started with, and OpenCode still loads your configuration files; only the rules above replace yours for those actions inside a Station session. An organisation's managed OpenCode configuration still overrides them. Station then answers each request by the chat's approval mode ([answer rules](../../src-server/providers/adapters/acp-approval-mode.ts)):
+
+| Approval mode | What Station does with a request |
+|---|---|
+| Ask | Shows it to a person |
+| Auto | Allows a file edit (ACP kind `edit`); shows anything else to a person |
+| Full access | Allows it. In a session that is not `host`-confined, applies Auto instead: an ACP engine has no process sandbox |
+| Default, with no Agent or Station default | Ask, reported as such |
+
+A pick takes effect from the next turn, like every engine's: it is recorded as a `session.approval-mode-set` decision and reaches the adapter with that turn. No engine restart or mode switch is involved, so a session's `build`/`plan` Mode and its approval mode change independently. Authored policy (`autoApprove`, the staged evaluator, session grants) still runs first, and a plan exit or a question still goes to a person. A rule OpenCode itself denies never reaches Station, so no approval mode can allow it.
+
+The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
+
+**Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
 

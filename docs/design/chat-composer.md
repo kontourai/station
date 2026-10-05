@@ -193,6 +193,12 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   Standard actions continue to use `Button`.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate when needed; Model does not stretch into unused space.
+- On an ACP engine the approval control says who decides which actions ask
+  (#3290). OpenCode, whose rules Station sets at launch, offers Station's
+  approval modes, with OpenCode-specific descriptions. Any other ACP engine
+  shows **Approval: Set by engine**, which opens a read-only explanation and
+  offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
+  is a separate picker beside it, never a replacement for it.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
