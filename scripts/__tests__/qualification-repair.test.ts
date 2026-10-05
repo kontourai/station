@@ -219,14 +219,38 @@ if [ "$1" = api ]; then
   node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.QUERY_HEAD || (armed ? process.env.MUTATION_HEAD : process.env.EXPECTED_HEAD),isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:(armed && process.env.QUEUE_RESULT === "armed") || process.env.PRE_ARMED === "1" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
 else
   arguments="$*"
+  if [ "$1" != pr ] || [ "$2" != merge ] || [ "$3" != 7 ]; then
+    echo 'unexpected landing command or pull request' >&2
+    exit 1
+  fi
+  shift 3
   expected=""
+  repository=""
+  automatic=0
   while [ "$#" -gt 0 ]; do
-    if [ "$1" = --match-head-commit ]; then
-      shift
-      expected="$1"
-    fi
+    case "$1" in
+      --repo)
+        shift
+        repository="$1"
+        ;;
+      --auto)
+        automatic=1
+        ;;
+      --match-head-commit)
+        shift
+        expected="$1"
+        ;;
+      *)
+        echo 'unexpected landing option' >&2
+        exit 1
+        ;;
+    esac
     shift
   done
+  if [ "$repository" != owner/repo ] || [ "$automatic" != 1 ]; then
+    echo 'wrong repository or missing auto-merge intent' >&2
+    exit 1
+  fi
   if [ -n "$expected" ] && [ "$expected" != "$MUTATION_HEAD" ]; then
     echo 'head changed before arm mutation' >&2
     exit 1
