@@ -98,10 +98,9 @@ describe('createStarterSessionOwner (#2493)', () => {
 
   test('a folder Station will not continue in is not offered a retry (#3386)', async () => {
     const dispatchWithReceipt = vi.fn(async () => {
+      // As the adoption owner throws it: before any receipt is recorded.
       throw Object.assign(new Error('outside your home folder'), {
         code: 'continuation_place_refused',
-        receipt: { commandId: 'receipt-2' },
-        receiptStatus: 'persisted' as const,
       });
     });
     const owner = createStarterSessionOwner({

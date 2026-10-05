@@ -79,8 +79,10 @@ export function createStarterSessionOwner(
         // every retry, so the launch says retrying is not safe to offer.
         const permanent = observed.code === 'continuation_place_refused';
         return {
+          // A folder refusal happens before anything is created or recorded,
+          // so its outcome is certain: it failed.
           state:
-            observed.receiptStatus === 'persisted'
+            permanent || observed.receiptStatus === 'persisted'
               ? ('failed' as const)
               : ('indeterminate' as const),
           reason:
