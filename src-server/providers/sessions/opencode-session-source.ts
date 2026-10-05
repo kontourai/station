@@ -1,10 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  realpathSync,
-} from 'node:fs';
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -220,10 +215,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
    * exact change counter (see `storeSignature`).
    */
   private generations = 0;
-  private readonly connections = new Map<
-    string,
-    PooledConnection
-  >();
+  private readonly connections = new Map<string, PooledConnection>();
   /** Schema verdict per database, keyed by file identity and schema_version. */
   private readonly schemaChecks = new Map<
     string,
@@ -752,9 +744,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     | { ok: true; value: T }
     | { ok: false; outcome: AttachedSessionSourceOutcome }
   > {
-    let connection:
-      | PooledConnection
-      | undefined;
+    let connection: PooledConnection | undefined;
     try {
       connection = this.connectionFor(database);
       connection.active += 1;
@@ -800,8 +790,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private storeSignature(database: DatabaseRegistration): string {
     try {
       const connection = this.connectionFor(database);
-      const version = connection.db.prepare('PRAGMA data_version').get()
-        ?.data_version;
+      const version = connection.db
+        .prepare('PRAGMA data_version')
+        .get()?.data_version;
       return `${connection.generation}:${String(version)}`;
     } catch {
       // An unreadable store has no stable signature; never reuse a cache.
