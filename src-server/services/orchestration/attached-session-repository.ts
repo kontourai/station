@@ -9,10 +9,14 @@
  * `commondir` pointer (`locateGitDirectories`), never by running git: this
  * runs on the two-second attached-session poll.
  */
-import { lstat, realpath } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { type BigIntStats, lstatSync, realpathSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { expandTilde } from '../../utils/paths.js';
-import { locateGitDirectories } from '../projects/git-directory-confinement.js';
+import {
+  locateGitDirectories,
+  readSmallRegularFile,
+} from '../projects/git-directory-confinement.js';
 
 /** Where a folder sits in its repository. */
 export interface RepositoryLocation {
@@ -41,8 +45,15 @@ const MAX_ANCESTORS = 128;
  * A folder that no longer exists (a removed worktree) is not an error: its
  * missing ancestors simply have no `.git`, and the climb continues to the
  * first one that does, or ends with `undefined`. A `.git` that names
- * nothing readable ends the climb with `undefined` too, rather than skipping
- * to an outer repository git itself would not have chosen.
+ * nothing readable, or that {@link genuineCheckout} refuses, ends the climb
+ * with `undefined` too, rather than skipping to an outer repository git
+ * itself would not have chosen.
+ *
+ * The climb itself is synchronous `lstat` (#3386 review F2): it runs for
+ * every folder no project contains on every poll, and an asynchronous
+ * `lstat` per ancestor queued on libuv's four-thread pool made a poll of 256
+ * such folders take seconds on a loaded host. Only a found `.git` is read
+ * asynchronously.
  */
 export async function locateRepository(
   path: string,
@@ -51,13 +62,23 @@ export async function locateRepository(
   // Climb from the real folder, as git does from its real working directory:
   // a symlinked cwd belongs to the repository its target is in.
   const absolute = resolve(expandTilde(path));
-  const start = await realpath(absolute).catch(() => absolute);
+  let start = absolute;
+  try {
+    start = realpathSync.native(absolute);
+  } catch {
+    // A removed folder keeps its lexical path; its ancestors are climbed.
+  }
   let folder = start;
   for (let depth = 0; depth <= MAX_ANCESTORS; depth += 1) {
     const dotGit = join(folder, '.git');
-    const stats = await lstat(dotGit, { bigint: true }).catch(() => undefined);
+    let stats: BigIntStats | undefined;
+    try {
+      stats = lstatSync(dotGit, { bigint: true });
+    } catch {
+      stats = undefined;
+    }
     if (stats) {
-      const located = await locateGitDirectories(folder, dotGit, stats);
+      const located = await genuineCheckout(folder, dotGit, stats);
       if (!located) return undefined;
       return {
         commonDir: located.commonDir,
@@ -69,6 +90,55 @@ export async function locateRepository(
     folder = parent;
   }
   return undefined;
+}
+
+/**
+ * #3386 review F3: the git directories `folder/.git` leads to, only when they
+ * are what `git init`/`git clone` or `git worktree add` would have made there.
+ * A `.git` FILE can name any repository, so without this a folder (a project's,
+ * or a session's) could claim another repository's worktrees just by
+ * containing one line. The same two shapes `gitDirectoryInsideProject`
+ * accepts (`git-directory-confinement.ts`), without its member-writable
+ * walk, which guards running git rather than naming a repository:
+ *
+ * - a main checkout: `.git` is a real directory that is its own common
+ *   directory (no `commondir` pointing elsewhere);
+ * - a linked worktree: `.git` is a file naming `<common>/worktrees/<name>`,
+ *   whose `gitdir` back-pointer, written by git and outside this folder,
+ *   names this very `.git`.
+ *
+ * Anything else, a symlinked `.git` and a submodule's `.git` file included
+ * (its git directory has no back-pointer), is `null`: matched by folder only.
+ */
+async function genuineCheckout(
+  folder: string,
+  dotGit: string,
+  stats: BigIntStats,
+): Promise<{ commonDir: string } | null> {
+  if (stats.isSymbolicLink()) return null;
+  const located = await locateGitDirectories(folder, dotGit, stats);
+  if (!located) return null;
+  const { gitDir, commonDir } = located;
+  if (stats.isDirectory()) return gitDir === commonDir ? { commonDir } : null;
+  if (
+    dirname(dirname(gitDir)) !== commonDir ||
+    basename(dirname(gitDir)) !== 'worktrees'
+  )
+    return null;
+  try {
+    const backPointer = await readSmallRegularFile(
+      join(gitDir, 'gitdir'),
+      8 * 1024,
+    );
+    if (!backPointer) return null;
+    // git writes it absolute, or relative to the entry it lives in.
+    const named = await realpath(
+      resolve(gitDir, backPointer.toString('utf8').trim()),
+    );
+    return named === (await realpath(dotGit)) ? { commonDir } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Whether `candidate` is `root` or a folder inside it, both relative to their worktree. */

@@ -5,7 +5,7 @@
  * real `git init` / `git worktree add` on disk; nothing about git is mocked.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -202,6 +202,102 @@ describe('attribution by repository (#3386)', () => {
     expect(await attribute(inside, projects)).toMatchObject({
       state: 'attributed',
       slug: 'station',
+    });
+  });
+
+  // #3386 review F3: a `.git` FILE can name any repository.
+  describe('a crafted .git never claims another repository', () => {
+    test("a project whose .git file names another checkout's worktree entry does not claim that worktree", async () => {
+      const other = repository(join(dir, 'other'));
+      const otherWorktree = worktree(other, join(dir, 'other-wt'), 'wt');
+      const evil = join(dir, 'evil');
+      mkdirSync(evil);
+      writeFileSync(
+        join(evil, '.git'),
+        `gitdir: ${join(other, '.git', 'worktrees', 'other-wt')}\n`,
+      );
+
+      expect(
+        await attribute(otherWorktree, [
+          { slug: 'evil', workingDirectory: evil },
+        ]),
+      ).toEqual({ state: 'unattributed' });
+      // With the genuine owner configured too, it is not even a tie.
+      expect(
+        await attribute(otherWorktree, [
+          { slug: 'evil', workingDirectory: evil },
+          { slug: 'other', workingDirectory: other },
+        ]),
+      ).toMatchObject({ state: 'attributed', slug: 'other' });
+    });
+
+    test('a .git file naming the common directory itself is refused', async () => {
+      const other = repository(join(dir, 'other'));
+      const evil = join(dir, 'evil');
+      mkdirSync(evil);
+      writeFileSync(join(evil, '.git'), `gitdir: ${join(other, '.git')}\n`);
+
+      expect(
+        await attribute(other, [{ slug: 'evil', workingDirectory: evil }]),
+      ).toEqual({ state: 'unattributed' });
+    });
+
+    test("a session folder cannot claim a project's repository with a crafted .git", async () => {
+      const main = repository(join(dir, 'station'));
+      const lane = worktree(main, join(dir, 'lane'), 'lane');
+      const crafted = join(dir, 'crafted');
+      mkdirSync(crafted);
+      // The lane's real entry, whose back-pointer names the lane, not this folder.
+      writeFileSync(
+        join(crafted, '.git'),
+        `gitdir: ${join(main, '.git', 'worktrees', 'lane')}\n`,
+      );
+      const linked = join(dir, 'linked');
+      mkdirSync(linked);
+      symlinkSync(join(main, '.git'), join(linked, '.git'));
+      const projects = [{ slug: 'station', workingDirectory: main }];
+
+      expect(await attribute(crafted, projects)).toEqual({
+        state: 'unattributed',
+      });
+      expect(await attribute(linked, projects)).toEqual({
+        state: 'unattributed',
+      });
+      // The genuine worktree still matches.
+      expect(await attribute(lane, projects)).toMatchObject({
+        state: 'attributed',
+        slug: 'station',
+      });
+    });
+
+    test('a session inside a submodule of an outside worktree is No project (documented limit)', async () => {
+      const library = repository(join(dir, 'library'));
+      const main = repository(join(dir, 'station'));
+      const fileProtocol = ['-c', 'protocol.file.allow=always'];
+      git(
+        main,
+        ...fileProtocol,
+        'submodule',
+        'add',
+        '-q',
+        library,
+        'vendor/library',
+      );
+      git(main, 'commit', '-q', '-m', 'submodule');
+      const lane = worktree(main, join(dir, 'lane'), 'lane');
+      git(lane, ...fileProtocol, 'submodule', 'update', '-q', '--init');
+      const projects = [{ slug: 'station', workingDirectory: main }];
+
+      // git picks the submodule's own `.git`; that file names a
+      // `modules/...` git directory with no worktree back-pointer, so it is
+      // refused, and the climb does not skip past it to the worktree.
+      expect(
+        await attribute(join(lane, 'vendor', 'library'), projects),
+      ).toEqual({ state: 'unattributed' });
+      // Inside the project folder, the folder match still claims it.
+      expect(
+        await attribute(join(main, 'vendor', 'library'), projects),
+      ).toMatchObject({ state: 'attributed', slug: 'station' });
     });
   });
 
