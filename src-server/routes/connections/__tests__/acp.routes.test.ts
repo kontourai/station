@@ -1119,7 +1119,7 @@ describe('ACP Routes', () => {
       const body = await json(response);
       expect(body.success).toBe(false);
       expect(body.error).toBe(
-        "Connection id 'codex' is reserved by Station's built-in 'codex' engine. Choose a different id for the ACP connection.",
+        "Connection id 'codex' is already used by the 'codex' engine. Choose a different id for the ACP connection.",
       );
       expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
       expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
@@ -1149,6 +1149,10 @@ describe('ACP Routes', () => {
       });
 
       expect(response.status).toBe(400);
+      // Names the engine that owns the id, not the id itself.
+      expect((await json(response)).error).toBe(
+        "Connection id 'xcli-local' is already used by the 'xcli' engine. Choose a different id for the ACP connection.",
+      );
       expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
     });
 
@@ -1186,7 +1190,7 @@ describe('ACP Routes', () => {
 
       expect(response.status).toBe(400);
       expect((await json(response)).error).toContain(
-        "Connection id 'codex' is reserved",
+        "Connection id 'codex' is already used by the 'codex' engine",
       );
       expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
       expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();

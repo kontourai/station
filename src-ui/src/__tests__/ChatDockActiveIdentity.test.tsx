@@ -327,4 +327,28 @@ describe('ChatDockActiveIdentity engine mark for a local chat (#3355)', () => {
 
     expect(avatar()?.getAttribute('data-brand-key')).toBe('opencode');
   });
+  test('an ACP-bound agent draws no brand mark (#3355)', () => {
+    const agent = {
+      slug: 'release-reviewer',
+      name: 'Release Reviewer',
+      engineId: 'acp',
+      engineConnectionType: 'acp',
+      execution: { agentConnectionId: 'kiro' },
+    } as unknown as AgentData;
+
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(avatar()?.getAttribute('data-brand-key')).toBeNull();
+    // `acp` is not a product, so the avatar is the agent's own fallback.
+    const fallback =
+      avatar()?.querySelector('.brand-icon__initials') ??
+      (avatar()?.classList.contains('brand-icon--identicon') ? avatar() : null);
+    expect(fallback).not.toBeNull();
+  });
 });

@@ -1104,6 +1104,10 @@ describe('ConnectionService', () => {
         .filter((line) => line.connectionId === 'codex');
       expect(warnings).toHaveLength(1);
       expect(warnings[0]?.msg).toContain('shares its id with a native engine');
+      // No rename exists (an update pins the id), so the advice is delete-and-re-add.
+      expect(warnings[0]?.msg).toContain(
+        'Delete the ACP connection and add it again under a different id',
+      );
     } finally {
       stopLoggerCaptures();
     }

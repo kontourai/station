@@ -1330,7 +1330,7 @@ export class ConnectionService {
     if (this.reportedAcpNativeIdCollisions.has(id)) return;
     this.reportedAcpNativeIdCollisions.add(id);
     logger.warn(
-      'An ACP connection shares its id with a native engine; engine attribution keeps the native engine. Rename or remove the ACP connection.',
+      'An ACP connection shares its id with a native engine; engine attribution keeps the native engine. Delete the ACP connection and add it again under a different id.',
       { connectionId: id },
     );
   }

@@ -59,8 +59,9 @@ function nativeEngineIdCollision(id: string): string | null {
   const adapters = listProviders('providerAdapter').map(
     (entry) => entry.provider as ProviderAdapterShape,
   );
-  if (!nativeRuntimeConnectionIds(adapters).has(id)) return null;
-  return `Connection id '${id}' is reserved by Station's built-in '${id}' engine. Choose a different id for the ACP connection.`;
+  const owner = nativeRuntimeConnectionIds(adapters).get(id);
+  if (owner === undefined) return null;
+  return `Connection id '${id}' is already used by the '${owner}' engine. Choose a different id for the ACP connection.`;
 }
 
 function mergeACPConnections(
