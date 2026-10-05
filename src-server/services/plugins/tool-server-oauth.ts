@@ -404,7 +404,7 @@ const PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
  * separate principal document and is keyed by the whole owner tuple; two
  * principals can never share it, and neither reaches the instance bucket.
  */
-export function toolServerCredentialBucket(
+function toolServerCredentialBucket(
   serverId: string,
   owner: CredentialOwner,
 ): string {

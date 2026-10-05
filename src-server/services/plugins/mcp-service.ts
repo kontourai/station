@@ -88,7 +88,7 @@ export interface ToolServerAccountStatus {
   catalogAvailable?: boolean;
 }
 
-export class ConnectedAccountActorRequiredError extends StationOwnedToolServerError {
+class ConnectedAccountActorRequiredError extends StationOwnedToolServerError {
   constructor() {
     super(
       "This integration uses each person's own account. Connect your account as a signed-in person; a paired device without a person, a non-person principal, or a hosted request cannot own one.",
