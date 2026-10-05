@@ -193,7 +193,7 @@ export function ProjectIconPicker({
         className="editor-input project-icon-picker__glyph-input"
         type="text"
         value={isImage ? '' : value}
-        placeholder="🚀"
+        placeholder="Type or paste an emoji"
         aria-invalid={glyphProblem ? true : undefined}
         aria-describedby={glyphProblem ? glyphErrorId : undefined}
         onChange={(event) => choose(event.target.value.trim())}

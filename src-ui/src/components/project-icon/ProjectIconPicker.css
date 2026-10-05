@@ -12,6 +12,8 @@
 
 .project-icon-picker__header {
   display: flex;
+  /* Wraps rather than squeezing the hint on a narrow dialog: no breakpoint. */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
@@ -87,10 +89,4 @@
   margin: 0;
   color: var(--error-text);
   font-size: var(--text-xs);
-}
-
-@media (max-width: 780px) {
-  .project-icon-picker__header {
-    align-items: flex-start;
-  }
 }
