@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
-import { installerInheritedEnv } from '@kontourai/station-shared/prebuilt-archive';
+import { basename, delimiter, dirname, join } from 'node:path';
+import {
+  installerInheritedEnv,
+  packagedInstallerCommand,
+} from '@kontourai/station-shared/prebuilt-archive';
 import {
   parseServiceUpdateRequest,
   readServiceLauncherContext,
@@ -12,7 +15,6 @@ import {
   writeJsonAtomically,
 } from '@kontourai/station-shared/service-launcher-protocol';
 import type { ServiceFs } from './service.js';
-import { serviceLauncherPath } from './service-command.js';
 
 /**
  * The versioned child's half of the fixed launcher's protocol (#2675 slice
@@ -73,8 +75,10 @@ function stagingInheritedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
- * Stages a version with this version's own install.sh in stage-only mode:
- * the installer downloads, verifies, extracts, self-checks and seals it into
+ * Stages a version with this version's own installer in stage-only mode
+ * (install.sh, or install.ps1 on Windows, #2675 W3; the choice is
+ * `packagedInstallerCommand`'s, the one `station upgrade` makes): the
+ * installer downloads, verifies, extracts, self-checks and seals it into
  * `versions/<v>` exactly as an install would, and changes nothing else.
  * Resolves the version it staged (the running one when nothing is newer).
  */
@@ -83,9 +87,15 @@ export function stageServiceUpdate(input: {
   version: string;
   targetVersion?: string;
   env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
 }): Promise<string> {
   const versionDir = join(input.installRoot, 'versions', input.version);
   const env = input.env ?? process.env;
+  const installer = packagedInstallerCommand(
+    versionDir,
+    input.platform ?? process.platform,
+    env,
+  );
   let state: {
     channel?: unknown;
     stationRoot?: unknown;
@@ -111,9 +121,12 @@ export function stageServiceUpdate(input: {
     ...stagingInheritedEnv(env),
     STATION_INSTALL_STAGE_ONLY: '1',
     STATION_INSTALL_ROOT: input.installRoot,
-    // The installer verifies with the Node.js this version bundles.
-    PATH: `${join(versionDir, 'runtime', 'bin')}${delimiter}${env.PATH ?? ''}`,
   };
+  // install.sh verifies with the Node.js this version bundles, found on
+  // PATH. install.ps1 finds the installed Station's Node.js itself, and
+  // only in an install root it has verified.
+  if ((input.platform ?? process.platform) !== 'win32')
+    childEnv.PATH = `${join(versionDir, 'runtime', 'bin')}${delimiter}${env.PATH ?? ''}`;
   for (const [key, value] of [
     ['STATION_CHANNEL', state.channel],
     ['STATION_ROOT', state.stationRoot],
@@ -125,8 +138,8 @@ export function stageServiceUpdate(input: {
   if (input.targetVersion) childEnv.STATION_VERSION = `v${input.targetVersion}`;
   else delete childEnv.STATION_VERSION;
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('sh', [join(versionDir, 'install.sh'), 'install'], {
-      cwd: input.installRoot,
+    const child = spawn(installer.command, installer.args, {
+      cwd: versionDir,
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -147,7 +160,7 @@ export function stageServiceUpdate(input: {
         reject(
           new Error(
             stderr.trim().split('\n').at(-1) ||
-              `install.sh exited ${code ?? 'abnormally'}`,
+              `${basename(installer.file)} exited ${code ?? 'abnormally'}`,
           ),
         );
     });
@@ -395,7 +408,11 @@ export function processServiceLauncherLink(
 /**
  * Places the fixed launcher an installer-owned archive's unit runs (#2675 D),
  * copied from the version being installed. `service install` is the only
- * writer: an update never replaces it, which is what makes it fixed.
+ * writer: an update never replaces it, which is what makes it fixed. On
+ * Windows the version's node.exe is frozen beside it too (#2675 W3, decision
+ * D4 option a; see `windowsServiceLauncherNode`), so the caller must have
+ * stopped a service that runs them: Windows cannot replace a running
+ * program's file.
  */
 export function installServiceLauncher(
   fs: Pick<
@@ -404,6 +421,7 @@ export function installServiceLauncher(
   >,
   installRoot: string,
   versionRoot: string,
+  platform: NodeJS.Platform = process.platform,
 ): string {
   const source = join(versionRoot, 'bin', 'station-launcher.mjs');
   if (!fs.existsSync(source)) {
@@ -411,13 +429,34 @@ export function installServiceLauncher(
       `${versionRoot} has no service launcher (bin/station-launcher.mjs); install a newer Station before installing its service`,
     );
   }
-  const text = fs.readFileSync(source, 'utf8');
-  const target = serviceLauncherPath(installRoot);
-  if (fs.existsSync(target) && fs.readFileSync(target, 'utf8') === text)
-    return target;
+  // This host's paths: the unit names the same files in its platform's
+  // (serviceLauncherPath, windowsServiceLauncherNode).
+  const target = join(installRoot, 'runtime', 'station-launcher.mjs');
   fs.mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-  const temp = `${target}.${process.pid}.tmp`;
-  fs.writeFileSync(temp, text, { mode: 0o644 });
-  fs.renameSync(temp, target);
+  if (platform === 'win32')
+    placeFrozenFile(
+      fs,
+      join(versionRoot, 'runtime', 'node.exe'),
+      join(installRoot, 'runtime', 'node.exe'),
+      0o755,
+    );
+  placeFrozenFile(fs, source, target, 0o644);
   return target;
+}
+
+/** Copies `source` to `target` unless it already holds the same bytes. */
+function placeFrozenFile(
+  fs: Pick<
+    ServiceFs,
+    'existsSync' | 'readFileSync' | 'renameSync' | 'writeFileSync'
+  >,
+  source: string,
+  target: string,
+  mode: number,
+): void {
+  const bytes = fs.readFileSync(source);
+  if (fs.existsSync(target) && fs.readFileSync(target).equals(bytes)) return;
+  const temp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, bytes, { mode });
+  fs.renameSync(temp, target);
 }

@@ -38,6 +38,7 @@ import {
 } from './lifecycle.js';
 import type { LifecycleCodeRoot } from './lifecycle-code-root.js';
 import {
+  LAUNCHER_STOP_BUDGET_MS,
   resolveServiceCodeLocation,
   type ServiceCodeKind,
   type ServiceCodeLocation,
@@ -305,6 +306,12 @@ const RESERVED_LAUNCHD_LABELS = [
 const INSTALL_READINESS_POLL_INTERVAL_MS = 1_000;
 const INSTALL_READINESS_POLL_ATTEMPTS = 120;
 const WINDOWS_STOP_POLL_ATTEMPTS = 7;
+/**
+ * How long `service stop` waits for a Windows launcher service's launcher to
+ * stop its Station and exit: its whole stop budget, plus the second its
+ * wrapper watch takes to notice `/End`, and a margin.
+ */
+const WINDOWS_LAUNCHER_STOP_WAIT_MS = LAUNCHER_STOP_BUDGET_MS + 15_000;
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -437,18 +444,91 @@ async function waitForWindowsSupervisorExit(
   );
 }
 
+/** Whether a lock's recorded holder is a live process, birth and all. */
+function launcherLockHeld(
+  fs: ServiceFs,
+  lock: string,
+): { held: boolean; pid?: number } {
+  let holder: { pid?: unknown; birth?: unknown };
+  try {
+    holder = JSON.parse(String(fs.readFileSync(lock, 'utf8')));
+  } catch {
+    // Absent: the launcher released it. Unreadable: it is mid-write, so a
+    // launcher is starting; the next poll reads it.
+    return { held: fs.existsSync(lock) };
+  }
+  const pid = holder.pid;
+  if (!Number.isInteger(pid) || (pid as number) < 1) return { held: false };
+  try {
+    process.kill(pid as number, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH')
+      return { held: false };
+  }
+  const birth = lookupProcessBirthFingerprint(pid as number);
+  return {
+    held: birth === null || birth === holder.birth,
+    pid: pid as number,
+  };
+}
+
+/**
+ * Waits for a Windows launcher service's launcher (#2675 W3) to finish
+ * stopping: `/End` ends only its cmd.exe wrapper, and the launcher, seeing
+ * that, stops its Station in order and exits, releasing its lock. A launcher
+ * still there after its whole stop budget is ended by pid (after its start
+ * time is checked), and the caller's `stop` by record stops what it ran.
+ */
+async function waitForServiceLauncherExit(
+  installRoot: string,
+  dependencies: ServiceDependencies,
+  fs: ServiceFs,
+): Promise<void> {
+  const lock = join(installRoot, 'runtime', 'service-state.lock');
+  const deadline = Date.now() + WINDOWS_LAUNCHER_STOP_WAIT_MS;
+  for (;;) {
+    const holder = launcherLockHeld(fs, lock);
+    if (!holder.held) return;
+    if (Date.now() >= deadline) {
+      console.error(
+        `The Station service launcher (pid ${holder.pid ?? 'unknown'}) did not stop within ${WINDOWS_LAUNCHER_STOP_WAIT_MS / 1_000}s; ending it.`,
+      );
+      if (holder.pid !== undefined) {
+        try {
+          process.kill(holder.pid);
+        } catch {
+          // Gone meanwhile.
+        }
+      }
+      return;
+    }
+    await (dependencies.sleep ?? sleep)(INSTALL_READINESS_POLL_INTERVAL_MS);
+  }
+}
+
 async function stopAndWaitForWindowsSupervisorExit(
   instanceId: string,
   stateHome: string,
-  registration: ServiceRegistration,
+  registration: ServiceRegistration &
+    Pick<Partial<ServiceManifest>, 'installRoot' | 'kind'>,
   dependencies: ServiceDependencies,
   fs: ServiceFs,
   run: CommandRunner,
 ): Promise<void> {
+  const launcherRoot =
+    registration.kind === 'archive' ? registration.installRoot : undefined;
+  if (launcherRoot !== undefined) {
+    // A launcher service (#2675 W3) stops from the wrapper down: stopping
+    // its Station first would read to the launcher as a crash, which it
+    // answers by starting Station again.
+    stopWindowsService(registration, { fs, run });
+    await waitForServiceLauncherExit(launcherRoot, dependencies, fs);
+  }
   // Stop only the resolved Station lifecycle instance; an unqualified process
-  // sweep could terminate a different user service sharing this host.
+  // sweep could terminate a different user service sharing this host. Under
+  // a launcher this is the backstop for what a launcher ended by pid ran.
   stop({ instanceName: instanceId, stateHome });
-  stopWindowsService(registration, { fs, run });
+  if (launcherRoot === undefined) stopWindowsService(registration, { fs, run });
   await waitForWindowsSupervisorExit(
     instanceId,
     stateHome,
@@ -1352,14 +1432,20 @@ export async function runServiceCommand(
       platform,
     });
     // An installer-owned archive's unit runs the fixed launcher (#2675 D),
-    // which must be in place before the backend loads the unit.
-    if (
-      location.kind === 'archive' &&
-      location.installRoot !== undefined &&
-      platform !== 'win32'
-    ) {
-      installServiceLauncher(fs, location.installRoot, location.repoPath);
-    }
+    // which must be in place before the backend loads the unit. On Windows
+    // it is placed once a service that runs it has stopped (installBackend):
+    // its frozen node.exe cannot be replaced while it runs.
+    const placeLauncher = () => {
+      if (location.kind === 'archive' && location.installRoot !== undefined)
+        installServiceLauncher(
+          fs,
+          location.installRoot,
+          // This host's spelling of the unit's `current`.
+          join(location.installRoot, 'current'),
+          platform,
+        );
+    };
+    if (platform !== 'win32') placeLauncher();
     // A backend reinstall has an owned prior supervisor. Retain its verified
     // boot identity and require readiness to observe a different one after
     // the backend has stopped and replaced it.
@@ -1431,6 +1517,7 @@ export async function runServiceCommand(
           run,
         );
       }
+      if (platform === 'win32') placeLauncher();
       return platform === 'darwin'
         ? installLaunchd(instanceId, {
             ...common,

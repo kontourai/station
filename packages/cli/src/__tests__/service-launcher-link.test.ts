@@ -410,6 +410,37 @@ describe('staging and interrupted requests (#2675 D review F5, F8)', () => {
     );
   });
 
+  test('on Windows the service stages with the version’s install.ps1 through the system PowerShell (#2675 W3)', async () => {
+    const installRoot = makeTempDir('station-stage-win32-');
+    const versionDir = join(installRoot, 'versions', '1.0.0');
+    mkdirSync(versionDir, { recursive: true });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({ channel: 'stable', manifestUrl: 'https://x.invalid/m' }),
+    );
+    // No PowerShell here: the spawn fails, naming what it would have run.
+    const error = (await stageServiceUpdate({
+      installRoot,
+      version: '1.0.0',
+      platform: 'win32',
+      env: { SystemRoot: 'C:\\Windows', PATH: '' },
+    }).catch((caught: unknown) => caught)) as NodeJS.ErrnoException & {
+      spawnargs: string[];
+    };
+    expect(error.path).toBe(
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    );
+    expect(error.spawnargs).toEqual([
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      join(versionDir, 'install.ps1'),
+      'install',
+    ]);
+  });
+
   test('a claim the launcher accepted is only cleared; any other is answered as failed', () => {
     const installRoot = makeTempDir('station-link-orphan-');
     const paths = serviceUpdatePaths(installRoot);
