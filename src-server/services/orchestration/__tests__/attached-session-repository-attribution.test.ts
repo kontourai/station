@@ -449,6 +449,46 @@ describe('a session no project claims is followed under No project (#3386)', () 
     expect(summarize().projectSlug).toBe('station');
   });
 
+  // #3386 review F2: a poll's cost must not grow as followed x stored rows.
+  test('a poll over many sessions reads the persisted sessions once', async () => {
+    const many = Array.from({ length: 40 }, (_, index) => {
+      const cwd = join(dir, `many-${index}`);
+      mkdirSync(cwd);
+      return {
+        ...session,
+        sessionId: `session-many-${index}`,
+        threadId: `external:claude:many-${index}`,
+        cwd,
+        sourceHandle: `handle-${index}`,
+      };
+    });
+    const service = new AttachedSessionFollowService({
+      sources: [
+        {
+          provider: 'claude',
+          kind: 'claude-transcript',
+          discover: vi
+            .fn()
+            .mockResolvedValue({ outcome: 'ok', sessions: many }),
+          read: vi
+            .fn()
+            .mockResolvedValue({ outcome: 'ok', events: [], cursor: 1 }),
+        },
+      ],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+    });
+    const reads = vi.spyOn(store, 'readSessions');
+
+    await service.pollNow();
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(store.readSessions()).toHaveLength(40);
+    reads.mockClear();
+    await service.pollNow();
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
   test('its No project is stable across polls and restarts', async () => {
     await follow(() => []).pollNow();
     const first = store.listEvents(session.threadId).length;
