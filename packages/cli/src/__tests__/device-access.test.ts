@@ -823,6 +823,7 @@ describe('station environment access revoke / remove (#3256)', () => {
     ).rejects.toThrow(/the revoke was not approved/);
     expect(confirm.mock.calls[0]![0]).toContain('Laptop CLI');
     expect(confirm.mock.calls[0]![0]).toContain('cannot be restored');
+    expect(confirm.mock.calls[0]![0]).toContain(LIVE[0]!.id);
     expect(deletes(request)).toEqual([]);
     await run(['revoke', 'aaaa1111'], request, {
       isInteractive: true,
@@ -839,6 +840,7 @@ describe('station environment access revoke / remove (#3256)', () => {
       }),
     ).rejects.toThrow(/the removal was not approved/);
     expect(removeConfirm.mock.calls[0]![0]).toContain('Old tablet');
+    expect(removeConfirm.mock.calls[0]![0]).toContain(OLD.id);
     expect(deletes(removeRequest)).toEqual([]);
   });
 
@@ -867,6 +869,20 @@ describe('station environment access revoke / remove (#3256)', () => {
       ).rejects.toThrow(/require a loopback --api-base/);
       expect(request).not.toHaveBeenCalled();
       expect(createService).not.toHaveBeenCalled();
+    }
+  });
+
+  test('an empty or blank selector is a usage error before any Station is contacted, for scope, revoke and remove', async () => {
+    for (const args of [
+      ['revoke', ''],
+      ['revoke', '  ', '--force'],
+      ['remove', '', '--force'],
+      ['scope', '', '--add=terminal:operate'],
+      ['scope', ' ', '--add=terminal:operate'],
+    ]) {
+      const request = host();
+      await expect(run(args, request)).rejects.toThrow(/Usage:/);
+      expect(request).not.toHaveBeenCalled();
     }
   });
 

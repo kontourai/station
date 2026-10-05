@@ -92,6 +92,7 @@ export function parseDeviceScopeArgs(
   )
     throw usageError();
   const selector = parsed.positionals[2]!;
+  if (selector.trim() === '') throw usageError();
   const operations = (['add', 'remove', 'set'] as const).filter(
     (name) => parsed.flags[name] !== undefined,
   );
@@ -182,6 +183,11 @@ async function listPairedDevices(
 }
 
 const shortId = (id: string) => id.slice(0, 8);
+
+/** The device by name and its FULL id, for a prompt about something irreversible. */
+function fullLabel(device: DeviceAccessRow): string {
+  return `"${terminalSafeText(device.name)}" (${terminalSafeText(device.id)})`;
+}
 
 function label(device: DeviceAccessRow): string {
   return `"${terminalSafeText(device.name)}" (${shortId(device.id)})`;
@@ -357,7 +363,9 @@ export function parseDeviceRemovalArgs(
   if (
     parsed.positionals.length !== 3 ||
     !Object.keys(parsed.flags).every((name) => allowed.includes(name)) ||
-    (parsed.flags.force !== undefined && parsed.flags.force !== true)
+    (parsed.flags.force !== undefined && parsed.flags.force !== true) ||
+    // `startsWith('')` would match a lone device.
+    parsed.positionals[2]!.trim() === ''
   )
     throw usageError();
   return {
@@ -421,7 +429,7 @@ export async function runDeviceRevokeCommand(
     !(await approve(
       args,
       confirm,
-      `Revoke ${label(device)}? Its access ends immediately and cannot be restored; it can pair again later. Continue?`,
+      `Revoke ${fullLabel(device)}? Its access ends immediately and cannot be restored; it can pair again later. Continue?`,
     ))
   )
     throw new Error(
@@ -454,7 +462,7 @@ export async function runDeviceRemoveCommand(
     !(await approve(
       args,
       confirm,
-      `Delete the revoked record of ${label(device)}? The record cannot be restored. Continue?`,
+      `Delete the revoked record of ${fullLabel(device)}? The record cannot be restored. Continue?`,
     ))
   )
     throw new Error(
