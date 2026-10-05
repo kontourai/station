@@ -540,38 +540,6 @@ function withHiddenLines(shown: string, value: string): string {
   return marker ? `${shown} ${marker}` : shown;
 }
 
-/**
- * How many lines of a command the collapsed row does not show: the command
- * argument's, or, for a call whose name is display text, the name's — the
- * same text `callLabel` shows. 0 for a call that is not a command.
- */
-export function hiddenCommandLines(
-  kind: ToolCallKind,
-  toolName: string,
-  args: unknown,
-): number {
-  if (kind !== 'exec') return 0;
-  let text: string | undefined;
-  if (typeof args === 'string') {
-    text = args.trim() ? args : undefined;
-  } else if (args && typeof args === 'object' && !Array.isArray(args)) {
-    const a = args as Record<string, unknown>;
-    const command = a.command ?? a.cmd ?? a.cmdline;
-    if (typeof command === 'string' && command.trim()) text = command;
-    else if (Array.isArray(command) && command.length > 0) {
-      text = argvText(command);
-    }
-  }
-  if (
-    text === undefined &&
-    toolName.trim() &&
-    !isProgrammaticToolName(toolName)
-  ) {
-    text = toolName;
-  }
-  return text === undefined ? 0 : Math.max(0, displayLines(text).length - 1);
-}
-
 /** An argv array as the one string a label shows: its elements joined by a
  * space, as before #3382. */
 function argvText(command: readonly unknown[]): string {

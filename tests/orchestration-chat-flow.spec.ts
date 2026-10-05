@@ -935,6 +935,10 @@ test.describe('Orchestration Chat Flow', () => {
     const reversed = [...hebrew].reverse().join('');
     const lineOne = `echo ${hebrew};rm -rf /tmp/x`;
     const lineTwo = `cat ${hebrew}/../../etc/passwd`;
+    // Two runs separated only by a space: unisolated, they swap places.
+    const world = String.fromCodePoint(0x5e2, 0x5d5, 0x5dc, 0x5dd);
+    const worldReversed = [...world].reverse().join('');
+    const lineThree = `cp ${hebrew} ${world} x != y`;
     await installMockOrchestrationEventWindow(page, 'codex', {
       'session-1': [
         {
@@ -964,7 +968,7 @@ test.describe('Orchestration Chat Flow', () => {
           title: 'Approve command',
           payload: {
             toolName: 'Bash',
-            toolInput: { command: `${lineOne}\n${lineTwo}` },
+            toolInput: { command: `${lineOne}\n${lineTwo}\n${lineThree}` },
           },
         },
       ],
@@ -1065,11 +1069,24 @@ test.describe('Orchestration Chat Flow', () => {
       });
 
     expect(await visualText(card.locator('.tool-call__label'))).toEqual([
-      `Run echo ${reversed};rm -rf /tmp/x (+1 line)`,
+      `Run echo ${reversed};rm -rf /tmp/x (+2 lines)`,
     ]);
     expect(await visualText(block)).toEqual([
       `echo ${reversed};rm -rf /tmp/x`,
       `cat ${reversed}/../../etc/passwd`,
+      `cp ${reversed} ${worldReversed} x != y`,
     ]);
+    // Read literally: no ligatures or contextual alternates, which redraw
+    // `../` after right-to-left text and turn `!=` into a symbol.
+    const typography = await block.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        ligatures: style.fontVariantLigatures,
+        features: style.fontFeatureSettings,
+      };
+    });
+    expect(typography.ligatures).toBe('none');
+    expect(typography.features).toContain('"calt" 0');
+    expect(typography.features).toContain('"liga" 0');
   });
 });

@@ -27,7 +27,6 @@ import {
 import {
   callLabel,
   classifyToolCall,
-  hiddenCommandLines,
   isToolCallAwaitingApproval,
   type ToolCallKind,
   toolCallPhase,
@@ -210,20 +209,12 @@ function ToolCallDisplayComponent({
   const hasDetail = Boolean(hasArgs) || result !== undefined || Boolean(error);
   const allowDetails = showDetails || (awaitingApproval && Boolean(onApprove));
 
-  // #3382: a pending command with more than one line opens its details, so
-  // the whole command is on screen next to Allow and Deny. The label shows
-  // only the first line and a "(+N lines)" count, and a count is easy to miss:
-  // `echo a` then `rm -rf /` must not be approvable from "Run echo a" alone.
-  // Hidden characters open it too, even on one line: the label drops them,
-  // and only the details show them. So does a label cut short ("…"): what
-  // it does not show is what the details are for. A command that itself
-  // contains "…" opens too, which costs nothing.
-  const openByDefault =
-    awaitingApproval &&
-    Boolean(onApprove) &&
-    (hiddenCommandLines(kind, toolName, args) > 0 ||
-      label.includes('…') ||
-      argumentsHideCharacters(args));
+  // #3382: every pending call that has something to show opens its details,
+  // so what is being approved is on screen next to Allow and Deny. The label
+  // can hide part of it in too many ways to detect them all: a first line
+  // with "(+N lines)", a cut ("…"), characters it drops, and a CSS ellipsis
+  // at narrow widths. The user can still collapse it (remembered per request).
+  const openByDefault = awaitingApproval && Boolean(onApprove) && hasDetail;
   const isExpanded = userExpanded ?? openByDefault;
   const toggleExpanded = () => {
     setUserExpanded(!isExpanded);
@@ -739,20 +730,6 @@ function isolateRightToLeft(text: string, key: number): React.ReactNode {
       part
     ),
   );
-}
-
-/** Whether a pending call's arguments hold a character the details reveal. */
-function argumentsHideCharacters(args: unknown): boolean {
-  if (typeof args === 'string') return hasHiddenCharacters(args);
-  if (!args || typeof args !== 'object') return false;
-  const command = (args as Record<string, unknown>).command;
-  // JSON escapes C0 controls, so a command string is also read raw.
-  if (typeof command === 'string' && hasHiddenCharacters(command)) return true;
-  try {
-    return hasHiddenCharacters(JSON.stringify(args) ?? '');
-  } catch {
-    return false;
-  }
 }
 
 /** Remembered expand/collapse choices on pending requests, by request. */

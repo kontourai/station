@@ -14,3 +14,15 @@
   color: var(--warning-text);
   font-size: 0.85em;
 }
+
+/* #3382: what an approval shows is read literally. A monospace font's
+   contextual alternates and ligatures redraw `../` after right-to-left text
+   and turn `!=`, `->`, `=>` into symbols. */
+.tool-call pre,
+.tool-call code,
+.tool-call__hidden-char {
+  font-variant-ligatures: none;
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
