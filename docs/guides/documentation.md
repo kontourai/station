@@ -112,10 +112,10 @@ in the tree at the previous baseline moves into one archive,
 exact bytes; the loose files are deleted in the same batch write. A note
 counts by its file name, so a note that a later migration rewrote under a new
 name is not yet eligible: measured on 2026-10-05, the first advance from
-`eff24ab` would archive the 316
-notes still loose from the 1,038 in that tree, not all 1,038. Notes added since
-the previous baseline stay loose, so freshness, which reads only notes in a
-change's range or after the baseline, never depends on an archived note.
+`eff24ab` would archive the 316 notes still loose from the 1,038 in that tree,
+not all 1,038. Notes added since the previous baseline stay loose, so
+freshness, which reads only notes in a change's range or after the baseline,
+never depends on an archived note.
 Commit `docs/learn/review-ledger` with the index.
 
 The scoped PR check enforces the same rule on a direct edit: a change that
