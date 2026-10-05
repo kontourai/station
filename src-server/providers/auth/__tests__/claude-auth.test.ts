@@ -94,6 +94,19 @@ describe('detectClaudeAuthState', () => {
     ]);
   });
 
+  test.each([' fixture-user ', 'invalid/account'])(
+    'refuses an invalid selected Keychain account %j without borrowing another account',
+    async (user) => {
+      secure.result = JSON.stringify({
+        claudeAiOauth: { accessToken: 'fixture-token' },
+      });
+      await expect(
+        detectClaudeAuthState({ USER: user }, '/missing'),
+      ).resolves.toBe('unknown');
+      expect(secure.calls).toEqual([]);
+    },
+  );
+
   test('uses the secure-store override without borrowing a global credential', async () => {
     await expect(
       detectClaudeAuthState(

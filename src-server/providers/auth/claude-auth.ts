@@ -33,7 +33,7 @@ async function secureAuthState(
   configDir: string,
   defaultNamespace: boolean,
 ): Promise<CliAuthState | undefined> {
-  const account = env.USER?.trim() || userInfo().username;
+  const account = env.USER || userInfo().username;
   if (!/^[a-zA-Z0-9._-]+$/.test(account)) return 'unknown';
   const suffix = createHash('sha256')
     .update(configDir.normalize('NFC'))
