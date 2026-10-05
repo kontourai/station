@@ -65,6 +65,7 @@ category.
 - [native-relay-enrollment.md](native-relay-enrollment.md) — Native relay enrollment
 - [notification-delivery.md](notification-delivery.md) — Notification delivery on native shells
 - [offline-outbound-queue.md](offline-outbound-queue.md) — Offline outbound queue scope
+- [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion

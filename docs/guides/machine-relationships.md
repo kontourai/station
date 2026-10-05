@@ -70,8 +70,11 @@ station environment access scope <device> --add approval:full-access
 station environment access scope <device> --remove approval:full-access
 ```
 
-or, in the Station desktop app on that host, from the Station name (top
-right) → **Paired devices** → the device → **Change access**.
+The **Paired devices** panel (Station name, top right → **Paired devices** →
+the device → **Change access**) does not apply the change from the desktop
+app: the app holds a device credential, not the operator credential, and the
+route refuses it. Use the host CLI above. Remote operator access is
+[a proposal](../design/operator-device-access.md) (#2894).
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
