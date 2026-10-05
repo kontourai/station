@@ -56,8 +56,8 @@ jobs:
   dequeue:
     if: ${{ github.event_name == 'pull_request_target' && github.event.action == 'dequeued' }}
     # One report at a time per PR. GitHub keeps only the newest pending run
-    # in a group, so a burst can drop a middle run; the survivor reports the
-    # latest removal.
+    # in a group, so a burst can drop a middle run. Each run reports the
+    # PR's latest timeline removal, not its own event's.
     concurrency:
       group: landing-dequeue-${{ github.event.pull_request.number }}
       cancel-in-progress: false

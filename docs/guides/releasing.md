@@ -123,9 +123,11 @@ and the final merge.
 When the queue removes a PR, the same workflow's `dequeue` job explains it on
 the PR. Each reported removal gets a new comment, so the owner is notified, and the
 app's earlier reports are minimized as outdated; a removal already reported is
-not reported again. Reports for one PR run one at a time, and GitHub keeps only
-the newest waiting run, so a quick burst of removals can skip a middle one; the
-last report always describes the latest removal. A failing-checks removal names the merge group's failing checks, their
+not reported again. Reports for one PR run one at a time, and each run reports
+the PR's latest removal on its timeline rather than the one that triggered it.
+GitHub also keeps only the newest waiting run. So a quick burst of removals can
+skip a middle one, and a latest removal that needs no report (a manual dequeue,
+for example) leaves the earlier report as the newest comment. A failing-checks removal names the merge group's failing checks, their
 error annotations (each failing `fast-checks` shard annotates its failed tests)
 and the run's artifacts, including the shard's redacted Vitest JSON report. A
 conflict removal runs `git merge-tree` against current main without checking out
