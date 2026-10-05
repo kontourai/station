@@ -1,0 +1,7 @@
+{
+  "revision": "4cafebc5f030c636825ec9f59f934ff7747320cc",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"The launcher change adds its own stop by record after a Windows orderly stop; protocol 1 and persistence across updates unchanged, so the ADR's launcher claims still hold.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packaging/portable-server/bin/station-launcher.mjs"]}
+  ]
+}
