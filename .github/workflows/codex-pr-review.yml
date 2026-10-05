@@ -1,11 +1,11 @@
-name: Advisory PR review
+name: "PR: Advisory review"
 
-# Secret Scan is the existing no-secret pull-request ingress. Listening to its
+# PR: Secret scan is the existing no-secret pull-request ingress. Listening to its
 # completed run keeps this workflow definition on the protected default branch;
 # a candidate cannot rewrite the credentialed review job that evaluates it.
 on:
   workflow_run:
-    workflows: [Secret Scan]
+    workflows: ["PR: Secret scan"]
     types: [completed]
 
 permissions:

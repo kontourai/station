@@ -1,4 +1,4 @@
-name: Publish Station release
+name: "Release: Publish"
 
 on:
   workflow_dispatch:

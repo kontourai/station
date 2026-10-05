@@ -1,4 +1,4 @@
-name: Windows Full Vitest Diagnostic
+name: "Tool: Windows full vitest diagnostic"
 
 on:
   workflow_dispatch:

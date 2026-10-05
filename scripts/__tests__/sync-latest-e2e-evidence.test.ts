@@ -110,7 +110,7 @@ function fakeGh({
         workflows: [
           {
             id: workflowId,
-            name: 'CI Extended',
+            name: 'Tool: CI extended',
             path: '.github/workflows/ci-extended.yml',
           },
         ],
@@ -226,7 +226,7 @@ describe('bounded CI E2E artifact sync', () => {
       {
         databaseId: 99,
         workflowDatabaseId: 11,
-        workflowName: 'CI Extended',
+        workflowName: 'Tool: CI extended',
         status: 'completed',
         conclusion: 'success',
         headSha: 'a'.repeat(40),
@@ -234,7 +234,7 @@ describe('bounded CI E2E artifact sync', () => {
       {
         databaseId: 77,
         workflowDatabaseId: 11,
-        workflowName: 'CI Extended',
+        workflowName: 'Tool: CI extended',
         status: 'completed',
         conclusion: 'failure',
         headSha: 'a'.repeat(40),
@@ -270,7 +270,7 @@ describe('bounded CI E2E artifact sync', () => {
     ).toContain('github-actions:77');
     expect(existsSync(join(destinationDir, 'test-results'))).toBe(false);
     expect(formatSyncResult(result)).toBe(
-      'Installed CI Extended run 77 (FAIL) at .kontourai/e2e-latest/',
+      'Installed Tool: CI extended run 77 (FAIL) at .kontourai/e2e-latest/',
     );
     await expect(
       syncLatestE2EEvidence(
@@ -289,7 +289,7 @@ describe('bounded CI E2E artifact sync', () => {
     const baseRun = {
       databaseId: 77,
       workflowDatabaseId: 11,
-      workflowName: 'CI Extended',
+      workflowName: 'Tool: CI extended',
       status: 'completed',
       conclusion: 'success',
       headSha: 'a'.repeat(40),
@@ -334,7 +334,7 @@ describe('bounded CI E2E artifact sync', () => {
         { runId: '77', status: null },
         { invoke: wrongWorkflow.invoke, destinationDir: join(root, 'wrong') },
       ),
-    ).rejects.toThrow('completed CI Extended');
+    ).rejects.toThrow('completed Tool: CI extended');
     expect(() => parseSyncArgs(['--run-id', 'nope'])).toThrow('numeric');
     expect(() => parseSyncArgs(['--run-id'])).toThrow('requires a value');
     expect(() => parseSyncArgs(['--status'])).toThrow('requires a value');

@@ -6,7 +6,7 @@ name: Nightly
 # publication.
 on:
   schedule:
-    # Daily qualified dogfood delivery. Main qualification runs every six hours.
+    # Daily qualified dogfood delivery. Main: Qualification runs every six hours.
     - cron: '43 6 * * *'
   workflow_dispatch:
     inputs:

@@ -1,4 +1,4 @@
-name: Stage Station release
+name: "Release: Stage"
 
 # Preview and stable tags share one preflight-bound source. The reusable
 # full-regression job must succeed on that exact SHA before any platform or
@@ -1132,5 +1132,5 @@ jobs:
             echo "Refusing to replace assets under existing release $RELEASE_TAG" >&2
             exit 1
           fi
-          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes "Validated release inventory; publish through the protected Publish Station release workflow."
+          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes "Validated release inventory; publish through the protected Release: Publish workflow."
           gh release upload "$RELEASE_TAG" release-assets/*

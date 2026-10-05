@@ -1301,11 +1301,11 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test('admits only the exact read-only hosted Secret Scan pull_request workflow', () => {
+  test('admits only the exact read-only hosted PR: Secret scan pull_request workflow', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/secret-scan.yml',
     );
-    if (!workflow) throw new Error('Expected the Secret Scan workflow.');
+    if (!workflow) throw new Error('Expected the PR: Secret scan workflow.');
 
     expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
 

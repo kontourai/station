@@ -301,7 +301,7 @@ function bulletList(values, cap) {
  * the process boundary stays a thin `appendFileSync`.
  */
 export function renderSummary({ document, unparseableReason, sourcePath }) {
-  const lines = ['## Hosted full regression — completion gate', ''];
+  const lines = ['## Main: Full qualification — completion gate', ''];
   if (!document) {
     lines.push(
       `The gate's captured stdout was unparseable: ${unparseableReason ?? 'no JSON verdict document was found'}.`,

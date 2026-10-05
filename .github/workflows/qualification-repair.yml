@@ -1,8 +1,8 @@
-name: Qualification repair
+name: "Main: Qualification repair"
 
 on:
   workflow_run:
-    workflows: [Main qualification]
+    workflows: ["Main: Qualification"]
     types: [completed]
   workflow_dispatch:
     inputs:

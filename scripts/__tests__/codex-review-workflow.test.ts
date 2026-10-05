@@ -42,7 +42,7 @@ describe('standalone Codex PR review workflow', () => {
   it('uses the trusted workflow-run ingress rather than candidate-controlled PR execution', () => {
     expect(document.on).toEqual({
       workflow_run: {
-        workflows: ['Secret Scan'],
+        workflows: ['PR: Secret scan'],
         types: ['completed'],
       },
     });

@@ -1,4 +1,4 @@
-name: Scheduled dependency advisory floor
+name: "Repo: Dependency advisory"
 
 # PRs scan changed dependency inputs; this independent scan detects newly
 # disclosed advisories even when all committed dependency inputs are unchanged.

@@ -21,7 +21,7 @@ device receipts for current availability.
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
 **Cadence: about once a day, with native publication only when `main` moved.**
-Nightly runs daily at 06:43 UTC. Main qualification runs every six hours, and
+Nightly runs daily at 06:43 UTC. `Main: Qualification` runs every six hours, and
 a passing run also calls Nightly for the commit it just qualified, at most
 about once a day. The scheduled run admits exact-source qualification evidence
 or runs fresh qualification. See [the release procedure](releasing.md#release-procedure). The scheduled job compares `HEAD`

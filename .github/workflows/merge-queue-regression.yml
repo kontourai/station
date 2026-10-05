@@ -1,4 +1,4 @@
-name: Merge integration
+name: "PR: Merge integration"
 
 # The required context retains its old name for existing rulesets. Full
 # regression now belongs to scheduled qualification and release promotion.
