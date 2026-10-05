@@ -4599,6 +4599,27 @@ for (const [name, viewport, maximize] of [
         carried!.box[0] + carried!.box[2],
         'Discard stays clear of Send',
       ).toBeLessThanOrEqual(send!.x + 0.5);
+      // Under load the transcript can report a scroll while it is still
+      // collapsing, which portals its Scroll to bottom button into the
+      // composer's activity row. That state is forced here rather than
+      // waited for: the button and an otherwise empty row must take no
+      // height, so the composer's Discard stays inside the viewport.
+      await page.evaluate(() => {
+        const row = document.querySelector('.chat-input__activity');
+        const button = document.createElement('button');
+        button.className = 'chat-scroll-to-bottom';
+        button.setAttribute('aria-label', 'Scroll to bottom');
+        button.textContent = '↓';
+        row?.appendChild(button);
+      });
+      await expect(page.locator('.chat-scroll-to-bottom')).toBeHidden();
+      const withPhantom = (await discardButtonReport(page)).find(
+        (report) => report.inComposer,
+      );
+      expect(
+        withPhantom,
+        `the composer Discard stays on screen: ${JSON.stringify(withPhantom)}`,
+      ).toMatchObject({ onScreen: true, topmost: true });
     } else {
       // Not short enough to engage the composer's priority: the transcript's
       // own Discard serves (the composer does not repeat it), and the draft
