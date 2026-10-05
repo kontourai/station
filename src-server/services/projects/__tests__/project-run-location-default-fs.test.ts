@@ -7,9 +7,9 @@
  */
 import { randomUUID } from 'node:crypto';
 import * as realFs from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -32,18 +32,8 @@ const { projectManifestPath } = await import('../project-manifest-store.js');
 const { ProjectResourceResolver, resetRunLocationFolderChecksForTests } =
   await import('../project-resource-resolver.js');
 
-const roots: string[] = [];
-afterEach(() => {
-  resetRunLocationFolderChecksForTests();
-  for (const root of roots.splice(0))
-    realFs.rmSync(root, { recursive: true, force: true });
-});
-
-function tempDir(prefix: string): string {
-  const dir = realFs.mkdtempSync(join(tmpdir(), prefix));
-  roots.push(dir);
-  return dir;
-}
+const tempDir = trackTempDirs();
+afterEach(() => resetRunLocationFolderChecksForTests());
 
 test('the list read never stats a project folder synchronously', async () => {
   const home = tempDir('station-run-location-default-home-');
