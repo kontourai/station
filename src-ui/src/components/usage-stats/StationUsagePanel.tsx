@@ -6,6 +6,7 @@ import { StationHttpError, useStationUsageQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
+import { ArrowDownGlyph } from '../icons/Glyph';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
 import './StationUsagePanel.css';
@@ -126,17 +127,21 @@ export function StationUsagePanel() {
               </div>
             </dl>
             <div className="usage-rollup__controls">
-              <label>
-                Breakdown{' '}
-                <select
-                  value={group}
-                  onChange={(event) => setGroup(event.target.value as Group)}
-                >
-                  <option value="provider">Provider / engine</option>
-                  <option value="model">Model</option>
-                  <option value="principal">Person</option>
-                  <option value="date">UTC day</option>
-                </select>
+              <label className="station-usage__filter">
+                <span>Breakdown</span>
+                <span className="station-usage__picker">
+                  <select
+                    className="choice-trigger"
+                    value={group}
+                    onChange={(event) => setGroup(event.target.value as Group)}
+                  >
+                    <option value="provider">Provider / engine</option>
+                    <option value="model">Model</option>
+                    <option value="principal">Person</option>
+                    <option value="date">UTC day</option>
+                  </select>
+                  <ArrowDownGlyph className="choice-caret" />
+                </span>
               </label>
             </div>
             {rows.length > 0 ? (

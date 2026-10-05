@@ -2,12 +2,36 @@
   gap: var(--k-space-4);
 }
 
-.station-usage.usage-rollup button,
-.station-usage.usage-rollup select {
+.station-usage .button,
+.station-usage .choice-trigger {
   min-height: 44px;
-  background: var(--k-panel-raised);
-  color: var(--k-text);
-  border-color: var(--k-line-strong);
+}
+
+.station-usage__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  flex-wrap: wrap;
+}
+
+.station-usage__picker {
+  position: relative;
+  display: inline-flex;
+  width: min(100%, 14rem);
+}
+
+.station-usage__picker .choice-trigger {
+  width: 100%;
+  appearance: none;
+  padding-inline-end: calc(var(--k-space-6) + var(--k-space-2));
+}
+
+.station-usage__picker .choice-caret {
+  position: absolute;
+  inset-inline-end: var(--k-space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .station-usage__totals {
