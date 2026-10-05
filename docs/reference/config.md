@@ -254,6 +254,36 @@ Defines a single agent. The directory name is the agent's slug.
 | `ui` | object | no | UI configuration including quick prompts |
 | `skills` | string[] | no | Skill IDs available to this agent |
 | `execution` | object | no | Runtime, model connection, and optional model dispatch policy |
+| `project` | string | no | Owning Project slug; absent means global scope. The Project must exist when the value is introduced. |
+| `audience` | object | no | Who besides the operator may list, read and use the Agent (`station.agent-audience/v1`). Absent means operator only. See [audience](#audience). |
+
+### audience
+
+`audience` takes one of three versioned shapes. Absent and `operator` mean the
+same thing: only the operator's own requests see the Agent. Agents saved before
+this field existed need no rewrite.
+
+```json
+{ "version": "station.agent-audience/v1", "kind": "operator" }
+{ "version": "station.agent-audience/v1", "kind": "project-permission", "permission": "discuss" }
+{ "version": "station.agent-audience/v1", "kind": "project-roles", "roles": ["viewer", "contributor"] }
+```
+
+`permission` is a Project member action (`view`, `discuss`, `edit`, `execute`,
+`approve`, `manage-members`, `manage-extensions`, `manage-compute`). `roles` is
+a non-empty, duplicate-free list of `viewer`, `contributor`, `admin` and `owner`.
+A member audience requires `project`, because membership belongs to one Project.
+An invalid value is refused on save and load with the reason, for example
+`/audience: audience.permission must be one of: ...`. The
+[validator](../../src-server/domain/validator.ts) runs
+[`agentAudienceRefusal`](../../src-server/services/agents/agent-audience.ts)
+ahead of the [schema](../../schemas/agent.schema.json). A save cannot clear the
+field with `null`; set `kind` to `operator` instead.
+
+Admission is decided per request against the caller's current, active
+membership in the owning Project; see
+[Agent audience](../design/project-membership.md#agent-audience) for what a
+member may do with an admitted Agent today.
 
 ### execution / model dispatch
 

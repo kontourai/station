@@ -316,7 +316,10 @@ GET /api/agents
 The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
 persisted definitions, registry defaults, and runtime observations. Rows can
 include execution binding, availability/validation findings, and activation
-failures; inclusion in the list is not proof that a chat can launch. The example
+failures; inclusion in the list is not proof that a chat can launch. A bound
+row's `engineId` and `engineConnectionType` come from the connection record and
+its Adapter, so they survive a failed or timed-out runtime inspection;
+`engineDisplayName` and availability still need that live read. The example
 below is a field excerpt, not a fixed response for every Agent.
 
 
@@ -350,6 +353,20 @@ below is a field excerpt, not a fixed response for every Agent.
 }
 ```
 
+A request acting for a deployment account (a Project member) never receives
+this shape. The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+answers `GET /agents`, `GET /api/agents` and `GET /api/agents/:slug` for it
+with `station.member-agent/v1` views of Agents whose
+[audience](config.md#audience) admits it; `/api/boot`'s `agents` section
+carries the same views. Any other or unknown Agent slug, in a path or as an
+orchestration `target.agent`, returns `404 Agent not found`. A turn on an
+admitted Agent returns `403 member_agent_turns_unavailable`. Creating or
+materializing an Agent, and updating, deleting or editing the tools or
+workflows of an admitted one, returns `403 member_agent_catalog_read_only`
+(a hidden slug stays `404`). All of these gate
+responses are `no-store`. See
+[Agent audience](../design/project-membership.md#agent-audience).
 
 ---
 
@@ -1340,8 +1357,10 @@ adds bounded `aggregateReceipts` for leaf Station transfer, after logical
 replacement/deduplication. Context occupancy alone does not produce a token
 receipt or consumed-usage coverage.
 
-Cumulative token identities survive engine-process restarts; cumulative cost
-identities follow the declared cost-process epochs. `sourceSequence` orders
+Cumulative token identities survive engine-process restarts. A cumulative cost
+identity spans one running total: a resumed Claude process continues its
+predecessor's total, while a restart without resume or a lower figure starts
+another. `sourceSequence` orders
 same-Station/thread observations when ingestion timestamps tie. Sparse
 cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
@@ -2797,9 +2816,15 @@ POST /tool-approval/:approvalId
 ```
 
 Resolve a pending tool call using the request-bound Session read authority and
-client origin. Knowing an approval ID alone is not sufficient. The
-[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
-cannot resolve an authorized pending request.
+client origin. The [approval handler](../../src-server/routes/agents/invoke.ts)
+returns 404 when it cannot resolve an authorized pending request. In hosted
+mode the entry must be bound to a session of the caller's tenant. Outside
+hosted mode the
+[registry](../../src-server/services/approvals/approval-registry.ts) lets any
+caller that reaches this route settle a pending entry by its ID. The exception
+is a request acting for a Project member: the
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+refuses it with `403 member_agent_turns_unavailable`.
 
 The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
 uses orchestration for parts carrying an approval thread ID, including the exact

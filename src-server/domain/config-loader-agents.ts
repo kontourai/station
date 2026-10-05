@@ -682,6 +682,7 @@ export async function readAgentCatalog(
             workflowWarnings.length > 0 ? workflowWarnings : undefined,
           execution: spec.execution,
           project: spec.project,
+          ...(spec.audience ? { audience: spec.audience } : {}),
         },
       });
     } catch (error: any) {

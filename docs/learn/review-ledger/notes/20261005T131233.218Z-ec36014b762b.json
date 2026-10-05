@@ -1,0 +1,7 @@
+{
+  "revision": "fed7d14336a7270578e7e17e53892b76d8c10cfa",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read Starting and resuming work against RecentChatList.tsx: New chat's recent chats now pass rowProjectMarks (useRowProjectMarks) to the shared InboxRow, so they wear the same project mark as Home rows and draw none for a remote row. The existing claims (shared row anatomy across inbox, mobile switcher and start surface; Home rows' mark rule) remain accurate; no prose change here because open PR #3371 rewrites this section.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/RecentChatList.tsx"]}
+  ]
+}
