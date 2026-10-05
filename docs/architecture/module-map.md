@@ -1365,9 +1365,11 @@ records that already exist and the future single-principal consumer. List, get, 
 ungrant inside them) take the request principal as viewer. One typed not-found refusal
 covers a missing binding and another person's, and `/api/secret-bindings` returns it as
 the same 404 body on get, replace, revoke, bind, and unbind; request validation that
-runs before the lookup still returns 400 for both. `create` with an id already in use
-refuses whoever owns it, so it reveals that the id exists; that follows from the single
-global id namespace and is accepted for now. A caller without a viewer, including
+runs before the lookup still returns 400 for both. An instance-owned `create` with
+an id already in use is refused, so it reveals that the id exists, including one held
+by an existing person-owned record; that follows from the single global id namespace
+and is accepted for now. A person-owned `create` is refused before the id check, so it
+reveals nothing. A caller without a viewer, including
 stored-env migration, sees and grants only instance bindings. Resolution refuses a
 person-owned binding with `owner_mismatch` unless the invocation names that principal
 (and Project). Stdio MCP children and ACP providers are shared and name none, so
