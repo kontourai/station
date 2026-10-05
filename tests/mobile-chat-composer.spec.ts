@@ -4578,6 +4578,11 @@ for (const [name, viewport, maximize] of [
     const priority =
       (await page.locator('.chat-dock__body[data-composer-priority]').count()) >
       0;
+    // The half dock is the case the composer's priority exists for.
+    if (!maximize)
+      expect(priority, 'a 375x667 half dock engages composer priority').toBe(
+        true,
+      );
     if (priority) {
       // The composer carries Discard. It takes no room of its own: it sits in
       // the controls row, which stays one touch row, so the composer needs no
@@ -4612,7 +4617,17 @@ for (const [name, viewport, maximize] of [
         button.textContent = '↓';
         row?.appendChild(button);
       });
-      await expect(page.locator('.chat-scroll-to-bottom')).toBeHidden();
+      // The product may already have rendered its own button here, so every
+      // Scroll to bottom button and activity row in the composer is checked.
+      const phantomHeights = await page
+        .locator(
+          '.chat-input__activity, .chat-input__activity .chat-scroll-to-bottom',
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().height),
+        );
+      expect(phantomHeights.length).toBeGreaterThan(1);
+      expect(phantomHeights.every((height) => height === 0)).toBe(true);
       const withPhantom = (await discardButtonReport(page)).find(
         (report) => report.inComposer,
       );
