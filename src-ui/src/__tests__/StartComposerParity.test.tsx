@@ -1019,6 +1019,20 @@ describe('Home and the dock start the same way', () => {
       expect(earlier()?.textContent).toContain('Start A, edited in dock');
     });
 
+    test('a Start dismissed after Home unmounted comes back on the next Home', async () => {
+      const { taken, closed } = dismissingDock();
+      const first = renderHome();
+      fireEvent.change(field(), { target: { value: 'Start A' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      first.unmount();
+      const last = taken.at(-1)!;
+      closed.add(last);
+      act(() => last.detail.onClosed('dismissed', 'Start A, edited in dock'));
+      renderHome();
+      expect(field().value).toBe('Start A, edited in dock');
+    });
+
     test('a dismissed Start with the field untouched takes the dock edits', async () => {
       const { taken, closed } = dismissingDock();
       renderHome();
