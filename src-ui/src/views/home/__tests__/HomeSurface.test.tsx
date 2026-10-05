@@ -39,6 +39,9 @@ vi.mock('../../../components/home/HomeStartComposer', () => ({
     <form aria-label="Start work" data-compact={String(Boolean(compact))} />
   ),
 }));
+vi.mock('../../../hooks/useProjectIcons', () => ({
+  useProjectIcons: () => new Map(),
+}));
 
 import { HomeSurface } from '../HomeSurface';
 

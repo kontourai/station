@@ -79,6 +79,8 @@ export interface ChatDockInboxPanelProps {
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
   /** Project accents by slug; see `InboxGroupListProps.projectAccentBySlug`. */
   projectAccentBySlug?: InboxGroupListProps['projectAccentBySlug'];
+  /** Project icons by slug; see `InboxGroupListProps.projectIconBySlug`. */
+  projectIconBySlug?: InboxGroupListProps['projectIconBySlug'];
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
   workFacts?: InboxGroupListProps['workFacts'];
 }
@@ -107,6 +109,7 @@ function ChatDockInboxPanelImpl({
   agents,
   gitLocationByThreadId,
   projectAccentBySlug,
+  projectIconBySlug,
   workFacts,
 }: ChatDockInboxPanelProps) {
   // One coarse tick for the whole list's relative times, rather than a new
@@ -160,6 +163,7 @@ function ChatDockInboxPanelImpl({
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
             projectAccentBySlug={projectAccentBySlug}
+            projectIconBySlug={projectIconBySlug}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
             collapsible={{ sections, onToggle: toggleSection }}

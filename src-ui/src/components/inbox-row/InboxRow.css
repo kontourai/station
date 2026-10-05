@@ -76,15 +76,19 @@
   white-space: nowrap;
 }
 
-/* The project's colour, as a dot before its name (decorative; the name is the
-   identity). Inline in the one-line meta text, so it never sets the height. */
+/* The project's mark before its name (decorative; the name is the identity):
+   its icon, else its colour as a dot. ProjectIcon sets the size inline (a
+   12px icon, a 6px dot), below the meta line's 18px, so it never sets the
+   height. */
 .inbox-row__project-accent {
   display: inline-block;
-  width: 6px;
-  height: 6px;
   margin-right: var(--space-2);
-  border-radius: 999px;
   vertical-align: middle;
+}
+.inbox-row__project-accent.brand-icon {
+  display: inline-flex;
+  /* Optical centre on the 11-12px meta text. */
+  vertical-align: -2px;
 }
 
 .inbox-row__time {

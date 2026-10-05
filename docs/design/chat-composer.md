@@ -59,9 +59,12 @@ The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 When Continue holds Home's only item of work, Recent work is not shown and
 View Activity sits beside the Continue heading.
-Home's Recent work rows are the same row: a decorative dot before the Project
-name repeats that Project's sidebar colour (the name stays plain text), and the
-hover card's Git section reads the row's local session folder, as in the dock.
+Home's Recent work rows are the same row: a decorative mark before the Project
+name is the Project's chosen icon, or, without one, a dot in its sidebar colour
+(the name stays plain text); a row read from another Station draws no mark,
+since its slug names that Station's Project. The hover card's Project row
+repeats that mark, and its Git section reads the row's local session folder, as
+in the dock.
 The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
@@ -367,7 +370,7 @@ The **Chats and tasks** picker keeps a circular **+** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
-title, Project with its sidebar colour dot, and a right-aligned status/time. Unresolved Agents retain their
+title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs
 approval`, …, the same words the dock row prints). Running time uses the
 recorded open-turn start; without one, the row's compact time trails the status

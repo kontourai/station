@@ -69,6 +69,7 @@ import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
   dockAcceptsNewChatIntent,
   readNewChatIntent,
@@ -598,6 +599,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const gitLocationByThreadId = useGitLocationByThreadId();
   // The sidebar's project colours, so a row's swatch matches its project.
   const projectAccentBySlug = useProjectAccents();
+  const projectIconBySlug = useProjectIcons();
   // archive#3391: the inboxes name models through the catalog, as Home does.
   const { resolveModelLabel } = useCatalogModelLabel();
   // The one inbox derivation, shared with the sidebar's Open-chats rows.
@@ -2528,6 +2530,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         agents,
                         gitLocationByThreadId,
                         projectAccentBySlug,
+                        projectIconBySlug,
                         workFacts,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
@@ -2795,6 +2798,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               workFacts,
               gitLocationByThreadId,
               projectAccentBySlug,
+              projectIconBySlug,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,

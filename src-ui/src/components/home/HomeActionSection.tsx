@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
@@ -172,6 +173,7 @@ export function HomeContinueCard({
   // The lanes' own row inputs, so the row reads exactly as theirs do.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
+  const projectIconBySlug = useProjectIcons();
   const primary = model.primaryWorkItem;
   if (!primary) return null;
   return (
@@ -209,6 +211,7 @@ export function HomeContinueCard({
             chrome: coarsePointer ? 'touch' : 'hover',
             gitLocationByThreadId,
             projectAccentBySlug,
+            projectIconBySlug,
           },
         })}
       </ul>

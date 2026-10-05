@@ -231,6 +231,20 @@ for new chats. An existing chat stays with its original project. The chat bar's
 **New chats** value lets you choose another default without leaving the workspace.
 The next sidebar project selection updates that default again.
 
+To give a project an icon, open its settings and choose the icon beside its
+name under **Basic info**. Station suggests artwork it finds in the project
+folder, such as a favicon, app icon or logo, but applies nothing until you
+pick it. You can also upload a PNG, JPEG, WebP or ICO image of up to 128 KB,
+type an emoji or short symbol, or choose **No icon**, then **Save**. The New
+Project dialog offers the same choices. Links and file paths are not accepted
+as icons; if a project's existing icon can't be shown any more, such as one
+saved as a link before that, its settings say so and ask you to choose a new
+one. The icon appears beside the project in
+the sidebar, the project switcher, Home and chat rows, their details, and on
+the project page. Without one, those rows show the project's colour and the
+project page shows its initials. A row for work on another Station shows
+neither, since its project belongs to that Station.
+
 ### Prepare a visual skill
 
 Choose **⋯** then **Use a visual skill** in the start composer to browse

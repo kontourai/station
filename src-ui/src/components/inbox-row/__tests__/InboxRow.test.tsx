@@ -1085,3 +1085,72 @@ describe("the project's colour is a swatch, never the name's colour", () => {
     ]);
   });
 });
+
+describe("the project's icon takes the swatch's place when it has one", () => {
+  const IMAGE = 'data:image/png;base64,iVBORw0KGgo=';
+
+  it('draws the icon, decorative, before the name — not the dot', () => {
+    renderRow(rowFor(), {
+      projectAccent: 'var(--event-tool-call)',
+      projectIcon: IMAGE,
+    });
+    const row = screen.getByTestId('inbox-row');
+    const mark = row.querySelector<HTMLElement>('.inbox-row__project-accent');
+    expect(mark?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
+    expect(mark?.getAttribute('aria-hidden')).toBe('true');
+    expect(mark?.classList.contains('project-icon--dot')).toBe(false);
+    expect(mark?.nextElementSibling?.textContent).toBe('station');
+    // The open button's name still says the project in words, once.
+    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
+      'station',
+    );
+  });
+
+  it('the phone sheet’s project line draws it too', () => {
+    renderRow(rowFor(), {
+      projectAccent: 'var(--event-tool-call)',
+      projectIcon: '🧭',
+      actionsInDetails: true,
+    });
+    const context = screen
+      .getByTestId('inbox-row')
+      .querySelector('.inbox-row__project-context');
+    expect(
+      context?.querySelector('.inbox-row__project-accent .brand-icon__glyph')
+        ?.textContent,
+    ).toBe('🧭');
+  });
+
+  it('a list resolves each row’s icon by its project slug', () => {
+    const station = rowFor().item;
+    const other = rowFor({ threadId: 'U', projectSlug: 'other' }).item;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'idle', label: 'Idle', items: [station, other] }]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+          projectAccentBySlug={
+            new Map([
+              ['station', 'var(--event-agent-start)'],
+              ['other', 'var(--event-reasoning)'],
+            ])
+          }
+          projectIconBySlug={new Map([['station', IMAGE]])}
+        />
+      </QueryClientProvider>,
+    );
+    const marks = screen
+      .getAllByTestId('inbox-row')
+      .map((row) =>
+        row.querySelector<HTMLElement>('.inbox-row__project-accent'),
+      );
+    expect(marks[0]?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
+    expect(marks[1]?.querySelector('img')).toBeNull();
+    expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
+  });
+});
