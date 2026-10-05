@@ -42,15 +42,13 @@ export function resolveNewChatStartContext(input: {
 /** `resolveNewChatStartContext` over the live dock binding and route. */
 export function useNewChatStartContext(projects: ProjectMetadata[]): string {
   const { chatDockProjectSlug } = useDeviceSettings();
-  // The slug `useActiveProject` (ChatDock's `routeActiveProjectSlug`)
-  // resolves, read without that hook's project-detail query.
-  const { selectedProject, lastProject } = useNavigation((state) => ({
-    selectedProject: state.selectedProject,
-    lastProject: state.lastProject,
-  }));
+  // The route's project. The resolver pins that it never overrides the dock
+  // binding (ChatDock passes `useActiveProject`'s slug, which adds the
+  // remembered `lastProject`; neither value changes the result).
+  const routeProject = useNavigation((state) => state.selectedProject);
   return resolveNewChatStartContext({
     dockProjectSlug: chatDockProjectSlug,
-    routeActiveProjectSlug: selectedProject || lastProject || null,
+    routeActiveProjectSlug: routeProject,
     projects,
   });
 }
