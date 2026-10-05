@@ -636,6 +636,9 @@ describe('GrokSessionSource', () => {
     });
     let found = false;
     for (let poll = 0; poll < 4 && !found; poll += 1) {
+      // Probes keep arriving, so the big group changes before every poll and
+      // is never skipped as unchanged.
+      mkdirSync(join(bigGroup, `probe-new-${poll}`));
       found = (await source.discover()).sessions.some(
         (session) => session.sessionId === 'zzz-session',
       );
