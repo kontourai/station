@@ -337,9 +337,6 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
 describe('after a restart (#3386)', () => {
   async function adoptedThenRestarted(): Promise<string> {
     const { threadId } = (await adopt(attached(lane))) as { threadId: string };
-    expect(adapter.adoptions[0]!.metadata).toMatchObject({
-      dispatchCanonicalCwd: lane,
-    });
     await childSummary(threadId, 'station');
     // A process that ended without a clean shutdown (a clean one closes
     // its sessions): the child is still open, and the next process restores
@@ -351,6 +348,7 @@ describe('after a restart (#3386)', () => {
 
   test('the child starts again in its worktree', async () => {
     const threadId = await adoptedThenRestarted();
+    expect(store.readSessionByThread(threadId)?.cwd).toBe(lane);
     await service.dispatch({
       type: 'sendTurn',
       input: { threadId, input: 'carry on' },
