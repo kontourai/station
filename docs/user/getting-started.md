@@ -438,8 +438,8 @@ Each conversation is filed under a Project by the folder it ran in:
 2. Otherwise, a Project whose folder is in the same git repository. Every
    worktree of the repository counts, so a conversation in
    `../station-worktrees/fix-login` or another tool's worktree folder files
-   under the Project on the main checkout. A Project on a subfolder, such as
-   `packages/app`, takes that subfolder in every worktree.
+   under the Project on the main checkout. A Project on a subfolder of the
+   repository takes that same subfolder in every worktree.
 3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
    filter to list these.
 
