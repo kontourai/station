@@ -7,6 +7,11 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useUsageLimitRecovery } from '../../hooks/useUsageLimitRecovery';
 import type { ChatSession } from '../../types';
+import {
+  absoluteTime,
+  relativeTime,
+  relativeTimeUntil,
+} from '../../utils/relativeTime';
 import { Button } from '../Button';
 import './UsageLimitBanner.css';
 
@@ -17,6 +22,8 @@ import './UsageLimitBanner.css';
 const NOTICE_MS = 10_000;
 /** Past the reset, the server settles the stop on its own timer; read it after. */
 const SETTLE_MS = 1_500;
+/** The relative reset ("in 41m") is minute-grained; this keeps it from going stale. */
+const CLOCK_TICK_MS = 30_000;
 const MAX_TIMER_MS = 2 ** 31 - 1 - SETTLE_MS;
 
 const RETIRED_COPY: Record<ConnectionRecoveryOutcomeReason, string> = {
@@ -49,16 +56,12 @@ function settledNotice(recovery: ConnectionRecoveryProjection): string | null {
   }
 }
 
-/** The reset as a local time, with the weekday when it is not today. */
-function formatReset(iso: string, nowMs: number): string {
-  const at = new Date(iso);
-  const time = at.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  return at.toDateString() === new Date(nowMs).toDateString()
-    ? time
-    : `${at.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
+/**
+ * The reset in the one work-surface time format: "in 41m" before it, "3m"
+ * once it has passed. The exact instant is the `<time>` tooltip.
+ */
+function formatReset(dueMs: number, nowMs: number, passed: boolean): string {
+  return passed ? relativeTime(dueMs, nowMs) : relativeTimeUntil(dueMs, nowMs);
 }
 
 const isWaiting = (recovery: ConnectionRecoveryProjection | null) =>
@@ -134,6 +137,10 @@ function UsageLimitBannerFor({
     enabled,
   });
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // What the relative reset reads against. Separate from `nowMs`, which only
+  // moves when the settled read does, so a minute ticking over can never flip
+  // the reset-passed wording ahead of that read.
+  const [clockMs, setClockMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
   const titleId = useId();
@@ -154,6 +161,7 @@ function UsageLimitBannerFor({
     const wait = dueMs - Date.now();
     if (wait <= 0) {
       setNowMs(Date.now());
+      setClockMs(Date.now());
       return;
     }
     // The server arms only within a day; a larger delay would overflow the
@@ -161,10 +169,19 @@ function UsageLimitBannerFor({
     if (wait > MAX_TIMER_MS) return;
     const timer = setTimeout(() => {
       setNowMs(Date.now());
+      setClockMs(Date.now());
       void refetch();
     }, wait + SETTLE_MS);
     return () => clearTimeout(timer);
   }, [enabled, dueMs, refetch]);
+
+  const dueFinite = Number.isFinite(dueMs);
+  useEffect(() => {
+    if (!enabled || !dueFinite) return;
+    setClockMs(Date.now());
+    const tick = setInterval(() => setClockMs(Date.now()), CLOCK_TICK_MS);
+    return () => clearInterval(tick);
+  }, [enabled, dueFinite]);
 
   // A stop this view watched wait, and that a read then shows no longer
   // waiting, says how it settled, briefly: that one read is the last. Engaging
@@ -236,7 +253,7 @@ function UsageLimitBannerFor({
   const dueKnown = Number.isFinite(dueMs) && recovery?.dueAt !== undefined;
   const resetPassed = dueKnown && dueMs <= nowMs;
   const resetLabel = dueKnown
-    ? formatReset(recovery?.dueAt as string, nowMs)
+    ? formatReset(dueMs, clockMs, resetPassed)
     : undefined;
   const autoOn = recovery?.outcome === 'armed' && recovery.autoResume === true;
   // The reset time is said once, in the title. Resume now is always offered:
@@ -263,7 +280,9 @@ function UsageLimitBannerFor({
           <>
             {' · '}
             {resetPassed ? 'Reset ' : 'Resets '}
-            <time dateTime={recovery?.dueAt}>{resetLabel}</time>
+            <time dateTime={recovery?.dueAt} title={absoluteTime(dueMs)}>
+              {resetLabel}
+            </time>
           </>
         ) : null}
       </p>

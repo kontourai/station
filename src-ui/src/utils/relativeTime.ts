@@ -22,14 +22,36 @@ const SHORT_DATE_AFTER_MS = 7 * DAY_MS;
 
 export function relativeTime(updatedAt: number, now: number): string {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return 'now';
-  const elapsed = Math.max(0, now - updatedAt);
-  const minutes = Math.floor(elapsed / 60_000);
+  return compactSpan(Math.max(0, now - updatedAt), updatedAt, now);
+}
+
+/**
+ * `relativeTime` for a deadline that has not arrived yet: the same compact
+ * vocabulary read as time remaining. `now` under a minute, then `in 41m`,
+ * `in 1h`, `in 2d`, and the same short date once a week out. The `in ` prefix
+ * is what tells a deadline from a stamp (`41m` is a thing that happened, `in
+ * 41m` is a thing that will), and it is the only word added: no "ago", no
+ * "until", no seconds. `relativeTime` only formats elapsed time and clamps a
+ * future stamp to `now`; this is its mirror for a future one, and clamps a
+ * stamp already past to `now` the same way. A reset time, a snooze, a retry:
+ * anything that says when something is due reads this, and the absolute
+ * instant goes in a tooltip (`absoluteTime`).
+ */
+export function relativeTimeUntil(at: number, now: number): string {
+  if (!Number.isFinite(at) || at <= 0) return 'now';
+  const span = compactSpan(Math.max(0, at - now), at, now);
+  return /^\d+[mhd]$/.test(span) ? `in ${span}` : span;
+}
+
+/** The shared ladder: `now`, `Nm`, `Nh`, `Nd`, then a short date. */
+function compactSpan(spanMs: number, at: number, now: number): string {
+  const minutes = Math.floor(spanMs / 60_000);
   if (minutes < 1) return 'now';
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
-  if (elapsed < SHORT_DATE_AFTER_MS) return `${Math.floor(hours / 24)}d`;
-  return shortDate(updatedAt, now);
+  if (spanMs < SHORT_DATE_AFTER_MS) return `${Math.floor(hours / 24)}d`;
+  return shortDate(at, now);
 }
 
 /** "Sep 12", or "Sep 12, 2025" once the year differs from `now`'s. */

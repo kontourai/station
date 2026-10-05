@@ -139,12 +139,10 @@ const button = (name: string) => screen.queryByRole('button', { name });
 const posts = () => calls.filter((call) => call.method === 'POST');
 
 describe('UsageLimitBanner (#3157)', () => {
-  test('shows the reset as a local time and says it will resume when auto-resume is on', async () => {
+  test('shows the reset as a relative time and says it will resume when auto-resume is on', async () => {
     renderBanner();
     const element = await banner();
-    expect(element.textContent).toContain(
-      'Usage limit reached · Resets 11:00 PM',
-    );
+    expect(element.textContent).toContain('Usage limit reached · Resets in 2h');
     expect(element.querySelector('time')?.getAttribute('datetime')).toBe(
       RESET_AT,
     );
@@ -152,7 +150,7 @@ describe('UsageLimitBanner (#3157)', () => {
       'Station will resume this conversation automatically.',
     );
     // The reset time is said once.
-    expect(element.textContent?.match(/11:00 PM/g)).toHaveLength(1);
+    expect(element.textContent?.match(/in 2h/g)).toHaveLength(1);
     expect(button('Resume now')).not.toBeNull();
     expect(button('Cancel auto-resume')).not.toBeNull();
     // It reads this Session's own projection, on the documented route.
@@ -448,18 +446,50 @@ describe('UsageLimitBanner (#3157)', () => {
     rerenderWith({ eventCount: 2 });
     await waitFor(() => expect(button('Resume now')).not.toBeNull());
     expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
-      'Resets 11:00 PM',
+      'Resets in 2h',
     );
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  test('the reset is shown in the viewer’s own zone, not UTC', async () => {
+  test('the reset reads the same in any zone, and its tooltip is the viewer’s own zone, not UTC', async () => {
     vi.stubEnv('TZ', 'America/Chicago');
     renderBanner();
     const element = await banner();
+    // The body is a zone-free duration; the exact instant is the tooltip.
+    expect(element.textContent).toContain('Resets in 2h');
+    expect(element.textContent).not.toMatch(/PM|AM/);
     // 23:00Z on 24 September is 6:00 PM in Chicago (CDT, UTC-5).
-    expect(element.textContent).toContain('Resets 6:00 PM');
-    expect(element.textContent).not.toContain('11:00 PM');
+    const title = element.querySelector('time')?.getAttribute('title') ?? '';
+    expect(title).toMatch(/06:00\s?PM/);
+    expect(title).not.toMatch(/11:00/);
+  });
+
+  test('the reset counts down in the compact form: minutes, then now', async () => {
+    const soon = new Date(NOW.getTime() + 41 * 60_000).toISOString();
+    answers.read = () => ({ recovery: projection({ dueAt: soon }) });
+    renderBanner();
+    const element = await banner();
+    expect(element.textContent).toContain(
+      'Usage limit reached · Resets in 41m',
+    );
+    expect(element.querySelector('time')?.getAttribute('datetime')).toBe(soon);
+  });
+
+  test('a reset already past reads "Reset" and the compact time since, with no "ago"', async () => {
+    const past = new Date(NOW.getTime() - 3 * 60_000).toISOString();
+    answers.read = () => ({
+      recovery: projection({
+        autoResume: undefined,
+        outcome: 'manual',
+        outcomeReason: 'auto-resume-off',
+        dueAt: past,
+      }),
+    });
+    renderBanner();
+    const element = await banner();
+    expect(element.textContent).toContain('Usage limit reached · Reset 3m');
+    expect(element.textContent).not.toMatch(/Resets|ago/);
+    expect(element.textContent).toContain('Resume it yourself');
   });
 
   test('a resumed stop is read once after the hold clears, not on every summary update', async () => {
