@@ -408,8 +408,8 @@ const SURFACE_ROOTS = [
 
 /**
  * Retired words, each paired with the one that replaced it, so the failure
- * says what to write. Matched case-sensitively against string literals and
- * JSX text once comments are gone.
+ * says what to write. Matched case-blind against the source once comments
+ * are gone.
  */
 const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Review pending', 'Needs approval'],
