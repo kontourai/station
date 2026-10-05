@@ -83,7 +83,7 @@ export const ACTIVITY_KIND_OPTIONS: ReadonlyArray<{
  * mistaken for a project: a project slug is lowercase with no spaces
  * (`slugifyProjectName`).
  */
-export const NO_PROJECT_FILTER = 'No project';
+const NO_PROJECT_FILTER = 'No project';
 
 /**
  * The Project filter predicate: {@link NO_PROJECT_FILTER} matches exactly the
