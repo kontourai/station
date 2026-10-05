@@ -90,7 +90,7 @@ export interface AgentAudienceGateDeps {
 
 export const MEMBER_AGENT_TURNS_UNAVAILABLE =
   'member_agent_turns_unavailable' as const;
-export const MEMBER_AGENT_CATALOG_READ_ONLY =
+const MEMBER_AGENT_CATALOG_READ_ONLY =
   'member_agent_catalog_read_only' as const;
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
