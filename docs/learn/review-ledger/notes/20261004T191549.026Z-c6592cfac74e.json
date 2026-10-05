@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"No prose change: reviewed its attention/session.configured mentions, none concern paired-Station requests, the delegated respond route or request-route access; orchestration-service only adds recordPeerDelegationPendingRequest, a session.configured observation on delegator-side peer records.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

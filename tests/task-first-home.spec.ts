@@ -1,10 +1,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
-import type {
-  SkillExperienceInventoryV1,
-  SkillExperienceSessionViewV1,
-} from '@kontourai/station-contracts/skill-experience';
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -268,21 +265,6 @@ async function mockTaskFirstHome(
       });
       return;
     }
-    // BEGIN skill-experience-session-read (droppable: the shared fixture lane
-    // declares this route in tests/helpers)
-    if (
-      route.request().method() === 'GET' &&
-      /^\/api\/orchestration\/sessions\/[^/]+\/skill-experience$/.test(path)
-    ) {
-      const view: SkillExperienceSessionViewV1 = {
-        current: null,
-        history: [],
-        hasMore: false,
-      };
-      await route.fulfill(json(view));
-      return;
-    }
-    // END skill-experience-session-read
     // The New chat draft reads the skill-experience inventory (#3201). This
     // fixture installs none, which the route answers with an empty inventory.
     if (
