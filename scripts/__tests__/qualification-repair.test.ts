@@ -165,6 +165,7 @@ describe('qualification repair lifecycle', () => {
     async () => {
       const root = makeTempDir('station-landing-label-');
       let green = false;
+      let alreadyArmed = false;
       const pr = {
         number: 7,
         state: 'open',
@@ -194,7 +195,12 @@ describe('qualification repair lifecycle', () => {
                     },
                   ],
                 }
-              : pr,
+              : {
+                  ...pr,
+                  auto_merge: alreadyArmed
+                    ? { enabled_by: { login: 'station-automation' } }
+                    : null,
+                },
           ),
         );
       });
@@ -270,6 +276,7 @@ fi
         );
         // The actual stall starts armed, not queued. Fresh arming must still
         // run once with the reviewed head when an old request already exists.
+        alreadyArmed = true;
         const stalledMarker = join(root, 'stalled-arm');
         const repaired = await exec(process.execPath, [landing], {
           cwd: root,
