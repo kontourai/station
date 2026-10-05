@@ -864,9 +864,34 @@ test('virtualizes a long real transcript while preserving reader controls on mob
 
   const loadEarlier = page.getByRole('button', { name: 'Earlier messages' });
   await expect(loadEarlier).toBeVisible();
+  // One PRESS is one page. The press is a keyboard activation on a button
+  // focused without scrolling, never `locator.click()`: Playwright scrolls the
+  // target into view first, and reaching the top is itself a history load
+  // (#2706), so a click is a scroll-load plus a press, and Playwright retries
+  // (re-scrolling to the top) once that load moves the button away. Those are
+  // two reader actions, not a press loading two pages (#3288). After every
+  // press the request count must hold across a run of frames, so a second
+  // load raised by the press's own restoration cannot hide behind a poll that
+  // is already satisfied.
+  const pressEarlier = async (expectedRequests: number) => {
+    await loadEarlier.evaluate((button) =>
+      (button as HTMLElement).focus({ preventScroll: true }),
+    );
+    await page.keyboard.press('Enter');
+    await expect.poll(() => requestedWindows.length).toBe(expectedRequests);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          let frames = 0;
+          const tick = () =>
+            ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+          requestAnimationFrame(tick);
+        }),
+    );
+    expect(requestedWindows).toHaveLength(expectedRequests);
+  };
   for (let pageIndex = 1; pageIndex <= 3; pageIndex++) {
-    await loadEarlier.click();
-    await expect.poll(() => requestedWindows.length).toBe(pageIndex + 1);
+    await pressEarlier(pageIndex + 1);
     expect(
       new URL(requestedWindows[pageIndex]).searchParams.get('cursor'),
     ).toBe(`older-turns-${10 + (pageIndex - 1) * 20}`);
@@ -1011,13 +1036,30 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   // ...and exactly one page, not two (nothing scrolled it into a second load).
   await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 1);
 
+  // A real reader scroll to the top right after a press still loads exactly
+  // one page: the restoration suppression ends when the layout settles or the
+  // reader acts, so it neither raises a second load for the press nor swallows
+  // this one. A mouse wheel is reader input, with no scrollIntoView involved.
+  await transcript.hover();
+  await page.mouse.wheel(0, -1_000_000);
+  await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 2);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 0;
+        const tick = () =>
+          ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
+      }),
+  );
+  expect(requestedWindows).toHaveLength(windowsBeforeEnter + 2);
+
   for (
-    let requestCount = windowsBeforeEnter + 2;
+    let requestCount = windowsBeforeEnter + 3;
     requestCount <= 11;
     requestCount++
   ) {
-    await loadEarlier.click();
-    await expect.poll(() => requestedWindows.length).toBe(requestCount);
+    await pressEarlier(requestCount);
   }
   expect(requestedWindows).toHaveLength(11);
   const jumpToTail = page.getByRole('button', { name: 'Scroll to bottom' });
