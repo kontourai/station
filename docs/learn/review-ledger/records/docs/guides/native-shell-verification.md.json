@@ -152,7 +152,9 @@
 
     "src-server/security/pairing-route-scopes.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts"
   ],
 
   "checks": [
