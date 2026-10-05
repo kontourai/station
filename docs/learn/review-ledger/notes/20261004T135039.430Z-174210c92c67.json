@@ -1,0 +1,13 @@
+{
+  "revision": "57317c964240dc1fa52af937a2853df1269a1d49",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Re-checked after a formatting-only change to documentation-freshness.mjs (biome); the baseline guard behavior and this page's claims are unchanged.","inputs":[".veritas/README.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-checked after a formatting-only change to documentation-freshness.mjs (biome); the baseline guard behavior and this page's claims are unchanged.","inputs":["docs/guides/code-quality.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Re-checked after a formatting-only change to documentation-freshness.mjs (biome); the baseline guard behavior and this page's claims are unchanged.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Re-checked after a formatting-only change to documentation-freshness.mjs (biome); the baseline guard behavior and this page's claims are unchanged.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs"]}
+  ]
+}
