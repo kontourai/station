@@ -329,21 +329,34 @@ export function setupMetrics(jobs) {
     }),
   );
 }
+/** The `git log` output format `ledgerMetrics` parses. */
+export const LEDGER_LOG_FORMAT = [
+  '--format=%x1e%s',
+  '--name-status',
+  '--no-renames',
+];
 export function ledgerMetrics(log) {
   const counts = log
     .split('\x1e')
     .filter(Boolean)
     .flatMap((entry) => {
-      const [header, ...files] = entry.trim().split('\n');
+      const [header, ...lines] = entry.trim().split('\n');
       if (!/\(#\d+\)/.test(header)) return [];
-      const ledger = files.filter((f) => f.startsWith(`${REVIEW_LEDGER_DIR}/`));
+      // `--name-status --no-renames` lines: "<status>\t<path>".
+      const changes = lines.filter(Boolean).map((line) => {
+        const [status, path] = line.split('\t');
+        return { status, path };
+      });
       // A baseline advance that compacts notes (#3394) adds one archive and
-      // deletes the loose notes it moved; only the advance command writes an
-      // archive, and it adds no notes, so those files measure compaction, not
-      // review merges. Its other ledger files (the index) still count.
-      const count = ledger.some(isNoteArchiveFile)
-        ? ledger.filter((f) => !f.startsWith(REVIEW_NOTES_DIR)).length
-        : ledger.length;
+      // deletes the loose notes it moved: that measures compaction, not review.
+      // Notes are otherwise append-only, so a deleted note is always one moved;
+      // notes the same merge adds still count.
+      const count = changes.filter(
+        ({ status, path }) =>
+          path?.startsWith(`${REVIEW_LEDGER_DIR}/`) &&
+          !isNoteArchiveFile(path) &&
+          !(status === 'D' && path.startsWith(REVIEW_NOTES_DIR)),
+      ).length;
       return count ? [count] : [];
     });
   return {
@@ -604,8 +617,7 @@ export async function collectHealth(
       '--first-parent',
       `--since=${since}`,
       `--until=${until}`,
-      '--format=%x1e%s',
-      '--name-only',
+      ...LEDGER_LOG_FORMAT,
     ]);
     ledger = ledgerMetrics(log);
   } catch (error) {
