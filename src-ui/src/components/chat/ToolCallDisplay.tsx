@@ -3,8 +3,11 @@ import {
   toolRequestGrantLabel,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
-import { memo, useMemo, useState } from 'react';
+import { memo, type ReactNode, useMemo, useState } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { ActionRow } from '../ActionRow';
+import { Button } from '../Button';
 import {
   DocumentGlyph,
   EditGlyph,
@@ -18,6 +21,11 @@ import {
   formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
+import {
+  RequestSheet,
+  RequestSheetTrigger,
+  useRequestSheet,
+} from './RequestSheet';
 import {
   callLabel,
   classifyToolCall,
@@ -296,7 +304,7 @@ function ToolCallDisplayComponent({
         )}
         {awaitingApproval && onApprove && (
           <div className="tool-call__actions">
-            <ToolApprovalButtons
+            <ToolApprovalControls
               onApprove={onApprove}
               grantToolName={grantToolName}
               sessionGrant={
@@ -304,6 +312,23 @@ function ToolCallDisplayComponent({
                 // request) is judged by its tool name alone.
                 toolCall.approvalSessionGrant ??
                 toolRequestSessionGrant({ toolName: grantToolName })
+              }
+              summary={label}
+              details={
+                hasDetail ? (
+                  <ToolCallDetails
+                    id={id}
+                    server={server}
+                    toolName={toolName}
+                    originalName={originalName}
+                    args={args}
+                    result={result}
+                    error={error}
+                    cancelled={cancelled}
+                    unresolved={unresolved}
+                    approvalStatus={approvalStatus}
+                  />
+                ) : null
               }
             />
           </div>
@@ -342,19 +367,11 @@ function ToolCallDisplayComponent({
  * the user. After success they stay disabled until the durable
  * `request.resolved` settles the row and unmounts this control.
  */
-function ToolApprovalButtons({
-  onApprove,
-  grantToolName,
-  sessionGrant,
-}: {
-  onApprove: ToolApprovalHandler;
-  /** The request's reported tool name — never the row's display name. */
-  grantToolName?: string;
-  sessionGrant: ToolRequestSessionGrant;
-}) {
-  const [phase, setPhase] = useState<
-    'idle' | 'sending' | 'sent' | 'already-settled'
-  >('idle');
+type ApprovalPhase = 'idle' | 'sending' | 'sent' | 'already-settled';
+
+/** The decision lifecycle above, shared by the inline buttons and the sheet. */
+function useApprovalDecision(onApprove: ToolApprovalHandler) {
+  const [phase, setPhase] = useState<ApprovalPhase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const decide = (action: 'once' | 'trust' | 'deny') => {
     if (phase !== 'idle') return;
@@ -383,6 +400,130 @@ function ToolApprovalButtons({
       },
     );
   };
+  return { phase, failure, decide, busy: phase !== 'idle' };
+}
+
+function ApprovalDecisionStatus({
+  phase,
+  failure,
+}: {
+  phase: ApprovalPhase;
+  failure: string | null;
+}) {
+  return (
+    <>
+      {phase === 'already-settled' && (
+        <p className="tool-call__approve-status" role="status">
+          This request is no longer open.
+        </p>
+      )}
+      {failure && (
+        <p className="tool-call__approve-error" role="alert">
+          Your decision was not delivered: {failure}
+        </p>
+      )}
+    </>
+  );
+}
+
+interface ToolApprovalControlProps {
+  onApprove: ToolApprovalHandler;
+  /** The request's reported tool name — never the row's display name. */
+  grantToolName?: string;
+  sessionGrant: ToolRequestSessionGrant;
+}
+
+/**
+ * #3331: a desktop answers in the row; a phone answers in the shared request
+ * sheet, with the row itself as the persistent card. Only an awaiting row
+ * mounts this, so the viewport subscription is per open request, not per
+ * transcript row — and a request that settles unmounts it, closing any open
+ * sheet with it.
+ */
+function ToolApprovalControls({
+  summary,
+  details,
+  ...props
+}: ToolApprovalControlProps & { summary: ReactNode; details: ReactNode }) {
+  const isMobile = useIsMobile();
+  return isMobile ? (
+    <ToolApprovalSheet {...props} summary={summary} details={details} />
+  ) : (
+    <ToolApprovalButtons {...props} />
+  );
+}
+
+function ToolApprovalSheet({
+  onApprove,
+  grantToolName,
+  sessionGrant,
+  summary,
+  details,
+}: ToolApprovalControlProps & { summary: ReactNode; details: ReactNode }) {
+  const { phase, failure, decide, busy } = useApprovalDecision(onApprove);
+  const sheet = useRequestSheet(true);
+  const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
+  const status = <ApprovalDecisionStatus phase={phase} failure={failure} />;
+  return (
+    <>
+      <RequestSheetTrigger ref={sheet.triggerRef} onClick={sheet.show} />
+      {!sheet.open && status}
+      {sheet.open && (
+        <RequestSheet
+          title="Approval needed"
+          subtitle={summary}
+          onDismiss={sheet.dismiss}
+          returnFocusTarget={sheet.triggerRef.current}
+          actions={
+            <ActionRow
+              overflowLabel="More approval options"
+              secondary={
+                <Button
+                  variant="danger-outline"
+                  disabled={busy}
+                  onClick={() => decide('deny')}
+                >
+                  Deny
+                </Button>
+              }
+              primary={
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  onClick={() => decide('once')}
+                >
+                  Allow Once
+                </Button>
+              }
+              overflow={
+                grantLabel
+                  ? [
+                      {
+                        key: 'trust',
+                        label: grantLabel,
+                        disabled: busy,
+                        onSelect: () => decide('trust'),
+                      },
+                    ]
+                  : []
+              }
+            />
+          }
+        >
+          {details ?? <p className="request-sheet__status">{summary}</p>}
+          {status}
+        </RequestSheet>
+      )}
+    </>
+  );
+}
+
+function ToolApprovalButtons({
+  onApprove,
+  grantToolName,
+  sessionGrant,
+}: ToolApprovalControlProps) {
+  const { phase, failure, decide } = useApprovalDecision(onApprove);
   const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
@@ -417,16 +558,7 @@ function ToolApprovalButtons({
       >
         Deny
       </button>
-      {phase === 'already-settled' && (
-        <p className="tool-call__approve-status" role="status">
-          This request is no longer open.
-        </p>
-      )}
-      {failure && (
-        <p className="tool-call__approve-error" role="alert">
-          Your decision was not delivered: {failure}
-        </p>
-      )}
+      <ApprovalDecisionStatus phase={phase} failure={failure} />
     </>
   );
 }

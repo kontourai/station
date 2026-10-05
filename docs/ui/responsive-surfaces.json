@@ -88,6 +88,12 @@
       "evidence": "src-ui/src/__tests__/ShareTargetPickerModal.test.tsx"
     },
     {
+      "path": "src-ui/src/components/chat/RequestSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "tests/mobile-request-sheet.spec.ts opens the #3331 request sheet at 390x844 for a long MCP elicitation form and a short tool approval: labelled dialog, focus trap and return to the card's Answer control, pinned actions reachable without scrolling, content-fit height, backdrop/swipe/Escape/close leaving the request pending, emulated-keyboard Send, resolution elsewhere closing it, reduced motion"
+    },
+    {
       "path": "src-ui/src/components/chat/ToolCallBatchSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",

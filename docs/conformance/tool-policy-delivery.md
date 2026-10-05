@@ -173,8 +173,8 @@ MultiEdit, NotebookEdit) or `addDirectories`. A Bash or PowerShell command
 rule is never one, even when it names a path.
 
 One shared computation, `toolRequestSessionGrant`, decides what a session
-answer grants. The adapter honours it and the toast, inline card and inbox
-card label it:
+answer grants. The adapter honours it and the toast, inline card (on a phone,
+its request sheet's overflow item, #3331) and inbox card label it:
 
 - A plain call to a tool grants every later call to that tool ("Allow Bash for
   this session"). Only this case mints a Station tool grant.
