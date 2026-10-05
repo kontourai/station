@@ -1,5 +1,5 @@
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
-import type { ProviderAdapterShape } from '../../providers/provider-interfaces.js';
+import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import {
   nativeSessionIdentityMatchesSource,
   providerNativeSessionIdentity,
