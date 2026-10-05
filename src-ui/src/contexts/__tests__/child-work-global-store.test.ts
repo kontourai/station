@@ -190,6 +190,46 @@ describe('child-work global store', () => {
     expect(items()[0]?.status).toBe('unresolved');
   });
 
+  test('#3308 a snapshot of a provisional settled child still takes the final usage', () => {
+    childWorkGlobalStore.reconcileSnapshot(API, [
+      {
+        threadId: 'reporter-a',
+        childWork: {
+          children: {
+            observability: 'reported',
+            running: [],
+            observedAt: '2026-09-24T00:00:00.000Z',
+            settled: [
+              {
+                ...running('reporter-a', 'bg'),
+                status: 'completed',
+                usage: { totalTokens: 40141 },
+                usageProvisional: true,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    expect(items()[0]).toMatchObject({ usageProvisional: true });
+    handleOrchestrationEvent(API, {
+      eventId: `evt-${++seq}`,
+      provider: 'claude',
+      threadId: 'reporter-a',
+      createdAt: at(),
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        producer: 'engine-subagent',
+        reporterThreadId: 'reporter-a',
+        childId: 'bg',
+        status: 'completed',
+        usage: { totalTokens: 41833 },
+      },
+    });
+    expect(items()[0]?.usage).toEqual({ totalTokens: 41833 });
+  });
+
   test('the snapshot seeds running children and records a not-reported engine', () => {
     childWorkGlobalStore.reconcileSnapshot(API, [
       {
