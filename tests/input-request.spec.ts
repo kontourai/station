@@ -320,6 +320,13 @@ for (const [label, viewport] of VIEWPORTS) {
       });
       await expect(target).toHaveAttribute('aria-invalid', 'true');
       await expect(checks).toHaveAttribute('aria-invalid', 'true');
+      // Claude's question headers are kept and drawn with their questions.
+      await expect(
+        target.locator('.input-request-card__field-header'),
+      ).toHaveText('Target');
+      await expect(
+        checks.locator('.input-request-card__field-header'),
+      ).toHaveText('Checks');
       await expect(
         target.getByText('Where should we deploy? is required.'),
       ).toBeVisible();
@@ -390,6 +397,10 @@ for (const [label, viewport] of VIEWPORTS) {
         mcp.form.getByRole('spinbutton', { name: /Copies/ }),
       ).toHaveValue('2');
       await expect(mcp.form.getByRole('radio', { name: 'HTML' })).toBeChecked();
+      // A tool server's form has no headers: no empty header slot either.
+      await expect(
+        mcp.form.locator('.input-request-card__field-header'),
+      ).toHaveCount(0);
       await shot(page, testInfo, `${label}-defaults`);
       await mcp.actions.getByRole('button', { name: 'Send' }).click();
       await expect

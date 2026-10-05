@@ -60,6 +60,7 @@ const HARNESS: InputRequestForm = {
     fields: [
       {
         name: 'colour',
+        header: 'Colour',
         title: 'Which colour?',
         required: true,
         kind: 'choice',
@@ -369,4 +370,28 @@ test("a tool server's form is never drafted on the device", async () => {
   });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(storage.set).not.toHaveBeenCalled();
+});
+
+test("a question's header is shown with it; a form with no header draws no header slot", () => {
+  const harness = render(
+    <InputRequestCard form={HARNESS} onRespond={respond} />,
+  );
+  const colour = screen.getByRole('group', { name: /Which colour\?/ });
+  const header = colour.querySelector('.input-request-card__field-header');
+  expect(header?.textContent).toBe('Colour');
+  // The header names the field too.
+  expect(screen.getByRole('group', { name: /^Colour/ })).toBe(colour);
+  // `features` has no header: no element at all, not an empty one.
+  expect(
+    screen
+      .getByRole('group', { name: /Which features\?/ })
+      .querySelector('.input-request-card__field-header'),
+  ).toBeNull();
+  harness.unmount();
+  const { container } = render(
+    <InputRequestCard form={MCP} onRespond={respond} />,
+  );
+  expect(
+    container.querySelector('.input-request-card__field-header'),
+  ).toBeNull();
 });

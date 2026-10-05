@@ -54,7 +54,10 @@ person a structured question" source maps into. Types come from
 
 - `readInputRequestForm` reads a stored form request strictly: an unknown key
   anywhere, a bound exceeded, a duplicate field or option, or any `decision`
-  body is a refusal (null), never dropped.
+  body is a refusal (null), never dropped. Every object is read by its own
+  keys: one whose prototype is not `Object.prototype` or `null` (an
+  `Object.create(...)` value, or a JSON `"__proto__"` key turned into a
+  prototype) is refused, so no inherited property is ever read as data.
 - `inputRequestFromRequestEvent` reads a `request.opened` event's
   `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire`,
   adapted to a form.
@@ -71,8 +74,9 @@ person a structured question" source maps into. Types come from
 
 A form carries MCP elicitation's field vocabulary (string with length/format
 bounds, number, integer, boolean, choice, multi-choice, each with an
-optional `default`) plus three Station extensions: an option `description`,
-`allowCustom` on choice fields, and `secret`. A custom answer stands in an
+optional `default`) plus four Station extensions: a field `header` (a short
+label of at most 64 characters, never blank when present), an option
+`description`, `allowCustom` on choice fields, and `secret`. A custom answer stands in an
 option's place as `{ "custom": "…" }`, so a field without `allowCustom` —
 every MCP field — keeps plain MCP content. A `decision` is never read from a
 payload, and a form can carry no effect: answering a decision is a grant and
@@ -81,9 +85,9 @@ to its source.
 
 | Source | Maps to | Adapter | Can express |
 | --- | --- | --- | --- |
-| Claude `AskUserQuestion` | `form` | `src-server/providers/adapters/harness-questions.ts` | ≤4 choice/multi-choice fields, custom answer always |
-| Codex `item/tool/requestUserInput` | `form` | `src-server/providers/adapters/harness-questions.ts` | choice, or free text with no options; `isOther` custom; `isSecret` |
-| MCP `elicitation/create` (form mode) | `form` | `@kontourai/station-shared/mcp-elicitation` | the MCP restricted schema; no custom answer, no secret |
+| Claude `AskUserQuestion` | `form` | `src-server/providers/adapters/harness-questions.ts` | ≤4 choice/multi-choice fields with their `header`, custom answer always |
+| Codex `item/tool/requestUserInput` | `form` | `src-server/providers/adapters/harness-questions.ts` | choice, or free text with no options; `header`; `isOther` custom; `isSecret` |
+| MCP `elicitation/create` (form mode) | `form` | `@kontourai/station-shared/mcp-elicitation` | the MCP restricted schema; no header, custom answer or secret |
 | Tool approvals (every engine) | `decision` | `approvalDecisionBody`, derived at read time | allow once, allow for the session where a grant is offered, deny |
 
 ACP permission requests are approvals and use the `decision` row. No other

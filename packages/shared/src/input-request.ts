@@ -13,7 +13,10 @@ import type {
   InputRequestStringFormat,
   InputRequestValue,
 } from '@kontourai/station-contracts/input-request';
-import { INPUT_REQUEST_SCHEMA } from '@kontourai/station-contracts/input-request';
+import {
+  INPUT_REQUEST_HEADER_MAX_CHARS,
+  INPUT_REQUEST_SCHEMA,
+} from '@kontourai/station-contracts/input-request';
 import type { ApprovalStatus } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -40,17 +43,38 @@ const FORMATS = new Set<InputRequestStringFormat>([
   'date-time',
 ]);
 
-function record(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+function plainPrototype(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * An untrusted object, read by its own keys only. A plain or null-prototype
+ * object becomes a null-prototype snapshot of its own enumerable keys, so no
+ * later read can reach an inherited property (`Object.create({ kind:
+ * 'form' })` has no `kind` here). Anything else — an array, a class
+ * instance, an object with any other prototype — is refused (null).
+ */
+function own(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!plainPrototype(value)) return null;
+  const snapshot: Record<string, unknown> = Object.create(null);
+  for (const key of Object.keys(value))
+    snapshot[key] = (value as Record<string, unknown>)[key];
+  return snapshot;
 }
 
 /**
  * Stored requests are read strictly: a key this version does not define is
  * a refusal, not something to drop. That is what keeps a decision's
- * `effect` from ever riding inside a form.
+ * `effect` from ever riding inside a form. A JSON `"__proto__"` key is an
+ * own key like any other, and so refused too.
  */
 function onlyKeys(value: Record<string, unknown>, allowed: readonly string[]) {
-  return Object.keys(value).every((key) => allowed.includes(key));
+  return (
+    plainPrototype(value) &&
+    Object.keys(value).every((key) => allowed.includes(key))
+  );
 }
 
 function text(value: unknown, max: number): value is string {
@@ -85,9 +109,10 @@ function present<T extends Record<string, unknown>>(value: T): T {
   ) as T;
 }
 
-function readOption(value: unknown): InputRequestOption | null {
+function readOption(input: unknown): InputRequestOption | null {
+  const value = own(input);
   if (
-    !record(value) ||
+    !value ||
     !onlyKeys(value, ['value', 'label', 'description']) ||
     !text(value.value, MAX_LABEL_CHARS) ||
     !text(value.label, MAX_LABEL_CHARS) ||
@@ -118,23 +143,41 @@ function readOptions(value: unknown): InputRequestOption[] | null {
   return options;
 }
 
-const BASE_KEYS = ['name', 'title', 'description', 'required', 'kind'];
+const BASE_KEYS = [
+  'name',
+  'header',
+  'title',
+  'description',
+  'required',
+  'kind',
+];
+
+/** A present header is a real label: never blank, never over the bound. */
+function optionalHeader(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (text(value, INPUT_REQUEST_HEADER_MAX_CHARS) && value.trim() !== '')
+  );
+}
 
 /** Read one field from untrusted storage, or null when it is not one. */
 export function readInputRequestField(
-  value: unknown,
+  input: unknown,
 ): InputRequestField | null {
+  const value = own(input);
   if (
-    !record(value) ||
+    !value ||
     !text(value.name, MAX_NAME_CHARS) ||
     !value.name ||
     typeof value.required !== 'boolean' ||
+    !optionalHeader(value.header) ||
     !optionalText(value.title, MAX_LABEL_CHARS) ||
     !optionalText(value.description, MAX_DESCRIPTION_CHARS)
   )
     return null;
   const base = present({
     name: value.name,
+    header: value.header as string | undefined,
     title: value.title as string | undefined,
     description: value.description as string | undefined,
     required: value.required,
@@ -284,24 +327,26 @@ function readSource(value: unknown): InputRequestSource | null {
  * decision is never read from a payload a source wrote; Station derives it
  * from the approval request itself ({@link approvalDecisionBody}).
  */
-export function readInputRequestForm(value: unknown): InputRequestForm | null {
+export function readInputRequestForm(input: unknown): InputRequestForm | null {
+  const value = own(input);
+  const body = own(value?.body);
   if (
-    !record(value) ||
+    !value ||
     !onlyKeys(value, ['schema', 'source', 'requester', 'message', 'body']) ||
     value.schema !== INPUT_REQUEST_SCHEMA ||
     !text(value.requester, MAX_LABEL_CHARS) ||
     !text(value.message, INPUT_REQUEST_MAX_MESSAGE_CHARS) ||
-    !record(value.body) ||
-    !onlyKeys(value.body, ['kind', 'fields']) ||
-    value.body.kind !== 'form' ||
-    !Array.isArray(value.body.fields) ||
-    value.body.fields.length > INPUT_REQUEST_MAX_FIELDS
+    !body ||
+    !onlyKeys(body, ['kind', 'fields']) ||
+    body.kind !== 'form' ||
+    !Array.isArray(body.fields) ||
+    body.fields.length > INPUT_REQUEST_MAX_FIELDS
   )
     return null;
   const source = readSource(value.source);
   if (!source || source === 'approval') return null;
   const fields: InputRequestField[] = [];
-  for (const item of value.body.fields) {
+  for (const item of body.fields) {
     const field = readInputRequestField(item);
     if (!field || fields.some((other) => other.name === field.name))
       return null;
@@ -335,19 +380,21 @@ interface LegacyHarnessQuestion {
 
 /** @internal Shared with the deprecated `harness-questions` module. */
 export function readLegacyHarnessQuestions(
-  value: unknown,
+  input: unknown,
 ): LegacyHarnessQuestion[] | null {
+  const value = own(input);
   if (
-    !record(value) ||
+    !value ||
     !Array.isArray(value.questions) ||
     value.questions.length < 1 ||
     value.questions.length > 16
   )
     return null;
   const questions: LegacyHarnessQuestion[] = [];
-  for (const question of value.questions) {
+  for (const item of value.questions) {
+    const question = own(item);
     if (
-      !record(question) ||
+      !question ||
       typeof question.id !== 'string' ||
       !question.id ||
       question.id.length > 256 ||
@@ -362,9 +409,10 @@ export function readLegacyHarnessQuestions(
     )
       return null;
     const options: LegacyHarnessQuestion['options'] = [];
-    for (const option of question.options) {
+    for (const entry of question.options) {
+      const option = own(entry);
       if (
-        !record(option) ||
+        !option ||
         typeof option.id !== 'string' ||
         !option.id ||
         option.id.length > 256 ||
@@ -406,13 +454,21 @@ export function readLegacyHarnessQuestions(
  */
 export function harnessQuestionField(question: {
   id: string;
+  header?: string;
   prompt: string;
   options: Array<{ id: string; label: string; description?: string }>;
   multiple: boolean;
   allowCustom: boolean;
   secret: boolean;
 }): InputRequestField {
-  const base = { name: question.id, title: question.prompt, required: true };
+  // An engine's blank header is no label at all, so it is left out rather
+  // than drawn as an empty slot.
+  const base = {
+    name: question.id,
+    ...(question.header?.trim() ? { header: question.header } : {}),
+    title: question.prompt,
+    required: true,
+  };
   if (question.options.length === 0)
     return {
       ...base,
@@ -453,8 +509,8 @@ export function inputRequestFromRequestEvent(
       }
     | undefined,
 ): InputRequestForm | null {
-  const payload = event?.payload;
-  if (!payload) return null;
+  const payload = own(event?.payload);
+  if (!payload || !event) return null;
   if (payload.inputRequest !== undefined)
     return readInputRequestForm(payload.inputRequest);
   const legacy = readLegacyHarnessQuestions(payload.questionnaire);
@@ -482,21 +538,27 @@ export function harnessAnswersToInputContent(
   form: InputRequestForm,
   answers: unknown,
 ): unknown {
-  if (!record(answers)) return answers;
+  const map = own(answers);
+  if (!map) return answers;
   const content: Record<string, unknown> = {};
-  for (const [name, answer] of Object.entries(answers)) {
+  for (const [name, raw] of Object.entries(map)) {
     const field = form.body.fields.find((item) => item.name === name);
+    const answer = own(raw);
     if (
       !field ||
-      !record(answer) ||
+      !answer ||
       !Array.isArray(answer.optionIds) ||
       !onlyKeys(answer, ['optionIds', 'custom']) ||
       (answer.custom !== undefined && typeof answer.custom !== 'string')
     ) {
-      content[name] = answer;
+      content[name] = raw;
       continue;
     }
-    const secret = 'secret' in field && field.secret === true;
+    const secret =
+      (field.kind === 'string' ||
+        field.kind === 'choice' ||
+        field.kind === 'multi-choice') &&
+      field.secret === true;
     const custom =
       typeof answer.custom === 'string' &&
       (secret ? answer.custom.length > 0 : answer.custom.trim().length > 0)
@@ -563,7 +625,10 @@ export function inputRequestFieldLabel(field: InputRequestField): string {
 }
 
 function isCustomAnswer(value: unknown): value is InputRequestCustomAnswer {
-  return record(value) && onlyKeys(value, ['custom']) && 'custom' in value;
+  const answer = own(value);
+  return (
+    !!answer && onlyKeys(answer, ['custom']) && Object.hasOwn(answer, 'custom')
+  );
 }
 
 function blank(value: string, secret: boolean): boolean {
@@ -668,9 +733,10 @@ function choiceProblem(
  */
 export function inputRequestContentProblems(
   form: InputRequestForm,
-  value: unknown,
+  input: unknown,
 ): { fields: Record<string, string>; form?: string } {
-  if (!record(value))
+  const value = own(input);
+  if (!value)
     return { fields: {}, form: 'The answer must be a set of fields.' };
   const unknown = Object.keys(value).find(
     (key) => !form.body.fields.some((field) => field.name === key),
@@ -713,14 +779,15 @@ export function validateInputRequestContent(
 
 /** Read a response carried through storage or a reply, or null. Shape only. */
 export function readInputRequestResponse(
-  value: unknown,
+  input: unknown,
 ): InputRequestResponse | null {
-  if (!record(value)) return null;
+  const value = own(input);
+  if (!value) return null;
   if (value.action === 'decline' || value.action === 'cancel')
     return Object.keys(value).length === 1 ? { action: value.action } : null;
   if (
     value.action === 'accept' &&
-    record(value.content) &&
+    own(value.content) &&
     onlyKeys(value, ['action', 'content'])
   )
     return {
@@ -741,7 +808,7 @@ export function inputRequestAnswerTexts(
   if (value === undefined) return [];
   const one = (item: string | InputRequestCustomAnswer): string =>
     typeof item === 'string'
-      ? 'options' in field
+      ? field.kind === 'choice' || field.kind === 'multi-choice'
         ? (field.options.find((option) => option.value === item)?.label ?? item)
         : item
       : item.custom;

@@ -274,8 +274,13 @@ export function InputRequestCard({
       if (node) controls.current.set(field.name, node);
       else controls.current.delete(field.name);
     };
+  // A field's short header (Claude's and Codex's question chip) sits above
+  // its label, inside it so it names the field too. No header, no slot.
   const label = (field: InputRequestField) => (
     <>
+      {field.header?.trim() ? (
+        <span className="input-request-card__field-header">{field.header}</span>
+      ) : null}
       {inputRequestFieldLabel(field)}
       {field.required ? (
         <span className="input-request-card__required"> (required)</span>

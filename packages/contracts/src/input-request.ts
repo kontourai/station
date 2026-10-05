@@ -54,9 +54,18 @@ export interface InputRequestFormBody {
   fields: InputRequestField[];
 }
 
+/** The longest `header` a field may carry; a longer one is refused. */
+export const INPUT_REQUEST_HEADER_MAX_CHARS = 64;
+
 interface InputRequestFieldBase {
   /** The content key the answer is returned under. */
   name: string;
+  /**
+   * Station extension: a short label for the question, shown beside it
+   * (Claude's and Codex's question `header`). Never empty or blank when
+   * present; at most {@link INPUT_REQUEST_HEADER_MAX_CHARS} characters.
+   */
+  header?: string;
   title?: string;
   description?: string;
   required: boolean;

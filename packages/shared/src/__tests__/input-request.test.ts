@@ -14,6 +14,8 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   readInputRequestForm,
+  readInputRequestResponse,
+  readLegacyHarnessQuestions,
   validateInputRequestContent,
 } from '../input-request.js';
 import { inputRequestFromMcpElicitation } from '../mcp-elicitation.js';
@@ -218,6 +220,8 @@ describe('stored harness questions from before #3390', () => {
     expect(form?.body.fields).toEqual([
       {
         name: '0',
+        // #3390 fix round: the stored question's header is kept.
+        header: 'Target',
         title: 'Where should we deploy?',
         required: true,
         kind: 'choice',
@@ -229,6 +233,7 @@ describe('stored harness questions from before #3390', () => {
       },
       {
         name: '1',
+        header: 'Checks',
         title: 'Which checks should run first?',
         required: true,
         kind: 'multi-choice',
@@ -255,6 +260,7 @@ describe('stored harness questions from before #3390', () => {
     expect(form?.source).toBe('harness:codex');
     expect(form?.body.fields[1]).toEqual({
       name: 'credential',
+      header: 'Credential',
       title: 'Enter the temporary credential',
       required: true,
       kind: 'string',
@@ -337,5 +343,175 @@ describe('decisions and outcomes', () => {
     expect(inputRequestOutcome('decision', 'denied')).toBe('denied');
     expect(inputRequestOutcome('form', 'cancelled')).toBe('cancelled');
     expect(inputRequestOutcome('decision', 'expired')).toBe('expired');
+  });
+});
+
+describe('a header is an optional, bounded, never-blank label', () => {
+  const field = FORM.body.fields[0];
+  test('reads a header and keeps it', () => {
+    const withHeader = structuredClone(FORM);
+    withHeader.body.fields[0] = { ...field, header: 'Target' };
+    expect(readInputRequestForm(withHeader)?.body.fields[0].header).toBe(
+      'Target',
+    );
+  });
+  test.each([[''], ['   '], ['x'.repeat(65)], [7]])(
+    'refuses a header of %j rather than drawing it',
+    (header) => {
+      const bad = structuredClone(FORM) as any;
+      bad.body.fields[0].header = header;
+      expect(readInputRequestForm(bad)).toBeNull();
+    },
+  );
+});
+
+/**
+ * Fix round (#3410 review): every untrusted object is read by its own keys.
+ * An object whose prototype carries the keys — `Object.create(...)`, or a
+ * JSON `"__proto__"` key that some later `Object.assign` turned into a real
+ * prototype — must be refused, never read through.
+ */
+describe('inherited properties never count', () => {
+  // `Object.assign` with a JSON-parsed `"__proto__"` key sets the prototype.
+  const viaJsonProto = (inherited: unknown) =>
+    Object.assign(
+      {},
+      JSON.parse(`{"__proto__": ${JSON.stringify(inherited)}}`),
+    );
+
+  test('a JSON "__proto__" key is an own key, and a refused one', () => {
+    const parsed = JSON.parse(
+      `{"__proto__": {"effect": "allow"}, ${JSON.stringify(FORM).slice(1)}`,
+    );
+    expect(Object.hasOwn(parsed, '__proto__')).toBe(true);
+    expect(readInputRequestForm(parsed)).toBeNull();
+  });
+
+  test.each([
+    ['envelope (Object.create)', () => Object.create(structuredClone(FORM))],
+    ['envelope (JSON __proto__)', () => viaJsonProto(FORM)],
+    [
+      'body (Object.create)',
+      () => ({ ...FORM, body: Object.create({ kind: 'form', fields: [] }) }),
+    ],
+    [
+      'body (JSON __proto__)',
+      () => ({ ...FORM, body: viaJsonProto({ kind: 'form', fields: [] }) }),
+    ],
+    [
+      'field (Object.create)',
+      () => ({
+        ...FORM,
+        body: {
+          kind: 'form',
+          fields: [Object.create(structuredClone(FORM.body.fields[2]))],
+        },
+      }),
+    ],
+    [
+      'field (JSON __proto__)',
+      () => ({
+        ...FORM,
+        body: { kind: 'form', fields: [viaJsonProto(FORM.body.fields[2])] },
+      }),
+    ],
+    [
+      'option (Object.create)',
+      () => {
+        const form = structuredClone(FORM) as any;
+        form.body.fields[0].options[0] = Object.create({
+          value: '0',
+          label: 'Staging',
+        });
+        return form;
+      },
+    ],
+    [
+      'option (JSON __proto__)',
+      () => {
+        const form = structuredClone(FORM) as any;
+        form.body.fields[0].options[0] = viaJsonProto({
+          value: '0',
+          label: 'Staging',
+        });
+        return form;
+      },
+    ],
+  ])('refuses an inherited %s', (_label, build) => {
+    expect(readInputRequestForm(build())).toBeNull();
+  });
+
+  test.each([
+    ['Object.create', () => Object.create({ custom: 'A canary host' })],
+    ['JSON __proto__', () => viaJsonProto({ custom: 'A canary host' })],
+  ])(
+    'refuses a custom answer whose `custom` is inherited (%s)',
+    (_label, build) => {
+      const answer = build();
+      expect('custom' in answer).toBe(true);
+      expect(Object.hasOwn(answer, 'custom')).toBe(false);
+      expect(
+        inputRequestContentProblems(FORM, {
+          target: answer,
+          checks: ['unit', build()],
+          token: 't',
+        }).fields,
+      ).toEqual({
+        target: 'Where should we deploy? must be one of the offered choices.',
+        checks: 'Which checks? must use only the offered choices, once each.',
+      });
+    },
+  );
+
+  test.each([
+    [
+      'Object.create',
+      () => Object.create({ target: '0', checks: ['unit'], token: 't' }),
+    ],
+    [
+      'JSON __proto__',
+      () => viaJsonProto({ target: '0', checks: ['unit'], token: 't' }),
+    ],
+  ])('refuses content whose answers are inherited (%s)', (_label, build) => {
+    expect(() => validateInputRequestContent(FORM, build())).toThrow(
+      'The answer must be a set of fields.',
+    );
+  });
+
+  test('a response, a stored questionnaire and legacy answers are read by own keys too', () => {
+    expect(
+      readInputRequestResponse(
+        Object.create({ action: 'accept', content: { target: '0' } }),
+      ),
+    ).toBeNull();
+    expect(
+      readInputRequestResponse(viaJsonProto({ action: 'decline' })),
+    ).toBeNull();
+    expect(
+      readLegacyHarnessQuestions(
+        Object.create(structuredClone(legacy.claude.payload.questionnaire)),
+      ),
+    ).toBeNull();
+    const form = inputRequestFromRequestEvent(legacy.codex as any)!;
+    const inherited = Object.create({ optionIds: ['0'] });
+    expect(() =>
+      validateInputRequestContent(
+        form,
+        harnessAnswersToInputContent(form, {
+          deployment: inherited,
+          credential: { optionIds: [], custom: 'x' },
+        }),
+      ),
+    ).toThrow(/one of the offered choices/);
+    // Positive control: the same answers as own keys pass.
+    expect(
+      validateInputRequestContent(
+        form,
+        harnessAnswersToInputContent(form, {
+          deployment: { optionIds: ['0'] },
+          credential: { optionIds: [], custom: 'x' },
+        }),
+      ),
+    ).toEqual({ deployment: '0', credential: 'x' });
   });
 });

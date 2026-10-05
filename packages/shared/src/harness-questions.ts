@@ -102,8 +102,8 @@ export function harnessAnswerTexts(
  * @deprecated since 0.9.0; removed in 0.10.0. A harness form in the pre-#3390
  * questionnaire shape, for a surface whose own published protocol still
  * speaks it (the skill-experience rich view). Null for a form that shape
- * cannot express. The question `header` is not part of the form; it reads
- * as empty.
+ * cannot express. A field with no `header` reads as an empty one, which the
+ * rich view must not draw.
  */
 export function harnessQuestionnaireFromInputRequest(
   form: InputRequestForm,
@@ -120,7 +120,7 @@ export function harnessQuestionnaireFromInputRequest(
         return null;
       questions.push({
         id: field.name,
-        header: '',
+        header: field.header ?? '',
         prompt: field.title ?? field.name,
         options: [],
         multiple: false,
@@ -132,7 +132,7 @@ export function harnessQuestionnaireFromInputRequest(
     if (field.kind !== 'choice' && field.kind !== 'multi-choice') return null;
     questions.push({
       id: field.name,
-      header: '',
+      header: field.header ?? '',
       prompt: field.title ?? field.name,
       options: field.options.map((option) => ({
         id: option.value,

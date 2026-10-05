@@ -14,10 +14,10 @@ import {
  * question tool maps into a `form` here, and a validated answer maps back
  * into the text that tool takes. What each source can express:
  *
- * | Source | Fields | Custom answer | Secret |
- * | --- | --- | --- | --- |
- * | Claude `AskUserQuestion` | ≤4 choice / multi-choice | always | no |
- * | Codex `request_user_input` | choice, or free text with no options | `isOther` | `isSecret` |
+ * | Source | Fields | Header | Custom answer | Secret |
+ * | --- | --- | --- | --- | --- |
+ * | Claude `AskUserQuestion` | ≤4 choice / multi-choice | `header` | always | no |
+ * | Codex `request_user_input` | choice, or free text with no options | `header` | `isOther` | `isSecret` |
  *
  * Field names are the engine's own question identity (Claude's question
  * index, Codex's question id) and option values are option indexes, so the
@@ -61,6 +61,9 @@ function harnessForm(
     fields.push(
       harnessQuestionField({
         id: question.id,
+        ...(typeof question.header === 'string'
+          ? { header: question.header }
+          : {}),
         prompt: question.prompt,
         options: options.map((option, index) => ({
           id: String(index),
@@ -100,6 +103,7 @@ export function claudeInputRequest(input: unknown): InputRequestForm | null {
     'Claude',
     input.questions.map((question, index) => ({
       id: String(index),
+      header: question.header,
       prompt: question.question,
       options: question.options,
       multiple: question.multiSelect === true,
@@ -138,6 +142,7 @@ export function codexInputRequest(params: unknown): InputRequestForm | null {
       return null;
     questions.push({
       id: question.id,
+      header: question.header,
       prompt: question.question,
       options: Array.isArray(question.options) ? question.options : [],
       multiple: false,

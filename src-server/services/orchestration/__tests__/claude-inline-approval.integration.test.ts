@@ -201,6 +201,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
         fields: [
           {
             name: '0',
+            header: 'Deployment',
             kind: 'multi-choice',
             allowCustom: true,
             minItems: 1,

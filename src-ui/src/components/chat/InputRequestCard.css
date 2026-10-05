@@ -220,3 +220,16 @@
 .input-request-record[data-outcome="pending"] {
   border-left-color: var(--k-action);
 }
+
+/* #3390: a question's short header, drawn only when the source gave one. */
+.input-request-card__field-header {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
