@@ -4,7 +4,7 @@ import type {
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { KnowledgeGraph, KnowledgeGraphNode } from '../client/knowledge';
 import {
   useKnowledgeGraphQuery,
@@ -164,6 +164,31 @@ function bodyExcerpt(body: string): string {
     : `${trimmed.slice(0, BODY_EXCERPT_LENGTH).trimEnd()}…`;
 }
 
+/**
+ * Record titles are often identifiers (`KnowledgeStoreProvider`,
+ * `repository.module`). A narrow heading otherwise breaks them at whatever
+ * character overflows; offer breaks where a reader sees a word boundary — a
+ * lower-to-upper case change or after `.`, `_`, `/` or `-`.
+ */
+function identifierBreakSegments(title: string): string[] {
+  return title.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[._/-])(?=[^._/-])/);
+}
+
+function BreakableTitle({ title }: { title: string }) {
+  const segments = identifierBreakSegments(title);
+  return (
+    <>
+      {segments.map((segment, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and never reorder
+        <Fragment key={index}>
+          {index > 0 && <wbr />}
+          {segment}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -315,7 +340,7 @@ function CanonicalRecord({
           <h2
             data-testid={testIds.recordTitle ?? 'knowledge-recall-record-title'}
           >
-            {record.title}
+            <BreakableTitle title={record.title} />
           </h2>
         </div>
         <span

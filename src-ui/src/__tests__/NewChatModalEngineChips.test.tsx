@@ -262,17 +262,37 @@ describe('NewChatModal engine chips', () => {
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
+    // Choosing a Model finishes the picker, as it does in a chat's composer.
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull(),
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Model: Shared model/ }),
+    );
+    await screen.findByRole('dialog', { name: 'Choose model' });
+    // The reset names the default's source, never the choice it clears.
+    expect(
+      screen.getByRole('button', { name: 'Use agent default' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /session override/ }),
+    ).toBeNull();
+    // An effort change keeps the picker open.
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
       {
         target: { value: 'high' },
       },
     );
+    expect(screen.getByRole('dialog', { name: 'Choose model' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Close model picker' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull(),
+    );
     fireEvent.click(
       document.querySelector(
         '[data-agent-slug="opencode"]',
