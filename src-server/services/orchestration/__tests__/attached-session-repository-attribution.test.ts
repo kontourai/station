@@ -5,12 +5,12 @@
  * real `git init` / `git worktree add` on disk; nothing about git is mocked.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
@@ -77,17 +77,15 @@ function worktree(main: string, path: string, branch: string): string {
   return path;
 }
 
+const tempDir = trackTempDirs();
 let dir: string;
 
 beforeEach(() => {
-  dir = realpathSync.native(
-    mkdtempSync(join(tmpdir(), 'station-attached-repo-')),
-  );
+  dir = realpathSync.native(tempDir('station-attached-repo-'));
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  rmSync(dir, { recursive: true, force: true });
 });
 
 function attribute(cwd: string, projects: AttachedProjectRoot[]) {
