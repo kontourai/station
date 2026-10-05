@@ -2161,7 +2161,14 @@ async function postPeerPortableFollowUp<T>(
       if (code === 'input_binding_unsupported')
         throw new DelegatedInputBindingUnsupportedError();
     }
-    if (response.status === 403 && forbiddenMessage)
+    // The paired-Station sentence is for a paired Station's 403 only. This
+    // Station's own 403 keeps its typed code through the local refusal below
+    // (#2708, #2795).
+    if (
+      response.status === 403 &&
+      forbiddenMessage &&
+      target.kind !== 'current'
+    )
       throw new PeerPortableFollowUpError(forbiddenMessage);
     // The sentinel itself stays code-free: a peer's diagnostics never cross
     // this seam. Only this Station's own answer rides along, as a cause the
