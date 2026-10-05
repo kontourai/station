@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
-import type {
-  ProjectConfig,
-  ProjectMetadata,
+import {
+  PROJECT_ICON_PROBLEM_MESSAGES,
+  type ProjectConfig,
+  type ProjectMetadata,
+  projectIconProblem,
 } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import {
@@ -149,6 +151,32 @@ function withoutClearedIcon<T extends { icon?: string | null }>(
   }
   const { icon: _cleared, ...rest } = record;
   return rest;
+}
+
+/**
+ * A project icon the contracts rule refuses, from a caller that did not go
+ * through the routes' schema (which refuses it first, with the same text).
+ */
+export class ProjectIconRefusedError extends Error {}
+
+/**
+ * Applies the contracts icon rule (`projectIconProblem`) to an icon being
+ * written. Only a NEW value is checked: `''`/`null` clear the icon, and a
+ * value equal to the stored one is not a change, so an unrelated update to a
+ * project whose icon predates the rule is not refused for it. The renderer
+ * already shows such an icon as none.
+ */
+function assertWritableProjectIcon(
+  icon: string | null | undefined,
+  stored?: string,
+): void {
+  if (icon === undefined || icon === null || icon === '' || icon === stored) {
+    return;
+  }
+  const problem = projectIconProblem(icon);
+  if (problem) {
+    throw new ProjectIconRefusedError(PROJECT_ICON_PROBLEM_MESSAGES[problem]);
+  }
 }
 
 /**
@@ -365,6 +393,7 @@ export class ProjectService {
   }
 
   async createProject(config: ProjectCreate): Promise<ProjectConfig> {
+    assertWritableProjectIcon(config.icon);
     const project = await this.prepareProjectConfig(config);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
@@ -516,6 +545,7 @@ export class ProjectService {
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
+    assertWritableProjectIcon(updates.icon, existing.icon);
     // Cleared AFTER the spread, so `''`/`null` also removes a stored icon.
     const updated: ProjectConfig = withoutClearedIcon({
       ...existing,
