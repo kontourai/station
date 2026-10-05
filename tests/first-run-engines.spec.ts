@@ -1090,9 +1090,9 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(page.getByText('Step 1 of 3')).toBeVisible();
     // Resuming from the card is not a second decision.
-    expect(
-      firstRunWrites(configWrites).map((record) => record.status),
-    ).toEqual(['skipped']);
+    expect(firstRunWrites(configWrites).map((record) => record.status)).toEqual(
+      ['skipped'],
+    );
   });
 
   test('closing the run over the disclosure decides nothing (#765 B1)', async ({

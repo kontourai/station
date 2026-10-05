@@ -70,10 +70,9 @@ test('an agent holding the native knowledge tools sends its turn with their sche
 
   expect(result.text).toBe('Ready.');
   expect(model.doGenerateCalls).toHaveLength(1);
-  const sent = (model.doGenerateCalls[0]!.tools ?? []) as Array<{
-    name: string;
-    inputSchema: Record<string, unknown>;
-  }>;
+  const sent = (model.doGenerateCalls[0]!.tools ?? []).flatMap((tool) =>
+    tool.type === 'function' ? [tool] : [],
+  );
   const roots = sent.find((tool) => tool.name === 'list_knowledge_roots');
   expect(roots?.inputSchema).toMatchObject({ type: 'object' });
   expect(sent.map((tool) => tool.name).sort()).toEqual(
