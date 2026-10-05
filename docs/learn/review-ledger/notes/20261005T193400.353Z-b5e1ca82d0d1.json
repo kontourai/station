@@ -1,0 +1,9 @@
+{
+  "revision": "1941c009e713d2cc849d08aabcc341da67f35b02",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-read against the sdk.md edit (an added sentence on the optional RespondToRequestInput.sessionGrantScope). This guide's SDK integration steps do not describe respondToRequest input fields or session grants, so none of its claims change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Re-read against the sdk.md edit. The scope file routes to the SDK reference and states cache/cancellation rules; the added optional respondToRequest field affects neither, so no claim changes.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
