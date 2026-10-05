@@ -432,6 +432,13 @@ Give such work to a top-level conversation instead of a delegated child.
   `maxDepth` does not raise the depth limit of that session's own children,
   and no server or UI code routes on the parent or root ids.
 
+The dispatch route records which of these produced the stamped context, in
+the reserved start metadata key `stationDelegationProvenance`
+(`caller-derived`, `runtime-attested` or `direct-claim`); a request can't set
+it. The [conversation usage tree](../reference/session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)
+reads it: a session you can't read makes your total partial only when its
+link to your conversation was derived or attested, never for a claim.
+
 ### Forwarding to a saved Environment
 
 When `delegate_task` or `send_message` targets another Station, this Station
