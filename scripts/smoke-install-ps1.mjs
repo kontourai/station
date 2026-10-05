@@ -483,7 +483,12 @@ async function nonAsciiProfile() {
     'process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), root: process.env.STATION_ROOT, channel: process.env.STATION_CHANNEL }));\n',
   );
   const probe = join(work, 'launcher-probe.cmd');
-  writeFileSync(probe, `@"${node}" "${probeScript}" %*\r\n`);
+  // Through %USERPROFILE% as the launcher does: a batch file cannot name
+  // the non-ASCII profile literally.
+  writeFileSync(
+    probe,
+    `@"%USERPROFILE%${node.slice(unicodeProfile.length)}" "${probeScript}" %*\r\n`,
+  );
   const lines = text.split('\r\n');
   const last = lines.findIndex((line) => line.endsWith('station.cmd" %*'));
   check(last > 0, 'the launcher has no hand-over line');
