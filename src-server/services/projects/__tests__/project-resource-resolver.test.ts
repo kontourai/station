@@ -435,6 +435,42 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     expect(locations.get('notes')).toEqual({ kind: 'none' });
   });
 
+  test('checks every project’s folder at once, not one after another', async () => {
+    const harness = createHome();
+    const slugs = ['a', 'b', 'c'];
+    for (const slug of slugs)
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    // A folder answers only once all three checks have started: a serial
+    // read would wait on the first until its time box ran out.
+    let started = 0;
+    let release: () => void = () => {};
+    const allStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const barrierFs = {
+      exists: async () => {
+        started += 1;
+        if (started === slugs.length) release();
+        await allStarted;
+        return true;
+      },
+      realpath: async (path: string) => path,
+      isDirectory: async () => true,
+    };
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(slugs, { timeoutMs: 1_000, fs: barrierFs });
+
+    expect([...locations.values()]).toEqual(
+      slugs.map((slug) => ({ kind: 'folder', path: `/mnt/${slug}` })),
+    );
+  });
+
   test('reads Station’s records once per request: one project record per project, one bindings read in all', async () => {
     const harness = createHome();
     for (const slug of ['a', 'b', 'c']) {
