@@ -72,6 +72,14 @@ override refuses before execution. A separately verified remote workspace keeps
 its remote-path admission; the controlling Station does not resolve that path
 against its own filesystem.
 
+A plain-folder workspace (`{ "kind": "directory", "cwd": "..." }`) starts the
+engine in a folder that is not confined to a Project, so a paired device needs
+the operator's `coding:exec` grant to name one; without it the route answers
+`403` with `code: "working-directory-not-granted"` and starts nothing. This
+applies to `/chat`, `/chat/delegated`, `/chat/background`,
+`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`.
+The operator credential is unaffected.
+
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
