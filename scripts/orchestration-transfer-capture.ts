@@ -8,13 +8,22 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { HttpTransferRecorder } from '../src-server/__test-utils__/http-transfer-recorder.js';
 import { TransferMeasurementFailure } from '../src-server/__test-utils__/orchestration-transfer-scenario.js';
+import {
+  captureBarrierTimeoutMs,
+  createCaptureBarrier,
+  parseCaptureTimeoutMs,
+} from './lib/transfer-capture-barrier.js';
+import { createTransferCaptureProgress } from './lib/transfer-capture-progress.js';
 
 const targetRoot = resolve(process.argv[2] ?? '');
 const outputPath = process.argv[3];
 const baseSha = process.argv[4];
 const toolRoot = resolve(process.argv[5] ?? process.cwd());
+const captureTimeoutMs = parseCaptureTimeoutMs(process.argv[6]);
 if (!targetRoot || !outputPath)
-  throw new Error('usage: capture <target-root> <report-path>');
+  throw new Error(
+    'usage: capture <target-root> <report-path> <base-sha> <tool-root> <capture-timeout-ms>',
+  );
 const productionFiles = [
   'src-server/routes/orchestration/orchestration.ts',
   'src-server/runtime/bootstrap/runtime-http.ts',
@@ -28,6 +37,28 @@ const productionFiles = [
 const git = (...args: string[]) =>
   execFileSync('git', ['-C', targetRoot, ...args], { encoding: 'utf8' }).trim();
 const subjectSha = git('rev-parse', 'HEAD');
+const toolDigest = createHash('sha256')
+  .update(
+    [
+      'scripts/orchestration-transfer-capture.ts',
+      'scripts/lib/transfer-capture-barrier.ts',
+      'scripts/lib/transfer-capture-progress.ts',
+      'scripts/lib/liveness-scale.mjs',
+      'src-server/__test-utils__/orchestration-transfer-scenario.ts',
+      'src-server/__test-utils__/http-transfer-recorder.ts',
+      'src-server/__test-utils__/orchestration-transfer-fixture.ts',
+      'scripts/orchestration-transfer-budget.mjs',
+    ]
+      .map((file) => readFileSync(join(toolRoot, file)))
+      .join('\n'),
+  )
+  .digest('hex');
+const progress = createTransferCaptureProgress(outputPath, {
+  subjectSha,
+  baseSha: baseSha ?? subjectSha,
+  toolDigest,
+});
+progress('source-validation');
 if (git('status', '--porcelain', '--', ...productionFiles))
   throw new Error('target production files are dirty');
 for (const file of productionFiles) {
@@ -36,6 +67,7 @@ for (const file of productionFiles) {
   if (disk !== committed)
     throw new Error(`target production hash mismatch: ${file}`);
 }
+progress('imports');
 const mod = async (file: string) =>
   import(pathToFileURL(join(targetRoot, file)).href);
 const toolMod = async (file: string) =>
@@ -68,14 +100,8 @@ const [
   toolMod('src-server/__test-utils__/orchestration-transfer-fixture.ts'),
   mod('packages/sdk/src/client/index.ts'),
 ]);
-const wait = async (predicate: () => boolean, name: string) => {
-  const deadline = performance.now() + 5000;
-  while (!predicate()) {
-    if (performance.now() > deadline)
-      throw new Error(`capture barrier timed out: ${name}`);
-    await new Promise((resolveWait) => setTimeout(resolveWait, 5));
-  }
-};
+const barrierTimeoutMs = captureBarrierTimeoutMs(captureTimeoutMs);
+const wait = createCaptureBarrier(captureTimeoutMs);
 const logger = {
   debug() {},
   warn() {},
@@ -84,20 +110,8 @@ const logger = {
   trace() {},
   fatal() {},
 };
+progress('runtime-startup');
 // Byte comparisons measure the same burst, including clock-coalesced activity bindings.
-const toolDigest = createHash('sha256')
-  .update(
-    [
-      'scripts/orchestration-transfer-capture.ts',
-      'src-server/__test-utils__/orchestration-transfer-scenario.ts',
-      'src-server/__test-utils__/http-transfer-recorder.ts',
-      'src-server/__test-utils__/orchestration-transfer-fixture.ts',
-      'scripts/orchestration-transfer-budget.mjs',
-    ]
-      .map((file) => readFileSync(join(toolRoot, file)))
-      .join('\n'),
-  )
-  .digest('hex');
 const realNow = Date.now;
 Date.now = () => Date.UTC(2026, 7, 25);
 
@@ -190,6 +204,7 @@ const budget = JSON.parse(
 ).policy;
 
 try {
+  progress('external-measurement');
   const externalRecorder = new HttpTransferRecorder(baseUrl);
   sdk.setClientCredentialResolver(() => ({
     origin: baseUrl,
@@ -247,8 +262,10 @@ try {
     recorder: externalRecorder,
     sdk,
     budget,
+    barrierTimeoutMs,
   });
 
+  progress('native-measurement');
   const nativeThreadId = 'transfer-budget-station-agent-thread';
   let nativeHeavyTurnId: string | undefined;
   const nativeRecorder = new HttpTransferRecorder(baseUrl);
@@ -342,6 +359,7 @@ try {
     recorder: nativeRecorder,
     sdk,
     budget,
+    barrierTimeoutMs,
   });
   const report = {
     schemaVersion: 1,
@@ -355,6 +373,7 @@ try {
     platform: process.platform,
     arch: process.arch,
   };
+  progress('report-write');
   writeFileSync(outputPath, `${JSON.stringify(report)}\n`);
   console.log(JSON.stringify(report));
 } catch (error) {
@@ -374,11 +393,15 @@ try {
 } finally {
   Date.now = realNow;
   sdk.setClientCredentialResolver();
+  progress('listener-close');
   listener.closeAllConnections?.();
   await new Promise<void>((resolveClose) =>
     listener.close(() => resolveClose()),
   );
+  progress('service-shutdown');
   await service.shutdown();
+  progress('store-close');
   store.close();
   rmSync(root, { recursive: true, force: true });
+  progress('cleanup-complete');
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "1274059ae6e8caecc3a2c34d95af78a63c782cd9",
+
+  "notes": [
+    {"path":"packaging/manifest/README.md","note":"portable-nightly-publish.yml's publish gate now also admits main-qualification.yml@refs/heads/main as the top-level workflow ref; manifest schema, signing and publication flow are unchanged. The README makes no claim about which workflow starts publication. No prose change.","inputs":["packaging/manifest/README.md",".github/workflows/portable-nightly-publish.yml"]}
+  ]
+}

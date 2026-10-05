@@ -64,6 +64,9 @@ const REPO_ROOT = resolve(HERE, '../../../');
 const CSS_PATHS = [
   resolve(HERE, '../index.css'),
   resolve(HERE, '../components/SplitPaneLayout.css'),
+  // The shared touch-target block (loaded app-wide through the header) owns
+  // the search field's coarse floor, for split panes and modals alike.
+  resolve(HERE, '../components/chat/chat.css'),
 ];
 const TOUCH_TARGET = 44;
 
@@ -204,6 +207,10 @@ function fixtureHtml(): string {
     </div>
     <div class="split-pane" id="min" style="display:flex;width:1000px;height:300px">
       <div style="width:${SPLIT_PANE_MIN_WIDTH}px;display:flex">${minimalRail}</div>
+    </div>
+    <!-- #3102: the provider picker modal borrows the field outside a split pane. -->
+    <div class="provider-picker-modal" id="picker" style="width:420px">
+      <input class="list-filter-input provider-picker-modal__search" placeholder="Search providers" />
     </div>
   </body>
 </html>`;
@@ -349,6 +356,7 @@ describe.skipIf(!chromiumAvailable)(
             toggleHeight: toggle.height,
             searchHeight: box('.list-filter-input').height,
             narrowSearchHeight: box('#narrow .list-filter-input').height,
+            pickerSearchHeight: box('#picker .list-filter-input').height,
             rowHeight: box('.split-pane__item').height,
             trailing: hitsAbove(
               '[data-probe="solo-pill-with-a-long-label"]',
@@ -376,6 +384,7 @@ describe.skipIf(!chromiumAvailable)(
       // #3061: the search box measured 40px on a phone.
       expect(result.searchHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(result.narrowSearchHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
+      expect(result.pickerSearchHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
     });
 
     test('coarse: a 20px trailing or summary control is reachable 21px from its centre', async () => {
@@ -417,6 +426,7 @@ describe.skipIf(!chromiumAvailable)(
       expect(result.collapse.height).toBe(24);
       expect(result.rowHeight).toBeLessThan(TOUCH_TARGET);
       expect(result.searchHeight).toBeLessThan(TOUCH_TARGET);
+      expect(result.pickerSearchHeight).toBeLessThan(TOUCH_TARGET);
       expect(result.trailing.reached).toBe(false);
     });
   },

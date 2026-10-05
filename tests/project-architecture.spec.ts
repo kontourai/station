@@ -958,11 +958,14 @@ test.describe('ChatDock', () => {
     // beside the point: the region is Chat's either way.
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
-    // The dock counter shows a session count, or invites a chat when empty.
-    // Scoped to the dock: the Home empty state carries similar copy, which
-    // made the unscoped matcher ambiguous under strict mode.
+    // A collapsed dock with no chat invites one; it no longer prints a
+    // session count (design round 2026-10, B1/V13). Scoped to the dock: the
+    // Home empty state carries similar copy, which made the unscoped matcher
+    // ambiguous under strict mode.
     await expect(
-      page.locator('.chat-dock').getByText(/Start a chat|\d+ session/),
+      page
+        .locator('.chat-dock')
+        .getByRole('button', { name: 'Start a chat', exact: true }),
     ).toBeVisible();
 
     // #2143: an occupied region's toolbar control is a toggle, so a JOIN is

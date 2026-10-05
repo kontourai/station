@@ -406,7 +406,8 @@ const selectedAccountId = params.get('selectedAccount');
 
 Start Station through `./station`, never through `npm run dev:server` /
 `dev:ui` directly — the CLI orchestrates the server and UI builds in the right
-order. Use a named instance on ports that cannot collide with the defaults
+order. To run with hot reload, use `./station start --watch` (see
+[development](development.md#running-a-second-station-in-development-mode)). Use a named instance on ports that cannot collide with the defaults
 (3141/3000 are reserved for the user's own testing) and `--temp-home` so the
 runtime data is isolated from the normal Station home. Shared client/instance
 metadata can still use `STATION_ROOT`; select a separate root consistently for
@@ -531,7 +532,9 @@ ordinary notification history. An approval or `review_pending` item with an
 exact request reference opens the request's decision controls. An approval
 without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
-orchestration turn to the owning session. The header
+orchestration turn to the owning session. An item for a delegated task that
+runs on a paired Station offers no reply. It says to answer on that Station
+and opens the Activity detail. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 class MemoryStorage {
@@ -94,5 +96,24 @@ describe('lastChosenModel', () => {
     expect(getLastChosenModelMap()).toEqual({
       claudedefault: 'claude-sonnet-4-6',
     });
+  });
+
+  // #3312 review LOW: Home stays mounted while a docked chat records a new
+  // choice; the map it resolves its start identity from must follow.
+  test('the live map re-renders when a choice is recorded or forgotten', async () => {
+    const { act, renderHook } = await import('@testing-library/react');
+    const {
+      clearLastChosenModel,
+      trackLastChosenModel,
+      useLastChosenModelMap,
+    } = await import('../hooks/lastChosenModel');
+    const { result } = renderHook(() => useLastChosenModelMap());
+    expect(result.current).toEqual({});
+
+    act(() => trackLastChosenModel('codexdefault', 'gpt-5.4'));
+    expect(result.current).toEqual({ codexdefault: 'gpt-5.4' });
+
+    act(() => clearLastChosenModel('codexdefault'));
+    expect(result.current).toEqual({});
   });
 });

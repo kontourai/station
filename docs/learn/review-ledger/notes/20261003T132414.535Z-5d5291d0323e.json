@@ -1,0 +1,9 @@
+{
+  "revision": "dcf86d0c19c03bf7271740487040d320cfca213b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-recorded after merging origin/main into the reload-approval follow-up branch. The record was taken from main, where it was reviewed with main's steerTurn clientInputId, steerTurnOnce and inspectSteerInput additions. The sources that differ from it (docs/reference/session-api.md) carry this branch's one paragraph in docs/reference/session-api.md: a snapshot carries ids only, and after a reload the client reads the newest turn to rebuild each open approval's tool, preview and grant label, keeping a placeholder otherwise. I read the merged file: the two changes are in different sections (snapshot open requests vs the steer commands), merged without conflict, and neither contradicts the other.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-recorded after merging origin/main into the reload-approval follow-up branch. The record was taken from main, where it was reviewed with main's steerTurn clientInputId, steerTurnOnce and inspectSteerInput additions. The sources that differ from it (docs/reference/session-api.md) carry this branch's one paragraph in docs/reference/session-api.md: a snapshot carries ids only, and after a reload the client reads the newest turn to rebuild each open approval's tool, preview and grant label, keeping a placeholder otherwise. I read the merged file: the two changes are in different sections (snapshot open requests vs the steer commands), merged without conflict, and neither contradicts the other.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

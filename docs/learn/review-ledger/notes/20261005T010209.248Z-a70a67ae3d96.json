@@ -1,0 +1,7 @@
+{
+  "revision": "27938157888908c40337d443c3b0cc6795ae8212",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-checked after the #3288 fix round: tests/mobile-chat-composer.spec.ts gained a wheel-to-top stage in the long-transcript test; the mobile-chat-composer row (mobile geometry, composer reachability, mocked responses) is still accurate and no coverage is dropped. Other spec deltas are other lanes' work and were not reviewed here.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

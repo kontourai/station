@@ -386,11 +386,15 @@ export function drainQueuedMessageOnTurnCompleted(
 ) {
   if (isReplayThread(threadId)) return;
   const chat = activeChatsStore.getSnapshot()[threadId];
+  // #3157: after a usage-limit stop, only the user (Send now) or the resumed
+  // turn's own end sends the queue. Live and snapshot paths set the flag.
+  if (!userInitiated && chat?.usageLimitStopped) return;
   if (userInitiated) {
     const blocked = userSendBlockedReason(chat);
     if (blocked) {
       activeChatsStore.addEphemeralMessage(threadId, {
         role: 'system',
+        sendFailure: true,
         content: blocked,
       });
       return;
@@ -762,6 +766,7 @@ export function drainQueuedMessageOnTurnCompleted(
         // id/timestamp, same as every other failure-path notice.
         activeChatsStore.addEphemeralMessage(threadId, {
           role: 'system',
+          sendFailure: true,
           // The dropped text is echoed into the notice because it survives
           // nowhere else on the drop path (bubble rolled back, queue entry
           // removed) — the user must be able to copy it back out. The requeue

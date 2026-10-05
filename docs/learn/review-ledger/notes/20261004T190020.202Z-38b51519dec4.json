@@ -1,0 +1,23 @@
+{
+  "revision": "3d7eb81ecc74c88b3db57ce63ef725da8de3be35",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Re-reviewed the transfer-gate line against the fix round. STATION_TRANSFER_CAPTURE_TIMEOUT_MS remains the single slow-host knob; the gate's barrier FAIL line now matches any barrier message to end of line, and the scenario's own barriers use the same derived bound. The AGENTS.md line is still accurate; no prose change.","inputs":["AGENTS.md","scripts/orchestration-transfer-gate.mjs"]},
+
+    {"path":"docs/design/placement.md","note":"Re-reviewed against the added RegionPaneHost.project test (a host re-render keeps the coding pane element connected). Test-only; it pins existing behavior (stable renderer per descriptor, no remount on project switch) and changes no host, registry, persistence or admission claim in the design.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-reviewed against the rewritten testing-guide activity paragraph: the live phase now waits for its trailing activity frame and requires exact per-source counts. Hook order, readiness selection and completion evidence claims are unaffected.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the transfer-gate section after the fix round. Replaced the activity-frame paragraph: the scenario waits for the trailing orchestration:activity frame (checked in orchestration-transfer-scenario.ts), requires exactly ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES (0 external, 1 station-native), and its barriers use half the configured capture bound (checked in transfer-capture-barrier.ts and the capture script). Executed: the integration A/B comparator test, fault-injected (wait removed gives a station-native/live.wireBytes disagreement), and a clean gate run. Rest of the guide not re-read.","inputs":["docs/guides/testing.md","scripts/orchestration-transfer-capture.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-reviewed against the testing-guide edit and the capture changes: still no widened bound or bypassed guard; the exact activity count is a rejection path, not a tolerance. Instruction text unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Re-reviewed the 44-frame and barrier statements against the fix round. The fixed clock and 44 frames stand; the live phase now always includes the debounced activity frame (counted apart from frames, bytes included), so baseline captures agree on bytes. 'Monotonic real time still bounds capture barriers' remains true and the bound is now the configured capture timeout. No policy ceiling changed.","inputs":["scripts/fixtures/orchestration-transfer/README.md","scripts/orchestration-transfer-capture.ts","scripts/orchestration-transfer-gate.mjs","src-server/__test-utils__/orchestration-transfer-scenario.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-reviewed unchanged server instructions against the testing-guide edit. Changes are in test utilities only; no route, service or logging behavior changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-reviewed unchanged UI instructions against the testing-guide edit and the region host test additions; both are test-side and affect no navigation, contract or style instruction.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-reviewed unchanged test instructions against the testing-guide edit. New tests reach the real seams (the gate's A/B comparator over real measured phases; element connectivity across a real host re-render) and were fault-injected; the per-call stub failure is deterministic.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -264,7 +264,11 @@ export function installAccountBoundDeviceGate(
       const permitted =
         path === '/' ||
         path.startsWith('/assets/') ||
-        nativeDeviceOnlyObservationRoute(method, path) ||
+        // Neutral observations are open only to a verified native Device
+        // proof, as in the account check above; a credential-bound device
+        // still reaches /api/system/identity alone below.
+        (getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+          nativeDeviceOnlyObservationRoute(method, path)) ||
         path === '/api/projects' ||
         /^\/api\/projects\/[^/]+$/.test(path) ||
         /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document|publication))?$/.test(

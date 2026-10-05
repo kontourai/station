@@ -78,9 +78,13 @@ vi.mock('../runtime-route-support.js', () => {
 // Runtime HTTP credential policy is covered by its own boundary suite. This
 // composition test needs the real hosted ingress middleware but not a second
 // credential harness between ingress and the route callback under test.
-vi.mock('../../bootstrap/runtime-http.js', () => ({
+vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
   configureRuntimeHttp: () => undefined,
   configureRuntimeRouteClassificationGate: () => undefined,
+  // Real: it holds no credential policy, and composition installs it itself.
+  installStationEnvelopeMarker: (
+    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>()
+  ).installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE: 'station-device',
   SECURE_DEVICE_SESSION_COOKIE: '__Host-station-device',
 }));
@@ -285,6 +289,32 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     const accepted = await initialize(app, valid);
     expect(accepted.status).toBe(200);
     expect(await accepted.text()).toContain('station-control');
+  });
+
+  // #2842: the hosted tenant gate is registered ahead of the runtime HTTP
+  // boundary (mocked out above), so only composition's own early install can
+  // mark its refusal as this Station's answer.
+  test("marks the hosted tenant gate's refusal as this Station's own answer", async () => {
+    const homeDir = makeTempDir('station-runtime-routes-');
+    const registryPath = join(homeDir, 'tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+      }),
+    );
+    process.env[registryFileEnv] = registryPath;
+    const app = new Hono();
+    await configureRuntimeRoutes(runtimeContext(app, homeDir));
+
+    const response = await app.request('/api/projects', {}, loopbackEnv());
+
+    expect(response.status).toBe(421);
+    expect(await response.json()).toEqual({
+      error: { code: 'tenant_context_required' },
+    });
+    expect(response.headers.get('x-station-envelope')).toBe('1');
   });
 
   test('does not mount setup import for a hosted operator', async () => {

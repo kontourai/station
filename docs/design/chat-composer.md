@@ -62,9 +62,11 @@ Live approval, connection, and working status sit above the composer, on the
 right of the Agent, Model, and Approval controls. Scroll to bottom appears
 immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
-together in a row above the settings. Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Collapse chat list /
-Expand chat list directly, with its current state available to assistive technology.
+together in a row above the settings. In a dock too short to show the transcript
+(the composer has priority), there is nothing to scroll back to, so Scroll to
+bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
+without enlarging its target. The desktop header exposes Hide inbox /
+Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with
@@ -195,6 +197,9 @@ turn finishes. **Steer** uses native mid-turn input only where the selected
 engine can prove that capability. Claude Code and Codex have additive steering.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
+After a device's full access is revoked, a turn that started unconfined is not
+steerable: the server refuses with `confinement-changed` before claiming the
+input, and the message stays for the next turn, which runs confined (#2898).
 
 For other engines, Steer holds the message for a supported safe boundary before
 stopping and sending. Current adapters expose no such safe-boundary receipt, so
@@ -225,8 +230,8 @@ Activity is engine-reported. Claude Code SDK API retries supply attempt and dela
 with a bounded reason category; Codex's `willRetry` reports retry intent without
 attempt or delay. OpenCode 1.18.28 has internal retry status, but its
 [ACP translator](https://github.com/anomalyco/opencode/blob/v1.18.28/packages/opencode/src/acp/event.ts#L93-L106)
-does not forward it. Station therefore reports **No response from OpenCode for …
-Still waiting** from its server silence observation. Elapsed silence never
+does not forward it. Station therefore reports **No progress from OpenCode for
+…** from its server silence observation, in the status ladder's word. Elapsed silence never
 establishes a retry. New text, reasoning, tool progress and terminal events clear
 transient waiting/retry status; raw logs and engine error payloads are not chat
 activity labels.
@@ -252,10 +257,18 @@ simple per-device preference rather than claiming to detect an attached keyboard
   shows the reason instead of opening a file picker, so a touch user sees it
   too.
 - When support is not confirmed, attaching an image shows a non-blocking
-  note: an ACP engine that has not reported its answer yet, or OpenCode, whose
-  engine-wide "yes" says nothing about the selected model (it swaps an image
-  for an error text when the model lacks image input). Other engines get no
-  per-model note.
+  note: an ACP engine that has not reported its answer yet, or OpenCode with a
+  selected model whose image input is unknown (its engine-wide "yes" says
+  nothing about the model: it swaps an image for an error text when the model
+  lacks image input). Other engines get no per-model note.
+- OpenCode's per-model answer comes from OpenCode itself. After an ACP
+  handshake the server reads `opencode models --verbose` in the background,
+  caches `capabilities.input.image` per connection, and puts it on each model
+  option as `capabilities.imageInput`. The composer maps `true` to no note,
+  `false` to the pre-send refusal naming the model, and an absent value (not
+  listed, listing unavailable or not yet read) to the note above; absent is
+  never treated as "no". It outranks the Bedrock-only capability catalog,
+  which has no row for an OpenCode model id.
 - Each chip shows one short status that names what happened, such as
   **Upload expired**, **Upload didn't finish** or **Upload limit reached**, and
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
@@ -269,8 +282,23 @@ simple per-device preference rather than claiming to detect an attached keyboard
   of view. The composer reserves room for a two-line draft; in a short dock
   the failure banner and the transcript yield first (down to zero; in a dock
   too short even for their padding the banner steps aside, the transcript
-  gives up its padding and the composer repeats the latest send failure as
-  one line), the chip strip drops to one scrolling row, and only then does
+  gives up its padding and the composer repeats the latest send-failure notice
+  as one line: a refused or failed send or steer, a dropped queued message or a
+  blocked send; slash-command output and status notices are not repeated, and
+  a later accepted send clears it. A message queued to retry automatically is
+  not a failure, so its notice is not repeated. The queue panel in the dock
+  body already lists the queued turn with a "×" (**Delete message**) that
+  discards it, so discarding was never impossible; but that control is an
+  unlabelled icon, and the notice it explained stayed in the transcript. The
+  notice's own **Discard** sits in that hidden transcript, so while the chat is
+  still queued and the dock gives the composer priority, the controls row
+  repeats a labelled **Discard**: a 44px touch target that adds no height (the
+  row is already a touch row), described by the notice's words, doing what the
+  transcript's Discard does. Both controls leave the same state: the turn is
+  discarded and, when none remains, the stale notice is dropped. The
+  transcript's Discard, like every transcript notice action, is also 44px on a
+  phone or touch screen. The queued turn and its Retry stay in
+  the dock body), the chip strip drops to one scrolling row, and only then does
   the draft shrink below two lines — scrolling, never overlapped, with Send
   always on screen. The transcript is never taken out of the layout, and the
   composer re-measures whenever a sibling in the dock appears, leaves or
@@ -320,9 +348,10 @@ right, outside the scrolling list. Its accessible name and hover label are
 **New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project, and a right-aligned status/time. Unresolved Agents retain their
-name. **Input** and **Approval** are compact presentations of the existing
-answer/approval states. Running time uses the recorded open-turn start; without
-one, the displayed time is labelled as last activity. One ellipsis opens the
+name. The status line is the ladder's own words (`Needs answer`, `Needs
+approval`, …, the same words the dock row prints). Running time uses the
+recorded open-turn start; without one, the row's compact time trails the status
+line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
 The **Projects** picker uses the same **+** component, named **New project**,

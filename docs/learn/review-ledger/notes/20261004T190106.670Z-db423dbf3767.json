@@ -1,0 +1,7 @@
+{
+  "revision": "1274059ae6e8caecc3a2c34d95af78a63c782cd9",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"nightly.yml gained a workflow_call entry from main-qualification.yml. release-rings.md defers cadence, evidence and procedure to releasing.md and makes no Nightly trigger claim. No prose change.","inputs":["docs/guides/release-rings.md",".github/workflows/nightly.yml"]}
+  ]
+}

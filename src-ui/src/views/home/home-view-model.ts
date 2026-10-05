@@ -28,6 +28,7 @@ import {
   sessionRecency,
   sessionTitle,
 } from '../../utils/sessionDisplay';
+import { chatWaitsOnUser } from '../../utils/waiting-approvals';
 
 export interface HomeWorkItem {
   id: string;
@@ -868,12 +869,13 @@ function chatLifecycleLabel(
     return 'Failed';
   }
   if (
-    chat.pendingApprovals?.length ||
+    // A request the user already answered still waits on the engine, not on
+    // them: the same derivation the chat's status pill reads.
+    chatWaitsOnUser(chat) ||
     // archive#1224 (offline): a queued (offline) turn needs an
     // actionable label — it won't resolve on its own without the connection
     // coming back.
-    chat.status === 'queued' ||
-    chat.orchestrationStatus === 'awaiting-approval'
+    chat.status === 'queued'
   )
     return 'Needs attention';
   // #2309: the conversation's server record, when there is one, is THE
@@ -927,7 +929,7 @@ export function buildActiveChatTaskItems({
    * made a just-created chat vanish from the dock's own list — caught by
    * `tests/cross-runtime-chat-switching.spec.ts`, not by any unit test.
    *
-   * Home's "Continue most recent work" card is the surface that means WORK, so
+   * Home's "Continue" card is the surface that means WORK, so
    * it is the one that opts in (`useOpenWorkChats`).
    */
   onlyWork?: boolean;

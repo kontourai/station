@@ -1,74 +1,48 @@
-@import "../editor-controls.css";
-
-.conversation-pr-links,
-.conversation-pr-links li > div:first-child,
-.conversation-pr-links__form label {
+.conversation-pr-links {
   display: grid;
-  gap: 6px;
+  gap: var(--space-3);
   min-width: 0;
 }
-.conversation-pr-links strong,
-.conversation-pr-links span {
-  overflow-wrap: anywhere;
-}
-.conversation-pr-links header,
-.conversation-pr-links__actions {
+.conversation-pr-links__bar {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
   align-items: center;
-}
-.conversation-pr-links header {
   justify-content: space-between;
-}
-.conversation-pr-links ul {
-  display: grid;
-  gap: 8px;
-  padding: 0;
-  list-style: none;
-}
-.conversation-pr-links li {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-}
-.conversation-pr-links li > div:first-child {
-  flex: 1 1 220px;
-}
-.conversation-pr-links__form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-  align-items: end;
-}
-.conversation-pr-links__actions > *,
-.conversation-pr-links__form button {
-  min-height: 44px;
+  gap: var(--space-4);
+  min-height: 32px;
 }
 .conversation-pr-links h3 {
   margin: 0;
   font-size: var(--text-md);
 }
-.conversation-pr-links__add p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-md);
-}
-.conversation-pr-links__add {
-  display: grid;
-  gap: 8px;
-}
-.conversation-pr-links__add summary {
+.conversation-pr-links__tools {
   display: flex;
   align-items: center;
-  min-height: 44px;
-  color: var(--text-primary);
-  cursor: pointer;
+  gap: 2px;
 }
-.conversation-pr-links__add[open] > summary {
-  margin-bottom: 8px;
+.conversation-pr-links__icon {
+  position: relative;
+}
+.conversation-pr-links__icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.conversation-pr-links__list {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.conversation-pr-links__note {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.conversation-pr-links__note[role="alert"] {
+  color: var(--error-text);
 }

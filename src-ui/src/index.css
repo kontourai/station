@@ -1177,6 +1177,9 @@ button:hover {
 .app-toolbar__sidebar-toggle {
   display: none;
 }
+.app-toolbar__lockup {
+  display: none;
+}
 .app-toolbar__logo {
   display: none;
 }
@@ -1588,6 +1591,24 @@ button:hover {
   .chat-dock__active-identity-close {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* The send-blocked line's one fix, "Remove attachments", the queued-retry
+     "Discard" the composer repeats in a short dock, and the transcript notice
+     action ("Discard", "Retry"…). Their 44px floor
+     comes from the width-gated mobile block's shared action-row rule, which a
+     touch tablet wider than 768px and taller than 540px never reaches. The
+     floor is a property of the pointer, not the width, and a pointer that
+     cannot hover is the touch one. This is deliberately THESE controls, not the
+     whole action-row vocabulary: that rule's selectors also match header,
+     footer and toolbar rows (the 38px dock header's actions, live-work rows,
+     the inbox footer, tool-call actions) that have no wrap rule or coverage at
+     this width. */
+  .chat-input__blocked-actions > button,
+  .chat-input__queued-retry-actions > button,
+  .ephemeral-message__action {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
@@ -2176,24 +2197,24 @@ button:hover {
   font-weight: 600;
 }
 
+/* Quiet chrome (design round 2026-10, B1/B2): the bar's buttons draw no
+   border at rest. Hover and focus are a wash, not an outline; the one
+   labelled action ("New") is the same family at the same weight. */
 .chat-dock__header-actions button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-secondary);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
-/* archive#800: the collapsed dock's "Start a chat" label is a real action, not text
-   inheriting the header's pointer cursor. 2026-08-26 audit F6: it used to
-   render as an underlined link (a `chat-dock__counter-action` override on
-   the generic button rule above) — one more control family in a bar that
-   otherwise reads as icon buttons + status text. That override is gone: it
-   is now the same bordered compact button as its siblings (the activity
-   button, Maximize), keeping only its accessible name and click behavior. */
-.chat-dock__header-actions button:hover {
-  border-color: var(--accent-primary);
+/* archive#800: the collapsed dock's "Start a chat" label is a real action, not
+   text inheriting the header's pointer cursor; it shares this family. */
+.chat-dock__header-actions button:hover,
+.chat-dock__header-actions button:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* archive#3309 retired the tab strip and clustered its panel toggles (inbox,
@@ -2346,7 +2367,7 @@ button:hover {
    row. It was the widest thing in the dock header and it left the conversation
    title beside it about one character on a 110-character worktree path. The
    path is the project badge's `title` and the More menu's "Copy project path";
-   the coding-layout link the leaf carried is that menu's "Open code layout".
+   the coding-layout link the leaf carried is that menu's "Open in Coding".
    `.new-chat-modal__context-dir--fallback` still names the retired
    `--fallback` rule in a comment: that surface keeps its own visible path. */
 .chat-dock__project-context > .git-tooltip-anchor {
@@ -3241,12 +3262,12 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-secondary);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
   min-height: 32px;
   font-size: var(--text-sm);
@@ -3290,8 +3311,10 @@ button:hover {
   cursor: not-allowed;
 }
 
-.chat-dock__new:hover:not(:disabled) {
-  border-color: var(--accent-primary);
+.chat-dock__new:hover:not(:disabled),
+.chat-dock__new:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .chat-dock__body {
@@ -3408,12 +3431,13 @@ button:hover {
 .chat-dock__activity-btn {
   background: transparent;
   border: none;
-  color: var(--accent-primary);
+  color: var(--success-text);
   cursor: pointer;
   padding: 4px 8px;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: var(--text-sm);
 }
 
 .chat-dock__activity-dropdown {
@@ -5183,11 +5207,13 @@ button.tool-call__line:hover {
    dialog overlay as a sibling of its trigger inside this row, and without the
    exclusion this (0,4,0) selector silently overrode the overlay's own
    `align-items`/`background` — the popover floated mid-screen with no scrim
-   on every viewport (#999). */
+   on every viewport (#999). The queued-retry Discard is excluded the same way:
+   its wrapper is shown only when the composer has priority, and this rule's
+   `display: flex` would keep it on screen in every dock. */
 .chat-controls-row
 > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
   .responsive-surface-overlay
-) {
+):not(.chat-input__queued-retry-actions) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -5210,7 +5236,7 @@ button.tool-call__line:hover {
 .chat-controls-row
   > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
     .responsive-surface-overlay
-  ):hover:not(:disabled) {
+  ):not(.chat-input__queued-retry-actions):hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -6543,6 +6569,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-bottom: max(0px, var(--safe-bottom, 0px));
   }
 
+  /* The transcript's own notice action (Retry, Discard, New chat…): its look is
+     inline, its touch floor is here. */
+  .ephemeral-message__action {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .responsive-surface-actions > :is(button, a, .button, [role="button"]) {
     min-width: 44px;
     min-height: 44px;
@@ -6608,8 +6641,46 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     min-height: 44px;
   }
 
+  /* The logo and the wordmark are ONE wrapping line, a fixed 22px tall with
+     overflow clipped. When the row cannot hold both, the wordmark wraps to a
+     second line that the clip removes, so the app name is either shown in full
+     or not at all - a text-overflow ellipsis here is what produced "S...". The
+     logo stays (it is the home link) and the toolbar stays one row. The
+     connection chip is a fixed 44px dot (chat.css), so the lockup is the one
+     member of the row that gives up width. Both children are 22px tall and
+     share one line, so nothing of the wrapped line peeks into the clip. */
+  .app-toolbar__lockup {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: center;
+    column-gap: 10px;
+    /* The gap below the first line keeps the wrapped wordmark out of the
+       4px the clip margin lends to the focus ring. */
+    row-gap: 8px;
+    /* Shrinkable, never below the logo. When the name does not fit, the lockup
+       shrinks to the room there is; the blank remainder is invisible and the
+       action cluster stays put. */
+    flex: 0 1 auto;
+    min-width: 22px;
+    height: 22px;
+    overflow: hidden;
+  }
+
+  /* Where supported, clip with a margin so the 2px + 2px focus ring of the home
+     link is not cut off by the lockup's own edge. `clip`, unlike `hidden`, is
+     also never scrolled: focusing a wordmark that has wrapped out of view
+     cannot drag the logo out of the box with it. */
+  @supports (overflow: clip) {
+    .app-toolbar__lockup {
+      overflow: clip;
+      overflow-clip-margin: 4px;
+    }
+  }
+
   .app-toolbar__logo {
     display: block;
+    flex: none;
     width: 22px;
     height: 22px;
     cursor: pointer;
@@ -6617,19 +6688,30 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .app-toolbar__brand {
     display: block;
+    flex: none;
     font-size: var(--text-15);
     font-weight: 600;
+    line-height: 22px;
+    /* The shared link/button padding would add 16px the lockup cannot spare. */
+    padding: 0;
+    white-space: nowrap;
     color: var(--text-primary);
     cursor: pointer;
-    margin-right: auto;
   }
 
   .header-divider {
     display: none;
   }
 
+  /* On a phone the action cluster is right-anchored by its own auto margin;
+     this empty flex:1 item only added two 8px gaps to a row that has none to
+     spare. */
+  .app-toolbar__spacer {
+    display: none;
+  }
+
   /* Hidden on mobile: the top bar is already tight (even the app name
-     truncates), and the SplitPaneLayout panel header right below repeats the
+     can drop out), and the SplitPaneLayout panel header right below repeats the
      same context, so a top-bar crumb here just clips to noise ("Age…"). The
      universal breadcrumb stays a desktop affordance. Higher specificity than
      the base `.app-toolbar__breadcrumb` rule so the hide wins. */
@@ -6657,21 +6739,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
        banner telling them they were disconnected.
 
        The toolbar's height is a shared geometry token; a bar that can grow a
-       row is a bar that token lies about. The brand truncates instead — it
-       already carries `min-width: 0` and an ellipsis for exactly this. */
+       row is a bar that token lies about. The wordmark drops out whole
+       (`.app-toolbar__lockup`) before the row would grow. */
     flex-wrap: nowrap;
   }
 
-  /* The brand truncates so the right-side action cluster (notifications,
-     profile, overflow, settings) always stays on-screen at ≤390px instead of
-     overflowing past the right edge. */
-  .app-toolbar__brand {
-    min-width: 0;
-    flex-shrink: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  /* The wordmark never truncates (see `.app-toolbar__lockup`). The right-hand
+     action cluster stays on-screen at <=390px because the lockup is the one
+     member of the row that gives up width. */
 
   /* Phone connection chrome is a touchable status dot. Its full accessible
      name and long-press hint are owned by HeaderActions; chat.css sizes it. */
