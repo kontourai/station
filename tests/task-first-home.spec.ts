@@ -6,7 +6,10 @@ import type {
   BrowserPaneAccessView,
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import type { WorkspaceFilePreview } from '@kontourai/station-contracts/workspace-file-preview';
+import type {
+  WorkspaceFileChanges,
+  WorkspaceFilePreview,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
@@ -291,6 +294,26 @@ async function mockTaskFirstHome(
         content: 'export function App() {}\n',
       };
       await route.fulfill(json(preview));
+      return;
+    }
+    // The pane then reads that file's changes against HEAD (#3365): the file
+    // came from the active-work changed-files list, so it has a patch.
+    if (
+      path === '/api/projects/station/file-preview/changes' &&
+      route.request().method() === 'POST'
+    ) {
+      const changes: WorkspaceFileChanges = {
+        state: 'changed',
+        base: 'HEAD',
+        patch:
+          'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx\n' +
+          'index e69de29..8b7a6f1 100644\n' +
+          '--- a/src-ui/src/App.tsx\n' +
+          '+++ b/src-ui/src/App.tsx\n' +
+          '@@ -0,0 +1 @@\n' +
+          '+export function App() {}\n',
+      };
+      await route.fulfill(json(changes));
       return;
     }
     if (path === '/api/projects/station/layouts') {
@@ -1730,6 +1753,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await actionsMenuTrigger.click();
     await expect(menu).toBeVisible();
     await filesTrigger.click();
+    // The opened file's pane reads its changes against HEAD (#3365). Wait
+    // for that read so the test, not teardown timing, decides it ran.
+    const changesRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          '/api/projects/station/file-preview/changes' &&
+        response.request().method() === 'POST',
+    );
     await page
       .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
       .click();
@@ -1739,6 +1770,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
+    const changes = await changesRead;
+    expect(changes.status()).toBe(200);
+    // The pane asked for the file it opened.
+    expect(changes.request().postDataJSON()).toMatchObject({
+      path: 'src-ui/src/App.tsx',
+    });
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();
