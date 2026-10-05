@@ -831,6 +831,13 @@ identical across every screen, including `motion-reduced-notification`
 (previously the one hand-marked `volatile: true` exception) — its
 `volatile` marker has been removed.
 
+Before photographing, the gallery also waits up to 15 seconds for branded
+identity tiles to contain their SVG, image element or explicit glyph. An empty
+lazy-mark tile fails capture rather than becoming a reference. This checks
+artwork presence, not whether an external image has decoded. The Settings
+explanation capture records the main column's scroll metrics in `capture.json`
+so a shifted frame can be diagnosed without resetting or hiding its state.
+
 Baseline artifacts (both committed):
 
 - `tests/screenshots.baseline.json` — small, diffable manifest: per screen,
