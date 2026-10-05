@@ -1,14 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
-  closeSync,
-  constants,
   existsSync,
   lstatSync,
-  openSync,
   readdirSync,
-  readSync,
   realpathSync,
-  statSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -115,6 +110,14 @@ interface OpenCodeCursorState extends Record<string, unknown> {
   usage?: OpenCodeUsage;
 }
 
+interface PooledConnection {
+  db: DatabaseSync;
+  fileIdentity: string;
+  active: number;
+  /** Distinguishes connections, since `data_version` is per connection. */
+  generation: number;
+}
+
 interface DatabaseRegistration {
   path: string;
   fileName: string;
@@ -173,11 +176,11 @@ interface OpenCodeSessionSourceOptions {
  *
  * Current OpenCode keeps sessions in `$XDG_DATA_HOME/opencode/
  * opencode[-<channel>].db`, WAL mode. This source opens that file with
- * `readOnly`, one connection per database per poll, and runs every statement
+ * `readOnly`, keeps one connection per database, and runs every statement
  * to completion: it never copies, writes or checkpoints it, and holds no read
  * snapshot between statements, so it never blocks OpenCode's checkpoints.
- * While neither the database nor its WAL changes, polls reuse the last
- * discovery and answer drained reads without opening the store.
+ * While `PRAGMA data_version` is unchanged, polls reuse the last discovery
+ * and answer drained reads without querying the transcript tables.
  * (SQLite gives any WAL reader the `-wal`/`-shm` files it needs, so an empty
  * pair can appear beside a store OpenCode last closed cleanly.)
  * Only `session`, `message` and `part` are queried — the same file holds
@@ -209,14 +212,17 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private readonly warned = new Set<string>();
   private readonly handles = new Map<string, SourceRegistration>();
   /**
-   * Connections opened during the current poll, one per database. A poll
-   * starts with `discover()`, which closes the previous poll's set. Each
-   * statement runs to completion (`all`/`get`), so an idle connection holds
-   * no read snapshot across an await and never blocks OpenCode's checkpoint.
+   * One long-lived read-only connection per database, reopened only when the
+   * file's identity changes or a statement fails, and closed by `close()`.
+   * Each statement runs to completion (`all`/`get`), so an idle connection
+   * holds no read snapshot across an await and never blocks OpenCode's
+   * checkpoint. Keeping it open is also what makes `PRAGMA data_version` an
+   * exact change counter (see `storeSignature`).
    */
+  private generations = 0;
   private readonly connections = new Map<
     string,
-    { db: DatabaseSync; fileIdentity: string; active: number }
+    PooledConnection
   >();
   /** Schema verdict per database, keyed by file identity and schema_version. */
   private readonly schemaChecks = new Map<
@@ -312,12 +318,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       listed.databases.map((database) => [
         database.fileName,
         database.fileIdentity,
-        storeSignature(database.path),
+        this.storeSignature(database),
       ]),
     ]);
-    // The previous poll's connections end here, whether or not this poll
-    // needs the store at all.
-    this.closeConnections();
     if (this.lastDiscovery?.key === key) {
       const cached = this.lastDiscovery.result;
       return { outcome: cached.outcome, sessions: [...cached.sessions] };
@@ -440,7 +443,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const cursor = decodeCursor(previousCursor);
     if (!cursor) return rejected();
 
-    const signature = storeSignature(current.path);
+    const signature = this.storeSignature(current);
     const cursorKey = JSON.stringify(previousCursor);
     const drained = this.drainedReads.get(session.threadId);
     if (drained?.signature === signature && drained.cursor === cursorKey) {
@@ -750,7 +753,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     | { ok: false; outcome: AttachedSessionSourceOutcome }
   > {
     let connection:
-      | { db: DatabaseSync; fileIdentity: string; active: number }
+      | PooledConnection
       | undefined;
     try {
       connection = this.connectionFor(database);
@@ -786,16 +789,32 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     }
   }
 
+  /**
+   * An exact change signature for the store, read through the held
+   * connection: `PRAGMA data_version` changes whenever another connection
+   * commits, and the connection's generation changes when it is reopened.
+   * Nothing here opens a second descriptor on any SQLite file: closing one
+   * would release this process's POSIX locks on it, including the shared
+   * lock that tells OpenCode the WAL index is in use.
+   */
+  private storeSignature(database: DatabaseRegistration): string {
+    try {
+      const connection = this.connectionFor(database);
+      const version = connection.db.prepare('PRAGMA data_version').get()
+        ?.data_version;
+      return `${connection.generation}:${String(version)}`;
+    } catch {
+      // An unreadable store has no stable signature; never reuse a cache.
+      return `unreadable:${++this.generations}`;
+    }
+  }
+
   /** Release every held connection (the follower is stopping). */
   close(): void {
     this.closeConnections();
   }
 
-  private connectionFor(database: DatabaseRegistration): {
-    db: DatabaseSync;
-    fileIdentity: string;
-    active: number;
-  } {
+  private connectionFor(database: DatabaseRegistration): PooledConnection {
     const cached = this.connections.get(database.path);
     if (cached?.fileIdentity === database.fileIdentity) return cached;
     if (cached) this.dropConnection(database.path, cached);
@@ -806,6 +825,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       }),
       fileIdentity: database.fileIdentity,
       active: 0,
+      generation: ++this.generations,
     };
     this.connections.set(database.path, connection);
     return connection;
@@ -862,46 +882,6 @@ function closeQuietly(db: DatabaseSync): void {
     if (db.isOpen) db.close();
   } catch {
     // Closing a read-only handle has nothing to flush.
-  }
-}
-
-/** SQLite's two copies of the WAL-index header at the start of `-shm`. */
-const WAL_INDEX_HEADER_BYTES = 96;
-
-/**
- * A change signature for the store: the WAL-index header in `-shm`, which
- * carries SQLite's per-transaction change counter (`iChange`), `mxFrame` and
- * the WAL salts, so every commit changes it even within one mtime tick and
- * at unchanged file sizes; plus the database file's size and mtime, which
- * cover a store opened without a WAL index. The header is read without
- * SQLite's lock: a torn read can only cause a spurious refresh.
- */
-function storeSignature(path: string): string {
-  const describe = (file: string): string => {
-    try {
-      const stat = statSync(file);
-      return `${stat.size}:${stat.mtimeMs}`;
-    } catch {
-      return '-';
-    }
-  };
-  return `${describe(path)}|${walIndexHeader(`${path}-shm`)}`;
-}
-
-function walIndexHeader(shm: string): string {
-  let descriptor: number | undefined;
-  try {
-    descriptor = openSync(
-      shm,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
-    );
-    const header = Buffer.alloc(WAL_INDEX_HEADER_BYTES);
-    const read = readSync(descriptor, header, 0, header.length, 0);
-    return header.subarray(0, read).toString('hex');
-  } catch {
-    return '-';
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 

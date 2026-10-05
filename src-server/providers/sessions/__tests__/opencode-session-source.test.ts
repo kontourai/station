@@ -721,8 +721,8 @@ describe('OpenCodeSessionSource', () => {
       ),
     ).toBe(true);
 
-    // The next poll's discovery releases the previous poll's connection.
-    await live.discover();
+    // Following stops: the source releases its held connection.
+    live.close();
     store.close();
     expect(existsSync(`${store.path}-wal`)).toBe(false);
     const digest = () =>

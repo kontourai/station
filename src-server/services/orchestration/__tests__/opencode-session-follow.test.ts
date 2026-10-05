@@ -202,10 +202,53 @@ test('stopping the follower closes the OpenCode store connections', async () => 
     });
     follow.start();
     await follow.pollNow();
-    follow.stop();
+    await follow.stop();
     expect(close).toHaveBeenCalledTimes(1);
   } finally {
     store.close();
     writer.close();
+  }
+});
+
+test('stop waits for a poll in flight before closing the sources', async () => {
+  const order: string[] = [];
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const source = {
+    provider: 'opencode',
+    kind: 'opencode-session',
+    discover: async () => {
+      order.push('discover-start');
+      await gate;
+      order.push('discover-end');
+      return { outcome: 'ok' as const, sessions: [] };
+    },
+    read: async () => ({ outcome: 'ok' as const, events: [], cursor: 0 }),
+    close: () => {
+      order.push('close');
+    },
+  };
+  const directory = realpathSync(tempDir('station-opencode-stop-poll-'));
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  try {
+    const follow = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+    });
+    const poll = follow.pollNow();
+    await vi.waitFor(() => expect(order).toContain('discover-start'));
+    const stopped = follow.stop();
+    await Promise.resolve();
+    expect(order).not.toContain('close');
+    release();
+    await stopped;
+    await poll;
+    expect(order).toEqual(['discover-start', 'discover-end', 'close']);
+  } finally {
+    store.close();
   }
 });

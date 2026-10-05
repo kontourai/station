@@ -64,7 +64,7 @@ test('every connection the source opens to the OpenCode store is read-only', asy
   }
 });
 
-test('an unchanged store is answered without opening it, and a change is read again', async () => {
+test('an unchanged store is answered without querying its tables, and a change is read again', async () => {
   const dataDir = join(
     realpathSync(tempDir('station-opencode-idle-')),
     'opencode',
@@ -75,20 +75,30 @@ test('an unchanged store is answered without opening it, and a change is read ag
   const answer = writer.assistant('ses_main', user, { finish: 'stop' });
   writer.text('ses_main', answer, 'Hi.');
 
+  const before = opened.length;
   const source = new OpenCodeSessionSource({ dataDir });
   const session = (await source.discover()).sessions[0]!;
   const first = await source.read(session);
   expect(first.events.length).toBeGreaterThan(0);
+  const connection = opened.slice(before).find((entry) => entry.options)!;
+  const statements: string[] = [];
+  const prepare = connection.db.prepare.bind(connection.db);
+  vi.spyOn(connection.db, 'prepare').mockImplementation((sql: string) => {
+    statements.push(sql);
+    return prepare(sql);
+  });
+  const touchesTables = () =>
+    statements.some((sql) => /\bFROM (session|message|part)\b/u.test(sql));
 
-  // An idle poll: same discovery, nothing new, and no connection opened.
-  const before = opened.length;
+  // An idle poll: same discovery, nothing new, only the change counter read.
   expect((await source.discover()).sessions).toEqual([session]);
   expect(await source.read(session, first.cursor)).toEqual({
     outcome: 'ok',
     events: [],
     cursor: first.cursor,
   });
-  expect(opened.length).toBe(before);
+  expect(statements.length).toBeGreaterThan(0);
+  expect(statements.every((sql) => sql === 'PRAGMA data_version')).toBe(true);
 
   const next = writer.user('ses_main', ['More']);
   const reply = writer.assistant('ses_main', next, { finish: 'stop' });
@@ -100,7 +110,8 @@ test('an unchanged store is answered without opening it, and a change is read ag
     'content.text-delta',
     'turn.completed',
   ]);
-  expect(opened.length).toBeGreaterThan(before);
+  expect(touchesTables()).toBe(true);
+  source.close();
 });
 
 function seededStore(prefix: string): string {

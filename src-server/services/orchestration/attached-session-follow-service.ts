@@ -322,11 +322,14 @@ export class AttachedSessionFollowService {
     this.timer.unref?.();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    // A poll in flight could open a source's store handle after it closed;
+    // let it finish first (its own failures are not the stop's).
+    await this.activePoll?.catch(() => undefined);
     // A source may hold store handles (OpenCode's SQLite connections) between
     // polls; none should outlive following.
     for (const source of this.options.sources) {
