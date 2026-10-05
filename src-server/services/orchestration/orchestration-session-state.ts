@@ -14,6 +14,7 @@ import type {
   AgentRunSummary,
   ConversationTurnActivity,
   OrchestrationDelegationContext,
+  OrchestrationPeerPendingRequest,
   OrchestrationSessionSummary,
   TerminalAttribution,
   TurnProgressObservation,
@@ -515,7 +516,10 @@ export function buildOrchestrationSessionSummary(options: {
   const events = options.events ?? [];
   const lastEvent = events.at(-1);
   const foldedLifecycle = projectSessionLifecycle({ session: base, events });
-  const delegation = extractDelegationContext(events);
+  const delegation = withPeerPendingRequest(
+    extractDelegationContext(events),
+    events,
+  );
   const inputOrigin = delegation
     ? {
         kind: 'delegation' as const,
@@ -1081,6 +1085,75 @@ function extractDelegationContext(
 }
 
 /**
+ * Metadata key on a delegator-side peer record's `session.configured` event
+ * that carries the paired Station's last-reported open request (an object)
+ * or its absence (`null`). Written only by
+ * `OrchestrationService.recordPeerDelegationPendingRequest`; the event
+ * carries no `taskId`, so it never restates the delegation binding.
+ */
+export const PEER_PENDING_REQUEST_METADATA_KEY = 'peerPendingRequest';
+
+const PEER_REQUEST_TYPES = new Set([
+  'approval',
+  'permission',
+  'confirmation',
+  'input',
+]);
+
+/**
+ * The latest peer pending-request observation in `events`: the request, or
+ * `null` when the latest observation reported none, or `undefined` when no
+ * observation is present. Malformed shapes read as `undefined` (no fact), so
+ * a partial write can never name a request.
+ */
+export function extractPeerPendingRequestObservation(
+  events: readonly CanonicalRuntimeEvent[],
+): OrchestrationPeerPendingRequest | null | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.method !== 'session.configured') continue;
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? event.metadata
+        : undefined;
+    if (!metadata || !(PEER_PENDING_REQUEST_METADATA_KEY in metadata)) continue;
+    const value = metadata[PEER_PENDING_REQUEST_METADATA_KEY];
+    if (value === null) return null;
+    if (!value || typeof value !== 'object') return undefined;
+    const record = value as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const observedAt =
+      typeof record.observedAt === 'string' ? record.observedAt : '';
+    if (!id || !observedAt) return undefined;
+    return {
+      id,
+      ...(typeof record.type === 'string' && PEER_REQUEST_TYPES.has(record.type)
+        ? {
+            type: record.type as OrchestrationPeerPendingRequest['type'],
+          }
+        : {}),
+      ...(typeof record.title === 'string' && record.title.trim()
+        ? { title: record.title }
+        : {}),
+      observedAt,
+    };
+  }
+  return undefined;
+}
+
+/** Only a peer record carries the paired Station's request. */
+function withPeerPendingRequest(
+  delegation: OrchestrationDelegationContext | undefined,
+  events: readonly CanonicalRuntimeEvent[],
+): OrchestrationDelegationContext | undefined {
+  if (delegation?.environmentKind !== 'peer') return delegation;
+  const observed = extractPeerPendingRequestObservation(events);
+  return observed
+    ? { ...delegation, peerPendingRequest: observed }
+    : delegation;
+}
+
+/**
  * The durable event-store fact projection uses these exact one-event reducer
  * predicates. Keeping them beside the session reducer prevents a bounded
  * read from turning a malformed or partial metadata shape into an invented
@@ -1101,6 +1174,9 @@ export function projectionFactKeysForEvent(
   }
   if (extractDelegationContext([event])) {
     facts.push({ key: 'delegation' });
+  }
+  if (extractPeerPendingRequestObservation([event]) !== undefined) {
+    facts.push({ key: 'peer-pending-request' });
   }
   if (extractAttachedSessionAttribution([event])) {
     facts.push({ key: 'attribution' });

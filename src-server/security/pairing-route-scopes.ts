@@ -2860,6 +2860,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
     },
+    // A conversation's usage tree: read-only, re-checks the Session read ACL
+    // for the conversation and for every session in it, and returns only
+    // usage figures this Station recorded for sessions the caller can already
+    // read through the conversation `stats` leaf and the session reads at
+    // this tier. A delegate on a paired Station appears only as this
+    // Station's own record of it; no peer is contacted. Read tier, no
+    // override.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/usage-tree',
+    },
     // Context-boundary reservations operate only on the current Station's
     // conversation authority. They neither resolve a peer environment nor
     // expose another Station's data: POST/DELETE mutate the local reservation;
@@ -2948,6 +2959,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
+    // #3157: the usage-limit banner's recovery read and its two person-owned
+    // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
+    // the GET returns only the Session's recovery projection under the same
+    // session-read gate as its siblings; the POSTs resume or retire a stop on a
+    // Session the caller already owns (`canUserMutateSession`), the same
+    // authority as sending the next turn, so they take the operate tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/usage-limit',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate

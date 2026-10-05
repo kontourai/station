@@ -53,6 +53,13 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // field (its schema has never heard of it) and the sender would believe
   // a durable claim exists when none does.
   delegationAttemptClaims: true,
+  // #2875 slice 1: the receiver understands the `project-portable-prepared`
+  // workspace variant and starts it only when its admitted checkout is at
+  // the requested version when checked (typed refusals otherwise, before
+  // any session). A STATIC protocol fact, like the two flags above: it says
+  // nothing about what is offered or at which version. Senders gate the
+  // variant on it (station-control-delegation.ts).
+  executionPreparation: true,
   // Fleet inference (archive#1398): "this build understands the
   // `inference:invoke` pairing-scope token" (docs/design/inference-fleet.md
   // §3.3 point 2). A STATIC PROTOCOL FACT, never a participation signal —

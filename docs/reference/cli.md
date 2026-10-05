@@ -218,7 +218,9 @@ What it does, in order:
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
 2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
-   browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+   browser at `http://<host>:<ui-port>#station-ui-bootstrap=<token>`, where
+   `<host>` is the host the instance recorded at start, or `localhost` for a
+   wildcard bind or an entry with no recorded host.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
    [local-bootstrap-token.md](../design/local-bootstrap-token.md). The token
@@ -604,6 +606,12 @@ browser this command cannot open, such as a simulator or another profile. Each
 link is single use, and minting one replaces any earlier unspent link, including
 the one `station start` printed (#2612). Without `--print`, the command never
 prints the token.
+
+The link names the host the instance's UI listener bound, as recorded in the
+registry at start (`127.0.0.1` for `start --watch`, which is loopback-only). A
+wildcard bind (`0.0.0.0`, `::`) or an entry that recorded no host keeps
+`localhost`. The host matters because the sign-in a link completes belongs to
+that origin: `localhost` and `127.0.0.1` do not share it.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require

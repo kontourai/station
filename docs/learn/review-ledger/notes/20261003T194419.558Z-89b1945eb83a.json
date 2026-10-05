@@ -1,0 +1,7 @@
+{
+  "revision": "847bf52e5aba19f0117665d70b560ef568fdacf7",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Inspected generated Knowledge guide and architecture topic in the shipped static Docs MCP. Generation adds the data-server explanation and retains credential-free, static-only behavior; no live Knowledge reads or writes are performed by Docs tools.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

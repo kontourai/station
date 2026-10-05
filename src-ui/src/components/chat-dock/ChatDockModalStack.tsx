@@ -101,7 +101,7 @@ interface ChatDockModalStackProps {
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;
   onAutoHideChange: (v: boolean) => void;
-  /** #3310: the settings panel's "Summarize session" entry point. */
+  /** #3310: the settings panel's "Summarize chat" entry point. */
   sessionSummary?: {
     isGenerating: boolean;
     onGenerate: () => void;
