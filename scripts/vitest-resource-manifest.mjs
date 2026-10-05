@@ -647,6 +647,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot node child per case, whose own `--version` self-check spawns
   // the fixture archive's runtime once.
   'scripts/__tests__/install-ps1.test.ts',
+  // #2675 W2: the same core's full install and uninstall, one bounded node
+  // child per run, whose fixture CLI (stop/start) is a short node child too.
+  'scripts/__tests__/install-ps1-full.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',
