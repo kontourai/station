@@ -90,7 +90,7 @@ const YIELD_EVERY = 1024;
 /** Evictable folders examined per eviction attempt. */
 const MAX_EVICTION_SCAN = 4096;
 const STAT_YIELD_EVERY = 32;
-const INSPECTION_YIELD_EVERY = 16;
+const INSPECTION_YIELD_EVERY = 4;
 
 export class GrokSessionIndex {
   private readonly entries = new Map<string, Entry>();
