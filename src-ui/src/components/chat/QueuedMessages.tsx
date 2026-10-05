@@ -123,7 +123,7 @@ export function QueuedMessages({
       {heldByUsageLimit && (
         <div className="queued-messages__hold" role="status">
           <span className="queued-messages__failure-text">
-            Held until the usage limit resets. Send now to send anyway.
+            Held because of the usage limit. Send now to send anyway.
           </span>
         </div>
       )}

@@ -1579,7 +1579,9 @@ export async function credentialAuthorizedForScope(
  */
 export interface ConsentDecisionCredentialResolver {
   verifyOperatorCredential(candidate: string): boolean;
-  identifyDevice(candidate: string): { scope?: string } | null;
+  identifyDevice(
+    candidate: string,
+  ): { scope?: string; id?: string; name?: string; createdAt?: number } | null;
 }
 
 export type ConsentCredentialAuthority =
@@ -2090,6 +2092,30 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       capability: 'pairing-scope',
       scope: PAIRING_SCOPE_CONSENT_DECIDE,
     },
+    // #3257 (S2b): operator passkey enrollment. Public in THIS table's sense
+    // (no pairing scope applies) because each handler authenticates itself:
+    // it needs a paired-device or operator cookie, STATION_TRUSTED_CONSENT_ORIGIN,
+    // an exact Origin on every state change, and a host-confirmed request. The
+    // page and its script carry no secret and answer without a cookie.
+    {
+      id: 'consent-http:operator-passkey-enrollment',
+      transport: 'consent-http',
+      method: '*',
+      prefix: '/operator/passkeys/enroll',
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator passkey enrollment authenticates in-handler: paired-device cookie, exact consent origin, host-confirmed single-use request',
+    },
+    {
+      id: 'consent-http:operator-passkey-enrollment-script',
+      transport: 'consent-http',
+      method: 'GET',
+      prefix: '/operator/passkeys/enroll.js',
+      match: 'exact',
+      capability: 'public',
+      reason: 'static enrollment page script; carries no secret',
+    },
     {
       id: 'consent-http:not-found',
       transport: 'consent-http',
@@ -2355,6 +2381,27 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
+    // #3160 Station Control's Session tools: agent-only at the route (each
+    // answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the
+    // family's tier reaches nothing. Send and interrupt mutate (the family's
+    // operate tier); the wait only reads.
+    { method: 'POST', path: '/api/orchestration/session-control/send' },
+    { method: 'POST', path: '/api/orchestration/session-control/interrupt' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-control/:sessionId/wait',
+    },
+    // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
+    // request the runtime boundary did not accept as Station's own internal
+    // principal gets a 404 whatever its scope, and the session it records on
+    // is the verified station-control caller's own. It writes the same
+    // candidate record Station's own engine does; the family's operate tier
+    // is the tier of that mutation.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/declare-pull-request',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -2413,6 +2460,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/tool-result-references' },
     { method: 'GET', path: '/api/tasks/:taskId/gate-evaluation-references' },
     { method: 'POST', path: '/api/tasks/:taskId/outputs' },
+    // #3161 a person's opt-in to close the Task when its kept pull requests
+    // merge. It mutates only that Task's own record, so the task family's
+    // operate tier is the intended scope; no station-control tool reaches it.
+    { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',
@@ -2834,6 +2885,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
     },
+    // A conversation's usage tree: read-only, re-checks the Session read ACL
+    // for the conversation and for every session in it, and returns only
+    // usage figures this Station recorded for sessions the caller can already
+    // read through the conversation `stats` leaf and the session reads at
+    // this tier. A delegate on a paired Station appears only as this
+    // Station's own record of it; no peer is contacted. Read tier, no
+    // override.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/usage-tree',
+    },
     // Context-boundary reservations operate only on the current Station's
     // conversation authority. They neither resolve a peer environment nor
     // expose another Station's data: POST/DELETE mutate the local reservation;
@@ -2922,6 +2984,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
+    // #3157: the usage-limit banner's recovery read and its two person-owned
+    // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
+    // the GET returns only the Session's recovery projection under the same
+    // session-read gate as its siblings; the POSTs resume or retire a stop on a
+    // Session the caller already owns (`canUserMutateSession`), the same
+    // authority as sending the next turn, so they take the operate tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/usage-limit',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate

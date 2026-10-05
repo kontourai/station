@@ -154,6 +154,27 @@ describe('ConversationHistory', () => {
     conversationState.conversations = previous;
   });
 
+  // #3312: the panel's count reads like every other group heading,
+  // "History · 3", not "History (3)".
+  test('the panel heading carries its count in the one group-heading form', () => {
+    const { container } = render(
+      <ConversationHistory
+        sessions={[]}
+        activeSessionId={null}
+        agents={[{ slug: 'claude', name: 'Claude' }]}
+        projects={[]}
+        onTitleUpdate={vi.fn()}
+        onDelete={vi.fn()}
+        onSelect={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      container.querySelector('.conversation-history__title')?.textContent,
+    ).toBe('History · 3');
+  });
+
   test('offers explicit load-more history paging instead of silently truncating the inventory', () => {
     render(
       <ConversationHistory

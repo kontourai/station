@@ -354,6 +354,31 @@ export class ConversationLineage {
     };
   }
 
+  /**
+   * #3112: every execution Session of a durable conversation, in lineage
+   * order. An id with no lineage of its own — a pre-lineage conversation, or
+   * a child Session addressed directly — is its own single Session.
+   */
+  conversationSessionIds(conversationId: string): string[] {
+    const lineage =
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [];
+    return lineage.length > 0
+      ? lineage.map((entry) => entry.sessionId)
+      : [conversationId];
+  }
+
+  /**
+   * #3112: the durable conversation a successor execution Session continues,
+   * or undefined for a conversation's own root Session and for an id with no
+   * lineage.
+   */
+  successorConversationId(sessionId: string): string | undefined {
+    const lineage = this.deps.eventStore?.conversationForSession(sessionId);
+    return lineage && lineage.conversationId !== sessionId
+      ? lineage.conversationId
+      : undefined;
+  }
+
   /** Current replaceable Session for a durable conversation; legacy falls back to its id. */
   currentConversationSessionId(conversationId: string): string {
     return (

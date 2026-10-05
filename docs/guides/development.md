@@ -131,7 +131,14 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   legacy unmanaged record with no captured fingerprint is still trusted by PID
   alone (the residual accepted in #3253).
 - **Loopback only.** `--watch` binds `127.0.0.1` and refuses another `--host`,
-  as for the root Vite server below.
+  as for the root Vite server below. `station open --print` links to the
+  address the instance bound (`127.0.0.1` here), not `localhost`; the two are
+  different origins, so a sign-in link only signs in the origin it names.
+- **Cold start.** The first load after `start --watch` waits on a cold Vite
+  server compiling and optimizing the UI dependency graph, which can take tens
+  of seconds before Home renders. The page is blank or loading until
+  then; later loads and hot updates are fast. Station does not warm the server
+  up, so open the instance's `station open --print` link once and wait.
 - **Distinct home.** A dev instance must use its own Station home
   (`--temp-home` or `--home`). The browser workspace refuses to load a page
   served by a listener of the *same* home as a Station listener, so a dev
@@ -490,12 +497,12 @@ to the hosted qualification authority.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source through every canonical phase and the Android viewport suite.
-Main qualification runs every six hours and starts a Nightly for the commit it
+`Main: Qualification` runs every six hours and starts a Nightly for the commit it
 qualified at most about once a day; the scheduled Nightly also runs daily. Nightly
 and tagged Preview/Stable require that qualification, with bounded reuse of
 exact-source evidence. See [the release process](releasing.md) for receipt
 admission, failure repair and promotion.
-A manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
 

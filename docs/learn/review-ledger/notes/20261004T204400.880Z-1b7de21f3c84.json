@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Contract paragraph still accurate: peerRequestReference and viewerCanRespond remain optional; the viewerCanRespond doc in attention.ts now says the handler can still refuse.","inputs":["docs/reference/contracts.md","packages/contracts/src/attention.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

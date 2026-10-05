@@ -184,6 +184,8 @@ remote start is not automatically safe to retry. See the
 
 A task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
 
+An agent on any engine can declare a pull request it opened with the Station Control `declare_pull_request` tool; a person keeps the declared pull request onto a Task. A person can also opt a Task in to closing when its pull requests merge: with that opt-in, the Task moves to done once every pull request kept on it is merged at its provider. A pull request closed without merging does not complete the Task, a Task in todo, ready, triage or blocked never closes by itself, and no agent tool sets the opt-in. Station checks when someone with permission to change Task status refreshes the conversation's pull request links; nothing polls. A declaration is recorded when the turn completes and is lost if Station restarts first.
+
 ## Scheduled jobs and notifications
 
 A scheduled job can use a cron expression, a fixed interval (`every`), or a

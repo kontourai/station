@@ -114,7 +114,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 
 const SESSION = 'usage-limit-session';
-const HINT = 'Held until the usage limit resets. Send now to send anyway.';
+const HINT = 'Held because of the usage limit. Send now to send anyway.';
 
 function buildChatInput() {
   return {

@@ -158,11 +158,11 @@ export function sessionFailureNote(
 ): string {
   switch (session?.terminalAttribution?.kind) {
     case 'send_refused':
-      return 'Nothing reached the engine. Change what was refused, then send again.';
+      return 'Nothing reached the agent. Change what was refused, then send again.';
     case 'send_failed':
       return 'No reply has been recorded. You can send a message to try again.';
     default:
-      return 'You can send a message to try to continue this session.';
+      return 'You can send a message to try to continue this chat.';
   }
 }
 

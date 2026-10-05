@@ -55,3 +55,7 @@ c1d07db19cb827749835a9ca7d7f0f4c0fdf49a2:docs/learn/review-ledger/notes/20261001
 # #3238: owner-confirmed public typography review prose, not a credential.
 # Exact historical fingerprint only; fresh same-path controls remain detected.
 fc181b4eb5829e84839ef38ee0c87707d86005ea:docs/learn/review-ledger/notes/20261001T130629.148Z-f9e91a5db6fe.json:generic-api-key:5
+
+# The comment above an earlier entry on this branch quoted the matched prose
+# itself; pin that one historical location (squash-merged away from main).
+e8515b04d21896ad5fe694da061187bc9ca0a809:.gitleaksignore:generic-api-key:50

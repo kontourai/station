@@ -84,7 +84,7 @@ export function ChatDockActiveIdentity({
   // disambiguates two identically-named connections. The redundancy being
   // removed is the name, so the narrower fix then is to blank
   // `engine.name` and keep the model, not to null the descriptor.
-  const agentName = agent?.name ?? session.agentName ?? 'Conversation';
+  const agentName = agent?.name ?? session.agentName ?? 'Chat';
   const engineChip =
     engine && agentName && engine.name.toLowerCase() === agentName.toLowerCase()
       ? null
@@ -160,8 +160,8 @@ export function ChatDockActiveIdentity({
           type="button"
           className="chat-dock__active-identity-close"
           onClick={onDetails}
-          aria-label="Conversation details"
-          title="Conversation details"
+          aria-label="Chat details"
+          title="Chat details"
         >
           <span aria-hidden="true">⋯</span>
         </button>

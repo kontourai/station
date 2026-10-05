@@ -250,6 +250,38 @@ describe('#2457 Claude child work, replayed from real captures', () => {
     },
   );
 
+  test('#3308 task-subagents: a child whose task_updated carried no usage ends with the notification figure, not its running one', () => {
+    const { events } = replayClaudeTaskCapture('task-subagents');
+    const [, background] = agentTaskIds('task-subagents');
+    const deltas = deltasOf(events);
+    // Premise: the running figure arrived first, and the first settle had none.
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        kind: 'upsert',
+        item: expect.objectContaining({
+          childId: background,
+          usage: { totalTokens: 40141, toolUses: 1, durationMs: 1854 },
+        }),
+      }),
+    );
+    const settles = deltas.filter(
+      (delta) => delta.kind === 'settle' && delta.childId === background,
+    );
+    expect(settles.map((delta) => 'usage' in delta && delta.usage)).toEqual([
+      false,
+      { totalTokens: 41833, toolUses: 1, durationMs: 3677 },
+    ]);
+    const item = itemsOf(events).find(
+      (candidate) => candidate.childId === background,
+    );
+    expect(item?.usage).toEqual({
+      totalTokens: 41833,
+      toolUses: 1,
+      durationMs: 3677,
+    });
+    expect(item?.usageProvisional).toBeUndefined();
+  });
+
   test('#1878 stop-task: Query.stopTask settles the child cancelled, never completed', () => {
     const { events } = replayClaudeTaskCapture('stop-task');
     const [childId] = agentTaskIds('stop-task');

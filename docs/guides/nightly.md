@@ -21,7 +21,7 @@ device receipts for current availability.
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
 **Cadence: about once a day, with native publication only when `main` moved.**
-Nightly runs daily at 06:43 UTC. Main qualification runs every six hours, and
+Nightly runs daily at 06:43 UTC. `Main: Qualification` runs every six hours, and
 a passing run also calls Nightly for the commit it just qualified, at most
 about once a day. The scheduled run admits exact-source qualification evidence
 or runs fresh qualification. See [the release procedure](releasing.md#release-procedure). The scheduled job compares `HEAD`
@@ -94,8 +94,9 @@ artifacts.
 This is the platform-array schema v2 manifest. On macOS and Linux, `install.sh`
 selects the host's archive, verifies its signed size and digest, and installs
 it under `versions/<version>` with its bundled Node.js and a forwarding
-launcher. On Windows, `install.ps1` so far only stages a verified version
-(`STATION_INSTALL_STAGE_ONLY=1`). Set `STATION_CHANNEL=nightly` and
+launcher. On Windows, `install.ps1` installs it the same way under a
+`current` junction with a `station-nightly.cmd` launcher (see
+[Windows archive installs](release-channel-ports.md#windows-archive-installs)). Set `STATION_CHANNEL=nightly` and
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to an available signed Nightly manifest.
 Installer support does not establish that publication is enabled or that a
 release has been installed successfully; see the

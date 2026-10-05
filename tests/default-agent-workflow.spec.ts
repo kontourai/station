@@ -480,24 +480,32 @@ async function openDefaultAgentSession(
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
   await expect(
-    page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
+    page
+      .locator('.chat-dock__tab-actions')
+      .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   if (options?.firstMessage === undefined) return;
 
-  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
-  const draft = page.getByRole('form', { name: 'New chat draft' });
-  // The right agent and model are preselected: the draft is where the
-  // default identity is now advertised.
+  await page
+    .locator('.chat-dock__tab-actions')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
+  const draft = page
+    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('form', { name: 'Start work' });
+  // The right agent and model are preselected: the start composer's Agent
+  // chip names both, and its project chip the context they resolve in.
   await expect(
-    draft.getByRole('button', { name: 'Agent: Station', exact: true }),
+    draft.getByRole('button', {
+      name: 'Agent: Station · llama3.2',
+      exact: true,
+    }),
   ).toBeVisible({ timeout: 10_000 });
-  await expect(
-    draft.getByRole('button', { name: 'Model: llama3.2', exact: true }),
-  ).toBeVisible();
+  await expect(draft.getByRole('button', { name: /^Project: / })).toBeVisible();
   await draft
-    .getByRole('textbox', { name: 'Message', exact: true })
+    .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(options.firstMessage);
-  await draft.getByRole('button', { name: 'Send', exact: true }).click();
+  await draft.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
   // The dock now holds the chat the draft started, bound to the same identity.
   await expect(
@@ -633,9 +641,9 @@ test.describe('Default agent workflow', () => {
     await sendButton.click();
     await expect(clearedNotices).toHaveCount(2);
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
-      'History (1)',
+      'History · 1',
     );
     await expect(page.locator('.conversation-history')).toContainText(
       'Station Chat',
@@ -791,8 +799,10 @@ test.describe('Default agent workflow', () => {
     );
 
     await openDefaultAgentSession(page);
-    await page.locator('.chat-dock__tab-actions .chat-dock__open').click();
-    const picker = page.getByRole('dialog', { name: 'Open Conversation' });
+    // "Open chat…" is a row of the dock's ⋯ menu (design round 2026-10, B1).
+    await page.getByRole('button', { name: /^More dock actions/ }).click();
+    await page.getByRole('menuitem', { name: /^Open chat…/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Open chat' });
     await expect(picker).toBeVisible();
     await picker
       .getByRole('button', { name: /Authoritative conversation/ })
@@ -906,12 +916,12 @@ test.describe('Default agent workflow', () => {
     await page.goto('/?dock=open');
     await dismissSetupLauncher(page);
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({
       timeout: 15_000,
     });
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Failed Chat',
     );
@@ -974,12 +984,12 @@ test.describe('Default agent workflow', () => {
     await page.goto('/?dock=open');
     await dismissSetupLauncher(page);
     await expect(
-      page.getByRole('button', { name: 'Conversation history' }),
+      page.getByRole('button', { name: 'History', exact: true }),
     ).toBeVisible({
       timeout: 15_000,
     });
 
-    await page.getByRole('button', { name: 'Conversation history' }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
     const history = page.locator('.conversation-history');
     await expect(history).toContainText('Alpha Chat');
     await expect(history).toContainText('Beta Chat');

@@ -53,6 +53,7 @@ import type {
   IStreamChunk,
   IStreamResult,
   ITool,
+  ModelInputComposer,
   ToolCallDenial,
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
@@ -320,6 +321,15 @@ class StrandsAgentWrapper implements IAgent {
   async streamText(input: string, _options?: any): Promise<IStreamResult> {
     const owned = await this.nativeInvocation(_options);
     if (owned) return owned.streamText(input, _options);
+    // #3112 known gap: Strands keeps the prompt it is handed as the user
+    // message its memory sync persists, and has no model-only seam here, so
+    // the composed context is applied up front and stored with the turn.
+    const composeModelInput = (
+      _options as { composeModelInput?: ModelInputComposer } | undefined
+    )?.composeModelInput;
+    const modelInput = composeModelInput
+      ? (composeModelInput(input) as string)
+      : input;
     // Per-request identity is WeakMap-bound to this invocation's state object
     // identity (never stored in the tool-writable bag, never a shared mutable
     // object — archive#1834 rounds 3-4); see invocationOptions.
@@ -354,7 +364,7 @@ class StrandsAgentWrapper implements IAgent {
 
         const _emittedStart = false;
         let emittedTextStart = false;
-        const stream = agent.stream(input, invokeOptions);
+        const stream = agent.stream(modelInput, invokeOptions);
 
         self._lastStreamUsage = null;
 

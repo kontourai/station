@@ -8,15 +8,22 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { HttpTransferRecorder } from '../src-server/__test-utils__/http-transfer-recorder.js';
 import { TransferMeasurementFailure } from '../src-server/__test-utils__/orchestration-transfer-scenario.js';
-import { scaleLivenessMs } from './lib/liveness-scale.mjs';
+import {
+  captureBarrierTimeoutMs,
+  createCaptureBarrier,
+  parseCaptureTimeoutMs,
+} from './lib/transfer-capture-barrier.js';
 import { createTransferCaptureProgress } from './lib/transfer-capture-progress.js';
 
 const targetRoot = resolve(process.argv[2] ?? '');
 const outputPath = process.argv[3];
 const baseSha = process.argv[4];
 const toolRoot = resolve(process.argv[5] ?? process.cwd());
+const captureTimeoutMs = parseCaptureTimeoutMs(process.argv[6]);
 if (!targetRoot || !outputPath)
-  throw new Error('usage: capture <target-root> <report-path>');
+  throw new Error(
+    'usage: capture <target-root> <report-path> <base-sha> <tool-root> <capture-timeout-ms>',
+  );
 const productionFiles = [
   'src-server/routes/orchestration/orchestration.ts',
   'src-server/runtime/bootstrap/runtime-http.ts',
@@ -34,6 +41,7 @@ const toolDigest = createHash('sha256')
   .update(
     [
       'scripts/orchestration-transfer-capture.ts',
+      'scripts/lib/transfer-capture-barrier.ts',
       'scripts/lib/transfer-capture-progress.ts',
       'scripts/lib/liveness-scale.mjs',
       'src-server/__test-utils__/orchestration-transfer-scenario.ts',
@@ -92,17 +100,8 @@ const [
   toolMod('src-server/__test-utils__/orchestration-transfer-fixture.ts'),
   mod('packages/sdk/src/client/index.ts'),
 ]);
-// A dead-child liveness bound, scaled by the host-pressure factor the gate
-// published (#3302). It is not a measurement of the capture.
-const CAPTURE_BARRIER_BASE_MS = 5000;
-const wait = async (predicate: () => boolean, name: string) => {
-  const deadline = performance.now() + scaleLivenessMs(CAPTURE_BARRIER_BASE_MS);
-  while (!predicate()) {
-    if (performance.now() > deadline)
-      throw new Error(`capture barrier timed out: ${name}`);
-    await new Promise((resolveWait) => setTimeout(resolveWait, 5));
-  }
-};
+const barrierTimeoutMs = captureBarrierTimeoutMs(captureTimeoutMs);
+const wait = createCaptureBarrier(captureTimeoutMs);
 const logger = {
   debug() {},
   warn() {},
@@ -263,6 +262,7 @@ try {
     recorder: externalRecorder,
     sdk,
     budget,
+    barrierTimeoutMs,
   });
 
   progress('native-measurement');
@@ -359,6 +359,7 @@ try {
     recorder: nativeRecorder,
     sdk,
     budget,
+    barrierTimeoutMs,
   });
   const report = {
     schemaVersion: 1,

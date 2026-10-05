@@ -14,11 +14,15 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { relativeTime, relativeTimeAgo } from '../../utils/relativeTime';
+import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
-import { InboxRowStatusGlyph } from '../inbox-row/InboxRowStatus';
+import { ProjectIcon } from '../icons/ProjectIcon';
+import {
+  InboxRowStatusGlyph,
+  WorkStatusLineText,
+} from '../inbox-row/InboxRowStatus';
 import { hostLayerOf, OverlayLayerContext } from '../overlay-layer';
 import {
   ResponsiveDialogHeader,
@@ -62,7 +66,8 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
 
 /**
  * The inbox row's hover card: the session's metadata — project, machine,
- * branch, engine, status, pull requests — plus its basis inventory.
+ * branch, agent, status, pull requests — plus its basis inventory. A section
+ * with nothing to say is absent, not a heading over "unavailable".
  *
  * Display-only by contract: `pointer-events: none` and `role="tooltip"`, so
  * the card never intercepts the pointer (moving across rows never fights an
@@ -82,6 +87,8 @@ export function ChatInboxHoverCard({
   now,
   facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   anchor,
   onClose,
   id,
@@ -101,6 +108,9 @@ export function ChatInboxHoverCard({
    * being answered by this machine's git.
    */
   gitLocation?: GitReadLocation;
+  /** The row's project colour and icon, for the Project row's mark. */
+  projectAccent?: string;
+  projectIcon?: string;
   /** The row element the card anchors beside (measured once on mount). */
   anchor: HTMLElement;
   onClose: () => void;
@@ -167,6 +177,8 @@ export function ChatInboxHoverCard({
         now={now}
         facts={facts}
         gitLocation={gitLocation}
+        projectAccent={projectAccent}
+        projectIcon={projectIcon}
       />
     </div>,
     document.body,
@@ -183,6 +195,8 @@ export function ChatInboxDetailsSheet({
   now,
   facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   triggerRef,
   onClose,
   actions,
@@ -191,6 +205,8 @@ export function ChatInboxDetailsSheet({
   now: number;
   facts?: WorkFacts;
   gitLocation?: GitReadLocation;
+  projectAccent?: string;
+  projectIcon?: string;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
   /**
@@ -244,6 +260,8 @@ export function ChatInboxDetailsSheet({
           now={now}
           facts={facts}
           gitLocation={gitLocation}
+          projectAccent={projectAccent}
+          projectIcon={projectIcon}
           showTitle={false}
         />
         {actions}
@@ -265,12 +283,16 @@ function ChatInboxCardBody({
   now,
   facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   showTitle = true,
 }: {
   item: HomeWorkItem;
   now: number;
   facts?: WorkFacts;
   gitLocation?: GitReadLocation;
+  projectAccent?: string;
+  projectIcon?: string;
   showTitle?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
@@ -369,7 +391,7 @@ function ChatInboxCardBody({
         </p>
       ) : links.error ? (
         <p className="chat-dock-inbox-hover-card__gap">
-          Pull request links unavailable.
+          Pull requests unavailable
         </p>
       ) : prLinks.length > 0 ? (
         <>
@@ -424,48 +446,58 @@ function ChatInboxCardBody({
     .flatMap((group) => group.gaps)
     .find((gap) => gap.length > 0);
   const basisEnabled = Boolean(basisScope && scope?.isCurrent());
-  const basisSection = basisScope ? (
-    <section className="chat-dock-inbox-hover-card__section" aria-label="Basis">
-      <h4>Basis</h4>
-      {!basisEnabled || inventory.error || !basisModel ? (
-        <p className="chat-dock-inbox-hover-card__gap">Basis unavailable.</p>
-      ) : inventory.isLoading ? (
-        <p className="chat-dock-inbox-hover-card__gap">
-          Reading session basis…
-        </p>
-      ) : basisGroups.length === 0 ? (
-        <p className="chat-dock-inbox-hover-card__gap">
-          No basis recorded for this session.
-        </p>
-      ) : (
-        <>
-          <ul className="chat-dock-inbox-hover-card__groups">
-            {basisGroups.map((group) => (
-              <li key={group.key}>
-                {group.label}
-                <b>{group.count ?? String(group.items.length)}</b>
-              </li>
-            ))}
-          </ul>
-          <ul className="chat-dock-inbox-hover-card__basis-items">
-            {basisPreviews.map((viewItem) => (
-              <li key={viewItem.key}>
-                <bdi>{viewItem.label}</bdi>
-                {viewItem.classification === 'kept' && (
-                  <span className="chat-dock-inbox-hover-card__kept">Kept</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          {basisGap && (
-            <p className="chat-dock-inbox-hover-card__gap">{basisGap}</p>
-          )}
-        </>
-      )}
-    </section>
-  ) : null;
+  // Rendered only over a failed read (a named gap) or real groups: a read
+  // still in flight, and a session with nothing recorded, add no section.
+  const basisUnavailable =
+    basisEnabled && !inventory.isLoading && (inventory.error || !basisModel);
+  const basisSection =
+    basisScope && (basisUnavailable || basisGroups.length > 0) ? (
+      <section
+        className="chat-dock-inbox-hover-card__section"
+        aria-label="Basis"
+      >
+        <h4>Basis</h4>
+        {basisUnavailable ? (
+          <p className="chat-dock-inbox-hover-card__gap">Basis unavailable</p>
+        ) : (
+          <>
+            <ul className="chat-dock-inbox-hover-card__groups">
+              {basisGroups.map((group) => (
+                <li key={group.key}>
+                  {group.label}
+                  <b>{group.count ?? String(group.items.length)}</b>
+                </li>
+              ))}
+            </ul>
+            <ul className="chat-dock-inbox-hover-card__basis-items">
+              {basisPreviews.map((viewItem) => (
+                <li key={viewItem.key}>
+                  <bdi>{viewItem.label}</bdi>
+                  {viewItem.classification === 'kept' && (
+                    <span className="chat-dock-inbox-hover-card__kept">
+                      Kept
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {basisGap && (
+              <p className="chat-dock-inbox-hover-card__gap">{basisGap}</p>
+            )}
+          </>
+        )}
+      </section>
+    ) : null;
 
-  const lastProgressAt = item.turnProgress?.lastProgressEventAt;
+  const lastProgressAt = Date.parse(
+    item.turnProgress?.lastProgressEventAt ?? '',
+  );
+  // "Model not reported" is a gap, not a model; the row names the agent
+  // alone rather than an agent beside a sentence about what it lacks.
+  const modelLabel =
+    item.modelLabel && item.modelLabel !== 'Model not reported'
+      ? item.modelLabel
+      : null;
   return (
     <>
       {showTitle && (
@@ -477,12 +509,15 @@ function ChatInboxCardBody({
         <div>
           <dt>Project</dt>
           <dd>
+            {/* Decorative: the name beside it is the project. */}
+            <ProjectIcon
+              project={{ name: item.projectLabel, icon: projectIcon }}
+              accent={projectAccent}
+              size={14}
+              className="chat-dock-inbox-hover-card__project-mark"
+            />
             <bdi>{item.projectLabel}</bdi>
           </dd>
-        </div>
-        <div>
-          <dt>Kind</dt>
-          <dd>{item.kindLabel}</dd>
         </div>
         {item.cwdLabel && (
           <div>
@@ -501,39 +536,54 @@ function ChatInboxCardBody({
           </div>
         )}
         <div>
-          <dt>Engine</dt>
+          <dt>Agent</dt>
           <dd>
-            {item.controlMode === 'read-only-attached'
-              ? `Started in ${item.agentLabel}`
-              : `${item.agentLabel} · ${item.modelLabel}`}
+            <bdi>
+              {[item.agentLabel, modelLabel].filter(Boolean).join(' · ')}
+            </bdi>
           </dd>
         </div>
         <div>
           <dt>Status</dt>
           <dd className="chat-dock-inbox-hover-card__status">
-            {/* The row's own status word, from the same ladder call. */}
+            {/* The row's own status line, from the same ladder call. */}
             <span
               className="chat-dock-inbox-hover-card__status-word"
               data-tone={status.tone}
             >
               <InboxRowStatusGlyph rung={status.rung} />
-              {status.word}
+              {/* A failure's cause is the notice below, in full, not a
+                  second copy on this line. */}
+              {status.rung === 'failed' ? (
+                status.word
+              ) : (
+                <WorkStatusLineText status={status} />
+              )}
             </span>
-            {item.updatedAt > 0 && (
-              <span>{relativeTime(item.updatedAt, now)}</span>
-            )}
           </dd>
         </div>
-        {lastProgressAt && (
+        {item.updatedAt > 0 && (
+          <div>
+            <dt>Updated</dt>
+            <dd title={absoluteTime(item.updatedAt)}>
+              {relativeTime(item.updatedAt, now)}
+            </dd>
+          </div>
+        )}
+        {lastProgressAt > 0 && (
           <div>
             <dt>Last progress</dt>
-            <dd>{relativeTimeAgo(Date.parse(lastProgressAt), now)}</dd>
+            <dd title={absoluteTime(lastProgressAt)}>
+              {relativeTime(lastProgressAt, now)}
+            </dd>
           </div>
         )}
       </dl>
-      {(item.failureNotice || item.unanswerableNotice) && (
+      {/* The reason the row only hints at: why it failed, why nothing here
+          can answer, where it was started. */}
+      {(status.detail || status.reason) && (
         <p className="chat-dock-inbox-hover-card__notice">
-          {item.failureNotice ?? item.unanswerableNotice}
+          {status.detail ?? status.reason}
         </p>
       )}
       {gitSection}

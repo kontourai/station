@@ -1,0 +1,7 @@
+{
+  "revision": "bb7a857ef86301c916b1362d6a77a51710778141",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed merged source anchors: Knowledge-only factory, delivery and owner/store access changes retain the architecture’s distinct engine/tool authorization paths and its limits on runtime and release proof. Incoming review history is preserved.","inputs":["docs/architecture.md"]}
+  ]
+}

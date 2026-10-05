@@ -1,0 +1,39 @@
+{
+  "path": "docs/design/remote-execution-preparation.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted-direction record of the 2026-10-03 owner decisions for #2875: preparation as a phase of one #485 attempt, a new project-portable-prepared workspace variant with a handshake capability, a git-commit adapter chosen by resource kind, the disclosed version race, scope-gated result return as a later slice, and conservative slice 1 defaults for the undecided policies.",
+
+  "limits": "Design, not shipped behavior beyond slice 1. Current-state claims are source inspection at c2c67c2f25. Slice 1 behavior is established only by the tests named in the implementing change; a genuinely older receiver build is not exercised.",
+
+  "sources": [
+    "packages/contracts/src/execution-target.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-server/services/orchestration/delegation-attempt-claim-store.ts",
+
+    "src-server/services/projects/project-contribution-service.ts",
+
+    "src-server/services/projects/git-read-repository.ts",
+
+    "src-server/capabilities/station-capability-flags.ts",
+
+    "packages/contracts/src/project-identity.ts",
+
+    "packages/contracts/src/execution-preparation.ts",
+
+    "src-server/services/execution-target/execution-preparation.ts",
+
+    "src-server/services/execution-target/__tests__/execution-preparation.test.ts",
+
+    "src-server/tools/__tests__/station-control-delegation-preparation.test.ts",
+
+    "tests/portable-receiver-live-proof.spec.ts"
+  ],
+
+  "checks": []
+}

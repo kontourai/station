@@ -21,6 +21,13 @@ import {
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import {
+  classifyOperatorCredentialPosition,
+  isHostLocalOperatorCredentialUse,
+  type OperatorCredentialUseRecord,
+  reportOperatorCredentialUse,
+  usesOperatorCredential,
+} from '../../security/host-operator-credential.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
@@ -294,16 +301,19 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { createOperatorPasskeyHostRoutes } from '../../routes/operator-passkeys/operator-passkey-host-routes.js';
 import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
+import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -313,7 +323,6 @@ import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { createPluginEventRelayGate } from '../../routes/plugins/plugin-identity-enumeration.js';
-import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
@@ -376,8 +385,6 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
-  pairingScopeSatisfiesHttpRoute,
-  requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
   attestedBrowserVisibleHost,
@@ -395,6 +402,7 @@ import {
   resolveClientOriginForRequest,
   resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
+  runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
@@ -465,6 +473,7 @@ import {
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
+import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
@@ -541,6 +550,7 @@ import type { ProposedChangeService } from '../../services/projects/proposed-cha
 import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
+import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
@@ -604,6 +614,7 @@ import {
   connectedClientPresenceOps,
   devicePairingRequests,
   deviceSessionExchanges,
+  operatorCredentialDeviceAdminUses,
   reviewEvidenceDuration,
   reviewEvidenceOperations,
 } from '../../telemetry/metrics.js';
@@ -688,6 +699,7 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
+import { runtimeAttentionRouteOptions } from './runtime-attention-route-options.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -771,6 +783,8 @@ export interface ConfigureRuntimeRoutesContext {
    * state. Approval routes consult it before minting a review URL.
    */
   consentChannel: ConsentChannelService;
+  /** #3257 (S2b): operator passkey enrollment; absent on hosted tenants. */
+  operatorPasskeys?: OperatorPasskeyEnrollmentService;
   /**
    * The app config as it stood when routes were constructed.
    *
@@ -2407,6 +2421,17 @@ export function configureRuntimeRoutes(
       resolveRecord: resolveStationControlCallerRecord,
     }),
   );
+  // #3161 `declare_pull_request`'s REST side: its own leaf, the verified
+  // caller's own session, the one dispatch scope rule.
+  context.app.route(
+    '/api/orchestration',
+    createDeclarePullRequestRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      declare: (input) =>
+        context.orchestrationService.declareStationControlPullRequest(input),
+    }),
+  );
   context.app.route(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
@@ -2461,6 +2486,13 @@ export function configureRuntimeRoutes(
       relayEnrollment: context.relayEnrollment,
       resetFullAccessGrantedBy: (input) =>
         context.orchestrationService.resetFullAccessGrantedBy(input),
+      // #2894 S1 (D2, observe first): count every use, warn on off-host ones.
+      observeOperatorCredentialUse: (record) =>
+        reportOperatorCredentialUse(record, {
+          counter: operatorCredentialDeviceAdminUses,
+          logger: context.logger,
+        }),
+      operatorPasskeys: context.operatorPasskeys,
     },
   );
 
@@ -4345,6 +4377,33 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
     }),
   );
+  // #3160: Station Control's Session tools (send, interrupt, wait). Agent-only
+  // leaves with their own scope check; their own prefix so the dispatch
+  // routes above stay exactly as they are.
+  if (context.orchestrationEventStore) {
+    context.app.route(
+      '/api/orchestration/session-control',
+      createSessionAgentControlRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        eventBus: context.eventBus,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        resolveAgentDispatchActor,
+        hostedTenantRegistry,
+        continueForegroundMessage: stationServerEntry((input) =>
+          continueExecutionTargetMessage(
+            {
+              ...input,
+              readAuthority: readAuthorityForExecution(input.userId),
+            },
+            context.orchestrationService,
+            remoteStations,
+          ),
+        ),
+      }),
+    );
+  }
 
   const runtimeContext = context.buildRuntimeContext();
 
@@ -4405,6 +4464,8 @@ export function configureRuntimeRoutes(
           (connection) =>
             runtimeConnectionSummary({ ...connection, parseEngineId }),
         ),
+      getEngineConnectionIdentities: () =>
+        context.connectionService.listEngineConnectionIdentities(),
       getAgentConfigurationRevision: context.getAgentConfigurationRevision,
       logger: context.logger,
       // Home's recommendation and the Agents list read this reason.
@@ -5246,6 +5307,17 @@ export function configureRuntimeRoutes(
   const conversationPullRequestLinks = new ConversationPullRequestLinkStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #3161: a Task a person opted in closes when every pull request kept on it
+  // is merged. It rides the conversation refresh below: no timer, no poller.
+  const taskCloseOut = createTaskCloseOut({
+    taskGraph: context.taskGraphService,
+    providers: () =>
+      listProviders('pullRequest').map((entry) => entry.provider),
+    onError: (error) =>
+      context.logger.warn('Task close-out reconciliation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  });
   context.app.route(
     '/api/conversation-pull-requests',
     createConversationPullRequestLinkRoutes(
@@ -5270,6 +5342,43 @@ export function configureRuntimeRoutes(
               conversationId,
             ) ?? []
           ).map((linked) => linked.sessionId),
+        observed: (request, conversationId, observations) => {
+          // A refresh is a read; moving a Task to done is not. Only a viewer
+          // who could `PATCH /api/tasks/:id/status` itself triggers it
+          // (the same pairing scope, current now), and never an agent's tool
+          // call, whose status changes the authority guard refuses. The
+          // internal-principal clause is defense in depth: the guard already
+          // answers a tool's request to this refresh route `route_unmapped`
+          // (pinned by runtime-routes-declare-pull-request-engine.test.ts),
+          // and an internal principal would otherwise count as current.
+          if (
+            getRuntimeAuthenticatedRequestPrincipal(request)?.kind ===
+              'internal' ||
+            !runtimeRequestPrincipalMayAccessHttpRoute(
+              request,
+              context.environmentSecurityService,
+              { method: 'PATCH', path: '/api/tasks/close-out/status' },
+            )
+          )
+            return;
+          const merged = observations.filter(
+            (observation) =>
+              observation.status.state === 'current' &&
+              observation.status.pullRequestState === 'MERGED',
+          );
+          if (merged.length === 0) return;
+          taskCloseOut.afterMergeObserved(
+            [
+              conversationId,
+              ...(
+                context.orchestrationEventStore?.conversationSessions(
+                  conversationId,
+                ) ?? []
+              ).map((linked) => linked.sessionId),
+            ],
+            merged,
+          );
+        },
         declared: async (request, conversationId) => {
           if (
             !context.orchestrationService.canUserReadConversation(
@@ -6560,65 +6669,15 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/attention',
-    createAttentionRoutes(attentionProjection, {
-      readAuthorityForRequest: conversationReadAuthorityForRequest,
-      // #2323 S5 review M6: plugin proposals are addressed to the operator,
-      // decided by the same resolver `/api/plugin-proposals` reads.
-      // Station's own agents resolve as the operator too; they see none
-      // (#2323 S5 delta review).
-      viewerIsOperator: (c) => {
-        if (isNonPersonCaller(c.req.raw)) return false;
-        try {
-          return (
-            resolveOrchestrationRequestPrincipal(c).id ===
-            LOCAL_OPERATOR_PRINCIPAL_ID
-          );
-        } catch {
-          return false;
-        }
-      },
-      // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
-      // SAME two gates the middleware applies to an approve/deny request, in
-      // the same order: the pairing family's authority boundary
-      // (`authorizeCredential`, via the exported predicate) and then the
-      // scope requirement for the confirm/deny leaves, including the narrow
-      // explicit approval grant. The same matcher runs at ingress and delayed
-      // revalidation, so an operator-promoted device need not carry management
-      // authority to decide a pending request.
-      // The attested internal principal (station-control/MCP) bypasses both
-      // gates in `configureRuntimeHttp`, so it decides too; an absent
-      // principal or an unmapped table entry fails closed.
-      viewerMayDecidePairingRequests: (request) => {
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        if (!principal) return false;
-        if (principal.kind === 'internal') return true;
-        if (
-          !context.environmentSecurityService.credentialMayDecidePairingRequests(
-            principal.credential,
-          )
-        ) {
-          return false;
-        }
-        // Confirm and deny share the `/api/pairing` single-tier rule
-        // (method-agnostic), so one representative leaf answers for both.
-        const requiredScope = requiredPairingScope(
-          'POST',
-          '/api/pairing/requests/:requestId/confirm',
-        );
-        if (requiredScope === undefined) return false;
-        const grantedScope =
-          context.environmentSecurityService.resolveGrantedScope(
-            principal.credential,
-          );
-        return (
-          grantedScope !== undefined &&
-          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
-            method: 'POST',
-            path: '/api/pairing/requests/request/confirm',
-          })
-        );
-      },
-    }),
+    createAttentionRoutes(
+      attentionProjection,
+      runtimeAttentionRouteOptions({
+        readAuthorityForRequest: conversationReadAuthorityForRequest,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        security: context.environmentSecurityService,
+        stationControlDispatchScope,
+      }),
+    ),
   );
   context.app.route(
     '/api/action-operations',
@@ -8231,6 +8290,9 @@ export interface PairingApprovalAuditRecord {
   readonly timestamp: number;
 }
 
+/** #2894 S1: see `security/host-operator-credential.ts`. */
+export type { OperatorCredentialUseRecord };
+
 /**
  * Durable, secret-safe public pairing failure evidence. The raw source is
  * intentionally absent: it is used only as an in-memory limiter key, never
@@ -8291,9 +8353,39 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    /** #2894 S1: every raw operator-credential use on a device-admin route. */
+    observeOperatorCredentialUse?: (
+      record: OperatorCredentialUseRecord,
+    ) => void;
+    /** #3257 (S2b): operator passkey administration for the host CLI. */
+    operatorPasskeys?: OperatorPasskeyEnrollmentService;
   },
 ): void {
   const audit = options.audit;
+  // #2894 S1: counted per process, so the log line itself carries the total.
+  let offHostOperatorCredentialUses = 0;
+  const observeOperatorCredentialUse = (
+    c: Parameters<typeof isHostLocalOperatorCredentialUse>[0],
+    route: OperatorCredentialUseRecord['route'],
+  ): void => {
+    // Observe-only, structurally: nothing here may fail the request or keep
+    // it from reaching its mutation.
+    try {
+      if (!usesOperatorCredential(c)) return;
+      const hostLocal = isHostLocalOperatorCredentialUse(c);
+      if (!hostLocal) offHostOperatorCredentialUses += 1;
+      options.observeOperatorCredentialUse?.({
+        event: 'station.pairing.operator_credential_used',
+        route,
+        position: classifyOperatorCredentialPosition(c),
+        hostLocal,
+        offHostUses: offHostOperatorCredentialUses,
+        timestamp: Date.now(),
+      });
+    } catch {
+      // Dropped observation: the counter and the log are telemetry.
+    }
+  };
   /**
    * #1796: the revocation's report, added to the route's answer. The scope
    * change or revoke has already happened; a reset that fails is reported
@@ -8348,6 +8440,15 @@ export function configureDevicePairingHostRoutes(
       return false;
     }
   };
+  if (options.operatorPasskeys) {
+    app.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({
+        service: options.operatorPasskeys,
+        isOperator: (c) => currentOperator(c, (c as Context).req.raw),
+      }),
+    );
+  }
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {
@@ -8649,6 +8750,7 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.get('/api/pairing/devices', (c) => {
+    observeOperatorCredentialUse(c, 'GET /api/pairing/devices');
     const devices = pairing.listDevices();
     const connected = options.connectedClientPresence?.snapshot(
       devices
@@ -8687,6 +8789,7 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
       const device = pairing.revokeDevice(deviceId, 'operator-credential');
       options.connectedClientPresence?.disconnectDevice(deviceId);
@@ -8718,6 +8821,10 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(
+        c,
+        'POST /api/pairing/devices/:deviceId/scope',
+      );
       const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
@@ -8803,6 +8910,10 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(
+        c,
+        'DELETE /api/pairing/devices/:deviceId/record',
+      );
       return c.json(
         pairing.removeRevokedDevice(
           c.req.param('deviceId'),

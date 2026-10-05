@@ -1,0 +1,7 @@
+{
+  "revision": "bb7a857ef86301c916b1362d6a77a51710778141",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed merged Docs bindings and generated Knowledge topic. Static credential-free Docs remain separate from live data/control MCPs; incoming historical reviews are retained and no new release or live-provider claim is added.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

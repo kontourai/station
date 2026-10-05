@@ -58,10 +58,12 @@ import type {
   ConsentDecisionAuthority,
   ConsentTransactionView,
 } from '../../services/consent/consent-transactions.js';
+import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import { consentDecisionOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 import { parseDeviceSessionCookie } from '../bootstrap/runtime-http.js';
+import { registerOperatorPasskeyEnrollmentRoutes } from './operator-passkey-enrollment-routes.js';
 
 const CONSENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -151,6 +153,11 @@ interface ConsentListenerDeps {
   channel: ConsentChannelService;
   credentials: ConsentDecisionCredentialResolver;
   logger?: Logger;
+  /**
+   * Operator passkey enrollment (#3257, S2b). Absent, the enrollment routes
+   * are not registered at all.
+   */
+  passkeys?: OperatorPasskeyEnrollmentService;
 }
 
 function parseConsentSessionCookie(
@@ -244,7 +251,9 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
   app.use('*', async (c, next) => {
     await next();
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-      c.res.headers.set(name, value);
+      // A route that needs a narrower or wider policy of its own (the
+      // enrollment page's `script-src 'self'`) sets the header itself.
+      if (!c.res.headers.has(name)) c.res.headers.set(name, value);
     }
   });
 
@@ -522,6 +531,15 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
           ),
     );
   });
+
+  if (deps.passkeys) {
+    registerOperatorPasskeyEnrollmentRoutes(app, {
+      service: deps.passkeys,
+      channel: deps.channel,
+      credentials: deps.credentials,
+      logger: deps.logger,
+    });
+  }
 
   app.all('*', (c) => c.html(statusPage('Not found', 'Nothing here.'), 404));
 

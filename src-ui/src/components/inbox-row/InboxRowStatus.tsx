@@ -1,10 +1,10 @@
-import { useEffect, useReducer } from 'react';
-import { relativeTime } from '../../utils/relativeTime';
+import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import {
-  formatElapsed,
   type WorkStatus,
   type WorkStatusRung,
+  workStatusText,
 } from '../../views/home/work-status';
+import { ElapsedDuration } from '../ElapsedDuration';
 import {
   CheckGlyph,
   CloseGlyph,
@@ -58,21 +58,21 @@ export function InboxRowStatusGlyph({ rung }: { rung: WorkStatusRung }) {
 }
 
 /**
- * A duration that ticks once a second, read straight off the wall clock:
- * `Date.now() - since`, on its own interval, depending on `since` alone.
- *
- * It deliberately does NOT use the list's `now`. That clock is coarse (it
- * advances every 30 seconds, for minute-granularity words), so anchoring to
- * it showed "0s" for a turn already 20-30 seconds old and stayed behind for
- * the turn's whole life. Text only: nothing here animates.
+ * The ladder's `line` as rendered text, with its duration counted off the
+ * shared clock instead of frozen at the caller's `now`. Surfaces that print
+ * the whole line in one run of text (the Activity row, the hover card) use
+ * this, so they show the same number as the inbox row beside them.
  */
-function TickingElapsed({ since }: { since: number }) {
-  const [, tick] = useReducer((count: number) => count + 1, 0);
-  useEffect(() => {
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return <>{formatElapsed(Date.now() - since)}</>;
+export function WorkStatusLineText({ status }: { status: WorkStatus }) {
+  const text = workStatusText(status);
+  if (status.since === undefined) return <>{text}</>;
+  return (
+    <>
+      {text}
+      {' · '}
+      <ElapsedDuration since={status.since} />
+    </>
+  );
 }
 
 /** What a screen reader hears instead of a number that changes every
@@ -88,24 +88,28 @@ function coarseDuration(elapsedMs: number): string {
 
 /** The detail's test id names what it is the basis for, where one exists. */
 const DETAIL_TEST_IDS: Partial<Record<WorkStatusRung, string>> = {
-  unanswerable: 'inbox-row-answerability',
   failed: 'inbox-row-failure-reason',
+};
+
+/**
+ * The ladder's `reason` is never drawn on the row (the hover card and the
+ * Details sheet show it), but it stays the row's accessible description:
+ * archive#1783 requires the unanswerable basis to be reachable from the row,
+ * and a screen reader reaches it here. The test id names what it is.
+ */
+const REASON_TEST_IDS: Partial<Record<WorkStatusRung, string>> = {
+  unanswerable: 'inbox-row-answerability',
   stopped: 'inbox-row-failure-reason',
 };
 
 /**
- * The rungs whose detail is a REASON the user needs in full: why it failed,
- * why nothing here can answer it. For these the fixed one-line budget
- * yields: the line may wrap to two lines rather than cut the reason off
- * (archive#1783 requires the unanswerable basis on the row itself). The
- * whole text is always in the DOM, so the row's `aria-describedby` reads all
- * of it, and the row's details surface shows it unclamped.
+ * The one rung whose detail is a REASON the user needs in full on the row:
+ * why it failed. For it the fixed one-line budget yields: the line may wrap
+ * to two lines rather than cut the cause off. The whole text is always in
+ * the DOM, so the row's `aria-describedby` reads all of it, and the row's
+ * details surface shows it unclamped.
  */
-const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set([
-  'failed',
-  'stopped',
-  'unanswerable',
-]);
+const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set(['failed']);
 
 /**
  * The row's single status line: icon, word, then whatever the ladder says
@@ -116,30 +120,41 @@ export function InboxRowStatusLine({
   now,
   id,
   lastActivityAt,
-  compact = false,
 }: {
-  lastActivityAt?: number;
-  compact?: boolean;
   status: WorkStatus;
   now: number;
   id: string;
+  /**
+   * A host that hides the row's time slot (the phone picker puts the status
+   * where the time was) hands the time here, and it trails the line in the
+   * same compact form the slot would show. Never while a turn is open: the
+   * ticking duration is that line's one number.
+   */
+  lastActivityAt?: number;
 }) {
   const wraps = REASON_RUNGS.has(status.rung) && Boolean(status.detail);
-  const word =
-    compact && status.rung === 'answer'
-      ? 'Input'
-      : compact && status.rung === 'approval'
-        ? 'Approval'
-        : status.word;
   return (
     <span
       id={id}
       className={`inbox-row__status${wraps ? ' inbox-row__status--reason' : ''}`}
       data-tone={status.tone}
       data-testid="inbox-row-status"
+      title={status.reason}
     >
       <InboxRowStatusGlyph rung={status.rung} />
-      <span className="inbox-row__word">{word}</span>
+      <span className="inbox-row__word">{status.word}</span>
+      {status.reason && (
+        <>
+          <span className="sr-only">{' · '}</span>
+          <span
+            className="sr-only"
+            data-testid={REASON_TEST_IDS[status.rung]}
+            title={status.reason}
+          >
+            {status.reason}
+          </span>
+        </>
+      )}
       {status.detail && (
         <>
           <span className="inbox-row__sep">{' · '}</span>
@@ -152,6 +167,20 @@ export function InboxRowStatusLine({
           </span>
         </>
       )}
+      {status.since === undefined && lastActivityAt !== undefined && (
+        // One element with its separator, like the elapsed time below: the
+        // phone picker hides the line's direct separators (it folds the
+        // detail away), and the time keeps its dot the way the duration does.
+        <span>
+          <span className="inbox-row__sep">{' · '}</span>
+          <span
+            className="inbox-row__recency"
+            title={absoluteTime(lastActivityAt)}
+          >
+            {relativeTime(lastActivityAt, now)}
+          </span>
+        </span>
+      )}
       {status.since !== undefined && (
         <>
           {/* The ticking number is for the eye only. This line is the row
@@ -160,21 +189,18 @@ export function InboxRowStatusLine({
           <span aria-hidden="true">
             <span className="inbox-row__sep">{' · '}</span>
             <span className="inbox-row__elapsed">
-              <TickingElapsed since={status.since} />
+              {/* The shared clock, never the list's coarse `now`: that
+                  advances every 30 seconds, so anchoring to it showed "0s"
+                  for a turn already 20-30 seconds old, and a second surface
+                  on its own clock read a different number for the same
+                  turn. */}
+              <ElapsedDuration since={status.since} />
             </span>
           </span>
           <span className="sr-only">
             {`, ${coarseDuration(now - status.since)}`}
           </span>
         </>
-      )}
-      {status.since === undefined && lastActivityAt !== undefined && (
-        <span className="inbox-row__recency" title="Last activity">
-          <span aria-hidden="true"> · {relativeTime(lastActivityAt, now)}</span>
-          <span className="sr-only">
-            , last activity {relativeTime(lastActivityAt, now)}
-          </span>
-        </span>
       )}
     </span>
   );

@@ -133,13 +133,14 @@ async function openComposer(
   return textarea;
 }
 
-// #3201: Home's "New chat" opens a draft. Choosing an Agent selects it for the
-// draft; only Send starts the chat, so no composer exists until then.
+// #3201, then one start composer (owner, 2026-10): Home's composer is the
+// draft. Choosing an Agent on its chip selects it; only Start starts the
+// chat, so no chat composer exists until then.
 for (const [slug, name] of [
   ['claude', 'Claude'],
   ['station', 'Station'],
 ] as const) {
-  test(`the New chat draft starts a ${name} chat only on Send`, async ({
+  test(`Home's start composer starts a ${name} chat only on Start`, async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -180,18 +181,19 @@ for (const [slug, name] of [
     });
     await page.goto('/');
     await dismissSetupLauncher(page);
-    await page
-      .locator('.home-view__goal-actions')
-      .getByRole('button', { name: 'New chat', exact: true })
-      .click();
-    const draft = page.getByRole('form', { name: 'New chat draft' });
+    const draft = page.getByRole('form', { name: 'Start work' });
     await expect(draft).toBeVisible({ timeout: 15_000 });
     await draft.getByRole('button', { name: /^Agent:/ }).click();
-    await page
+    const agents = page.getByRole('dialog', { name: 'Choose agent' });
+    await expect(agents).toBeVisible();
+    await agents
       .locator(`.new-chat-modal__agent[data-agent-slug="${slug}"]`)
       .click();
+    await expect(agents).toHaveCount(0);
     await expect(
-      draft.getByRole('button', { name: `Agent: ${name}`, exact: true }),
+      draft.getByRole('button', {
+        name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
+      }),
     ).toBeVisible();
     // Choosing the Agent did not start anything.
     await expect(
@@ -199,10 +201,10 @@ for (const [slug, name] of [
     ).toHaveCount(0);
     expect(dispatched).toHaveLength(0);
     await draft
-      .getByRole('textbox', { name: 'Message', exact: true })
+      .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('Start from the draft.');
     expect(dispatched).toHaveLength(0);
-    await draft.getByRole('button', { name: 'Send', exact: true }).click();
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await expect.poll(() => dispatched.length).toBe(1);
     const expected = draftChatExecution(slug);
     // The Agent and model the turn was dispatched with are the chosen ones.
@@ -848,7 +850,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   await expect(approvalWork).toBeVisible();
   await expect(approvalWork).toContainText('Cancelled');
   await expect(
-    transcript.getByRole('img', { name: 'Awaiting approval' }),
+    transcript.getByRole('img', { name: 'Needs approval' }),
   ).toHaveCount(0);
   // `callLabel` speaks the bare infinitive for an unresolved call
   // (`utils/tool-call-labels.ts:181-199`): "Used" is the resolved past tense.
@@ -864,9 +866,34 @@ test('virtualizes a long real transcript while preserving reader controls on mob
 
   const loadEarlier = page.getByRole('button', { name: 'Earlier messages' });
   await expect(loadEarlier).toBeVisible();
+  // One PRESS is one page. The press is a keyboard activation on a button
+  // focused without scrolling, never `locator.click()`: Playwright scrolls the
+  // target into view first, and reaching the top is itself a history load
+  // (#2706), so a click is a scroll-load plus a press, and Playwright retries
+  // (re-scrolling to the top) once that load moves the button away. Those are
+  // two reader actions, not a press loading two pages (#3288). After every
+  // press the request count must hold across a run of frames, so a second
+  // load raised by the press's own restoration cannot hide behind a poll that
+  // is already satisfied.
+  const pressEarlier = async (expectedRequests: number) => {
+    await loadEarlier.evaluate((button) =>
+      (button as HTMLElement).focus({ preventScroll: true }),
+    );
+    await page.keyboard.press('Enter');
+    await expect.poll(() => requestedWindows.length).toBe(expectedRequests);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          let frames = 0;
+          const tick = () =>
+            ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+          requestAnimationFrame(tick);
+        }),
+    );
+    expect(requestedWindows).toHaveLength(expectedRequests);
+  };
   for (let pageIndex = 1; pageIndex <= 3; pageIndex++) {
-    await loadEarlier.click();
-    await expect.poll(() => requestedWindows.length).toBe(pageIndex + 1);
+    await pressEarlier(pageIndex + 1);
     expect(
       new URL(requestedWindows[pageIndex]).searchParams.get('cursor'),
     ).toBe(`older-turns-${10 + (pageIndex - 1) * 20}`);
@@ -1011,13 +1038,30 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   // ...and exactly one page, not two (nothing scrolled it into a second load).
   await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 1);
 
+  // A real reader scroll to the top right after a press still loads exactly
+  // one page: the restoration suppression ends when the layout settles or the
+  // reader acts, so it neither raises a second load for the press nor swallows
+  // this one. A mouse wheel is reader input, with no scrollIntoView involved.
+  await transcript.hover();
+  await page.mouse.wheel(0, -1_000_000);
+  await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 2);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 0;
+        const tick = () =>
+          ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
+      }),
+  );
+  expect(requestedWindows).toHaveLength(windowsBeforeEnter + 2);
+
   for (
-    let requestCount = windowsBeforeEnter + 2;
+    let requestCount = windowsBeforeEnter + 3;
     requestCount <= 11;
     requestCount++
   ) {
-    await loadEarlier.click();
-    await expect.poll(() => requestedWindows.length).toBe(requestCount);
+    await pressEarlier(requestCount);
   }
   expect(requestedWindows).toHaveLength(11);
   const jumpToTail = page.getByRole('button', { name: 'Scroll to bottom' });
@@ -2622,7 +2666,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Chats', 'Chat settings']) {
+    for (const name of ['New chat', 'Inbox', 'Chat settings']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -4578,6 +4622,11 @@ for (const [name, viewport, maximize] of [
     const priority =
       (await page.locator('.chat-dock__body[data-composer-priority]').count()) >
       0;
+    // The half dock is the case the composer's priority exists for.
+    if (!maximize)
+      expect(priority, 'a 375x667 half dock engages composer priority').toBe(
+        true,
+      );
     if (priority) {
       // The composer carries Discard. It takes no room of its own: it sits in
       // the controls row, which stays one touch row, so the composer needs no
@@ -4599,6 +4648,37 @@ for (const [name, viewport, maximize] of [
         carried!.box[0] + carried!.box[2],
         'Discard stays clear of Send',
       ).toBeLessThanOrEqual(send!.x + 0.5);
+      // Under load the transcript can report a scroll while it is still
+      // collapsing, which portals its Scroll to bottom button into the
+      // composer's activity row. That state is forced here rather than
+      // waited for: the button and an otherwise empty row must take no
+      // height, so the composer's Discard stays inside the viewport.
+      await page.evaluate(() => {
+        const row = document.querySelector('.chat-input__activity');
+        const button = document.createElement('button');
+        button.className = 'chat-scroll-to-bottom';
+        button.setAttribute('aria-label', 'Scroll to bottom');
+        button.textContent = '↓';
+        row?.appendChild(button);
+      });
+      // The product may already have rendered its own button here, so every
+      // Scroll to bottom button and activity row in the composer is checked.
+      const phantomHeights = await page
+        .locator(
+          '.chat-input__activity, .chat-input__activity .chat-scroll-to-bottom',
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().height),
+        );
+      expect(phantomHeights.length).toBeGreaterThan(1);
+      expect(phantomHeights.every((height) => height === 0)).toBe(true);
+      const withPhantom = (await discardButtonReport(page)).find(
+        (report) => report.inComposer,
+      );
+      expect(
+        withPhantom,
+        `the composer Discard stays on screen: ${JSON.stringify(withPhantom)}`,
+      ).toMatchObject({ onScreen: true, topmost: true });
     } else {
       // Not short enough to engage the composer's priority: the transcript's
       // own Discard serves (the composer does not repeat it), and the draft

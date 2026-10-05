@@ -17,7 +17,7 @@
 // performed; it does not decide whether the prose is accurate.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   assertDocumentationFresh,
@@ -46,6 +46,7 @@ import {
   serializeLedgerIndex,
   serializeNotesFile,
   serializeRecordFile,
+  writeReviewFiles,
 } from './lib/review-ledger-store.mjs';
 
 const USAGE = [
@@ -592,13 +593,7 @@ export async function recordDocumentationReviews({
       requireFresh: ({ path: file }) => captures.has(file),
     });
 
-  const written = [];
-  for (const [file, text] of after)
-    if (before.get(file) !== text) {
-      mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      writeFileSync(path.join(root, file), text);
-      written.push(file);
-    }
+  const written = writeReviewFiles(root, after, before);
   return {
     revision: head,
     notesFile,
@@ -731,11 +726,7 @@ async function recordReviewNotes(
       snapshot.read,
       { reportMissing: true },
     );
-  for (const [file, text] of after)
-    if (before.get(file) !== text) {
-      mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      writeFileSync(path.join(root, file), text);
-    }
+  writeReviewFiles(root, after, before);
   return {
     revision: head,
     notesFile,

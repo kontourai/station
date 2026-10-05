@@ -380,15 +380,16 @@ describe('consumers multiply their liveness bound', () => {
     expect(timeouts).toEqual([120_000]);
   });
 
-  test('the in-capture barrier is derived from the scaled base, not a bare literal', () => {
-    // The barrier lives inside a script with top-level side effects, so this is
-    // a structural check only; the scale arithmetic itself is covered above.
+  test('the in-capture barrier is derived from the gate bound, not a bare literal', () => {
+    // The capture's barriers take their deadline from the bound the gate
+    // passes (#3058), and that bound is the scaled default above unless the
+    // operator set one. The barrier's own behavior is proven by running it as
+    // a child in transfer-capture-barrier.test.ts; this only pins the wiring.
     const source = readFileSync(
       join(ROOT, 'scripts/orchestration-transfer-capture.ts'),
       'utf8',
     );
-    expect(source).toContain('const CAPTURE_BARRIER_BASE_MS = 5000;');
-    expect(source).toContain('scaleLivenessMs(CAPTURE_BARRIER_BASE_MS)');
-    expect(source).not.toMatch(/performance\.now\(\) \+ 5000/);
+    expect(source).toContain('createCaptureBarrier(captureTimeoutMs)');
+    expect(source).not.toMatch(/performance\.now\(\) \+ \d/);
   });
 });

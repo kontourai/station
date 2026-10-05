@@ -629,7 +629,9 @@ exchange and revoke, plus `/api/account-auth/accept-invitation`. GET/HEAD admits
 `publication` leaves at `/api/projects/:slug/shared-work/:taskId/`. Neutral
 handshake/status/identity observations may use Device proof alone when no
 account material is supplied; account-bearing requests and Project reads retain
-current account verification. Everything else — pairing, consent, terminal,
+current account verification. The status exception requires verified native
+Device proof; an ordinary account-bound Device with an account session still
+cannot read `/api/system/status`. Everything else — pairing, consent, terminal,
 plugin, operator and admin surfaces — refuses proof authority even for a broadly
 scoped Device. Each request re-proves: the JWS is verified against the exact
 received bytes and private peer provenance, the JTI is consumed once, and the

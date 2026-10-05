@@ -1173,6 +1173,16 @@ export interface StationCapabilityFlags {
    * fact about this build, never a statement that any claim is held.
    */
   delegationAttemptClaims?: boolean;
+  /**
+   * #2875 slice 1: this build understands the `project-portable-prepared`
+   * workspace variant and refuses to start it unless its admitted checkout
+   * is at the requested version when checked. A STATIC protocol fact, never
+   * a statement about what is offered or at which version. A sender MUST
+   * gate sending the variant on this flag; an older receiver's schema
+   * refuses the unknown variant anyway, and the flag lets the sender refuse
+   * before the wire with a typed code.
+   */
+  executionPreparation?: boolean;
 }
 
 export interface PublicStationHandshake {

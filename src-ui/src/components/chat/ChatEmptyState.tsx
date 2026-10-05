@@ -103,7 +103,7 @@ export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
 
   return (
     <div className="empty-state">
-      <h3>Start a conversation</h3>
+      <h3>Start a chat</h3>
       <p>Type a message below to chat with {agentName}</p>
       <p
         style={{

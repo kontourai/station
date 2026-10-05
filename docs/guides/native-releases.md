@@ -7,7 +7,7 @@ Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
 or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
-checksum validate. `Publish Station release` is a separately approved manual
+checksum validate. `Release: Publish` is a separately approved manual
 workflow that downloads and revalidates the draft before making it public. Its
 terminal availability job has only `contents:read`, `attestations:read`,
 `pull-requests:read`, and `issues:write`: after publication it redownloads and
@@ -291,8 +291,8 @@ the bundled runtime under `versions/<version>`, then promotes the active link.
 When a running Station service's fixed launcher runs that install, the installer only
 stages the version and the launcher trials the switch instead.
 It does not run dependencies or build that archive. The Windows zip is
-`install.ps1`'s, which so far only stages a verified version
-(`STATION_INSTALL_STAGE_ONLY=1`, #2675 slice W). The default authenticated
+`install.ps1`'s, which installs it the same way without a service
+(#2675 slice W2; a Windows service is not switched yet). The default authenticated
 GitHub path and schema-v1 public source manifests still install and build a source
 release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
 and [installation lifecycle](release-channel-ports.md) for prerequisites,
@@ -551,14 +551,14 @@ has its own readback receipt; physical installation remains separate.
 
 ## Stage, inspect, publish, and roll back
 
-Push an immutable tag. The `Stage Station release` preflight binds that tag to
+Push an immutable tag. The `Release: Stage` preflight binds that tag to
 one source SHA, then the reusable hosted full-regression gate must pass on that
 exact SHA before any preview or stable producer can build, sign, upload, or
 publish. The workflow preserves the GHCR image under
 `ghcr.io/kontourai/station:sha-<source-sha>` and creates a GitHub draft only
 after the inventory passes. Inspect the draft's
 `station-release-inventory.json`, `station-release-checksums.txt`, and
-`station-container-release.json`, then run `Publish Station release` with its
+`station-container-release.json`, then run `Release: Publish` with its
 tag through `native-release-publish`. Every platform payload is attested by its
 producing job. The inventory and checksum manifest are separately attested
 protocol roots because they cannot hash each other; the inventory covers every

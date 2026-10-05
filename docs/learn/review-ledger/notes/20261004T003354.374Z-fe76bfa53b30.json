@@ -1,0 +1,7 @@
+{
+  "revision": "76b3e1256492f6d1639b10e6fb96f5f305069126",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Bound the slice 1 owners and evidence named in the record: the contracts subpath, the receiver check and its adapter tests, the delegation preparation suite and the two-Station live spec.","inputs":["docs/design/remote-execution-preparation.md"]}
+  ]
+}

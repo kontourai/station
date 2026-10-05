@@ -63,3 +63,29 @@ test('the recent list scopes project and No project separately, limits to five n
   expect(document.querySelectorAll('.inbox-row__open')).toHaveLength(1);
   expect(screen.getByRole('button', { name: /^Work 7,/ })).toBeTruthy();
 });
+
+// Review MED-3c: an empty draft shows the composer alone, not a heading over
+// a "Start something new" placeholder; a pending or failed read still shows.
+test('nothing to continue renders nothing; a pending or failed read still says so', () => {
+  const props = { items: [], agents: [], onOpen: vi.fn(), onViewAll: vi.fn() };
+  // The rows read the shared project colours and icons, which come from the
+  // projects query: every real mount (New chat, Home) has a QueryClient.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const withClient = (ui: React.ReactElement) => (
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+  );
+  const view = render(
+    withClient(<RecentChatList {...props} context="__global__" />),
+  );
+  expect(view.container.innerHTML).toBe('');
+  view.rerender(
+    withClient(<RecentChatList {...props} context="__global__" pending />),
+  );
+  expect(screen.getByRole('region', { name: 'Continue working' })).toBeTruthy();
+  view.rerender(
+    withClient(<RecentChatList {...props} context="__global__" error />),
+  );
+  expect(screen.getByText('Could not load recent chats')).toBeTruthy();
+});

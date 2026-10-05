@@ -50,6 +50,8 @@ export interface RecoveryLedger {
   claim(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /** #3157: a user's "Resume now" on a usage-limit intent, before its due time. */
+    immediate?: boolean;
     now: string;
   }): { kind: 'owner'; attempt: RecoveryClaim } | { kind: 'unavailable' };
   observe(input: {
@@ -179,6 +181,7 @@ interface RecoveryLedgerCoordinator {
   claim(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
@@ -325,7 +328,7 @@ export function createRecoveryLedger(options: {
     pending: () => options.coordinator.pending().map(snapshot),
     compensationSnapshot: () =>
       options.coordinator.compensationSnapshot().map(snapshot),
-    claim: ({ fingerprint, kind, now }) => {
+    claim: ({ fingerprint, kind, immediate, now }) => {
       const id = randomUUID();
       const correlationId = randomUUID();
       let claimed: ConnectionRecoveryIntent | null;
@@ -333,6 +336,7 @@ export function createRecoveryLedger(options: {
         claimed = options.coordinator.claim({
           fingerprint,
           kind,
+          ...(immediate ? { immediate } : {}),
           dispatchAttemptId: id,
           recoveryCorrelationId: correlationId,
           owner,

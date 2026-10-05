@@ -738,23 +738,16 @@
   transition: opacity var(--motion-base) var(--ease-out);
 }
 
-.coding-workbench__inbox-edge:hover,
-.coding-workbench__inbox-edge:focus-visible {
+.coding-workbench__inbox-edge:hover {
   width: 24px;
   background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
 }
 
-.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph,
-.coding-workbench__inbox-edge:focus-visible
-  .coding-workbench__inbox-edge-glyph {
+.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph {
   opacity: 1;
 }
 
-.coding-workbench__inbox-edge:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
-}
-
+/* Pointer-only (aria-hidden, out of the tab order): no focus styles. */
 /* The count sits at the top of the strip, visible at rest. */
 .coding-workbench__inbox-edge-count {
   position: absolute;
@@ -765,28 +758,6 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
-  line-height: 1;
-}
-
-/* The Open icon's session count under the naming bar. */
-.coding-workbench__bar .chat-dock__new--icon {
-  position: relative;
-}
-
-.coding-workbench__bar .chat-dock__new-count {
-  position: absolute;
-  top: 2px;
-  right: 0;
-  display: grid;
-  place-items: center;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
   border-radius: var(--radius-pill);
   background: var(--accent-primary);
   color: var(--text-on-accent);
@@ -851,14 +822,11 @@
   opacity: 0.55;
 }
 
-.coding-workbench__inbox-edge:hover,
-.coding-workbench__inbox-edge:focus-visible {
+.coding-workbench__inbox-edge:hover {
   border-right-color: var(--accent-primary);
 }
 
-.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph,
-.coding-workbench__inbox-edge:focus-visible
-  .coding-workbench__inbox-edge-glyph {
+.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph {
   width: 20px;
   height: 20px;
   background: color-mix(in srgb, var(--accent-primary) 13%, transparent);

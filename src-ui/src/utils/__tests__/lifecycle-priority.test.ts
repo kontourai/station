@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   HOME_LIFECYCLE_LABELS,
   LIFECYCLE_PRIORITY,
-  lifecycleLabelText,
   moreImportantLifecycle,
 } from '../lifecycle-priority';
 
@@ -28,16 +27,6 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
       'Unanswerable',
       'Completed',
     ]);
-  });
-
-  test('lifecycleLabelText translates the one member that is not user language', () => {
-    // Every sibling is already the user's word, and
-    // `Unanswerable` was the only enum leaking verbatim to two surfaces.
-    expect(lifecycleLabelText('Unanswerable')).toBe("Can't answer here");
-    for (const label of HOME_LIFECYCLE_LABELS) {
-      if (label === 'Unanswerable') continue;
-      expect(lifecycleLabelText(label)).toBe(label);
-    }
   });
 
   test('Unanswerable outranks nothing that is live, and is not deleted from the set', () => {

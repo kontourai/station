@@ -65,7 +65,7 @@ describe('#3157 usage-limit hold', () => {
       <QueuedMessages sessionId="s1" messages={['next']} heldByUsageLimit />,
     );
     expect(screen.getByRole('status').textContent).toBe(
-      'Held until the usage limit resets. Send now to send anyway.',
+      'Held because of the usage limit. Send now to send anyway.',
     );
     rerender(<QueuedMessages sessionId="s1" messages={['next']} />);
     expect(screen.queryByRole('status')).toBeNull();

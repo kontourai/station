@@ -1,0 +1,57 @@
+{
+  "revision": "d93f981b6d71830441d0dcc53516777033e2ad80",
+
+  "notes": [
+    {"path":"README.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change. Its install one-liner is the macOS/Linux install.sh path, unchanged.","inputs":["README.md","docs/guides/nightly.md","docs/guides/release-channel-ports.md","docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["deploy/gcp-dev/README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Decision record unchanged: lifecycle.ts now picks the packaged installer per platform (install.ps1 through the system Windows PowerShell on win32, install.sh elsewhere) and, on win32, checks the install root's DACL instead of POSIX mode bits. prebuilt-archive.ts gains packagedInstallerCommand; the manifest-only installer decision covers install.ps1 too.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/prebuilt-archive.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"cli.md changed only in the Native installation and upgrade sections (Windows install.ps1); no finding here depends on them.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"lifecycle.ts now picks the packaged installer per platform (install.ps1 through the system Windows PowerShell on win32, install.sh elsewhere) and, on win32, checks the install root's DACL instead of POSIX mode bits. The module boundaries described are unchanged.","inputs":["docs/architecture/module-map.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-product.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["docs/design/cli-product.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"cli.md changed only in the Native installation and upgrade sections; triage content unaffected.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/instance-registry.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change. Instance registry behavior is unchanged.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/ecosystem-packaging.md","note":"Updated: install.ps1 now installs, upgrades and uninstalls the Windows archive on a host without a Station service (installer/full-install.ts), no longer stage-only.","inputs":["docs/guides/ecosystem-packaging.md","packaging/manifest/README.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"cli.md changed only in the Native installation and upgrade sections; integration guidance unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Updated the Windows sentence to the W2 behavior (full install without a service; a Windows service is not switched yet). lifecycle.ts now picks the packaged installer per platform (install.ps1 through the system Windows PowerShell on win32, install.sh elsewhere) and, on win32, checks the install root's DACL instead of POSIX mode bits.","inputs":["docs/guides/native-releases.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Updated: on Windows install.ps1 installs the nightly archive under a current junction with station-nightly.cmd (installer/full-install.ts launcherText, pointCurrentAt).","inputs":["docs/guides/nightly.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Added the Windows archive installs section, checked against installer/install.ts and installer/full-install.ts: junction switch and current.next recovery, launcher text and bin dir, schema 4 state, port order without STATION_SERVER_PORT, downgrade guard, rollback, prune, uninstall, profile and ACL rules, and the service refusal. lifecycle.ts now picks the packaged installer per platform (install.ps1 through the system Windows PowerShell on win32, install.sh elsewhere) and, on win32, checks the install root's DACL instead of POSIX mode bits.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"test-impact-manifest.mjs only adds install-ps1-full.test.ts to the install.ps1 supplemental entry; the testing guide's claims are unaffected.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["docs/reference/api.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Updated Native installation (Windows install.ps1 pointer) and upgrade (install.ps1 through the system Windows PowerShell, ACL check on win32, no service switch until W3), checked against lifecycle.ts delegatePackagedUpgradeIfPresent and prebuilt-archive.ts packagedInstallerCommand.","inputs":["docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change. No environment variable the CLI reads changed.","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change.","inputs":["docs/security/remote-access-threat-model.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"No claim in this document covers the Windows installer or the packaged upgrade's installer choice; reviewed, no prose change. Its install and uninstall commands are the macOS/Linux install.sh ones, unchanged.","inputs":["docs/user/getting-started.md","docs/guides/release-channel-ports.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"packages/cli/README.md","note":"cli.md changed only in the Native installation and upgrade sections; this README's claims are unaffected.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"packaging/homebrew/README.md","note":"packaging/manifest/README.md only drops 'stage-only so far' for the Windows core; Homebrew claims unaffected.","inputs":["packaging/homebrew/README.md","packaging/manifest/README.md"]},
+
+    {"path":"packaging/manifest/README.md","note":"Updated: the Windows install.ps1 core is no longer stage-only. install-smoke.yml adds the bundled windows-path-trust/system-utility and prebuilt-archive paths and runs the full install in the Windows job.","inputs":["packaging/manifest/README.md",".github/workflows/install-smoke.yml"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs registers install-ps1-full.test.ts as a child-process test; the instruction file's rules are unaffected.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
