@@ -63,7 +63,7 @@ export interface ProbeSessionObservation extends ProbeSessionResponse {
 }
 
 /** The reattach method this agent advertises, if any (resume preferred). */
-export function probeSessionReattachMethod(
+function probeSessionReattachMethod(
   agentCapabilities: AgentCapabilities | null | undefined,
 ): 'resume' | 'load' | null {
   if (agentCapabilities?.sessionCapabilities?.resume != null) return 'resume';

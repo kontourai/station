@@ -1,18 +1,16 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ACPProbe } from '../acp-probe.js';
 
 /**
@@ -101,18 +99,10 @@ const EXPECTED_CONFIG_OPTIONS = [
   },
 ];
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function fakeAgent(agentCapabilities: Record<string, unknown>) {
-  const root = realpathSync(
-    mkdtempSync(join(tmpdir(), 'station-acp-probe-session-')),
-  );
-  roots.push(root);
+  const root = realpathSync(makeTempDir('station-acp-probe-session-'));
   const store = join(root, 'store');
   mkdirSync(store);
   const agentPath = join(root, 'agent.cjs');
