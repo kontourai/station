@@ -1,9 +1,0 @@
-{
-  "revision": "961e54d4b8c7780e69b9e61302cd0baa85e2129f",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"#3390 changed only the respondToRequest answer validation in orchestration-service.ts (one input-request validator, `content`, deprecated `answers`); the inspect-request capture shows request inspection, whose output and route are unchanged, so the capture still depicts current behaviour.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"#3390 changed only the respondToRequest answer validation in orchestration-service.ts (one input-request validator, `content`, deprecated `answers`); the inspect-request capture shows request inspection, whose output and route are unchanged, so the capture still depicts current behaviour.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}
