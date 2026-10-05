@@ -30,7 +30,11 @@ import type {
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { ACP_MODEL_OVERRIDE_PER_TURN } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  ACP_MODEL_OVERRIDE_PER_TURN,
+  type AcpApprovalControl,
+  acpApprovalControl,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   CapabilityUndelivered,
   ResolvedAgentDefinition,
@@ -39,6 +43,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
+  readApprovalMode,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
@@ -66,6 +71,7 @@ import {
   type ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
+import { withStationOpenCodeApprovalConfig } from '../../services/acp/opencode-approval-launch.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
   acpPassthroughSessions,
@@ -112,6 +118,12 @@ import {
   mapAcpSessionUpdate,
   mapAcpStopReasonToFinishReason,
 } from './acp-adapter-events.js';
+import {
+  ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
+  type AcpAppliedApprovalMode,
+  acpAppliedApprovalMode,
+  acpApprovalModeAllows,
+} from './acp-approval-mode.js';
 import {
   type AcpToolServerSkip,
   type AcpToolServerSkipReason,
@@ -478,6 +490,17 @@ export interface AcpSessionRecord {
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
   currentModeId?: string;
+  /**
+   * #3290: who decides which of this session's actions ask, from the
+   * command it was launched with (`acpApprovalControl`).
+   */
+  approvalControl: AcpApprovalControl;
+  /**
+   * #3290: the approval mode a `station`-controlled session answers the
+   * engine's permission requests with (`acp-approval-mode.ts`). Absent on an
+   * `engine`-controlled session, which applies none.
+   */
+  approvalMode?: AcpAppliedApprovalMode;
   configOptions?: unknown[];
   /** Last advertised ACP session-mode catalog (station#1945). */
   acpModeCatalog?: AdvertisedAcpModeCatalog;
@@ -706,6 +729,14 @@ export class AcpAdapter implements ProviderAdapterShape {
         `Unknown ACP connection: ${connectionId ?? '(none provided)'}`,
       );
     }
+    // #3290: an engine that decides which of its actions ask is not started
+    // with an approval mode it would never apply. The server sends a mode
+    // only to a `station` connection, so this refuses a caller-carried one.
+    const approvalControl = acpApprovalControl(config.command);
+    const requestedApprovalMode = readApprovalMode(input.modelOptions);
+    if (approvalControl === 'engine' && requestedApprovalMode) {
+      throw new Error(ACP_ENGINE_DECIDES_APPROVAL_MESSAGE);
+    }
 
     // archive#1011: the SESSION's cwd wins over the connection's configured
     // default. `config.cwd` is a fallback for a connection used without a
@@ -849,6 +880,15 @@ export class AcpAdapter implements ProviderAdapterShape {
       args: config.args,
       promptEpoch: 0,
       generation: options?.generation ?? this.sessionGeneration(input.threadId),
+      approvalControl,
+      ...(approvalControl === 'station'
+        ? {
+            approvalMode: acpAppliedApprovalMode(
+              requestedApprovalMode,
+              input.confinement,
+            ),
+          }
+        : {}),
       recoveryStart: {
         provider: input.provider,
         cwd: input.cwd,
@@ -863,6 +903,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         persistSession: input.persistSession,
         agent: input.agent,
         tenantExecutionContext: input.tenantExecutionContext,
+        // #3290: the start's confinement bounds the approval mode a
+        // re-established session comes back in.
+        ...(input.confinement ? { confinement: input.confinement } : {}),
       },
       pendingRequests: new Map(),
       approvedTools: new Set(),
@@ -892,6 +935,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       command: config.command,
       args: config.args,
       cwd,
+      // #3290: OpenCode is launched asking before every action that is not a
+      // read, merged into whatever inline configuration it already had.
+      ...(approvalControl === 'station'
+        ? { spawnEnv: withStationOpenCodeApprovalConfig }
+        : {}),
       createClient: () =>
         this.buildClient(record, {
           cwd,
@@ -1331,8 +1379,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         // reports the withheld request as applied.
         //
         // Only a fresh `session/new` applies a start mode: a credential
-        // re-establishment always resumes with `session/load`, so the
-        // `recoveryStart` copy needs no confinement of its own.
+        // re-establishment always resumes with `session/load`. (Its
+        // `recoveryStart` copy carries the start's confinement for the
+        // approval mode only, #3290.)
         const requestedMode = permittedAcpSessionMode(
           modeCatalog,
           requestedAcpSessionMode(input.modelOptions),
@@ -1437,6 +1486,11 @@ export class AcpAdapter implements ProviderAdapterShape {
                 : {}),
               ...(record.acpModeCatalog?.modes.length
                 ? { acpSessionModes: record.acpModeCatalog.modes }
+                : {}),
+              // #3290: the mode this session answers permission requests
+              // with, so the approval control shows what applies.
+              ...(record.approvalMode
+                ? { approvalMode: record.approvalMode }
                 : {}),
             },
             'toolServers',
@@ -1559,6 +1613,27 @@ export class AcpAdapter implements ProviderAdapterShape {
         'This engine did not advertise image attachment support.',
       );
     }
+    // #3290: the server sends the conversation's posture on a turn that
+    // changes it; from here on the session answers requests with it.
+    const turnApprovalMode = readApprovalMode(input.modelOptions);
+    if (turnApprovalMode) {
+      if (record.approvalControl !== 'station') {
+        throw new SendTurnRefusedError(ACP_ENGINE_DECIDES_APPROVAL_MESSAGE);
+      }
+      record.approvalMode = acpAppliedApprovalMode(
+        turnApprovalMode,
+        input.confinement,
+      );
+      // A credential re-establishment restarts from `recoveryStart`; it
+      // must come back in the mode the session runs now.
+      record.recoveryStart = {
+        ...record.recoveryStart,
+        modelOptions: {
+          ...record.recoveryStart.modelOptions,
+          approvalMode: turnApprovalMode,
+        },
+      };
+    }
     const turnCatalog = record.acpModeCatalog ?? { modes: [] };
     // #2569: see startSession.
     const requestedMode = permittedAcpSessionMode(
@@ -1639,6 +1714,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
           ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
           : {}),
+        // #3290: the mode this turn's permission requests are answered with.
+        ...(record.approvalMode ? { approvalMode: record.approvalMode } : {}),
       },
     });
 
@@ -2140,6 +2217,18 @@ export class AcpAdapter implements ProviderAdapterShape {
         return {
           outcome: mapAcpDecisionToOutcome('accept', params.options),
         };
+      }
+
+      // #3290: the chat's approval mode answers what it allows (Auto: a file
+      // edit; full access: everything), after authored policy above had its
+      // say and never for a request addressed to a person. An engine that
+      // offers no allow option falls through to the prompt.
+      if (
+        !needsPerson &&
+        acpApprovalModeAllows(record.approvalMode, params.toolCall?.kind)
+      ) {
+        const allowed = mapAcpDecisionToOutcome('accept', params.options);
+        if (allowed.outcome !== 'cancelled') return { outcome: allowed };
       }
 
       // Tool-level session grant: "Allow for this session" covers every later

@@ -1,8 +1,10 @@
 import type { ClientOriginActor } from '@kontourai/station-contracts/client-origin';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ApprovalMode,
   type EngineId,
   isApprovalMode,
+  PROVIDER_ACP,
   PROVIDER_CODEX,
   PROVIDER_MODEL_OPTION_SUPPORT,
   type StationConfinement,
@@ -21,8 +23,19 @@ import { isFullAccessGrant } from '../../security/coding-authority.js';
  * it applies only while nothing is recorded, and is never recorded itself.
  */
 
-/** Whether this engine's adapter maps `approvalMode` to a native knob. */
-export function approvalKnobSupported(provider: EngineId): boolean {
+/**
+ * Whether this engine's adapter maps `approvalMode` to a native knob.
+ *
+ * #3290: ACP is one provider for many engines, so its answer is the
+ * connection's (`acpApprovalControl`): only a connection whose approval rules
+ * Station sets at launch has the knob. Without that answer an ACP thread has
+ * none, so a posture is never sent to an engine that decides for itself.
+ */
+export function approvalKnobSupported(
+  provider: EngineId,
+  acpControl?: AcpApprovalControl,
+): boolean {
+  if (provider === PROVIDER_ACP) return acpControl === 'station';
   return (
     PROVIDER_MODEL_OPTION_SUPPORT[provider]?.includes('approvalMode') === true
   );
@@ -353,8 +366,11 @@ export class ApprovalPosture {
     modelOptions?: Record<string, unknown>;
     /** `startConfinement` or `standingConfinement`; required so every caller states it. */
     confinement: StationConfinement;
+    /** #3290: an ACP thread's connection answer (`acpApprovalControl`). */
+    acpControl?: AcpApprovalControl;
   }): Promise<Record<string, unknown> | undefined> {
-    if (!approvalKnobSupported(input.provider)) return input.modelOptions;
+    if (!approvalKnobSupported(input.provider, input.acpControl))
+      return input.modelOptions;
     const decision = this.decision(input.threadId);
     const { approvalMode: carried, ...rest } = input.modelOptions ?? {};
     let mode: ApprovalMode | undefined;

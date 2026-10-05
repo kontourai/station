@@ -26,6 +26,7 @@ import type {
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
+  type AcpApprovalControl,
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -802,6 +803,12 @@ interface OrchestrationServiceOptions {
     provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
+  /**
+   * #3290: who decides which of an ACP connection's actions ask
+   * (`acpApprovalControl` of its command). `undefined` for a connection this
+   * Station does not know, which then has no approval knob.
+   */
+  acpApprovalControl?: (connectionId: string) => AcpApprovalControl | undefined;
   /**
    * #2540: an `idle` session whose engine has been unused this long is
    * parked — its engine process stops, the session stays dormant and
@@ -5756,6 +5763,13 @@ export class OrchestrationService {
             threadId: postureInput.threadId,
             provider: adapter.provider,
             phase: 'start',
+            acpControl: this.acpApprovalControlOfThread(
+              postureInput.threadId,
+              adapter.provider,
+              typeof postureInput.metadata?.connectionId === 'string'
+                ? postureInput.metadata.connectionId
+                : undefined,
+            ),
             ...(typeof postureInput.metadata?.agentSlug === 'string'
               ? { agentSlug: postureInput.metadata.agentSlug }
               : {}),
@@ -5797,9 +5811,13 @@ export class OrchestrationService {
               throw portableRefusalForUnadmittedThread(predecessorConsent);
           }
           if (!internal?.skipModelOptionSupportCheck) {
-            const unsupported = unsupportedModelOptionKeys(
+            const unsupported = this.unsupportedOptionKeysForThread(
+              input.threadId,
               adapter.provider,
               input.modelOptions,
+              typeof input.metadata?.connectionId === 'string'
+                ? input.metadata.connectionId
+                : undefined,
             );
             if (unsupported.length > 0)
               throw new Error(
@@ -6724,6 +6742,10 @@ export class OrchestrationService {
               threadId: turnInput.threadId,
               provider: adapter.provider,
               phase: 'turn',
+              acpControl: this.acpApprovalControlOfThread(
+                turnInput.threadId,
+                adapter.provider,
+              ),
               confinement,
               ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
               ...(internal?.foregroundInvocationAdmission
@@ -6742,7 +6764,8 @@ export class OrchestrationService {
               ? { ...withoutOptions, modelOptions, confinement }
               : { ...withoutOptions, confinement };
           }
-          const unsupportedTurnOptions = unsupportedModelOptionKeys(
+          const unsupportedTurnOptions = this.unsupportedOptionKeysForThread(
+            turnInput.threadId,
             adapter.provider,
             turnInput.modelOptions,
           );
@@ -8239,7 +8262,7 @@ export class OrchestrationService {
           if (!provider) {
             throw new Error(`Session not found: ${command.threadId}`);
           }
-          if (!approvalKnobSupported(provider)) {
+          if (!this.approvalKnobForThread(command.threadId, provider)) {
             throw new SendTurnRefusedError(
               'This engine has no approval control.',
             );
@@ -9636,6 +9659,57 @@ export class OrchestrationService {
   }
 
   /** The engine a session runs on, live or dormant; undefined if unknown. */
+  /**
+   * #3290: whether the thread's engine applies an approval posture. Every
+   * engine but ACP answers per provider; an ACP thread answers for the
+   * connection it runs on (`connectionId` when the caller has it, else the
+   * one its session started with).
+   */
+  approvalKnobForThread(
+    threadId: string,
+    provider: EngineId,
+    connectionId?: string,
+  ): boolean {
+    return approvalKnobSupported(
+      provider,
+      this.acpApprovalControlOfThread(threadId, provider, connectionId),
+    );
+  }
+
+  /**
+   * `unsupportedModelOptionKeys`, except that an ACP thread on a connection
+   * whose approval rules Station sets also takes `approvalMode` (#3290). The
+   * support table cannot say so: ACP is one provider for many engines, and
+   * only some of them apply a posture.
+   */
+  private unsupportedOptionKeysForThread(
+    threadId: string,
+    provider: EngineId,
+    modelOptions: Record<string, unknown> | undefined,
+    connectionId?: string,
+  ): string[] {
+    const unsupported = unsupportedModelOptionKeys(provider, modelOptions);
+    return provider === 'acp' &&
+      this.approvalKnobForThread(threadId, provider, connectionId)
+      ? unsupported.filter((key) => key !== 'approvalMode')
+      : unsupported;
+  }
+
+  private acpApprovalControlOfThread(
+    threadId: string,
+    provider: EngineId,
+    connectionId?: string,
+  ): AcpApprovalControl | undefined {
+    if (provider !== 'acp') return undefined;
+    const started =
+      connectionId ??
+      this.sessionConnectionIds.get(threadId) ??
+      this.readLatestSessionStartMetadata(threadId)?.connectionId;
+    return typeof started === 'string' && started
+      ? this.options.acpApprovalControl?.(started)
+      : undefined;
+  }
+
   private threadProviderForPosture(threadId: string): EngineId | undefined {
     return (
       this.threadProviders.get(threadId) ??
@@ -9660,7 +9734,7 @@ export class OrchestrationService {
     provider: EngineId,
   ): boolean {
     if (command.decision !== 'acceptForSession') return false;
-    if (!approvalKnobSupported(provider)) return false;
+    if (!this.approvalKnobForThread(command.threadId, provider)) return false;
     let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
     try {
       current = this.options.eventStore?.readCurrentRequestEvent(
@@ -9870,7 +9944,7 @@ export class OrchestrationService {
       was: FullAccessRevocationReport['reset'][number]['was'],
     ) => {
       const provider = this.threadProviderForPosture(threadId);
-      if (!provider || !approvalKnobSupported(provider)) return;
+      if (!provider || !this.approvalKnobForThread(threadId, provider)) return;
       this.recordApprovalModeDecision({
         threadId,
         provider,
@@ -10291,6 +10365,13 @@ export class OrchestrationService {
       threadId: input.threadId,
       provider,
       phase: 'start',
+      acpControl: this.acpApprovalControlOfThread(
+        input.threadId,
+        provider,
+        typeof input.metadata?.connectionId === 'string'
+          ? input.metadata.connectionId
+          : undefined,
+      ),
       ...(typeof input.metadata?.agentSlug === 'string'
         ? { agentSlug: input.metadata.agentSlug }
         : {}),
@@ -10386,6 +10467,7 @@ export class OrchestrationService {
       threadId,
       provider,
       phase: 'turn',
+      acpControl: this.acpApprovalControlOfThread(threadId, provider),
       ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
       modelOptions,
       // #2493: the replay's carried mode is the source turn's; confinement

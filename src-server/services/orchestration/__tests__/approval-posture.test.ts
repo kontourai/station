@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { SetApprovalModeResult } from '@kontourai/station-contracts/orchestration';
 import {
   type ApprovalMode,
@@ -141,6 +142,7 @@ describe('server-ordered approval posture (#2436)', () => {
   let acp: RecordingAdapter;
   let stationDefault: ApprovalMode | undefined;
   let agentDefaults: Record<string, ApprovalMode | undefined>;
+  let acpControls: Record<string, AcpApprovalControl>;
   let service: OrchestrationService;
 
   function createService(): OrchestrationService {
@@ -148,6 +150,7 @@ describe('server-ordered approval posture (#2436)', () => {
       adapterRegistry: registry([claude, codex, acp]),
       eventBus: bus,
       eventStore: store,
+      acpApprovalControl: (connectionId) => acpControls[connectionId],
       resolveStationDefaultApprovalMode: async () => stationDefault,
       // The authored-Agent start gate (resolveSessionAgent) is satisfied the
       // way production resolves a defined Agent.
@@ -170,6 +173,7 @@ describe('server-ordered approval posture (#2436)', () => {
     acp = new RecordingAdapter('acp');
     stationDefault = undefined;
     agentDefaults = {};
+    acpControls = {};
     service = createService();
   });
 
@@ -551,6 +555,91 @@ describe('server-ordered approval posture (#2436)', () => {
     );
     await turn('t-acp');
     expect(acp.turns.at(-1)?.modelOptions).toBeUndefined();
+  });
+
+  describe("#3290: an ACP thread's approval control is its connection's", () => {
+    async function startOn(
+      threadId: string,
+      connectionId: string,
+      modelOptions?: Record<string, unknown>,
+    ) {
+      await service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'acp',
+          metadata: { connectionId },
+          ...(modelOptions ? { modelOptions } : {}),
+        },
+      });
+      const deadline = Date.now() + 2000;
+      while (
+        !store
+          .listEvents(threadId)
+          .some((row) => row.payload.method === 'session.started')
+      ) {
+        if (Date.now() > deadline) throw new Error('session.started not seen');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+
+    beforeEach(() => {
+      acpControls = { opencode: 'station', kiro: 'engine' };
+    });
+
+    test('a Station-governed engine starts in the default and takes each recorded change on its next turn', async () => {
+      stationDefault = 'auto';
+      await startOn('t-opencode', 'opencode');
+      expect(acp.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
+
+      await expect(decide('t-opencode', 'ask')).resolves.toMatchObject({
+        recorded: true,
+        approvalMode: 'ask',
+      });
+      await turn('t-opencode');
+      expect(acp.lastTurnMode()).toBe('ask');
+
+      await decide('t-opencode', 'auto');
+      await turn('t-opencode');
+      expect(acp.lastTurnMode()).toBe('auto');
+      // Recorded exactly like any engine's decision.
+      expect(
+        store
+          .listEvents('t-opencode')
+          .filter((row) => row.payload.method === 'session.approval-mode-set')
+          .map(
+            (row) => (row.payload as { approvalMode?: string }).approvalMode,
+          ),
+      ).toEqual(['ask', 'auto']);
+    });
+
+    test('full access on a confined Station-governed engine applies Auto', async () => {
+      await startOn('t-opencode-confined', 'opencode', {
+        approvalMode: 'never',
+      });
+      expect(acp.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
+    });
+
+    test('an engine that decides for itself takes no posture, and a carried one is refused', async () => {
+      stationDefault = 'auto';
+      await startOn('t-kiro', 'kiro');
+      expect(acp.starts.at(-1)?.modelOptions).toBeUndefined();
+      await expect(decide('t-kiro', 'ask')).rejects.toThrow(
+        'This engine has no approval control.',
+      );
+      await turn('t-kiro');
+      expect(acp.turns.at(-1)?.modelOptions).toBeUndefined();
+      await expect(
+        startOn('t-kiro-carried', 'kiro', { approvalMode: 'ask' }),
+      ).rejects.toThrow("Unsupported option 'approvalMode'");
+    });
+
+    test('a connection this Station does not know has no approval control', async () => {
+      await startOn('t-unknown-acp', 'gone');
+      await expect(decide('t-unknown-acp', 'ask')).rejects.toThrow(
+        'This engine has no approval control.',
+      );
+    });
   });
 
   test('an unknown session refuses the command', async () => {

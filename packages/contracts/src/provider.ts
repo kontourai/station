@@ -522,9 +522,12 @@ export function modelLaunchTelemetryAttributes(
  *   the effective mode falls through to the engine connection's
  *   configured default, and then to the adapter's own built-in default.
  *
- * Adapters that expose no native approval knob (ACP, Ollama, Bedrock, the
+ * Adapters that expose no native approval knob (Ollama, Bedrock, the
  * Station agent runtime) simply never read this field — it has no effect
  * for them, and UI surfaces should render read-only for those providers.
+ * An ACP connection has the knob only when Station sets the engine's
+ * approval rules at launch (`acpApprovalControl` in
+ * `engine-capability-matrix.ts`, #3290).
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
 
@@ -581,8 +584,13 @@ export const PROVIDER_MUSE = 'muse';
  *   session catalog — `setConfigOption` when a `category: "mode"` option
  *   exists, otherwise `session/set_mode`. Display-only
  *   `effectiveModelMetadata` echoes still exist and do not add keys.
- *   ACP's per-tool `session/request_permission` handshake is unrelated
- *   to Station `approvalMode`, which remains unsupported here.
+ *   #3290: `approvalMode` is not listed because it depends on the
+ *   connection, not the provider. On a connection whose approval rules
+ *   Station sets at launch (`acpApprovalControl` is `station`, OpenCode
+ *   today) the adapter reads it to decide how Station answers the engine's
+ *   `session/request_permission` calls, and the server admits it there
+ *   (`approvalKnobSupported`). Any other ACP engine decides which calls ask
+ *   itself, so the option stays unsupported and the adapter refuses it too.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied

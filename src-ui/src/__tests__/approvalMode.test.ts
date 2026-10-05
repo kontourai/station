@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   APPROVAL_MODE_OPTIONS,
+  acpApprovalFor,
   adapterDefaultApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
@@ -14,6 +15,10 @@ describe('approvalModeKnobSupported', () => {
     expect(approvalModeKnobSupported('claude')).toBe(true);
     // #2452: `muse serve` applies the mode (muse-serve-session.ts).
     expect(approvalModeKnobSupported('muse')).toBe(true);
+  });
+
+  test('#3290: opencode, the ACP engine Station sets approval rules for, has the knob', () => {
+    expect(approvalModeKnobSupported('opencode')).toBe(true);
   });
 
   test('acp, bedrock, ollama, station-agent, and an absent runtime have no knob', () => {
@@ -309,5 +314,38 @@ describe('resolveEffectiveApprovalMode', () => {
       label: 'Connection default',
       source: 'adapter default',
     });
+  });
+});
+
+describe('acpApprovalFor (#3290)', () => {
+  test('an ACP connection that launches OpenCode is Station-governed, wherever the binary lives', () => {
+    for (const command of [
+      'opencode',
+      '/opt/homebrew/bin/opencode',
+      'C:\\Tools\\OpenCode.exe',
+    ]) {
+      expect(acpApprovalFor({ command, name: 'OpenCode' })).toEqual({
+        control: 'station',
+        engineId: 'opencode',
+        engineName: 'OpenCode',
+      });
+    }
+  });
+
+  test('any other ACP command decides for itself, whatever the connection is called', () => {
+    expect(acpApprovalFor({ command: 'kiro-cli' })).toEqual({
+      control: 'engine',
+      engineId: null,
+    });
+    expect(acpApprovalFor({ command: 'npx', name: 'opencode' })).toEqual({
+      control: 'engine',
+      engineId: null,
+      engineName: 'opencode',
+    });
+  });
+
+  test('no ACP connection is no ACP answer', () => {
+    expect(acpApprovalFor(undefined)).toBeUndefined();
+    expect(acpApprovalFor(null)).toBeUndefined();
   });
 });

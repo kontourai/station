@@ -1519,12 +1519,13 @@ describe('ChatInputArea', () => {
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });
 
-  test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {
+  test('station#1945: advertised ACP modes get their own picker, and an engine that decides offers no approval mode beside it', async () => {
     const onAcpSessionModeChange = vi.fn();
     const onApprovalModeChange = vi.fn();
     renderChatInputArea({
       executionMode: 'external',
       agentConnectionId: 'kiro',
+      acpApproval: { control: 'engine', engineId: null, engineName: 'Kiro' },
       acpSessionModes: [
         { id: 'build', name: 'Build' },
         { id: 'plan', name: 'Plan', description: 'Read-only planning' },
@@ -1554,16 +1555,93 @@ describe('ChatInputArea', () => {
     renderChatInputArea({
       executionMode: 'external',
       agentConnectionId: 'kiro',
+      acpApproval: { control: 'engine', engineId: null, engineName: 'Kiro' },
       acpSessionModes: [],
       onAcpSessionModeChange: vi.fn(),
     });
     expect(screen.queryByRole('button', { name: /^Session mode:/ })).toBeNull();
-    // kiro has no native approval knob: no chip and no read-only note
-    // either (station#1933).
+    // #3290 supersedes station#1933's omission: an engine that decides for
+    // itself shows who decides, and still offers no approval mode.
     expect(
       screen.queryByRole('button', { name: /^Approval mode:/ }),
     ).toBeNull();
-    expect(screen.queryByText(/Set by engine/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /^Approval: Set by engine\./ }),
+    ).toBeTruthy();
+  });
+
+  describe('#3290: who decides which ACP actions ask', () => {
+    test('OpenCode, governed by Station, offers the approval modes beside its build/plan Mode', async () => {
+      const onApprovalModeChange = vi.fn();
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station',
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: [
+          { id: 'build', name: 'build' },
+          { id: 'plan', name: 'plan' },
+        ],
+        acpCurrentModeId: 'build',
+        onAcpSessionModeChange: vi.fn(),
+        lastAppliedApprovalMode: 'ask',
+        onApprovalModeChange,
+      });
+      expect(
+        await screen.findByRole('button', { name: /^Session mode: build\./ }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: /^Approval: Set by engine/ }),
+      ).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
+      await screen.findByRole('radiogroup', { name: 'Approval mode' });
+      // The copy says what Station makes OpenCode do.
+      expect(
+        screen.getByText(/Asks before shell commands, file edits, web access/),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('radio', { name: /^Auto/ }));
+      expect(onApprovalModeChange).toHaveBeenCalledWith('auto');
+    });
+
+    test('an engine that decides for itself says so, and its explanation opens', async () => {
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'kiro',
+        acpApproval: { control: 'engine', engineId: null, engineName: 'Kiro' },
+        acpSessionModes: [],
+      });
+      const chip = screen.getByRole('button', {
+        name: /^Approval: Set by engine\. Kiro decides which of its actions ask/,
+      });
+      expect(
+        screen.queryByRole('button', { name: /^Approval mode:/ }),
+      ).toBeNull();
+      fireEvent.click(chip);
+      const sheet = await screen.findByRole('dialog', { name: 'Approval' });
+      expect(sheet.textContent).toMatch(
+        /Station's approval modes do not apply here/,
+      );
+      expect(screen.queryByRole('radiogroup')).toBeNull();
+    });
+
+    test('a connection merely named opencode that decides for itself gets the disclosure, not the modes', () => {
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'opencode',
+        acpApproval: { control: 'engine', engineId: null },
+        acpSessionModes: [],
+      });
+      expect(
+        screen.queryByRole('button', { name: /^Approval mode:/ }),
+      ).toBeNull();
+      expect(
+        screen.getByRole('button', { name: /^Approval: Set by engine\./ }),
+      ).toBeTruthy();
+    });
   });
 
   describe('prompt size guard (station#2807)', () => {
