@@ -6196,7 +6196,8 @@ for (const requiredHelper of [
   'export function ProjectSidebarRow',
   '@kontourai/station-sdk',
   '../../contexts/NavigationContext',
-  '../icons/LayoutIcon',
+  // #3366 replaced the generic layout glyph with the project's own icon.
+  '../icons/ProjectIcon',
 ]) {
   if (!projectSidebarRow.includes(requiredHelper)) {
     errors.push(`ProjectSidebarRow.tsx must include ${requiredHelper}.`);
