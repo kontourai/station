@@ -433,14 +433,25 @@ fallback a Codex file-change approval could name no file on either surface.
 This is a best-effort presentation helper, not a completeness guarantee for
 every engine request.
 
-Two limits on "the preview", stated because a consent surface must not be read as
+Two limits on "the preview", and how it is shown, stated because a consent surface must not be read as
 promising more than it does:
 
 - **It is one field per tool family, not the whole call.** For `Bash` that is the
   command; for `Edit`/`Write`/`NotebookEdit` it is the file path and **never the
   content being written**, so the reader learns which file is about to change,
   not what it will say. It is also bounded to 160 characters on one line, so a
-  long command's tail — a trailing `; rm -rf /` — can sit past the cap.
+  long command's tail — a trailing `; rm -rf /` — can sit past the cap. A
+  multi-line command (lines split on LF, CR, CRLF, U+2028 and U+2029) shows its
+  lines joined by ` ⏎ `, and when the cap hides whole lines the preview ends
+  with "(+N lines)". The transcript row shows a command's first line with the
+  same count ("Run echo a (+1 line)"), and a pending approval whose command
+  has more than one line opens its details, so the whole command is on screen
+  next to Allow and Deny.
+- **It is shown in display form.** The preview, the tool name, the "Why:"
+  purpose and the inbox row's title and body drop bidi controls (U+202A–202E,
+  U+2066–2069, LRM, RLM, ALM) and turn control characters, C1 included, into
+  spaces (`packages/shared/src/display-text.ts`, shared with the transcript
+  label). The details view keeps the raw arguments.
 - **"Redacted" means known credential shapes.** `redactSecrets`
   (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
   removes recognised credential patterns and `key=value` pairs whose key looks

@@ -925,12 +925,12 @@ describe('toolRequestPreview', () => {
         toolRequestPreview('Bash', {
           command: 'NAME=bob\nPASSWORD=hunter2',
         }),
-      ).toBe('NAME=bob PASSWORD=[REDACTED]');
+      ).toBe('NAME=bob ⏎ PASSWORD=[REDACTED]');
       expect(
         toolRequestPreview('Bash', {
           command: 'echo one\n--password=hunter2',
         }),
-      ).toBe('echo one --password=[REDACTED]');
+      ).toBe('echo one ⏎ --password=[REDACTED]');
     });
 
     test('does not cut a length-anchored token in half at the pre-redaction slice', () => {
@@ -970,12 +970,14 @@ describe('toolRequestPreview', () => {
 
     test('collapses newlines and control characters into one line', () => {
       // A multi-line value must not be able to push a toast's buttons out of
-      // view, and a second command below a newline must stay readable.
+      // view, and a second command below a newline must stay readable — as a
+      // separate line (#3382): joined by a space, it read as `echo`'s
+      // arguments.
       expect(
         toolRequestPreview('Bash', {
           command: 'echo one\nrm -rf /tmp/x\r\n\tsecond',
         }),
-      ).toBe('echo one rm -rf /tmp/x second');
+      ).toBe('echo one ⏎ rm -rf /tmp/x ⏎ second');
       // An ANSI escape is inert in a React text node but renders as a gap
       // that hides what follows it.
       expect(
@@ -1141,6 +1143,86 @@ describe('#1545 D4: an engine that names no argument bag (Codex)', () => {
     // MCP tool's server-defined arguments visible.
     expect(toolRequestPreview('mcp__x__y', { changes: [{ diff: 'x' }] })).toBe(
       '{"changes":[{"diff":"x"}]}',
+    );
+  });
+});
+
+// #3382: the preview is shown next to Allow and Deny (the toast) and in the
+// durable inbox row, so it gets the transcript label's display form.
+// Escapes are built from code points so the source stays plain ASCII.
+describe('toolRequestPreview — display form (#3382)', () => {
+  const RLO = String.fromCodePoint(0x202e);
+  const PDF = String.fromCodePoint(0x202c);
+  const LRI = String.fromCodePoint(0x2066);
+  const RLM = String.fromCodePoint(0x200f);
+  const NEL = String.fromCodePoint(0x85);
+  const BEL = String.fromCodePoint(0x07);
+  const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+  const PARAGRAPH_SEPARATOR = String.fromCodePoint(0x2029);
+  const RETURN_SYMBOL = String.fromCodePoint(0x23ce);
+  const codePoints = (value: string) => Array.from(value).length;
+
+  test('removes bidi overrides, isolates and marks', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `cat ${RLO}gnp.exe${PDF} ${LRI}x${RLM}`,
+      }),
+    ).toBe('cat gnp.exe x');
+  });
+
+  test('turns C1 and BEL controls into spaces, never deleting them', () => {
+    expect(
+      toolRequestPreview('Bash', { command: `rm${NEL}-rf${BEL}/tmp/x` }),
+    ).toBe('rm -rf /tmp/x');
+  });
+
+  test('keeps every line apart, whatever splits them', () => {
+    for (const command of [
+      'echo a\nrm -rf /',
+      'echo a\rrm -rf /',
+      'echo a\r\nrm -rf /',
+      `echo a${LINE_SEPARATOR}rm -rf /`,
+      `echo a${PARAGRAPH_SEPARATOR}rm -rf /`,
+    ]) {
+      expect(toolRequestPreview('Bash', { command })).toBe(
+        `echo a ${RETURN_SYMBOL} rm -rf /`,
+      );
+    }
+  });
+
+  test('a cut that hides whole lines says how many, inside the bound', () => {
+    const preview = toolRequestPreview('Bash', {
+      command: `echo ${'x'.repeat(300)}\nrm -rf /\nls`,
+    })!;
+    expect(preview.startsWith('echo xxx')).toBe(true);
+    expect(preview.endsWith('… (+2 lines)')).toBe(true);
+    expect(preview).not.toContain('rm -rf');
+    expect(codePoints(preview)).toBeLessThanOrEqual(
+      MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+    );
+    // A line that starts inside the cut is shown, so it is not counted.
+    const second = toolRequestPreview('Bash', {
+      command: `echo a\nrm ${'y'.repeat(300)}\nls`,
+    })!;
+    expect(second.startsWith(`echo a ${RETURN_SYMBOL} rm yyy`)).toBe(true);
+    expect(second.endsWith('… (+1 line)')).toBe(true);
+  });
+
+  test('cuts by code point, so an emoji at the cut is never split', () => {
+    const preview = toolRequestPreview('Bash', {
+      command: `echo ${'\u{1F600}'.repeat(200)}`,
+    })!;
+    expect(codePoints(preview)).toBe(MAX_TOOL_REQUEST_PREVIEW_LENGTH);
+    for (const char of preview) {
+      const code = char.codePointAt(0)!;
+      expect(code >= 0xd800 && code <= 0xdfff).toBe(false);
+    }
+  });
+
+  test('the tool name in "wants to use" and in the grant button is sanitised too', () => {
+    expect(toolRequestDisplayName(`Ba${RLO}sh${BEL}`)).toBe('Bash');
+    expect(toolRequestGrantLabel(`Ba${RLO}sh${NEL}`, 'tool')).toBe(
+      'Allow Bash for this session',
     );
   });
 });

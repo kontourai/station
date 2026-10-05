@@ -1,4 +1,8 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  displayJoinedLines,
+  truncateDisplay,
+} from '@kontourai/station-shared/display-text';
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -72,11 +76,14 @@ function presentToolRequest(
   description: string | undefined,
   toolSummary: { toolName?: string; preview?: string } | null,
 ): { title: string; body?: string } {
+  // Everything here is shown beside the approval's preview, which is
+  // sanitised (`toolRequestPreview`), so it gets the same display form: an
+  // RLO in a Codex title (the literal command) must not reorder the row.
   const boundedRawTitle = rawTitle
-    ? truncateRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
+    ? displayRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
     : undefined;
   const toolName = toolSummary?.toolName
-    ? truncateRequestText(toolSummary.toolName, MAX_RAW_TITLE_LENGTH)
+    ? displayRequestText(toolSummary.toolName, MAX_RAW_TITLE_LENGTH)
     : boundedRawTitle;
   const title = toolName
     ? `Tool call awaiting approval: ${toolName}`
@@ -84,7 +91,7 @@ function presentToolRequest(
 
   const bodyParts: string[] = [];
   if (description)
-    bodyParts.push(truncateRequestText(description, MAX_DESCRIPTION_LENGTH));
+    bodyParts.push(displayRequestText(description, MAX_DESCRIPTION_LENGTH));
   if (boundedRawTitle && boundedRawTitle !== toolName)
     bodyParts.push(boundedRawTitle);
   if (toolSummary?.preview) bodyParts.push(toolSummary.preview);
@@ -151,6 +158,12 @@ function summarizeToolPayload(
     ...(toolName ? { toolName } : {}),
     ...(preview ? { preview } : {}),
   };
+}
+
+/** `truncateRequestText` in display form: one line (`displayJoinedLines`,
+ * so a multi-line command keeps its line breaks visible), cut by code point. */
+function displayRequestText(text: string, max: number): string {
+  return truncateDisplay(displayJoinedLines(redactSecrets(text)), max);
 }
 
 export function truncateRequestText(text: string, max: number): string {

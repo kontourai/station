@@ -23,6 +23,7 @@ import {
 import {
   callLabel,
   classifyToolCall,
+  hiddenCommandLines,
   isToolCallAwaitingApproval,
   type ToolCallKind,
   toolCallPhase,
@@ -133,7 +134,10 @@ function ToolCallDisplayComponent({
   onApprove,
   showDetails = true,
 }: ToolCallDisplayProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // `null` until the user toggles the row: until then it follows
+  // `openByDefault` below, so a pending multi-line command opens and the row
+  // closes again once the request settles.
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
 
   const id = toolCall.toolCallId || '';
   // Identity-keyed one-shot entrance (archive#2651): keyed to the tool call
@@ -192,6 +196,16 @@ function ToolCallDisplayComponent({
   // show. A chevron over an empty panel is a promise nothing derives.
   const hasDetail = Boolean(hasArgs) || result !== undefined || Boolean(error);
   const allowDetails = showDetails || (awaitingApproval && Boolean(onApprove));
+
+  // #3382: a pending command with more than one line opens its details, so
+  // the whole command is on screen next to Allow and Deny. The label shows
+  // only the first line and a "(+N lines)" count, and a count is easy to miss:
+  // `echo a` then `rm -rf /` must not be approvable from "Run echo a" alone.
+  const openByDefault =
+    awaitingApproval &&
+    Boolean(onApprove) &&
+    hiddenCommandLines(kind, toolName, args) > 0;
+  const isExpanded = userExpanded ?? openByDefault;
 
   const Glyph = KIND_GLYPH[kind];
   const lineContent = (
@@ -285,7 +299,7 @@ function ToolCallDisplayComponent({
             type="button"
             className="tool-call__line"
             aria-expanded={isExpanded}
-            onClick={() => setIsExpanded((expanded) => !expanded)}
+            onClick={() => setUserExpanded(!isExpanded)}
           >
             {lineContent}
             <span className="tool-call__chevron" aria-hidden="true">

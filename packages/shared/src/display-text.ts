@@ -1,0 +1,89 @@
+/**
+ * How untrusted engine or model text is shown on a one-line surface: a
+ * transcript row's label, an approval toast, an inbox notification, a button.
+ *
+ * The text a person is asked to approve must read the same on every surface
+ * that shows it, so every surface goes through these helpers. The raw value is
+ * never changed: the call's arguments, and the details views that print them,
+ * keep the text exactly as the engine sent it.
+ */
+
+/** Bidi marks, embeddings, overrides and isolates (ALM U+061C, LRM, RLM,
+ * U+202A–202E, U+2066–2069). Shown text must not reorder what the surface
+ * displays ("Trojan source"), so these are removed. */
+const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+
+/** C0, DEL and C1 controls. Replaced by a space, not deleted, so "a\u0085b"
+ * does not merge into one word. */
+const CONTROL_CHARACTERS = /\p{Cc}/gu;
+
+/**
+ * The line breaks a shown value is split on: CRLF as one break, then LF, CR,
+ * LINE SEPARATOR and PARAGRAPH SEPARATOR. Splitting on all of them, on every
+ * surface, is what makes "how many lines is this" one answer: before, a
+ * command split by CR or U+2028 showed whole on one line while one split by
+ * LF showed only its first line. Other controls (NEL, BEL, ...) are not
+ * breaks; `displayText` turns them into spaces.
+ */
+const LINE_BREAK = /\r\n|[\n\r\u2028\u2029]/u;
+
+/**
+ * The displayed form of untrusted text: bidi controls removed, control
+ * characters turned into spaces, whitespace collapsed onto one trimmed line.
+ */
+export function displayText(value: string): string {
+  return value
+    .replace(BIDI_CONTROLS, '')
+    .replace(CONTROL_CHARACTERS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The lines of a value that show anything, as written (not sanitised). A line
+ * that is blank once displayed (whitespace, controls or bidi marks only) is
+ * dropped: it cannot hide a command, and counting it would overstate what is
+ * not shown.
+ */
+export function displayLines(value: string): string[] {
+  return value.split(LINE_BREAK).filter((line) => displayText(line) !== '');
+}
+
+/** What joins the lines of a value shown whole on one line. */
+export const DISPLAY_LINE_SEPARATOR = ' ⏎ ';
+
+/**
+ * A multi-line value shown whole on one line: each line in `displayText`
+ * form, joined by ` ⏎ `, not by a space. Joined by a space, `echo a` and
+ * `rm -rf /` read as one `echo` printing `a rm -rf /`.
+ */
+export function displayJoinedLines(value: string): string {
+  return displayLines(value).map(displayText).join(DISPLAY_LINE_SEPARATOR);
+}
+
+/**
+ * The marker for lines a surface does not show: "(+1 line)", "(+3 lines)".
+ * Empty for none.
+ */
+export function hiddenLinesMarker(hidden: number): string {
+  if (hidden <= 0) return '';
+  return `(+${hidden} ${hidden === 1 ? 'line' : 'lines'})`;
+}
+
+/**
+ * Cut to at most `max` code points, ending in "…" when anything was cut. By
+ * code point, so an emoji at the cut is never split into a lone surrogate.
+ * Does not sanitise: pass `displayText` output.
+ */
+export function truncateDisplay(value: string, max: number): string {
+  const codePoints = Array.from(value);
+  if (codePoints.length <= max) return value;
+  return `${codePoints.slice(0, Math.max(0, max - 1)).join('')}…`;
+}
+
+/** The length of a value in code points, the unit `truncateDisplay` cuts in. */
+export function displayLength(value: string): number {
+  let count = 0;
+  for (const _ of value) count += 1;
+  return count;
+}

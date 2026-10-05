@@ -1141,6 +1141,41 @@ describe('AttentionProjectionService', () => {
       );
     });
 
+    test('#3382: the notification drops bidi controls, turns C1 controls into spaces and keeps every line of a command', async () => {
+      const RLO = String.fromCodePoint(0x202e);
+      const PDF = String.fromCodePoint(0x202c);
+      const NEL = String.fromCodePoint(0x85);
+      const BEL = String.fromCodePoint(0x07);
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-bidi',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-bidi': [
+            requestOpened({
+              threadId: 'thread-bidi',
+              requestType: 'approval',
+              title: `Allow ${RLO}Bash${PDF}`,
+              payload: {
+                toolName: `Ba${RLO}sh`,
+                toolInput: {
+                  command: `echo ${RLO}a${PDF}\nrm${NEL}-rf${BEL}/`,
+                },
+              },
+            }),
+          ],
+        },
+      });
+
+      const item = (await projection.list()).items[0];
+
+      expect(item.title).toBe('Tool call awaiting approval: Bash');
+      expect(item.body).toBe('Allow Bash \u2014 echo a \u23ce rm -rf /');
+    });
+
     test('a secret used as an object key (not just a value) is bounded per-key, never leaked verbatim (review finding #4)', async () => {
       const secretKey = 'sk-live-super-secret-token-value-ABC123';
       const projection = makeService({

@@ -575,3 +575,120 @@ describe('ToolCallDisplay — an approval label strips bidi controls (#3364)', (
     expect(details).toContain('echo \u202Etxt.exe');
   });
 });
+
+// #3382: what an approval card shows, beyond the first line of a command.
+// Escapes are built from code points so the source stays plain ASCII.
+const RLO = String.fromCodePoint(0x202e);
+const PDF = String.fromCodePoint(0x202c);
+const NEL = String.fromCodePoint(0x85);
+const BEL = String.fromCodePoint(0x07);
+const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+
+function pendingBash(
+  args: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+) {
+  return render(
+    <ToolCallDisplay
+      toolCall={{
+        type: 'tool-invocation',
+        toolCallId: 'multi-1',
+        toolName: 'Bash',
+        args,
+        state: 'call',
+        needsApproval: true,
+        approvalId: 'a1',
+        ...extra,
+      }}
+      onApprove={vi.fn()}
+    />,
+  );
+}
+
+describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382)', () => {
+  test('the label counts the lines it does not show, and the details open next to Allow and Deny', () => {
+    pendingBash({ command: 'echo a\nrm -rf /' });
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run echo a (+1 line)',
+    );
+    const line = document.querySelector('button.tool-call__line')!;
+    expect(line.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      document.querySelector('.tool-call__code--command')!.textContent,
+    ).toBe('echo a\nrm -rf /');
+    // The user can still close it.
+    fireEvent.click(line);
+    expect(line.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('.tool-call__details')).toBeNull();
+  });
+
+  test('CR, CRLF and U+2028 split lines the same way LF does', () => {
+    for (const command of [
+      'echo a\rrm -rf /\rls',
+      'echo a\r\nrm -rf /\r\nls',
+      `echo a${LINE_SEPARATOR}rm -rf /${LINE_SEPARATOR}ls`,
+    ]) {
+      const view = pendingBash({ command });
+      expect(
+        view.container.querySelector('.tool-call__label')!.textContent,
+      ).toBe('Run echo a (+2 lines)');
+      view.unmount();
+    }
+  });
+
+  test('a one-line pending command and a settled multi-line one stay closed', () => {
+    const single = pendingBash({ command: 'echo a' });
+    expect(
+      single.container
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    single.unmount();
+
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'multi-done',
+          toolName: 'Bash',
+          args: { command: 'echo a\nrm -rf /' },
+          state: 'result',
+          result: 'a',
+        }}
+      />,
+    );
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Ran echo a (+1 line)',
+    );
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  test('a C1 or BEL control in the label becomes a space', () => {
+    const view = pendingBash({ command: `rm${NEL}-rf${BEL}/tmp/x` });
+    expect(view.container.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run rm -rf /tmp/x',
+    );
+  });
+
+  test('"Why:" drops bidi controls and turns C1 controls into spaces; the grant button names a sanitised tool', () => {
+    pendingBash(
+      { command: 'ls' },
+      {
+        purpose: `List${NEL}the ${RLO}txt.exe${PDF} files`,
+        approvalThreadId: 'thread-1',
+        approvalToolName: `Ba${RLO}sh${BEL}`,
+        approvalSessionGrant: 'tool',
+      },
+    );
+    expect(document.querySelector('.tool-call__purpose')!.textContent).toBe(
+      'Why: List the txt.exe files',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Allow Bash for this session' }),
+    ).toBeTruthy();
+  });
+});
