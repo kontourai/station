@@ -1,0 +1,23 @@
+{
+  "revision": "47992074ffc6e51191626c7d58770b274e815b7e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3410 round 2: claude-adapter.ts changed only in how a question's answer is keyed back (the admitted question text, not a re-read of the engine input); no claim in this document about Claude configuration, permissions or connections is affected.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#3410 round 2: claude-adapter.ts changed only in how a question's answer is keyed back (the admitted question text, not a re-read of the engine input); no claim in this document about Claude configuration, permissions or connections is affected.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#3410 round 2: claude-adapter.ts changed only in how a question's answer is keyed back (the admitted question text, not a re-read of the engine input); no claim in this document about Claude configuration, permissions or connections is affected.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#3410 round 2: claude-adapter.ts changed only in how a question's answer is keyed back (the admitted question text, not a re-read of the engine input); no claim in this document about Claude configuration, permissions or connections is affected.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#3410 round 2: claude-adapter.ts changed only in how a question's answer is keyed back (the admitted question text, not a re-read of the engine input); no claim in this document about Claude configuration, permissions or connections is affected.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#3410 round 2: claude-adapter.ts changed only in how a question's answer is keyed back (the admitted question text, not a re-read of the engine input); no claim in this document about Claude configuration, permissions or connections is affected.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3410 round 2: the question card and its drafts now keep every field-keyed map prototype-free (a field named constructor or toString answers by its own name) and the Claude adapter keys answers on the admitted question text; the guide's description of the question form, drafts and private answers still holds. Checked against InputRequestCard, inputRequestDrafts and their tests.","inputs":["docs/guides/agents.md","src-server/providers/adapters/claude-adapter.ts","src-ui/src/components/chat/InputRequestCard.tsx","src-ui/src/components/chat/inputRequestDrafts.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3410 round 2: the harness adapters now read engine payloads by own keys at every level and Claude answers key on the admitted question text; the wire shapes, limits and engine mappings documented here are unchanged. A field named __proto__ is refused at admission, which this page does not contradict.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/harness-questions.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#3410 round 2: documented the __proto__ field-name refusal, own-key ingress in the MCP and harness adapters (ownRecord/ownArray) and the detached, null-prototype snapshot validateInputRequestContent returns; checked against packages/shared/src/input-request.ts, mcp-elicitation.ts, harness-questions.ts and the new tests.","inputs":["docs/reference/shared.md","packages/shared/src/harness-questions.ts"]}
+  ]
+}
