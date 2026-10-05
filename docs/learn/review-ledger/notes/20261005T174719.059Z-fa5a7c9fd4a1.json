@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"#3386 fix round: one new boolean station setting (attachedSessionsOutsideProjects, host-runtime section, registry + catalog row). The document's lists of fields are dated slice records, not a current inventory, so they stay accurate. No prose change.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","packages/contracts/src/settings-registry.ts","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}
