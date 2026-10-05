@@ -136,7 +136,9 @@ switcher changes, so Home and the dock always open on the same choices.
 **No workspace** clears it. A project with no folder is remembered too, but
 next time, as with the project switcher, new chats open in **No workspace**.
 Runtime options such as reasoning effort apply to that start only; they are
-not remembered.
+not remembered. A choice you make stays on both surfaces for this browser tab,
+even if another chat later runs on a different Model, until you change it or
+choose **Reset**.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. A
