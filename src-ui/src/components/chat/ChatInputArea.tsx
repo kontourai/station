@@ -55,6 +55,11 @@ import {
   reconcileComposerDisplay,
   sessionReferenceBlockReason,
 } from './composer-mentions';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+  endConversationReferenceDrag,
+} from './conversationReferenceDrag';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -253,6 +258,15 @@ interface ChatInputAreaProps {
    * a dock too short for the transcript steps it aside (the notice lives there).
    */
   sendFailureNotice?: string;
+  /**
+   * A send queued to retry by itself, with its Discard. The controls row shows
+   * the button only when the dock is too short to show the transcript that
+   * holds the same notice (`data-composer-priority`). It takes no height of its
+   * own there (the row is already a touch row), so the draft keeps its floor;
+   * the notice's words are its description. A queued send is not a failure, so
+   * this is not the send-failure line.
+   */
+  queuedRetryNotice?: { text: string; onDiscard: () => void };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -399,6 +413,7 @@ export function ChatInputArea({
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
+  queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
   removalUnblocksSend = false,
@@ -615,6 +630,8 @@ export function ChatInputArea({
     mentionQuery && mentionAutocompleteAvailable,
   );
 
+  const queuedRetryText = queuedRetryNotice?.text;
+  const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -787,6 +804,7 @@ export function ChatInputArea({
     void attachmentError;
     void attachmentNotice;
     void sendFailureNotice;
+    void queuedRetryText;
     const textarea = textareaRef.current;
     if (!textarea) return;
     draftFloorRef.current = sizeDraft(
@@ -803,6 +821,7 @@ export function ChatInputArea({
     input,
     sendBlockedReason,
     sendFailureNotice,
+    queuedRetryText,
     textareaRef,
     visualViewport.height,
   ]);
@@ -929,7 +948,7 @@ export function ChatInputArea({
               type="button"
               className="chat-input__model-reset"
               onClick={onModelReset}
-              title="Reset this session to its default model"
+              title="Reset this chat to its default model"
             >
               Use{' '}
               {defaultModelSource
@@ -1170,19 +1189,22 @@ export function ChatInputArea({
             onDragOver={(event) => {
               if (
                 !event.dataTransfer.types.includes(
-                  'application/x-station-conversation-reference',
+                  CONVERSATION_REFERENCE_DRAG_TYPE,
                 )
               )
                 return;
               const conversationId = event.dataTransfer.getData(
-                'application/x-station-conversation-reference',
+                CONVERSATION_REFERENCE_DRAG_TYPE,
               );
               const candidate =
                 draggedSessionReference.current?.id === conversationId &&
                 draggedSessionReference.current.ownerKey ===
                   sessionReferenceOwnerKey
                   ? draggedSessionReference.current
-                  : null;
+                  : draggedConversationReference(
+                      conversationId,
+                      mentionRequestScope,
+                    );
               if (
                 (!conversationId || candidate) &&
                 !sessionReferenceBlockReason({
@@ -1197,17 +1219,23 @@ export function ChatInputArea({
             }}
             onDrop={(event) => {
               const conversationId = event.dataTransfer.getData(
-                'application/x-station-conversation-reference',
+                CONVERSATION_REFERENCE_DRAG_TYPE,
               );
               if (!conversationId) return;
               event.preventDefault();
+              // The picker's own drag, or an Activity or inbox row this
+              // window is dragging from the same Station access scope.
               const candidate =
                 draggedSessionReference.current?.id === conversationId &&
                 draggedSessionReference.current.ownerKey ===
                   sessionReferenceOwnerKey
                   ? draggedSessionReference.current
-                  : null;
+                  : draggedConversationReference(
+                      conversationId,
+                      mentionRequestScope,
+                    );
               draggedSessionReference.current = null;
+              endConversationReferenceDrag();
               if (!candidate) return;
               const reason = sessionReferenceBlockReason({
                 value: input,
@@ -1441,6 +1469,20 @@ export function ChatInputArea({
                 <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
               </svg>
             </ComposerIconAction>
+          )}
+          {queuedRetryNotice && (
+            <span className="chat-input__queued-retry-actions">
+              <button
+                type="button"
+                aria-describedby={queuedRetryDescriptionId}
+                onClick={queuedRetryNotice.onDiscard}
+              >
+                Discard
+              </button>
+              <span id={queuedRetryDescriptionId} className="sr-only">
+                {queuedRetryNotice.text}
+              </span>
+            </span>
           )}
           <span className="chat-controls-row__spacer" />
           <div className="chat-input__send-group">

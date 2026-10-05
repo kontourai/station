@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-04T12:44:56.532Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:8fc9938f121d8e94a115d60f4f7f65657a1d89392bf599b8ba2057f6532bde71",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+  "validUntilDays": 90,
+  "notes": "Approved20-minute documentation-truth execution budget;249 assertions previously passed819.6s, exceeding600s default. Independent delta review confirms unchanged commands and failure semantics.",
+  "authorizing": {
+    "kind": "explicit-statement",
+    "statement": "Brian explicitly approved changing only documentation-truth execution timeout from10 to20 minutes; commands, assertions, required status and failure behavior unchanged."
+  },
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+    "approvalRef": "t3:bb1209a9-24f3-49ef-a27e-be1ee432d58c",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+        "validUntil": "2027-01-02T12:44:56.532Z"
+      },
+      "createdAt": "2026-10-04T12:44:56.532Z",
+      "updatedAt": "2026-10-04T12:44:56.532Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+      "claimId": "veritas.attestation.policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Approved20-minute documentation-truth execution budget;249 assertions previously passed819.6s, exceeding600s default. Independent delta review confirms unchanged commands and failure semantics.",
+      "observedAt": "2026-10-04T12:44:56.532Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-04T12:44:56.532Z",
+        "validUntil": "2027-01-02T12:44:56.532Z",
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-04T12-44-56-532Z-870911b824ce.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-04T12-44-56-532Z-870911b824ce"
+      ],
+      "createdAt": "2026-10-04T12:44:56.532Z",
+      "verifiedAt": "2026-10-04T12:44:56.532Z"
+    }
+  }
+}

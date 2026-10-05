@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"packages/contracts/src/device-settings.ts gains the codingPanels per-session record and its registry entry; starter-work's device-setting claims concern other keys. No prose change.","inputs":["packages/contracts/src/device-settings.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

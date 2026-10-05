@@ -120,9 +120,7 @@ export default function ImportedConversationPane({
           )}
         </div>
       )}
-      {source.isLoading && (
-        <SkeletonBlock count={1} label="Opening conversation" />
-      )}
+      {source.isLoading && <SkeletonBlock count={1} label="Opening chat" />}
       {source.isError && (
         <ErrorState
           className="imported-conversation-pane__error"

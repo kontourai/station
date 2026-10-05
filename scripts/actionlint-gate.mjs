@@ -49,6 +49,7 @@ import {
   FAST_CHECKS_SLICE_RUN,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -3124,14 +3125,16 @@ function main() {
   let stdout = '';
   let status = 0;
   try {
-    stdout = execFileSync(binary, [], {
+    stdout = execFileSyncBounded(binary, [], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
     status = typeof error.status === 'number' ? error.status : -1;
-    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    // A capture overflow or spawn failure carries no child output; its
+    // message is the only diagnostic, so never print an empty detail.
+    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
   }
 
   if (status !== 0 && status !== 1) {

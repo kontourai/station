@@ -104,6 +104,12 @@ it cannot erase outstanding gaps. HEAD must be reachable from `origin/main`;
 fetch remote main before retrying if that ref is missing or stale. PR-only
 commits cannot become the baseline because a squash merge does not retain them.
 
+The scoped PR check enforces the same rule on a direct edit: a change that
+alters `coverageBaseline` blocks unless the new value is a commit reachable from
+the change's merge base and strict freshness passes at that commit. Otherwise
+the check names `--advance-baseline`, so a hand edit cannot skip an uncovered
+main commit.
+
 Both modes report files with no known documentation dependency. Trace those
 through actual callers, add missing source relationships, or give a concrete
 no-documentation-impact reason in the PR. Shallow or unavailable history is
@@ -216,7 +222,39 @@ files; neither rewrites shared derived data. Real concurrent edits to the same
 human decision or additions at the same place in a dependency list can still
 conflict and need a human resolution. The loader requires canonical bytes and
 rejects edited notes or unexpected files. The name hash detects accidental
-changes; it is not protection against forgery. The gate proves that a covering
+changes; it is not protection against forgery.
+
+Four guards sit on top of the layout (#3036):
+
+- **Notes are append-only.** Scoped freshness compares the note files at the
+  merge base with the working tree and blocks with `note-removed` for each one
+  that is gone, whether deleted outright or rewritten under a new hash name.
+  Re-record with `docs:review:record` instead; that adds a note.
+- **A missing merge base never skips that check.** In a pull request context
+  (a `pull_request` event or `STATION_CI_FAST_BASE`) an unresolvable base
+  blocks with `append-only-unverified` (the version 3 layout only; older layouts
+  have no notes to protect). Locally the run falls back to strict
+  and reports `Append-only notes: NOT_VERIFIED`, and `--json` carries
+  `appendOnly: "NOT_VERIFIED"` (`verified` when checked, `not-checked` in
+  advisory mode). Merge queue, push and Nightly events resolve to advisory
+  before any scope is computed, so they never reach this path.
+- **Path budget.** A ledger file path longer than 178 characters is refused
+  with `path-too-long`. Windows allows 259 usable characters; an 80-character
+  checkout root and a separator leave 178. The longest record on main is 137
+  characters (a capture is 87), so the budget is a ceiling, not a ratchet.
+- **Batch writes roll back.** `docs:review:record` writes its files together;
+  if one write fails it restores the prior bytes of files it rewrote, removes
+  files it created and fails with `write-failed`, listing any file it could not
+  restore.
+
+The append-only check does not run when `STATION_DOCS_FRESHNESS=strict` is set
+explicitly, or when a shallow checkout falls back to advisory; in a pull
+request context `docs:freshness:check` then prints `Append-only notes: not
+checked (<mode>)`. The path budget applies to the working tree and to what the
+record command writes, not to merge-base or history reads, so a pull request
+can still delete an over-budget record that reached `main`. Notes are never
+pruned: the notes of a removed document stay in `notes/` forever, because
+deleting them would fail `note-removed`. The gate proves that a covering
 note exists for each touched input, not that its prose is accurate. All consumers
 use
 [`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including

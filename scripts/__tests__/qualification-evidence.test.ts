@@ -150,7 +150,7 @@ describe('source qualification evidence', () => {
             jobs: [
               {
                 name: 'qualification / Full source qualification',
-                conclusion: 'success',
+                conclusion: mode === 'red-gate' ? 'failure' : 'success',
               },
               ...Array.from({ length: mode === 'missing' ? 3 : 4 }, (_, i) => ({
                 name: `qualification / Ordinary corpus ${i}`,
@@ -171,7 +171,22 @@ describe('source qualification evidence', () => {
           }),
         );
       else
-        res.end(JSON.stringify({ workflow_runs: [{ ...run, head_sha: sha }] }));
+        res.end(
+          JSON.stringify({
+            workflow_runs: [
+              {
+                ...run,
+                head_sha: sha,
+                // A red run whose gate passed: only Main qualification, which
+                // also publishes the Nightly, may be judged by its gate.
+                ...(mode.startsWith('red-') ? { conclusion: 'failure' } : {}),
+                ...(mode === 'red-other-workflow'
+                  ? { path: '.github/workflows/nightly.yml' }
+                  : {}),
+              },
+            ],
+          }),
+        );
     });
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
     const address = server.address();
@@ -187,7 +202,15 @@ describe('source qualification evidence', () => {
       GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
     };
     try {
-      for (mode of ['valid', 'missing', 'expired', 'unavailable']) {
+      for (mode of [
+        'valid',
+        'missing',
+        'expired',
+        'unavailable',
+        'red-publication',
+        'red-gate',
+        'red-other-workflow',
+      ]) {
         writeFileSync(output, '');
         await exec(process.execPath, [script, 'resolve'], {
           cwd: root,
@@ -195,7 +218,7 @@ describe('source qualification evidence', () => {
           windowsHide: true,
         });
         expect(readFileSync(output, 'utf8')).toBe(
-          `reuse_run=${mode === 'valid' ? '42' : ''}\n`,
+          `reuse_run=${['valid', 'red-publication'].includes(mode) ? '42' : ''}\n`,
         );
       }
       expect(observed.some((url) => url.includes(`head_sha=${sha}`))).toBe(

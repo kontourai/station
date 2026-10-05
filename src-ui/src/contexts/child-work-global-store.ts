@@ -3,6 +3,7 @@ import {
   type ChildWorkDelta,
   type ChildWorkRegistryState,
   childWorkDeltaFromLegacyClaudeTaskNotification,
+  childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   isChildWorkTerminalStatus,
   type SessionChildWork,
@@ -341,29 +342,8 @@ function reconcileInto(
     );
     if (view.observability === 'reported') {
       for (const item of view.settled ?? []) {
-        const {
-          producer,
-          reporterThreadId,
-          childId,
-          status,
-          result,
-          usage,
-          ...identity
-        } = item;
-        if (status === 'running') continue;
-        fold(
-          {
-            kind: 'settle',
-            producer,
-            reporterThreadId,
-            childId,
-            status,
-            ...(result ? { result } : {}),
-            ...(usage ? { usage } : {}),
-            identity,
-          },
-          at,
-        );
+        const settle = childWorkSettleFromItem(item);
+        if (settle) fold(settle, at);
       }
     }
   }

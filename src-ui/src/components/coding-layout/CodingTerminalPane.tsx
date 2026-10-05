@@ -1,5 +1,5 @@
 import { closeProjectTerminal } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import {
   type ACPConnectionInfo,
@@ -10,6 +10,7 @@ import './CodingLayout.css';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { NewTerminalModal } from './NewTerminalModal';
 import type { TerminalTab } from './types';
+import { buildNewTerminalItems } from './utils';
 
 export interface CodingTerminalPaneProps {
   id?: string;
@@ -24,6 +25,30 @@ export interface CodingTerminalPaneProps {
   onToggleOpen?: () => void;
   projectSlug: string;
   workingDir: string;
+}
+
+/**
+ * "The reader closed the last terminal", per Project: closing Project A's
+ * last shell says nothing about Project B, whose empty panel still opens one.
+ */
+function closedLastTerminalKey(projectSlug: string): string {
+  return `coding-terminal-closed-last:${projectSlug}`;
+}
+function readClosedLastTerminal(projectSlug: string): boolean {
+  try {
+    return sessionStorage.getItem(closedLastTerminalKey(projectSlug)) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeClosedLastTerminal(projectSlug: string, closed: boolean) {
+  const key = closedLastTerminalKey(projectSlug);
+  try {
+    if (closed) sessionStorage.setItem(key, '1');
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* Storage is optional presentation state. */
+  }
 }
 
 /**
@@ -66,10 +91,20 @@ export function CodingTerminalPane({
         }),
     ),
   );
-  const { data: acpConnections } = useACPConnections();
+  const { data: acpConnections, isPending: connectionsPending } =
+    useACPConnections();
   const { apiBase } = useApiBase();
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
+  // With the shell the only kind of terminal there is, "new terminal" is a
+  // shell: no picker with one option (design audit U7). While the agent
+  // connections are still loading the answer is not known, so the picker
+  // stays the way until it is.
+  const shellIsTheOnlyKind =
+    !connectionsPending &&
+    buildNewTerminalItems(acpConnections || [], '', []).every(
+      (item) => item.type === 'shell',
+    );
   const [closingTabIds, setClosingTabIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -86,30 +121,55 @@ export function CodingTerminalPane({
     }
   }, [activeTabId, tabs]);
 
-  const addTab = (
-    type: 'shell' | 'agent',
-    agentSlug?: string,
-    connectionId?: string,
-  ) => {
-    const id = `term-${Date.now()}`;
-    const tab: TerminalTab = { id, type, label: '' };
-    if (type === 'agent' && agentSlug) {
-      const modeName =
-        connectionId && agentSlug.startsWith(`${connectionId}-`)
-          ? agentSlug.slice(connectionId.length + 1)
-          : agentSlug;
-      tab.label = `Agent: ${modeName}`;
-      tab.agentSlug = agentSlug;
-      tab.agentMode = modeName;
-      tab.connectionId = connectionId;
-      tab.mode = 'chat';
-    } else {
-      shellCounter.current += 1;
-      tab.label = `Shell ${shellCounter.current}`;
-    }
-    setTabs((current) => [...current, tab]);
-    setActiveTabId(id);
+  const addTab = useCallback(
+    (type: 'shell' | 'agent', agentSlug?: string, connectionId?: string) => {
+      const id = `term-${Date.now()}`;
+      const tab: TerminalTab = { id, type, label: '' };
+      if (type === 'agent' && agentSlug) {
+        const modeName =
+          connectionId && agentSlug.startsWith(`${connectionId}-`)
+            ? agentSlug.slice(connectionId.length + 1)
+            : agentSlug;
+        tab.label = `Agent: ${modeName}`;
+        tab.agentSlug = agentSlug;
+        tab.agentMode = modeName;
+        tab.connectionId = connectionId;
+        tab.mode = 'chat';
+      } else {
+        shellCounter.current += 1;
+        tab.label = `Shell ${shellCounter.current}`;
+      }
+      setTabs((current) => [...current, tab]);
+      setActiveTabId(id);
+      writeClosedLastTerminal(projectSlug, false);
+    },
+    [projectSlug],
+  );
+
+  const openNewTerminal = () => {
+    if (shellIsTheOnlyKind) addTab('shell');
+    else setShowNewTerminal(true);
   };
+  // An open, empty terminal is a shell waiting to be asked for; it opens
+  // one (U7). Once per mount, and never while the panel is closed or the
+  // kinds are still unknown: closing the last tab leaves it closed.
+  const shellOpened = useRef(false);
+  const open = presentation === 'pane' ? true : terminalOpen;
+  useEffect(() => {
+    if (shellOpened.current || !open || !shellIsTheOnlyKind) return;
+    if (tabs.length > 0) {
+      shellOpened.current = true;
+      return;
+    }
+    shellOpened.current = true;
+    // "The reader closed the last terminal" is remembered in the browser
+    // tab's session storage, keyed by Project, so a remount — a reload, a
+    // crossing of the layout's fold — does not open a shell they just
+    // closed, while another Project's empty panel still opens one. Opening
+    // one again forgets it.
+    if (readClosedLastTerminal(projectSlug)) return;
+    addTab('shell');
+  }, [addTab, open, projectSlug, shellIsTheOnlyKind, tabs.length]);
 
   const removeClosedTab = (id: string) => {
     setTabs((current) => {
@@ -118,7 +178,10 @@ export function CodingTerminalPane({
         const index = current.findIndex((tab) => tab.id === id);
         setActiveTabId(next[Math.max(0, index - 1)]?.id || next[0]!.id);
       }
-      if (next.length === 0) setActiveTabId('');
+      if (next.length === 0) {
+        setActiveTabId('');
+        writeClosedLastTerminal(projectSlug, true);
+      }
       return next;
     });
   };
@@ -214,7 +277,7 @@ export function CodingTerminalPane({
         closeErrors={closeErrors}
         onToggleTabMode={toggleTabMode}
         canTogglePTY={canTogglePTY}
-        onOpenNewTerminal={() => setShowNewTerminal(true)}
+        onOpenNewTerminal={openNewTerminal}
         projectSlug={projectSlug}
         workingDir={workingDir}
       />

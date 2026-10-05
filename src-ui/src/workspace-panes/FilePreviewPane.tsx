@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { ActionOverflowMenu } from '../components/ActionOverflowMenu';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
@@ -52,6 +53,7 @@ import {
   openFilePreviewDirectLink,
   serializeOpenFilePreviewIntent,
 } from './openFilePreviewIntent';
+import { PaneHeadSlotsContext, usePaneHeadSlots } from './PaneHeadSlots';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { workspacePaneDirectRoute } from './workspacePaneDirectRoute';
 import './FilePreviewPane.css';
@@ -1354,6 +1356,109 @@ export function FilePreviewPane({
       );
   };
 
+  const headSlots = usePaneHeadSlots();
+  const segmented = textual ? (
+    <fieldset className="workspace-file-preview__segmented">
+      <legend className="workspace-file-preview__visually-hidden">
+        Preview view
+      </legend>
+      <button
+        type="button"
+        aria-pressed={view === 'file'}
+        title="The file as it is now"
+        onClick={() => setViewFor({ path: state.path, view: 'file' })}
+      >
+        File
+      </button>
+      <button
+        type="button"
+        aria-pressed={view === 'changes'}
+        aria-label={
+          changedLines > 0
+            ? `Changes vs HEAD, ${changedLines} changed line${changedLines === 1 ? '' : 's'}`
+            : 'Changes vs HEAD'
+        }
+        title="Changes against the last commit (HEAD)"
+        onClick={() => setViewFor({ path: state.path, view: 'changes' })}
+      >
+        Changes
+        {changedLines > 0 && (
+          <span className="workspace-file-preview__pip" aria-hidden="true">
+            {changedLines > 99 ? '99+' : changedLines}
+          </span>
+        )}
+      </button>
+    </fieldset>
+  ) : null;
+  const barActions = (
+    <>
+      <IconButton
+        className="workspace-file-preview__icon"
+        aria-label={copied ? 'Path copied' : 'Copy path'}
+        title={copied ? 'Copied' : `Copy path (${state.path})`}
+        onClick={copyPath}
+      >
+        {copied ? <CheckGlyph /> : <CopyGlyph />}
+      </IconButton>
+      <ActionOverflowMenu
+        label="More file actions"
+        triggerClassName="icon-button workspace-file-preview__icon"
+        actions={[
+          {
+            key: 'reveal',
+            label: 'Reveal in Files',
+            disabled: !revealRoute,
+            onSelect: () => {
+              if (!revealRoute || !intent) return;
+              const params = serializeOpenFilePreviewIntent(intent);
+              if (params) navigate(revealRoute, params);
+            },
+          },
+          {
+            key: 'link',
+            label: 'Copy preview link',
+            disabled: !directLink,
+            onSelect: copyDirectLink,
+          },
+          {
+            key: 'conversation',
+            label: attachedToConversation
+              ? 'Remove from conversation'
+              : 'Add to conversation',
+            disabled:
+              !intent ||
+              (!attachedToConversation && query.data?.status !== 'ready'),
+            onSelect: attachedToConversation
+              ? removeFromConversation
+              : addToConversation,
+          },
+          {
+            key: 'wrap',
+            label: 'Wrap lines',
+            checked: wrap,
+            glyph: wrap ? <CheckGlyph /> : undefined,
+            onSelect: () => updateWrap(!wrap),
+          },
+          {
+            key: 'goto',
+            label: 'Go to line…',
+            shortcut: GO_TO_LINE_SHORTCUT,
+            disabled: !gotoAvailable || view !== 'file',
+            onSelect: () => setGotoOpen(true),
+          },
+          // The host's own rows for this pane (pop out, remove), merged so
+          // the head has one ⋯; `takeHostActions` below tells it so.
+          ...(headSlots?.hostActions ?? []),
+        ]}
+      />
+    </>
+  );
+  const takeHostActions = headSlots?.takeHostActions;
+  useEffect(() => {
+    if (!takeHostActions) return;
+    takeHostActions(true);
+    return () => takeHostActions(false);
+  }, [takeHostActions]);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a scoped keyboard shortcut (⌘G / Ctrl+G) for the pane's focused content, not a control.
     <div
@@ -1382,107 +1487,33 @@ export function FilePreviewPane({
           completed={setCompletedRefresh}
         />
       ) : null}
-      <div className="workspace-file-preview__bar">
-        <FilePreviewBreadcrumb
-          projectSlug={state.projectSlug}
-          path={state.path}
-          detail={
-            query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'
-          }
-        />
-        {textual && (
-          <fieldset className="workspace-file-preview__segmented">
-            <legend className="workspace-file-preview__visually-hidden">
-              Preview view
-            </legend>
-            <button
-              type="button"
-              aria-pressed={view === 'file'}
-              title="The file as it is now"
-              onClick={() => setViewFor({ path: state.path, view: 'file' })}
-            >
-              File
-            </button>
-            <button
-              type="button"
-              aria-pressed={view === 'changes'}
-              aria-label={
-                changedLines > 0
-                  ? `Changes vs HEAD, ${changedLines} changed line${changedLines === 1 ? '' : 's'}`
-                  : 'Changes vs HEAD'
-              }
-              title="Changes against the last commit (HEAD)"
-              onClick={() => setViewFor({ path: state.path, view: 'changes' })}
-            >
-              Changes
-              {changedLines > 0 && (
-                <span
-                  className="workspace-file-preview__pip"
-                  aria-hidden="true"
-                >
-                  {changedLines > 99 ? '99+' : changedLines}
-                </span>
-              )}
-            </button>
-          </fieldset>
-        )}
-        <IconButton
-          className="workspace-file-preview__icon"
-          aria-label={copied ? 'Path copied' : 'Copy path'}
-          title={copied ? 'Copied' : `Copy path (${state.path})`}
-          onClick={copyPath}
-        >
-          {copied ? <CheckGlyph /> : <CopyGlyph />}
-        </IconButton>
-        <ActionOverflowMenu
-          label="More file actions"
-          triggerClassName="icon-button workspace-file-preview__icon"
-          actions={[
-            {
-              key: 'reveal',
-              label: 'Reveal in Files',
-              disabled: !revealRoute,
-              onSelect: () => {
-                if (!revealRoute || !intent) return;
-                const params = serializeOpenFilePreviewIntent(intent);
-                if (params) navigate(revealRoute, params);
-              },
-            },
-            {
-              key: 'link',
-              label: 'Copy preview link',
-              disabled: !directLink,
-              onSelect: copyDirectLink,
-            },
-            {
-              key: 'conversation',
-              label: attachedToConversation
-                ? 'Remove from conversation'
-                : 'Add to conversation',
-              disabled:
-                !intent ||
-                (!attachedToConversation && query.data?.status !== 'ready'),
-              onSelect: attachedToConversation
-                ? removeFromConversation
-                : addToConversation,
-            },
-            {
-              key: 'wrap',
-              label: 'Wrap lines',
-              checked: wrap,
-              glyph: wrap ? <CheckGlyph /> : undefined,
-              onSelect: () => updateWrap(!wrap),
-            },
-            {
-              key: 'goto',
-              label: 'Go to line…',
-              shortcut: GO_TO_LINE_SHORTCUT,
-              disabled: !gotoAvailable || view !== 'file',
-              onSelect: () => setGotoOpen(true),
-            },
-          ]}
-        />
-      </div>
+      {headSlots ? (
+        // Inside a host that draws the pane's head itself (the Coding
+        // layout's side panel), the head's title is the file's name and its
+        // tooltip the path, so the crumbs would say it twice: the view
+        // toggle joins the head after the name and the actions join it
+        // before the host's close, and the pane draws no bar of its own.
+        <>
+          {headSlots.leading
+            ? createPortal(segmented, headSlots.leading)
+            : null}
+          {headSlots.trailing
+            ? createPortal(barActions, headSlots.trailing)
+            : null}
+        </>
+      ) : (
+        <div className="workspace-file-preview__bar">
+          <FilePreviewBreadcrumb
+            projectSlug={state.projectSlug}
+            path={state.path}
+            detail={
+              query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'
+            }
+          />
+          {segmented}
+          {barActions}
+        </div>
+      )}
       {contextNotice && (
         <p role="status" className="workspace-file-preview__status">
           {contextNotice}
@@ -1540,11 +1571,13 @@ export function FilePreviewPane({
             </button>
           </div>
         ) : query.data && view === 'changes' ? (
-          <FilePreviewChanges
-            projectSlug={projectSlug}
-            path={state.path}
-            thread={state.thread}
-          />
+          <PaneHeadSlotsContext.Provider value={null}>
+            <FilePreviewChanges
+              projectSlug={projectSlug}
+              path={state.path}
+              thread={state.thread}
+            />
+          </PaneHeadSlotsContext.Provider>
         ) : query.data ? (
           <GoToLineContext.Provider value={goToLine}>
             <PreviewContent

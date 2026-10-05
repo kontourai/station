@@ -3,6 +3,10 @@ import type {
   SkillExperienceInventoryV1,
   SkillExperienceSessionViewV1,
 } from '@kontourai/station-contracts/skill-experience';
+import {
+  readSkillExperienceInventory,
+  readSkillExperienceSession,
+} from '@kontourai/station-shared/skill-experience-reader';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 import { rethrowDeadline } from './request-deadline';
@@ -50,10 +54,7 @@ export async function fetchSkillExperienceInventory(
 ): Promise<SkillExperienceInventoryV1> {
   return read(
     await getJson(`${apiBase}/api/skills/experiences`, opts),
-    async (value) =>
-      (
-        await import('@kontourai/station-shared/skill-experience-reader')
-      ).readSkillExperienceInventory(value),
+    async (value) => readSkillExperienceInventory(value),
   );
 }
 
@@ -81,9 +82,6 @@ export async function fetchSkillExperienceSession(
       `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/skill-experience${query.size ? `?${query}` : ''}`,
       requestOptions,
     ),
-    async (value) =>
-      (
-        await import('@kontourai/station-shared/skill-experience-reader')
-      ).readSkillExperienceSession(value),
+    async (value) => readSkillExperienceSession(value),
   );
 }

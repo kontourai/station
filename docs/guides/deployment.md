@@ -584,6 +584,37 @@ curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status
 # authentication_required confirms a refusal, not workload health or readiness
 ```
 
+#### Reaching the consent origin over HTTPS
+
+Consent decisions are served by a separate listener (`API + 3`, or
+`STATION_CONSENT_PORT`) so a decision page is a different browser origin from
+the app. By default its review URLs are plain `http://<host>:<consent port>`,
+which a remote browser on the tailnet cannot use as a secure context. To issue
+an HTTPS review URL, add a second Tailscale Serve mapping from an HTTPS name to
+the **consent** port (not the UI port), and tell Station the exact origin:
+
+```bash
+tailscale serve --bg --https=8443 http://127.0.0.1:<consent-port>
+STATION_TRUSTED_CONSENT_ORIGIN=https://<device-fqdn>:8443
+```
+
+The value must be an exact `https` origin on a DNS name: no path, trailing
+slash, trailing-dot host, port 0, userinfo, wildcard or IP address (WebAuthn relying-party IDs must be
+domains, so an IP-only Station gets no HTTPS consent origin). Station checks it
+at startup and refuses to start on a malformed value instead of falling back to
+`http`. When set, review URLs use that origin, and the consent listener accepts
+a decision from it when the request `Host` is that name and the browser's
+`Origin` header equals that origin exactly; any other origin is still refused.
+This is in addition to the existing port-pinned
+`http://<host>:<consent port>` path, which keeps working. The HTTPS consent
+name must be the same hostname as the app's (with Tailscale, both are the device
+FQDN): the consent session cookie is host-scoped and is not sent across
+hostnames, so a different name fails closed with `unauthenticated`. Unset, the
+behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
+
+With this origin set, a paired browser can also enroll an operator passkey; see
+[Enroll an operator passkey](operator-passkeys.md).
+
 #### Troubleshooting the pairing path
 
 | Symptom | Likely cause | Check |

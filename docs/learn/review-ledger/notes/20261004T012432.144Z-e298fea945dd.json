@@ -1,0 +1,7 @@
+{
+  "revision": "ce9c623c034f83ec7590f8fae3f6b427da26d921",
+
+  "notes": [
+    {"path":"examples/visual-skill-experience/README.md","note":"Went stale through the docs/reference/skill-experiences.md edit (#3209: 'deferred canonical reader' now 'imported statically into the client entry'). This README only links to that reference at line 24 for contract and compatibility decisions, and makes no claim about reader loading, so it stays accurate."}
+  ]
+}

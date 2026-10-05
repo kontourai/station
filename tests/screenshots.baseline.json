@@ -35,31 +35,31 @@
       "name": "connections",
       "width": 1440,
       "height": 900,
-      "sha256": "6576ede8a6e94911ee13083d83c2f5e51f0216c44412c13445f0c59499d6c632"
+      "sha256": "c80870d0cdd3ffab0d3e6cbbf5702fe6fe92c81e9df271612d9972106365d3da"
     },
     {
       "name": "connections-agent-apps",
       "width": 1440,
       "height": 900,
-      "sha256": "9c9ad768d524b7f6761da209c81b2404ee83c35389ef4d06787791541ed021e3"
+      "sha256": "2880f07d088329bce507465b6cf3e6b49110b8afbf76a81619636aea147dfec7"
     },
     {
       "name": "connections-knowledge",
       "width": 1440,
       "height": 900,
-      "sha256": "a18ebc6290dc559bed548b84b1e61ed1dab5ce61bcad7a877cea01ee60ca7f90"
+      "sha256": "4ba6afe43349558bd1cceb4e61d85cea9015d31fa5dfa0d523fe0edb200c7c02"
     },
     {
       "name": "connections-models",
       "width": 1440,
       "height": 900,
-      "sha256": "6576ede8a6e94911ee13083d83c2f5e51f0216c44412c13445f0c59499d6c632"
+      "sha256": "c80870d0cdd3ffab0d3e6cbbf5702fe6fe92c81e9df271612d9972106365d3da"
     },
     {
       "name": "connections-tools",
       "width": 1440,
       "height": 900,
-      "sha256": "bdbee16f87b1c9a6e7aabb6601cd5d08e6046e0e04a7e9e68a9f458858a3ae51"
+      "sha256": "d7def26c2c1586e8d743c6ca8c986273fba86026e694f828506202936b10b31e"
     },
     {
       "name": "developer-telemetry",
@@ -89,7 +89,7 @@
       "name": "mobile-activity-compact",
       "width": 390,
       "height": 844,
-      "sha256": "b0fa2a4c51369ff62a020aa3eb4d28f4f5b387f6d908f16167c581519222ea0d"
+      "sha256": "f3e8f2e843d9144a8443353a93bc8b0ecb64f2f260dffdf8297a4a0b1aeefb17"
     },
     {
       "name": "mobile-agent-editor",
@@ -113,7 +113,7 @@
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "f5c3f67ecf30c90d4def0628cb6f1f0f42b4a34e4d747b66af079912ca577be0"
+      "sha256": "b6752920a6405b16a62eaaa4d691265e479cc2c4e1fbfd1e0e1b525330b9be9b"
     },
     {
       "name": "mobile-chat-dock-header-320",
@@ -125,7 +125,7 @@
       "name": "mobile-connections",
       "width": 390,
       "height": 844,
-      "sha256": "1167a9f6127c40aeb8110bb3cc2607e4a8018cecf3c72f35a92392ae3899ec71"
+      "sha256": "d4d1e50ff42f9b8160005668e54bb77df06c53ea32184418c1896ad36e866fd5"
     },
     {
       "name": "mobile-home",
@@ -203,7 +203,7 @@
       "name": "overlay-command-palette-results",
       "width": 1440,
       "height": 900,
-      "sha256": "55f398619259a3af14338719b3a203c98311c396d615a05db94acdd6f2074407"
+      "sha256": "e9a8783c2cc78cf36475b45fc99e06ee4d1236c2c1179a9bd3ec05b94e136f77"
     },
     {
       "name": "overlay-confirm-dialog",

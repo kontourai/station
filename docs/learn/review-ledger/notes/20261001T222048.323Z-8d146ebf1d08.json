@@ -1,0 +1,7 @@
+{
+  "revision": "b4f9d6090ab55af6bcab4e1805fbe8316ef1659a",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Extended the 2026-10-01 section for the #3046/#3047 round: one bar through RegionChromeSlots namesPane, one head per panel through PaneHeadSlots, the 480px transcript floor and the inbox fold/unfold with the reader's own choice remembered per session, the host's replace selection mode and setLayout's in-place preview write, preview names and paths, the lower panel's three-tenths default, and the restated limits. Traced through CodingWorkbench.tsx, codingPanels.ts, ChatDockHeader.tsx, FileTreePanel.tsx, CodingTerminalPanel.tsx, workspacePaneHostController.ts, navigation-store.ts and device-settings.ts.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","packages/contracts/src/engine-capability-matrix.ts","src-ui/src/App.tsx","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/app-shell/RegionShells.tsx","src-ui/src/app-shell/destination-registry.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/hooks/useDockShellChrome.ts","src-ui/src/hooks/useLongPress.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

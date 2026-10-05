@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   compareStationReleaseVersions,
+  packagedInstallerCommand,
   readArchiveInstallState,
 } from '../prebuilt-archive.js';
 
@@ -104,5 +105,38 @@ describe('readArchiveInstallState', () => {
     expect(
       readArchiveInstallState(makeTempDir('station-install-state-')),
     ).toBeNull();
+  });
+});
+
+describe('packagedInstallerCommand', () => {
+  test("runs the version's install.sh with sh off Windows", () => {
+    expect(packagedInstallerCommand('/i/versions/1.0.0', 'linux')).toEqual({
+      command: 'sh',
+      args: ['./install.sh', 'install'],
+      file: join('/i/versions/1.0.0', 'install.sh'),
+    });
+  });
+
+  test("runs the version's install.ps1 with the system Windows PowerShell on Windows (#2675 W2)", () => {
+    const version = join('/i', 'versions', '1.0.0');
+    expect(
+      packagedInstallerCommand(version, 'win32', {
+        SystemRoot: 'C:\\Windows',
+        // A PATH never selects the PowerShell that runs the installer.
+        PATH: 'C:\\elsewhere',
+      }),
+    ).toEqual({
+      command: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      args: [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        join(version, 'install.ps1'),
+        'install',
+      ],
+      file: join(version, 'install.ps1'),
+    });
   });
 });
