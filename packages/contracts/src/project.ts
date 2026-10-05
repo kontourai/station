@@ -48,7 +48,32 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */
   position?: number;
+  /**
+   * #3370: where a new chat in this project runs on this Station, as the
+   * session start resolves it. Present on the operator's own project list;
+   * absent from a member's view and from servers that predate it.
+   */
+  runsAt?: ProjectRunsAt;
 }
+
+/**
+ * Where a new chat in a project runs, computed from the same records the
+ * session start reads (manifest, binding, working directory and the
+ * manifest's `executionRoot`), without the live git identity check a start
+ * still runs.
+ *
+ * - `folder`: the project's own working directory, as stored.
+ * - `execution-root`: a different directory the manifest selects, through a
+ *   binding or its `executionRoot`; absolute.
+ * - `none`: no directory; the agent decides (home, an ACP connection's
+ *   folder, or a private Station-managed one).
+ * - `unavailable`: a start would be refused; `reason` says why.
+ */
+export type ProjectRunsAt =
+  | { kind: 'folder'; path: string }
+  | { kind: 'execution-root'; path: string }
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: string };
 
 export interface MemberProjectView {
   version: 'station.member-project/v1';

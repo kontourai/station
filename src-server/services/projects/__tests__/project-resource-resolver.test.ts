@@ -300,6 +300,108 @@ describe('resolveProjectExecutionRoot', () => {
   });
 });
 
+/** A reader that fails the test if a list read ever spawns `git`. */
+const noGitOnListReads: CheckoutRemoteReader = async (path) => {
+  throw new Error(`describeProjectRunLocation read remotes at ${path}`);
+};
+
+describe('describeProjectRunLocation (#3370)', () => {
+  async function bindFolderlessMonorepo(harness: Harness) {
+    const checkout = tempDir('station-run-location-checkout-');
+    const app = join(checkout, 'packages', 'app');
+    mkdirSync(app, { recursive: true });
+    // No working directory: the project reaches its checkout only through
+    // the manifest's binding, the case the composer hint used to call home.
+    await saveProject(harness.adapter, { slug: 'acme' });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: { repoId: 'github.com/acme/mono', path: 'packages/app' },
+    });
+    const bound = await bindProjectResource('acme', checkout, {
+      manifests: new ProjectManifestStore(harness.home, harness.adapter),
+      bindings: harness.bindings,
+      readRemotes: remoteReader(['git@github.com:acme/mono.git']),
+    });
+    expect(bound).toMatchObject({ ok: true });
+    return { checkout, app };
+  }
+
+  test('a folderless project with a bound executionRoot runs at that root, the same one a start resolves', async () => {
+    const harness = createHome();
+    const { app } = await bindFolderlessMonorepo(harness);
+
+    const described = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocation('acme');
+    const started = await makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    ).resolveProjectExecutionRoot('acme');
+
+    expect(described).toEqual({
+      kind: 'execution-root',
+      path: realpathSync(app),
+    });
+    expect(started).toBe(realpathSync(app));
+  });
+
+  test('skips only the git identity check: a drifted checkout still names its directory, and the start refuses', async () => {
+    const harness = createHome();
+    const { app } = await bindFolderlessMonorepo(harness);
+    const elsewhere = remoteReader(['git@github.com:other/repo.git']);
+
+    expect(
+      await makeResolver(harness, elsewhere).describeProjectRunLocation('acme'),
+    ).toEqual({ kind: 'execution-root', path: realpathSync(app) });
+    await expect(
+      makeResolver(harness, elsewhere).resolveProjectExecutionRoot('acme'),
+    ).rejects.toThrow(/cannot start here \(drifted\)/);
+  });
+
+  test('a project with a working directory and no manifest runs in that folder, spelled as stored', async () => {
+    const harness = createHome();
+    const folder = tempDir('station-run-location-folder-');
+    await saveProject(harness.adapter, {
+      slug: 'plain',
+      workingDirectory: folder,
+    });
+    expect(
+      await makeResolver(harness, noGitOnListReads).describeProjectRunLocation(
+        'plain',
+      ),
+    ).toEqual({ kind: 'folder', path: folder });
+  });
+
+  test('a project with no directory at all leaves the place to the agent', async () => {
+    const harness = createHome();
+    await saveProject(harness.adapter, { slug: 'notes' });
+    expect(
+      await makeResolver(harness, noGitOnListReads).describeProjectRunLocation(
+        'notes',
+      ),
+    ).toEqual({ kind: 'none' });
+  });
+
+  test('a start the records already refuse reads as unavailable, with the start’s own reason', async () => {
+    const harness = createHome();
+    const gone = join(tempDir('station-run-location-gone-'), 'deleted');
+    await saveProject(harness.adapter, {
+      slug: 'gone',
+      workingDirectory: gone,
+    });
+    const described = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocation('gone');
+    expect(described).toMatchObject({ kind: 'unavailable' });
+    expect(described.kind === 'unavailable' && described.reason).toMatch(
+      /^Project 'gone' cannot start here \(missing\)/,
+    );
+  });
+});
+
 describe('resolveProjectResource — the upgrade path from an install predating manifests', () => {
   test('a project with project.json and NO manifest resolves through the working-directory fallback, and the read WRITES NOTHING', async () => {
     const harness = createHome();

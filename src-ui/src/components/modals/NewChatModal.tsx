@@ -20,6 +20,7 @@ import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { resolveStartContextFromProjectSlug } from '../../hooks/useNewChatStartContext';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
   trackContextAgent,
   trackRecentAgent,
@@ -1170,6 +1171,7 @@ export function NewChatModal({
   // The composer's chips: a skeleton while the start path cannot yet say
   // what it will use, never a guess.
   const accents = projectAccentBySlug;
+  const projectIcons = useProjectIcons();
   const draftModelLabel = draftAgent
     ? start.modelFor(draftAgent).label
     : undefined;
@@ -1198,6 +1200,7 @@ export function NewChatModal({
           (isGlobal ? NO_PROJECT_LABEL : selectedContext),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(selectedContext),
+        icon: isGlobal ? undefined : projectIcons.get(selectedContext),
         folder: workspaceHintText(workspaceHint),
       };
   const contextSelected = Boolean(

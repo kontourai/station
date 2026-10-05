@@ -1,5 +1,8 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
-import type { MemberProjectView } from '@kontourai/station-contracts/project';
+import type {
+  MemberProjectView,
+  ProjectRunsAt,
+} from '@kontourai/station-contracts/project';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type {
@@ -452,6 +455,8 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
+  /** #3370: where a new chat in this project runs (`GET /api/projects`). */
+  runsAt?: ProjectRunsAt;
   actions?: readonly ProjectMemberAction[];
 }
 

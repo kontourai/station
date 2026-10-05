@@ -1,6 +1,8 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
   NewChatModelChoice,
@@ -10,7 +12,9 @@ import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
+  GLOBAL_CONTEXT,
   modelPickerProviders,
   type NewChatModalContextOption,
   type NewChatWorkspaceHint,
@@ -239,17 +243,14 @@ export function StartProjectMenu({
   const anchorRef = useRef<HTMLElement | null>(anchor);
   const [search, setSearch] = useState('');
   const query = search.toLowerCase();
-  // TODO(project-icons): render `ProjectIcon` once feat/project-icons
-  // lands. Until then no raw `project.icon` reaches LayoutIcon here (it
-  // would hotlink a remote or path icon); every project shows the folder.
-  const safeOptions = options.map((option) =>
-    option.icon
-      ? { ...option, icon: undefined, glyph: 'folder' as const }
-      : option,
-  );
+  // The sidebar's icon and colour, from the one project list it shows. Only
+  // `ProjectIcon` draws a project here: it shows an icon the contracts rule
+  // allows and never a raw `project.icon`, which `LayoutIcon` would hotlink.
+  const icons = useProjectIcons();
+  const accents = useProjectAccents();
   const filtered = query
-    ? safeOptions.filter((option) => option.label.toLowerCase().includes(query))
-    : safeOptions;
+    ? options.filter((option) => option.label.toLowerCase().includes(query))
+    : options;
   return (
     <ResponsiveDialogSurface
       layer={layer}
@@ -279,6 +280,15 @@ export function StartProjectMenu({
       <div className="start-menu__list">
         <ContextPickerOptions
           folderlessHint={folderlessHint}
+          renderMark={(option) =>
+            option.value === GLOBAL_CONTEXT ? undefined : (
+              <ProjectIcon
+                project={{ name: option.label, icon: icons.get(option.value) }}
+                size={24}
+                accent={accents.get(option.value)}
+              />
+            )
+          }
           contextSearch={search}
           onContextSearchChange={setSearch}
           autoFocusFilter={false}

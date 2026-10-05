@@ -27,6 +27,7 @@ import {
   describeProjectSlugConflict,
   findProjectSlugConflict,
   type ProjectConfig,
+  type ProjectMetadata,
 } from '@kontourai/station-contracts/project';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
@@ -721,6 +722,26 @@ export function createProjectRoutes(
     ),
   );
 
+  /**
+   * #3370: the operator's list carries where each project's chats run, so the
+   * start composer names the real directory. Record reads only (no `git`
+   * spawn), and never on a member's view, which carries no paths at all.
+   */
+  async function withRunLocations(
+    projects: ProjectMetadata[],
+  ): Promise<ProjectMetadata[]> {
+    const describe = resolution?.resolver.describeProjectRunLocation?.bind(
+      resolution.resolver,
+    );
+    if (!describe) return projects;
+    return Promise.all(
+      projects.map(async (project) => ({
+        ...project,
+        runsAt: await describe(project.slug),
+      })),
+    );
+  }
+
   // List all projects
   app.get('/', async (c) => {
     try {
@@ -764,7 +785,7 @@ export function createProjectRoutes(
                   )!;
                   return memberProjectView(project, admission.actions);
                 })
-            : projects,
+            : await withRunLocations(projects),
       });
       if (!allowed || !currentReadable || !readable || !currentScopes)
         return response;

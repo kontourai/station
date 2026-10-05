@@ -10,6 +10,7 @@ import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
   useBindStartProject,
   useStartSelection,
@@ -379,6 +380,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
       };
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
+  const icons = useProjectIcons();
   const option = viewModel.currentContextOption;
   const isGlobal = context === GLOBAL_CONTEXT;
   const workspaceHint = resolveNewChatWorkspaceHint({
@@ -395,6 +397,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         label: option?.label ?? (isGlobal ? NO_PROJECT_LABEL : context),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(context),
+        icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;

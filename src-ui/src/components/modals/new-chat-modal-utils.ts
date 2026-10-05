@@ -68,7 +68,9 @@ export type NewChatWorkspaceHint =
   | { kind: 'project'; path: string }
   | { kind: 'connection'; path: string }
   | { kind: 'home' }
-  | { kind: 'managed' };
+  | { kind: 'managed' }
+  /** #3370: the server says a start here would be refused, and why. */
+  | { kind: 'unavailable'; reason: string };
 
 /** The hint as one sentence, for a chip's folder line and the menu. */
 export function workspaceHintText(hint: NewChatWorkspaceHint): string {
@@ -77,9 +79,31 @@ export function workspaceHintText(hint: NewChatWorkspaceHint): string {
       return 'Runs in your home folder (~)';
     case 'managed':
       return 'Runs in a private folder Station makes for this chat';
+    case 'unavailable':
+      // The server's sentence already opens "Project 'x' cannot start here".
+      return hint.reason;
     default:
       return `Runs in ${hint.path}`;
   }
+}
+
+/**
+ * The directory a project's chats run in, or `undefined` when it has none.
+ *
+ * #3370: `runsAt` is the server's resolution — the manifest's binding and
+ * `executionRoot` included — and outranks the stored `workingDirectory`,
+ * which a manifest-bound project may not have at all. A server that predates
+ * `runsAt` (or a member's view, which carries no paths) falls back to the
+ * stored folder, which is what the session start used before manifests.
+ */
+export function projectRunDirectory(
+  project: Pick<ProjectMetadata, 'runsAt' | 'workingDirectory'>,
+): string | undefined {
+  const runsAt = project.runsAt;
+  if (!runsAt) return project.workingDirectory?.trim() || undefined;
+  return runsAt.kind === 'folder' || runsAt.kind === 'execution-root'
+    ? runsAt.path
+    : undefined;
 }
 
 /** Spoken when the server refused a row without saying why. */
@@ -184,7 +208,10 @@ export function resolveNewChatWorkspaceHint({
   project: ProjectMetadata | undefined;
   acpConnections: ACPSelectionConnection[];
 }): NewChatWorkspaceHint {
-  const projectDirectory = project?.workingDirectory?.trim();
+  if (project?.runsAt?.kind === 'unavailable') {
+    return { kind: 'unavailable', reason: project.runsAt.reason };
+  }
+  const projectDirectory = project ? projectRunDirectory(project) : undefined;
   if (projectDirectory) return { kind: 'project', path: projectDirectory };
 
   const connectionId = agent?.execution?.agentConnectionId;
@@ -283,7 +310,10 @@ export interface NewChatModalContextOption {
   label: string;
   icon?: string;
   glyph?: 'folder' | 'globe';
+  /** The directory the project's chats run in, when the project has one. */
   workingDirectory?: string;
+  /** Why a chat cannot start in this project here (#3370); absent when it can. */
+  unavailable?: string;
 }
 
 interface NewChatModalAgentGroup {
@@ -392,7 +422,10 @@ export function buildContextOptions(
       // Only an icon the contracts rule allows: `LayoutIcon` renders a URL
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
-      workingDirectory: project.workingDirectory,
+      workingDirectory: projectRunDirectory(project),
+      ...(project.runsAt?.kind === 'unavailable'
+        ? { unavailable: project.runsAt.reason }
+        : {}),
     });
   }
   return options;

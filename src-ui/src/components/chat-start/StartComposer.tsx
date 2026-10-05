@@ -4,6 +4,7 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph, GlobeGlyph } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
 import './StartComposer.css';
 
@@ -34,6 +35,8 @@ export type StartProjectChip =
       label: string;
       /** The project's accent (the sidebar's), absent for No project. */
       accent?: string;
+      /** The project's icon (`useProjectIcons`), drawn over the accent. */
+      icon?: string;
       isGlobal: boolean;
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
@@ -241,17 +244,13 @@ export function StartComposer({
               title={project.folder}
               onClick={(event) => onOpenProject(event.currentTarget)}
             >
-              {/* TODO(project-icons): adopt `ProjectIcon` (with its accent
-                  fallback) once feat/project-icons lands. Until then the
-                  sidebar's accent swatch, never a raw `project.icon`:
-                  LayoutIcon would hotlink a remote or path icon. */}
               {project.isGlobal ? (
                 <GlobeGlyph />
               ) : (
-                <span
-                  className="start-composer__swatch"
-                  aria-hidden="true"
-                  style={{ backgroundColor: project.accent }}
+                <ProjectIcon
+                  project={{ name: project.label, icon: project.icon }}
+                  size={20}
+                  accent={project.accent}
                 />
               )}
               <span className="start-composer__chip-text">{project.label}</span>

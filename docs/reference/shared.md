@@ -536,8 +536,26 @@ interface ProjectMetadata {
   layoutCount: number;
   hasKnowledge: boolean;
   defaultProviderId?: string;
+  position?: number;
+  runsAt?: ProjectRunsAt;
 }
+
+type ProjectRunsAt =
+  | { kind: 'folder'; path: string }
+  | { kind: 'execution-root'; path: string }
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: string };
 ```
+
+`runsAt` is where a new chat in the project runs on this Station, from the
+records the session start reads: the manifest, its binding, the working
+directory and the manifest's `executionRoot`. `GET /api/projects` returns it
+on the operator's own list; a shared member's view omits it. It skips the live
+git identity check a start still makes, so a checkout of a different
+repository still reads as its directory here and the start refuses. `none`
+means the project has no directory, so the agent decides: the home folder, an
+ACP connection's folder, or a private folder Station makes. `unavailable`
+means a start would be refused, and `reason` says why.
 
 ---
 

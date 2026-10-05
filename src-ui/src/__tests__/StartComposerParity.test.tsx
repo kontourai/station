@@ -29,6 +29,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { projectAccents } from '../components/project-sidebar/projectAccent';
 import type { AgentData } from '../contexts/AgentsContext';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
@@ -247,6 +248,10 @@ function renderBoth() {
           projects={state.projects as ProjectMetadata[]}
           activeProjectSlug={deviceSettingsStore.get('chatDockProjectSlug')}
           projectBindable
+          // As ChatDock passes it: the sidebar's colours over the whole list.
+          projectAccentBySlug={projectAccents(
+            (state.projects as ProjectMetadata[]).map(({ slug }) => slug),
+          )}
           onSelect={dockSelect}
           onClose={vi.fn()}
         />
@@ -1331,4 +1336,178 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
   expect(onDraftChange).toHaveBeenLastCalledWith(
     'From Home, edited in the dock',
   );
+});
+
+// #3366 follow-up: the composer draws a project with `ProjectIcon` — the
+// chosen icon, else the sidebar's colour — on the chip and in the menu, and
+// never a stored value the contracts rule refuses.
+describe('project icons in the start composer', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+  const iconProjects = [
+    {
+      id: 'p1',
+      slug: 'pic',
+      name: 'Pic',
+      icon: PNG,
+      workingDirectory: '/w/pic',
+    },
+    {
+      id: 'p2',
+      slug: 'emo',
+      name: 'Emo',
+      icon: '🧭',
+      workingDirectory: '/w/emo',
+    },
+    { id: 'p3', slug: 'bare', name: 'Bare', workingDirectory: '/w/bare' },
+    // A legacy stored link: neither surface may load it.
+    {
+      id: 'p4',
+      slug: 'legacy',
+      name: 'Legacy',
+      icon: 'https://example.com/logo.png',
+      workingDirectory: '/w/legacy',
+    },
+  ] as ProjectMetadata[];
+
+  function markOf(root: Element) {
+    return {
+      img: root.querySelector('img')?.getAttribute('src') ?? null,
+      glyph: root.querySelector('.brand-icon__glyph')?.textContent ?? null,
+      dot: root.querySelector('[data-project-icon="dot"]') !== null,
+    };
+  }
+
+  test.each([
+    ['pic', { img: PNG, glyph: null, dot: false }],
+    ['emo', { img: null, glyph: '🧭', dot: false }],
+    ['bare', { img: null, glyph: null, dot: true }],
+    ['legacy', { img: null, glyph: null, dot: true }],
+  ])('the chip on both surfaces draws %s', async (slug, expected) => {
+    state.projects = iconProjects;
+    deviceSettingsStore.set('chatDockProjectSlug', slug);
+    const ui = renderBoth();
+    for (const root of [screen.getByTestId('home'), ui.dock()]) {
+      await waitFor(() => expect(markOf(projectChip(root))).toEqual(expected));
+    }
+    ui.cleanupListener();
+  });
+
+  test('the menu rows draw each project the way the chip does', async () => {
+    state.projects = iconProjects;
+    const ui = renderBoth();
+    for (const root of [screen.getByTestId('home'), ui.dock()]) {
+      fireEvent.click(projectChip(root));
+      const menu = await screen.findByRole(
+        'dialog',
+        { name: 'Choose project' },
+        { timeout: 15_000 },
+      );
+      const row = (slug: string) =>
+        menu.querySelector(`[data-context-value="${slug}"]`)!;
+      expect(markOf(row('pic'))).toEqual({ img: PNG, glyph: null, dot: false });
+      expect(markOf(row('emo'))).toEqual({
+        img: null,
+        glyph: '🧭',
+        dot: false,
+      });
+      expect(markOf(row('bare'))).toEqual({
+        img: null,
+        glyph: null,
+        dot: true,
+      });
+      expect(markOf(row('legacy'))).toEqual({
+        img: null,
+        glyph: null,
+        dot: true,
+      });
+      expect(menu.innerHTML).not.toContain('example.com');
+      fireEvent.keyDown(menu, { key: 'Escape' });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Choose project' }),
+        ).toBeNull(),
+      );
+    }
+    ui.cleanupListener();
+  }, 30_000);
+});
+
+// #3370: the hint states where the session start will really run, from the
+// server's `runsAt`, on both surfaces.
+describe('the run-location hint follows the server resolution (#3370)', () => {
+  test('a folderless project bound to an executionRoot says it runs there, not home', async () => {
+    state.projects = [
+      STATION,
+      {
+        id: 'p2',
+        slug: 'mono',
+        name: 'Mono',
+        runsAt: { kind: 'execution-root', path: '/work/mono/packages/app' },
+      },
+    ] as ProjectMetadata[];
+    deviceSettingsStore.set('chatDockProjectSlug', 'mono');
+    const ui = renderBoth();
+    for (const root of [screen.getByTestId('home'), ui.dock()]) {
+      await waitFor(() =>
+        expect(projectChip(root).getAttribute('title')).toBe(
+          'Runs in /work/mono/packages/app',
+        ),
+      );
+      fireEvent.click(projectChip(root));
+      const menu = await screen.findByRole(
+        'dialog',
+        { name: 'Choose project' },
+        { timeout: 15_000 },
+      );
+      const mono = menu.querySelector('[data-context-value="mono"]')!;
+      expect(mono.querySelector('.new-chat-modal__no-cwd-badge')).toBeNull();
+      expect(
+        mono
+          .querySelector('.new-chat-modal__cwd-breadcrumb')
+          ?.getAttribute('aria-label'),
+      ).toBe('Working directory: /work/mono/packages/app');
+      fireEvent.keyDown(menu, { key: 'Escape' });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Choose project' }),
+        ).toBeNull(),
+      );
+    }
+    ui.cleanupListener();
+  }, 30_000);
+
+  test('a project the server says cannot start names no folder', async () => {
+    const reason =
+      "Project 'gone' cannot start here (missing): its folder no longer exists.";
+    state.projects = [
+      {
+        id: 'p2',
+        slug: 'gone',
+        name: 'Gone',
+        workingDirectory: '/work/gone',
+        runsAt: { kind: 'unavailable', reason },
+      },
+    ] as ProjectMetadata[];
+    deviceSettingsStore.set('chatDockProjectSlug', 'gone');
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('title')).toBe(reason),
+    );
+    fireEvent.click(projectChip(home));
+    const menu = await screen.findByRole(
+      'dialog',
+      { name: 'Choose project' },
+      { timeout: 15_000 },
+    );
+    const gone = menu.querySelector('[data-context-value="gone"]')!;
+    expect(gone.querySelector('.new-chat-modal__cwd-breadcrumb')).toBeNull();
+    expect(
+      gone
+        .querySelector('.new-chat-modal__no-cwd-badge')
+        ?.getAttribute('title'),
+    ).toBe(reason);
+    expect(menu.querySelector('.start-menu__hint')?.textContent).toBe(reason);
+    ui.cleanupListener();
+  }, 30_000);
 });

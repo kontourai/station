@@ -164,7 +164,10 @@
 
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type {
+  ProjectConfig,
+  ProjectRunsAt,
+} from '@kontourai/station-contracts/project';
 import {
   isWellFormedResolution,
   localProjectResourceId,
@@ -210,6 +213,13 @@ export interface ProjectResourceResolverOptions {
   bindings?: ProjectBindingsStore;
   readRemotes?: CheckoutRemoteReader;
 }
+
+/**
+ * Whether a resolution runs the live git identity check (`verify`, every
+ * start and every resolution route) or takes the recorded directory as given
+ * (`trust-records`, the project list's run-location read only).
+ */
+type IdentityCheck = 'verify' | 'trust-records';
 
 type ResourceSelection =
   | { ok: true; resource: ProjectRepoResource }
@@ -261,6 +271,56 @@ export class ProjectResourceResolver {
   async resolveProjectExecutionRoot(
     projectSlug: string,
   ): Promise<string | undefined> {
+    return this.executionRoot(projectSlug, 'verify');
+  }
+
+  /**
+   * #3370: where a new chat in this project would run, for the project list
+   * the start composer reads. It is `resolveProjectExecutionRoot`'s own
+   * selection — manifest, binding, working directory, `executionRoot` — with
+   * ONE step left out: the live git identity check, which spawns `git` per
+   * project and has no place on a list read. A checkout that would fail that
+   * check still names the directory it is in here; the start itself runs the
+   * check and refuses, naming why. Everything else that refuses a start (no
+   * single primary, a missing binding or folder, an execution root that is
+   * gone) reads as `unavailable`, with the same reason the start would give.
+   *
+   * `none` is a project with no directory at all: where its chats run then
+   * depends on the agent (home, an ACP connection's folder, or a private one),
+   * which the client knows and this read does not.
+   */
+  async describeProjectRunLocation(
+    projectSlug: string,
+  ): Promise<ProjectRunsAt> {
+    let root: string | undefined;
+    let workingDirectory: string | undefined;
+    try {
+      root = await this.executionRoot(projectSlug, 'trust-records');
+      workingDirectory = this.source
+        .getProject(projectSlug)
+        .workingDirectory?.trim();
+    } catch (error) {
+      return {
+        kind: 'unavailable',
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+    if (root === undefined) return { kind: 'none' };
+    if (
+      workingDirectory &&
+      resolvePath(expandTilde(workingDirectory)) === root
+    ) {
+      // Spelled as the person stored it (`~/dev/app`), which is how every
+      // other surface shows the project's folder.
+      return { kind: 'folder', path: workingDirectory };
+    }
+    return { kind: 'execution-root', path: root };
+  }
+
+  private async executionRoot(
+    projectSlug: string,
+    identity: IdentityCheck,
+  ): Promise<string | undefined> {
     const project = this.source.getProject(projectSlug);
     const manifest = this.manifests.readProjectManifest(projectSlug);
     const selection = manifest?.executionRoot;
@@ -269,13 +329,17 @@ export class ProjectResourceResolver {
       selection?.repoId,
       project,
       manifest ?? null,
+      identity,
     );
     if (!isWellFormedResolution(result)) {
       throw new Error(
         `resolveProjectResource produced a malformed resolution for ${projectSlug}: ${JSON.stringify(result)}`,
       );
     }
-    projectResourceResolutions.add(1, { state: result.state });
+    // A list read's unverified `bound` is not a resolution outcome; counting
+    // it would inflate the verified-start metric once per project per read.
+    if (identity === 'verify')
+      projectResourceResolutions.add(1, { state: result.state });
     if (result.state !== 'bound') {
       if (
         !selection &&
@@ -325,6 +389,7 @@ export class ProjectResourceResolver {
     resourceId?: string,
     projectSnapshot?: ProjectConfig,
     manifestSnapshot?: ProjectManifest | null,
+    identity: IdentityCheck = 'verify',
   ): Promise<ResourceResolutionResult> {
     const project = projectSnapshot ?? this.source.getProject(projectSlug);
     // Decision 1: read only. A project with no manifest stays on the compat
@@ -345,10 +410,14 @@ export class ProjectResourceResolver {
       // The compat resource is treated as local-only: there is no manifest
       // identity to check the directory against, so there is nothing to
       // verify and nothing to claim beyond "this is where it is".
-      return this.resolveThroughWorkingDirectory(project, {
-        kind: 'local-only',
-        id: localProjectResourceId(projectSlug),
-      });
+      return this.resolveThroughWorkingDirectory(
+        project,
+        {
+          kind: 'local-only',
+          id: localProjectResourceId(projectSlug),
+        },
+        identity,
+      );
     }
 
     const selection = selectResource(manifest, resourceId);
@@ -372,10 +441,13 @@ export class ProjectResourceResolver {
       if (resource.kind === 'local-only') {
         return { state: 'bound', resourceId: resource.id, path: absolute };
       }
-      return await this.verifyGitCheckout(resource, binding.path, absolute, {
-        kind: 'binding',
-        verifiedAt: binding.verifiedAt,
-      });
+      return await this.verifyGitCheckout(
+        resource,
+        binding.path,
+        absolute,
+        { kind: 'binding', verifiedAt: binding.verifiedAt },
+        identity,
+      );
     }
 
     // archive#1503 — the working-directory substitute stands in for AT MOST ONE
@@ -422,12 +494,13 @@ export class ProjectResourceResolver {
     // §5 point 2: `workingDirectory` stays authoritative during compat, and a
     // backfilled binding row duplicating it is exactly the second copy this
     // design exists to avoid.
-    return this.resolveThroughWorkingDirectory(project, resource);
+    return this.resolveThroughWorkingDirectory(project, resource, identity);
   }
 
   private async resolveThroughWorkingDirectory(
     project: ProjectConfig,
     resource: ProjectRepoResource,
+    identity: IdentityCheck,
   ): Promise<ResourceResolutionResult> {
     const resourceId = resource.id;
     const workingDirectory = project.workingDirectory?.trim();
@@ -482,6 +555,7 @@ export class ProjectResourceResolver {
         {
           kind: 'working-directory',
         },
+        identity,
       );
     }
     return { state: 'bound', resourceId, path: absolute };
@@ -494,7 +568,12 @@ export class ProjectResourceResolver {
     observation:
       | { kind: 'binding'; verifiedAt: number }
       | { kind: 'working-directory' },
+    identity: IdentityCheck,
   ): Promise<ResourceResolutionResult> {
+    // Only `describeProjectRunLocation` skips this, and it never reports the
+    // result as `bound` to anyone: it names a directory, not a repository.
+    if (identity === 'trust-records')
+      return { state: 'bound', resourceId: resource.id, path: absolutePath };
     const remotes = await this.readRemotes(absolutePath);
     if (!remotes.ok) {
       // Decision 4: a recorded timestamp is REPORTED as an observation; it is
