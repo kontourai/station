@@ -1,0 +1,27 @@
+{
+  "revision": "f7b56541cc38032094f4635cdfcfc173e6737901",
+
+  "notes": [
+    {"path":"README.md","note":"Checked Nightly download and guide links. Qualification-owned scheduling does not alter release URLs or supported-install claims.","inputs":["README.md","docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed advisory-workflow health tracking against main-health.yml. Adding the qualification watchdog to its watch list retains advisory scope and existing failure/close policy.","inputs":["docs/guides/dependency-security.md",".github/workflows/main-health.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the changed delivery paragraph against main-qualification, nightly and qualification-health workflows. Qualification owns cadence; manual Nightly requires its event source; source inspection and local tests do not establish hosted delivery.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed Nightly scheduling references and called-workflow OIDC claim restriction. The six-hour qualification-owned schedule replaces independent Nightly cadence; platform identities, signing and Play trust requirements remain. Google provider admission remains explicitly unverified.","inputs":["docs/guides/mobile-release.md",".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed changed native cohort cadence and exact-event source conditions against qualification and Nightly callers. Manual dispatch remains qualified recovery; signing and provider receipt requirements are retained.","inputs":["docs/guides/native-releases.md",".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed changed cadence and no-second-regression caller behavior, reserved-source decision, tester delivery caveats and manual rebuild boundary. Publication remains distinct from device installation.","inputs":["docs/guides/nightly.md",".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed Nightly and native publication references. Schedule removal does not alter ring identities, immutable tags, signed artifact admission or promoted release contracts; no prose change required.","inputs":["docs/guides/release-rings.md",".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed qualification cadence, SHA-binding, bounded repair and new watchdog through API-backed tests, missed-start/stale-gate/stuck-run cases, disabled delivery, marker retention, no-op reservation refusal and leg-specific manual recovery. npm trusts main-qualification.yml as observed in Chrome; hosted OIDC exchange and publication remain unverified.","inputs":["docs/guides/releasing.md","scripts/qualification-health.mjs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed store-entry Nightly authority and cohort requirements. Qualification chooses the source; platform ids, signing slots, listing/provider acceptance and delivery receipts are unchanged.","inputs":["docs/guides/store-entry.md",".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed Nightly listing/product claims affected through workflow dependency. Moving scheduling to qualification does not change listing or store-channel contracts; no provider publication claimed.","inputs":["docs/guides/store-listing.md",".github/workflows/nightly.yml"]},
+
+    {"path":"src-server/AGENTS.md","note":"Read server routing instructions and its development-guide dependency. Qualification-owned delivery paragraph does not change server implementation rules; no text change required.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}
