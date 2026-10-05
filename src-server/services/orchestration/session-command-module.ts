@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { resolve as resolveFilesystemPath } from 'node:path';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   OrchestrationCommandReceipt,
@@ -186,11 +187,17 @@ export type SessionCommandInternalOptions = {
     localProjectId: string;
   };
   /**
-   * #3323: how the dispatch route came by the start's `metadata.delegation`,
-   * re-stamped as `DELEGATION_PROVENANCE_METADATA_KEY` after the reserved-key
-   * strip. Never accepted from public JSON.
+   * #3323: the delegation context the dispatch route resolved and how it came
+   * by it. `prepareStart` stamps `provenance` as
+   * `DELEGATION_PROVENANCE_METADATA_KEY` after the reserved-key strip, and
+   * only when the start's `metadata.delegation` is this same context, so a
+   * start carrying any other context never inherits the stamp. Never accepted
+   * from public JSON.
    */
-  delegationProvenance?: DelegationProvenance;
+  delegationProvenance?: {
+    context: AgentDelegationContext;
+    provenance: DelegationProvenance;
+  };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
   /** Opaque controller capability; only the foreground route can carry it. */

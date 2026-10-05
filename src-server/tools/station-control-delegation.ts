@@ -5355,7 +5355,12 @@ export async function delegateTask(
           resourceAdmissionIntent: 'delegated_background',
           // #3323: stamped beside `delegation` after the reserved-key strip.
           ...(input.delegation && input.delegationProvenance
-            ? { delegationProvenance: input.delegationProvenance }
+            ? {
+                delegationProvenance: {
+                  context: input.delegation,
+                  provenance: input.delegationProvenance,
+                },
+              }
             : {}),
           ...(input.taskRoomInvocationAdmission
             ? {
@@ -6057,8 +6062,13 @@ export async function executeExecutionTargetMessage(
               }
             : {}),
           // #3323: stamped beside `delegation` after the reserved-key strip.
-          ...(startInput.metadata?.delegation && input.delegationProvenance
-            ? { delegationProvenance: input.delegationProvenance }
+          ...(input.delegation && input.delegationProvenance
+            ? {
+                delegationProvenance: {
+                  context: input.delegation,
+                  provenance: input.delegationProvenance,
+                },
+              }
             : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??

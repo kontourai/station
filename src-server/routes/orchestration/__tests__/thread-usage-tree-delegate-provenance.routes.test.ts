@@ -579,7 +579,12 @@ describe('#3323 the provenance stamp is reserved', () => {
         },
       },
       { userId: MALLORY },
-      { delegationProvenance: 'direct-claim' },
+      {
+        delegationProvenance: {
+          context: tenantChild(),
+          provenance: 'direct-claim',
+        },
+      },
     );
     expect(restamped.status).toBe('accepted');
     expect(
@@ -588,6 +593,42 @@ describe('#3323 the provenance stamp is reserved', () => {
       ],
     ).toBe('direct-claim');
 
+    const { tree } = await f.usageTree();
+    expect(tree.total.tokens.complete).toBe(true);
+    expect(tree.total.partialReasons).toEqual([]);
+  });
+
+  test('the stamp travels with the context the route resolved: a start carrying any other context is never stamped', async () => {
+    const f = await fixture();
+    const other = createChildDelegationContext({
+      agentSlug: 'planner',
+      conversationId: 'conv-other',
+      spec: PLANNER,
+    });
+    const outcome = await f.service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'mismatched-context',
+          provider: 'codex',
+          metadata: { userId: OPERATOR, delegation: tenantChild() },
+        },
+      },
+      { userId: OPERATOR },
+      {
+        delegationProvenance: {
+          context: other,
+          provenance: 'runtime-attested',
+        },
+      },
+    );
+    expect(outcome.status).toBe('accepted');
+    const metadata = await f.startedMetadata('mismatched-context');
+    expect(metadata.delegation).toMatchObject({
+      parentConversationId: CONVERSATION,
+    });
+    expect(metadata).not.toHaveProperty(DELEGATION_PROVENANCE_METADATA_KEY);
+    // Unreadable to the tenant and unstamped, so it stays ignored.
     const { tree } = await f.usageTree();
     expect(tree.total.tokens.complete).toBe(true);
     expect(tree.total.partialReasons).toEqual([]);

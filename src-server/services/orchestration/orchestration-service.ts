@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
@@ -499,7 +500,7 @@ interface OrchestrationDispatchInternalOptions {
     environmentId: string;
   };
   /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
-  delegationProvenance?: DelegationProvenance;
+  delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
@@ -5701,17 +5702,22 @@ export class OrchestrationService {
           }
           // #3323: how the dispatch route came by this start's delegation
           // context, re-stamped after the reserved-key strip removed any
-          // caller-supplied value, and only beside a context it describes.
+          // caller-supplied value, and only when the start carries exactly
+          // the context the route resolved: the stamp travels with that
+          // context, so a start with any other context is never stamped.
           if (
             internal?.delegationProvenance &&
-            startInput.metadata?.delegation
+            isDeepStrictEqual(
+              startInput.metadata?.delegation,
+              internal.delegationProvenance.context,
+            )
           ) {
             startInput = {
               ...startInput,
               metadata: {
                 ...startInput.metadata,
                 [DELEGATION_PROVENANCE_METADATA_KEY]:
-                  internal.delegationProvenance,
+                  internal.delegationProvenance.provenance,
               },
             };
           }
