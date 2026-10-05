@@ -353,6 +353,80 @@ describe('ChatMessageList', () => {
     await act(async () => {});
   });
 
+  test('a page that grew the content leaves the suppression on while the reader still sits in the band, however still the layout is', async () => {
+    const loadOlder = vi.fn(async () => {});
+    const { log, press, prependPage } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    await act(async () => {});
+    // The page prepended and the browser left the reader at the top of the
+    // grown content: not restored yet. Nothing moves for many frames, which on
+    // its own would count as settled.
+    prependPage();
+    log.scrollTop = 0;
+    await framesElapsed(12);
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  test('a layout that holds still for fewer than the settle threshold and then moves again is not settled', async () => {
+    const loadOlder = vi.fn(async () => {});
+    const { log, press, prependPage } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    await act(async () => {});
+    prependPage();
+    // Restored position, held for a couple of frames, then the virtualizer's
+    // measurement moves the layout again; a reader scroll into the band inside
+    // that stretch is still the restoration's.
+    await framesElapsed(3);
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  test('a request still in flight for the previous chat neither loads nor releases anything in the new chat', async () => {
+    const releaseLoads: Array<() => void> = [];
+    const loadOlder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLoads.push(resolve);
+        }),
+    );
+    const { view, log, press } = pressAndCommit({
+      layoutSettles: true,
+      onLoadOlder: loadOlder,
+    });
+    log.scrollTop = 300;
+    fireEvent.click(press);
+    view.rerender(
+      <ChatMessageList
+        activeSession={{ ...resizeSession(), id: 'other-session' }}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    // The new chat has its own request in flight.
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier messages' }));
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+    // The old chat's request settles late. It must not release the new chat's
+    // request, so a further press is still coalesced into it.
+    releaseLoads[0]();
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier messages' }));
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+  });
+
   test('a load that settles with nothing to commit still releases the in-flight request', async () => {
     const loadOlder = vi.fn(async () => {});
     render(
