@@ -199,7 +199,11 @@ with the same variables, files and messages:
   `station-nightly.cmd` in `%USERPROFILE%\.local\bin` (or
   `STATION_BIN_DIR`), recognized by its exact text
   (`rem station-owned-launcher-v2`); the installer prints a PATH hint and
-  never edits PATH;
+  never edits PATH. cmd.exe reads a batch file in the console code page, so
+  paths beneath the profile are written through `%USERPROFILE%` (a profile
+  such as `C:\Users\José` works) and any other non-ASCII path is refused.
+  The launcher hands over to the version without CALL, so arguments with
+  `^` or `%` arrive unchanged;
 - schema 4 state records the manifest URL and the ports;
 - ports come from `STATION_INSTALL_SERVER_PORT`/`STATION_INSTALL_UI_PORT`,
   then the recorded ports, then the channel's. Unlike `install.sh`, it never
@@ -208,7 +212,8 @@ with the same variables, files and messages:
   `STATION_VERSION` plus `STATION_INSTALL_ALLOW_ROLLBACK=1` opt-in, and the
   nightly coexistence refusals above;
 - stop, switch, start, restoring the previous version (or removing a first
-  install) when a step fails; `STATION_INSTALL_NO_START=1` skips the start.
+  install) when a step fails; the restored version starts on the ports its
+  restored state records (install.sh restarts it on the new ones); `STATION_INSTALL_NO_START=1` skips the start.
   It keeps the active and the previous version and removes the others; a
   version a process still holds is left for the next install, with a warning.
 
@@ -220,7 +225,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.station\i
 ```
 
 Permissions: every root must be an absolute path, and the install root must
-lie beneath the user profile. The installer gives a new install root a
+lie beneath the user profile. Install and uninstall check an existing
+install root before reading or running anything in it, and run a
+`node.exe` only from a `current` that names a directory of its
+`versions`. The installer gives a new install root a
 protected ACL that grants only the current user, and refuses an existing
 one whose ACL grants anyone else, since a version in it could have been
 planted. `install.ps1` runs the installed `node.exe` only from such a root.

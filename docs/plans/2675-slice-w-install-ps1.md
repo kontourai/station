@@ -342,7 +342,11 @@ The options as originally posed:
 - **Bin directory.** `%USERPROFILE%\.local\bin`, as install.sh's
   `~/.local/bin`; it must pass the trust module's `execution-safe` rule.
 - **Rollback starts the previous release only without
-  `STATION_INSTALL_NO_START=1`**, and first stops a half-started new release.
+  `STATION_INSTALL_NO_START=1`**, first stops a half-started new release,
+  and starts the previous one on the ports its restored state records
+  (install.sh's `restart_previous_station` uses the new ones).
+- **Launcher text** (review): ASCII through `%USERPROFILE%` (cmd.exe reads
+  batch files in the OEM code page), and no CALL on the hand-over line.
 - **The data home's ACL is not set by the installer** (the server owns its
   home's trust).
 
