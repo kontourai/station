@@ -255,17 +255,44 @@ function seedRoutes(
   ]);
 }
 
-async function selectNoWorkspace(page: import('@playwright/test').Page) {
-  const workspace = page.locator('.new-chat-modal__context-button');
-  await workspace.click();
-  // Desktop renders the anchored `.new-chat-modal__dropdown`; at/below the
-  // mobile breakpoint the same options render inside the bottom sheet
-  // (`.new-chat-modal__context-sheet`) instead. Only one exists at a time.
-  await page
-    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
-    .getByRole('button', { name: /No workspace/ })
+/** The dock's start composer (the New chat dialog's one form). */
+function startComposer(page: import('@playwright/test').Page) {
+  return page
+    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('form', { name: 'Start work' });
+}
+
+/** Chooses a project (or No workspace) on the composer's project chip. */
+async function chooseProject(
+  page: import('@playwright/test').Page,
+  name: string | RegExp,
+) {
+  await startComposer(page)
+    .getByRole('button', { name: /^Project: / })
     .click();
-  await expect(workspace).toContainText('No workspace');
+  const menu = page.getByRole('dialog', { name: 'Choose project' });
+  await menu.getByRole('button', { name }).click();
+  await expect(menu).toHaveCount(0);
+}
+
+async function selectNoWorkspace(page: import('@playwright/test').Page) {
+  await chooseProject(page, /No workspace/);
+  await expect(
+    startComposer(page).getByRole('button', {
+      name: 'Project: No workspace',
+      exact: true,
+    }),
+  ).toBeVisible();
+}
+
+/** Opens the composer's Agent chip list and returns it. */
+async function openAgentList(page: import('@playwright/test').Page) {
+  await startComposer(page)
+    .getByRole('button', { name: /^Agent:/ })
+    .click();
+  const agents = page.getByRole('dialog', { name: 'Choose agent' });
+  await expect(agents).toBeVisible();
+  return agents;
 }
 
 /**
@@ -386,32 +413,37 @@ test('selected project context shows Station via the global provider-managed fal
 
   await openNewChatForViewport(page);
 
-  await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
-  // Scope to the modal's context button — the expanded sidebar also surfaces
-  // the project name now.
+  await expect(startComposer(page)).toBeVisible({ timeout: 3000 });
   // Last-visited context must not silently bind a new chat. Choose the
   // project explicitly before checking its model/engine behavior.
-  const projectContext = page.locator('.new-chat-modal__context-button');
-  await expect(projectContext).toContainText('No workspace');
-  await projectContext.click();
-  await page
-    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
-    .getByRole('button', { name: /My Project/ })
-    .click();
-  await expect(projectContext).toContainText('My Project');
-  const breadcrumb = page.locator(
-    '.new-chat-modal__context-button .new-chat-modal__cwd-breadcrumb',
-  );
-  await expect(breadcrumb).toHaveAttribute(
+  await expect(
+    startComposer(page).getByRole('button', {
+      name: 'Project: No workspace',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await chooseProject(page, /My Project/);
+  const chip = startComposer(page).getByRole('button', {
+    name: 'Project: My Project',
+    exact: true,
+  });
+  await expect(chip).toHaveAttribute('title', '/Users/me/dev/github/kontourai');
+  // The project menu states the folder the chat runs in.
+  await chip.click();
+  const menu = page.getByRole('dialog', { name: 'Choose project' });
+  await expect(
+    menu.locator('.start-menu__hint .new-chat-modal__cwd-breadcrumb'),
+  ).toHaveAttribute(
     'aria-label',
     'Working directory: /Users/me/dev/github/kontourai',
   );
-  await expect(breadcrumb).toContainText('/Users/me/dev/github/kontourai');
+  await menu.press('Escape');
 
   // No project provider defaults, but the global default (ollama-local) still
   // satisfies provider-managed, so the MCP-having Station agent is selectable.
+  const agents = await openAgentList(page);
   await expect(
-    page.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+    agents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
   ).toBeVisible();
 });
 
@@ -708,21 +740,22 @@ test('new chat project path stays overflow-free at 390x844', async ({
 
   const modal = page.locator('.new-chat-modal');
   await expect(modal).toBeVisible();
-  await expect(modal.getByText('Workspace', { exact: true })).toBeVisible();
   // The task-first Home surface deliberately opens New Chat without an
   // implicit workspace. Choose the project explicitly before proving its
   // project-path layout remains contained on a phone.
-  await modal.locator('.new-chat-modal__context-button').click();
-  await page
-    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
-    .getByRole('button', { name: 'My Project' })
-    .click();
-  await expect(modal.locator('.new-chat-modal__context-button')).toContainText(
-    'My Project',
-  );
   await expect(
-    modal.locator('.new-chat-modal__cwd-breadcrumb'),
-  ).toHaveAttribute('title', '/Users/me/dev/github/kontourai');
+    startComposer(page).getByRole('button', {
+      name: 'Project: No workspace',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await chooseProject(page, /My Project/);
+  // The chip names the project and carries the folder the chat runs in.
+  const chip = startComposer(page).getByRole('button', {
+    name: 'Project: My Project',
+    exact: true,
+  });
+  await expect(chip).toHaveAttribute('title', '/Users/me/dev/github/kontourai');
   expect(
     await page.evaluate(() => ({
       document: document.documentElement.scrollWidth <= window.innerWidth,
@@ -1046,11 +1079,13 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
   await page.goto('/?dock=open');
   await openNewChatForViewport(page);
   await selectNoWorkspace(page);
-  await page.getByPlaceholder('Search agents...').fill('Codex');
+  const agents = await openAgentList(page);
+  await agents.getByPlaceholder('Search agents...').fill('Codex');
 
-  const runtime = page.locator('.new-chat-modal__agent', {
+  const runtime = agents.locator('.new-chat-modal__agent', {
     hasText: 'Codex',
   });
+  await expect(runtime).toBeVisible();
   await expect(runtime).not.toContainText('Confidence');
   await expect(runtime).not.toContainText('Smoke failed');
   await expect(runtime).not.toContainText('Live catalog');
@@ -1060,10 +1095,18 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
     ),
   ).toBe(true);
 
+  // Choosing the row chooses the Agent; its Model (and the picker) are the
+  // row's own Model control.
   await runtime.click();
-  const activeModel = page.locator('.chat-input__model-btn');
-  await expect(activeModel).toContainText('GPT-5 Codex');
-  await activeModel.click();
+  await expect(agents).toHaveCount(0);
+  await expect(
+    startComposer(page).getByRole('button', {
+      name: 'Agent: Codex · GPT-5 Codex',
+      exact: true,
+    }),
+  ).toBeVisible();
+  const again = await openAgentList(page);
+  await again.getByRole('button', { name: /^Model: GPT-5 Codex/ }).click();
   await expect(
     page.getByRole('dialog', { name: 'Choose model' }),
   ).toBeVisible();
@@ -1111,8 +1154,11 @@ test('new chat shows degraded engine compatibility messaging from its catalog st
 
   await openNewChatForViewport(page);
 
-  await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
-  await expect(page.getByText(/Codex: Degraded/)).toBeVisible();
+  await expect(startComposer(page)).toBeVisible({ timeout: 3000 });
+  // The catalog's compatibility warning reads in the Agent list, where the
+  // choice it qualifies is made.
+  const agents = await openAgentList(page);
+  await expect(agents.getByText(/Codex: Degraded/)).toBeVisible();
 });
 
 test('new chat shows Station when the Station Agent matches the capability set', async ({
@@ -1127,13 +1173,12 @@ test('new chat shows Station when the Station Agent matches the capability set',
 
   await openNewChatForViewport(page);
 
-  await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
+  await expect(startComposer(page)).toBeVisible({ timeout: 3000 });
   // DESIGN §5: the picker groups by the Agents list's two bands
-  // (`components/agent-provenance.ts:29-30`, rendered at
-  // `NewChatModal.tsx:645-656`), not by engine name. `engineDefault: true`
-  // puts Station in the engine band, and the row's accessible name is
-  // "<name> <readiness state>" (`AgentReadinessCell.tsx:71`).
-  const dialog = page.getByRole('dialog', { name: 'New Chat' });
+  // (`components/agent-provenance.ts:29-30`), not by engine name.
+  // `engineDefault: true` puts Station in the engine band, and the row's
+  // accessible name is "<name> <readiness state>" (`AgentReadinessCell.tsx`).
+  const dialog = await openAgentList(page);
   await expect(dialog.getByText('AI apps')).toBeVisible();
   await expect(dialog.getByText('Your agents')).toHaveCount(0);
   await expect(
