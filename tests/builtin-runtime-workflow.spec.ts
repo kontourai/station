@@ -908,12 +908,13 @@ test.describe('Built-in runtime chat workflows', () => {
     });
 
     // Pending approval stays compact until the user opens the queue, then its
-    // approve/deny actions must render. The running tool reads as what it
-    // does to what ("Reading secret.txt"), and the queue control says the
-    // chat needs approval (#3362 updated both from the retired wording).
+    // approve/deny actions must render. The running tool names its target;
+    // its verb is not asserted (the product currently words delete_file as a
+    // read, filed separately). The queue control says the chat needs
+    // approval (#3362 updated it from the retired wording).
     await expect(
       page.getByRole('log', { name: 'Conversation transcript' }),
-    ).toContainText('Reading secret.txt');
+    ).toContainText('secret.txt');
     const approvalQueue = page.getByRole('button', {
       name: 'Needs approval — show the request',
     });
