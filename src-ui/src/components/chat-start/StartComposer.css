@@ -180,6 +180,9 @@
 .start-menu__hint--path .new-chat-modal__cwd-breadcrumb {
   flex: 1 1 auto;
 }
+.start-menu__hint--path .new-chat-modal__dir-parent {
+  white-space: nowrap;
+}
 .start-menu__search {
   width: auto;
   box-sizing: border-box;

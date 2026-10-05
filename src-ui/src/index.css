@@ -8744,7 +8744,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__dir-parent {
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
   flex-shrink: 1;
   min-width: 0;
