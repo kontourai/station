@@ -2,6 +2,11 @@
 import { spawn } from 'node:child_process';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
+  isNoteArchiveFile,
+  REVIEW_LEDGER_DIR,
+  REVIEW_NOTES_DIR,
+} from './lib/review-ledger-paths.mjs';
+import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
   terminateSuiteExecution,
@@ -331,9 +336,14 @@ export function ledgerMetrics(log) {
     .flatMap((entry) => {
       const [header, ...files] = entry.trim().split('\n');
       if (!/\(#\d+\)/.test(header)) return [];
-      const count = files.filter((f) =>
-        f.startsWith('docs/learn/review-ledger/'),
-      ).length;
+      const ledger = files.filter((f) => f.startsWith(`${REVIEW_LEDGER_DIR}/`));
+      // A baseline advance that compacts notes (#3394) adds one archive and
+      // deletes the loose notes it moved; only the advance command writes an
+      // archive, and it adds no notes, so those files measure compaction, not
+      // review merges. Its other ledger files (the index) still count.
+      const count = ledger.some(isNoteArchiveFile)
+        ? ledger.filter((f) => !f.startsWith(REVIEW_NOTES_DIR)).length
+        : ledger.length;
       return count ? [count] : [];
     });
   return {

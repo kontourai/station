@@ -101,17 +101,22 @@ The command checks strict coverage before moving the baseline to HEAD. Run it
 after a catch-up audit, and periodically (for example weekly) when strict is
 green, to bound history cost. Nothing runs it automatically: the Nightly
 freshness sweep reports gaps but never edits the ledger. It refuses dirty trees
-and unavailable history; it cannot erase outstanding gaps.
+and unavailable history; it cannot erase outstanding gaps. HEAD must be
+reachable from `origin/main`; fetch remote main before retrying if that ref is
+missing or stale. PR-only commits cannot become the baseline because a squash
+merge does not retain them.
 
 The same run compacts landed notes (#3394). Every loose note that was already
 in the tree at the previous baseline moves into one archive,
 `notes/archive/<previous-baseline>.json`, which keeps each note's file name and
-exact bytes; the loose files are deleted in the same batch write. Notes added
-since the previous baseline stay loose, so freshness, which reads only notes in
-a change's range or after the baseline, never depends on an archived note.
-Commit `docs/learn/review-ledger` with the index. HEAD must be reachable from `origin/main`;
-fetch remote main before retrying if that ref is missing or stale. PR-only
-commits cannot become the baseline because a squash merge does not retain them.
+exact bytes; the loose files are deleted in the same batch write. A note
+counts by its file name, so a note that a later migration rewrote under a new
+name is not yet eligible: measured on 2026-10-05, the first advance from
+`eff24ab` would archive the 316
+notes still loose from the 1,038 in that tree, not all 1,038. Notes added since
+the previous baseline stay loose, so freshness, which reads only notes in a
+change's range or after the baseline, never depends on an archived note.
+Commit `docs/learn/review-ledger` with the index.
 
 The scoped PR check enforces the same rule on a direct edit: a change that
 alters `coverageBaseline` blocks unless the new value is a commit reachable from
@@ -244,10 +249,14 @@ Five guards sit on top of the layout (#3036, #3394):
   merge base with the working tree and blocks with `note-removed` for each one
   that is gone, whether deleted outright or rewritten under a new hash name.
   Re-record with `docs:review:record` instead; that adds a note. The one
-  exception is compaction: a removed note passes only when an archive this
-  change adds holds its exact merge-base bytes. An added archive that holds
-  anything else (a note the merge base did not have, or other bytes) blocks
-  with `archive-unbacked`.
+  exception is compaction: a removed note passes only when the archive the
+  advance writes holds it. The merge base fully determines that archive, so
+  any other added archive blocks with `archive-unbacked`: it must be named for
+  the merge base's coverage baseline, the same change must advance
+  `coverageBaseline` (the new value is judged as above), and it must hold
+  exactly the merge base's loose notes that were in the tree at that baseline,
+  with their exact merge-base bytes. No PR can therefore take the name the
+  next advance will write.
 - **Archives are immutable.** An archive at the merge base must keep its exact
   bytes in HEAD and the working tree; a modified or removed archive blocks with
   `archive-changed`.

@@ -20,6 +20,7 @@ import {
   listNoteArchiveFilesAt,
   listReviewLedgerFiles,
   listReviewNoteFilesAt,
+  noteArchiveFile,
   parseNoteArchive,
   REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
@@ -201,13 +202,19 @@ const noteProblem = (path, rule, problem) => ({
 /**
  * Notes are append-only (#3036) and note archives immutable (#3394), judged
  * against the merge base, so a note another PR landed later is never mistaken
- * for this change's deletion. A loose note may leave only into an archive this
- * change adds, carrying its exact bytes; that is what
- * `docs:review:record -- --advance-baseline` writes.
+ * for this change's deletion. A loose note may leave only into the one archive
+ * `docs:review:record -- --advance-baseline` writes, which the merge base fully
+ * determines: it is named for the merge base's coverage baseline, the same
+ * change moves that baseline (whose new value `baselineAdvanceProblem` judges),
+ * and it holds exactly the merge base's loose notes that were already in the
+ * tree at that baseline, with their exact merge-base bytes. Any other added
+ * archive is refused, so no PR can pre-empt the name the next advance writes.
  * @param {string} root
  * @param {string} mergeBase
+ * @param {{ from?: string, to?: string }} baseline the coverage baseline at the
+ * merge base (`from`) and in this change (`to`)
  */
-function appendOnlyNoteProblems(root, mergeBase) {
+export function appendOnlyNoteProblems(root, mergeBase, { from, to }) {
   const problems = [];
   const reader = createLearningSourceReader(root);
   const blobs = (ref, files) =>
@@ -232,49 +239,80 @@ function appendOnlyNoteProblems(root, mergeBase) {
         ),
       );
   });
-  /** @type {Map<string, { archive: string, bytes: string }>} */
-  const archived = new Map();
+  const baseNotes = listReviewNoteFilesAt(root, mergeBase);
   const landed = new Set(baseArchives);
+  /** Notes moved by an accepted archive. */
+  const moved = new Set();
   for (const archive of listReviewLedgerFiles(root).filter(
     (file) => isNoteArchiveFile(file) && !landed.has(file),
-  ))
-    for (const [file, bytes] of parseNoteArchive(
+  )) {
+    const held = parseNoteArchive(
       archive,
       reader.read(archive).toString('utf8'),
-    ))
-      archived.set(file, { archive, bytes });
-  const baseNotes = listReviewNoteFilesAt(root, mergeBase);
-  const landedNotes = new Set(baseNotes);
-  const archivedFiles = [...archived.keys()];
-  const archivedAtBase = blobs(mergeBase, archivedFiles);
-  // An added archive may hold only notes that were loose at the merge base,
-  // byte for byte; anything else would put unlanded text out of review's sight.
-  archivedFiles.forEach((file, index) => {
-    const { archive, bytes } = archived.get(file);
-    if (!landedNotes.has(file) || archivedAtBase[index] !== bytes)
+    );
+    const refuse = (why) =>
       problems.push(
         noteProblem(
           archive,
           'archive-unbacked',
-          `note archive ${archive} holds ${file}, which is not a note at the merge base with those exact bytes; an archive only moves landed notes (npm run docs:review:record -- --advance-baseline)`,
+          `note archive ${archive} ${why}; only npm run docs:review:record -- --advance-baseline writes an archive`,
         ),
       );
-  });
-  const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
-  const gone = baseNotes.filter(
-    (file) => !currentNotes.has(file) || !existsSync(join(root, file)),
-  );
-  const goneBytes = blobs(mergeBase, gone);
-  gone.forEach((file, index) => {
-    if (archived.get(file)?.bytes === goneBytes[index]) return;
-    problems.push(
-      noteProblem(
-        file,
-        'note-removed',
-        `note file ${file} exists at the merge base but is gone; notes are append-only; re-record instead (npm run docs:review:record -- <doc> --note "<what you checked>")`,
-      ),
+    const expectedName = /^[0-9a-f]{40}$/.test(String(from))
+      ? noteArchiveFile(from)
+      : undefined;
+    if (archive !== expectedName) {
+      refuse(
+        expectedName
+          ? `is not named for the merge base's coverage baseline (${expectedName})`
+          : 'is added, but the merge base has no coverage baseline to archive',
+      );
+      continue;
+    }
+    if (!to || to === from) {
+      refuse(
+        `is added by a change that does not advance coverageBaseline from ${from}`,
+      );
+      continue;
+    }
+    const atBaseline = new Set(listReviewNoteFilesAt(root, from));
+    const expected = baseNotes.filter((file) => atBaseline.has(file));
+    const missing = expected.filter((file) => !held.has(file));
+    const extra = [...held.keys()].filter((file) => !expected.includes(file));
+    if (missing.length || extra.length) {
+      refuse(
+        `must hold exactly the ${expected.length} loose note(s) the merge base had at baseline ${from}${
+          missing.length ? `; missing ${missing.join(', ')}` : ''
+        }${extra.length ? `; not eligible ${extra.join(', ')}` : ''}`,
+      );
+      continue;
+    }
+    const files = [...held.keys()];
+    const atBase = blobs(mergeBase, files);
+    const changed = files.filter(
+      (file, index) => atBase[index] !== held.get(file),
     );
-  });
+    if (changed.length) {
+      refuse(
+        `does not carry the exact merge-base bytes of ${changed.join(', ')}`,
+      );
+      continue;
+    }
+    for (const file of files) moved.add(file);
+  }
+  const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
+  for (const file of baseNotes)
+    if (
+      (!currentNotes.has(file) || !existsSync(join(root, file))) &&
+      !moved.has(file)
+    )
+      problems.push(
+        noteProblem(
+          file,
+          'note-removed',
+          `note file ${file} exists at the merge base but is gone; notes are append-only; re-record instead (npm run docs:review:record -- <doc> --note "<what you checked>")`,
+        ),
+      );
   return problems;
 }
 
@@ -419,7 +457,10 @@ export function resolveDocumentationFreshness({
   if (layoutV3) {
     const baseState = readReviewStateAt(root, base);
     appendOnlyProblems.push(
-      ...appendOnlyNoteProblems(root, selection.mergeBase),
+      ...appendOnlyNoteProblems(root, selection.mergeBase, {
+        from: previous.ledger?.coverageBaseline,
+        to: current.ledger?.coverageBaseline,
+      }),
     );
     for (const [kind, [before, now]] of Object.entries(entries)) {
       const landed = byPath(

@@ -430,6 +430,25 @@ describe('CI health metrics', () => {
       medianFiles: 2,
       maxFiles: 2,
     });
+    // A compaction merge (#3394): the index, one archive and the loose notes it
+    // moved count as the index alone, not as a 1,000-file ledger merge.
+    const moved = Array.from(
+      { length: 1000 },
+      (_, n) =>
+        `docs/learn/review-ledger/notes/20261001T000000.000Z-${String(n).padStart(12, '0')}.json`,
+    );
+    const compaction = `\x1edocs(docs): advance baseline (#3400)\ndocs/learn/review-ledger/ledger.json\ndocs/learn/review-ledger/notes/archive/${'a'.repeat(40)}.json\n${moved.join('\n')}\n`;
+    expect(ledgerMetrics(compaction)).toEqual({
+      mergesTouchingLedger: 1,
+      medianFiles: 1,
+      maxFiles: 1,
+    });
+    // An ordinary review merge still counts its notes.
+    expect(
+      ledgerMetrics(
+        `\x1efix: review (#3401)\n${moved.slice(0, 3).join('\n')}\n`,
+      ).maxFiles,
+    ).toBe(3);
     expect(ledgerMetrics('')).toEqual({
       mergesTouchingLedger: 0,
       medianFiles: null,

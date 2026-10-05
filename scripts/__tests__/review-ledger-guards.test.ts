@@ -26,6 +26,7 @@ import {
   serializeRecordFile,
   writeReviewFiles,
 } from '../lib/review-ledger-store.mjs';
+import { appendOnlyNoteProblems } from '../lib/documentation-freshness.mjs';
 import { pinnedFreshnessEnv } from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
@@ -940,6 +941,65 @@ describe('note archives (#3394)', () => {
         blocking: [],
         appendOnly: 'verified',
       });
+    });
+  });
+
+  // F2: the guard itself, called directly. The CLI parses every note first,
+  // so changed bytes under an old name fail as notes-edited before the guard
+  // runs; these fixtures skip that parse to pin the guard's own comparisons.
+  describe('the guard function, past the name-hash check', () => {
+    const name = (n: number) =>
+      `${NOTES}/2026010${n}T000000.000Z-${String(n).repeat(12)}.json`;
+    /** A baseline commit with note 1, then a merge base that adds note 2. */
+    function repo() {
+      const root = makeTempDir('station-archive-guard-');
+      const write = (path: string, text: string) => {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), text);
+      };
+      git(root, ['init', '-q', '-b', 'main']);
+      write(name(1), 'note one\n');
+      commit(root, 'baseline');
+      const from = git(root, ['rev-parse', 'HEAD']);
+      write(name(2), 'note two\n');
+      commit(root, 'merge base');
+      const mergeBase = git(root, ['rev-parse', 'HEAD']);
+      const compact = (notes: Record<string, string>) => {
+        write(
+          noteArchiveFile(from),
+          serializeNoteArchive(new Map(Object.entries(notes))),
+        );
+        for (const file of Object.keys(notes)) git(root, ['rm', '-q', file]);
+        commit(root, 'compaction');
+        return appendOnlyNoteProblems(root, mergeBase, {
+          from,
+          to: 'f'.repeat(40),
+        }).map(({ rule, path }: Entry) => [rule, path]);
+      };
+      return { from, compact };
+    }
+
+    it('accepts the archive that carries the baseline note byte for byte', () => {
+      expect(repo().compact({ [name(1)]: 'note one\n' })).toEqual([]);
+    });
+
+    it('refuses other bytes under the same name, and the removal with it', () => {
+      const f = repo();
+      expect(f.compact({ [name(1)]: 'note one, edited\n' })).toEqual([
+        ['archive-unbacked', noteArchiveFile(f.from)],
+        ['note-removed', name(1)],
+      ]);
+    });
+
+    it('refuses a note added after the baseline', () => {
+      const f = repo();
+      expect(
+        f.compact({ [name(1)]: 'note one\n', [name(2)]: 'note two\n' }),
+      ).toEqual([
+        ['archive-unbacked', noteArchiveFile(f.from)],
+        ['note-removed', name(1)],
+        ['note-removed', name(2)],
+      ]);
     });
   });
 
