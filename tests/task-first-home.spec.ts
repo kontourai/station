@@ -6,7 +6,10 @@ import type {
   BrowserPaneAccessView,
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import type { WorkspaceFilePreview } from '@kontourai/station-contracts/workspace-file-preview';
+import type {
+  WorkspaceFileChanges,
+  WorkspaceFilePreview,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
@@ -291,6 +294,25 @@ async function mockTaskFirstHome(
         content: 'export function App() {}\n',
       };
       await route.fulfill(json(preview));
+      return;
+    }
+    // The pane then reads that file's changes against HEAD (#3365): the file
+    // came from the active-work changed-files list, so it has a patch.
+    if (
+      path === '/api/projects/station/file-preview/changes' &&
+      route.request().method() === 'POST'
+    ) {
+      const changes: WorkspaceFileChanges = {
+        state: 'changed',
+        base: 'HEAD',
+        patch:
+          'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx\n' +
+          '--- a/src-ui/src/App.tsx\n' +
+          '+++ b/src-ui/src/App.tsx\n' +
+          '@@ -0,0 +1 @@\n' +
+          '+export function App() {}\n',
+      };
+      await route.fulfill(json(changes));
       return;
     }
     if (path === '/api/projects/station/layouts') {
