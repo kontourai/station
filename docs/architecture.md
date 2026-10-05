@@ -436,8 +436,8 @@ package READMEs for supported entry points.
 
 #### Attached external session follow
 
-Station discovers supported Claude and Codex transcripts through its Session
-sources. A `read-only-attached` record imports observed history without taking
+Station discovers supported Claude Code and Codex transcripts and OpenCode's
+session database through its Session sources. A `read-only-attached` record imports observed history without taking
 over the external process. Missing files or stale observations do not prove that
 the external engine is live or controllable.
 
