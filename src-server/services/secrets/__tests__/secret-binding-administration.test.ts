@@ -43,6 +43,8 @@ import {
   FileSecretBindingAdministration,
   SecretBindingConflictError,
   SecretBindingIntegrationService,
+  SecretBindingNotFoundError,
+  SecretBindingPersonGrantError,
   SecretBindingResolutionError,
 } from '../secret-binding-administration.js';
 
@@ -707,6 +709,21 @@ describe('FileSecretBindingAdministration', () => {
 describe('secret binding ownership (#3279)', () => {
   const ALICE = 'human:tailscale-serve:alice';
   const BOB = 'human:tailscale-serve:bob';
+  /**
+   * `grant` refuses a person's binding, so a grant on one exists only in a
+   * document written before that refusal or edited by hand. Add one to the
+   * record exactly as the writer persisted it.
+   */
+  const seedLegacyGrant = async (
+    root: string,
+    id: string,
+    grant: { integrationId: string; envName: string },
+  ) => {
+    const path = join(root, 'security', 'secret-bindings.json');
+    const document = JSON.parse(await readFile(path, 'utf8'));
+    document.bindings[id].grants = [{ kind: 'mcp-integration-env', ...grant }];
+    await writeFile(path, JSON.stringify(document), { mode: 0o600 });
+  };
 
   test('a pre-#3279 binding document reads as instance-owned and keeps resolving for the shared child', async () => {
     const root = await home();
@@ -808,17 +825,42 @@ describe('secret binding ownership (#3279)', () => {
         viewer: { principalId: BOB },
       }),
     ).rejects.toThrow('Secret binding not found.');
-    const granted = await service.grant({
-      id: 'alice-mail',
-      grant: {
-        kind: 'mcp-integration-env',
-        integrationId: 'mail',
-        envName: 'TOKEN',
+    // Shared consumers name no principal, so even the owner cannot grant;
+    // another person still gets not-found from the same call.
+    for (const grant of [
+      { kind: 'mcp-integration-env', integrationId: 'mail', envName: 'TOKEN' },
+      {
+        kind: 'acp-provider-header',
+        connectionId: 'conn-mail',
+        providerId: 'provider-mail',
+        headerName: 'X-Mail-Token',
       },
-      expectedRevision: 1,
-      viewer: { principalId: ALICE },
+    ] as const) {
+      await expect(
+        service.grant({
+          id: 'alice-mail',
+          grant,
+          expectedRevision: 1,
+          viewer: { principalId: ALICE },
+        }),
+      ).rejects.toBeInstanceOf(SecretBindingPersonGrantError);
+      await expect(
+        service.grant({
+          id: 'alice-mail',
+          grant,
+          expectedRevision: 1,
+          viewer: { principalId: BOB },
+        }),
+      ).rejects.toBeInstanceOf(SecretBindingNotFoundError);
+    }
+    expect(
+      await service.get('alice-mail', { principalId: ALICE }),
+    ).toMatchObject({ revision: 1, grants: [] });
+    // Resolution still refuses a legacy grant for anyone but the owner.
+    await seedLegacyGrant(root, 'alice-mail', {
+      integrationId: 'mail',
+      envName: 'TOKEN',
     });
-    expect(granted.revision).toBe(2);
     const refs = { TOKEN: 'alice-mail' };
     // A shared child (no principal) and another person are refused.
     for (const principalId of [undefined, BOB]) {
@@ -854,15 +896,9 @@ describe('secret binding ownership (#3279)', () => {
       },
       viewer: { principalId: ALICE },
     });
-    await service.grant({
-      id: 'alice-crm',
-      grant: {
-        kind: 'mcp-integration-env',
-        integrationId: 'crm',
-        envName: 'K',
-      },
-      expectedRevision: 1,
-      viewer: { principalId: ALICE },
+    await seedLegacyGrant(root, 'alice-crm', {
+      integrationId: 'crm',
+      envName: 'K',
     });
     const refs = { K: 'alice-crm' };
     await expect(

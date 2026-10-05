@@ -71,6 +71,23 @@ export class SecretBindingNotFoundError extends Error {
   }
 }
 
+/** Stable refusal copy for granting a person's binding to a shared consumer. */
+export const SECRET_BINDING_PERSON_GRANT_MESSAGE =
+  'A person-owned secret binding cannot be granted to a shared integration or provider.';
+
+/**
+ * #3279: stdio MCP children and ACP providers are shared and name no
+ * principal, so resolution would refuse a person's binding for every caller.
+ * Granting it would let one person lock a shared integration; refuse instead
+ * until a child can serve exactly one principal.
+ */
+export class SecretBindingPersonGrantError extends Error {
+  constructor() {
+    super(SECRET_BINDING_PERSON_GRANT_MESSAGE);
+    this.name = 'SecretBindingPersonGrantError';
+  }
+}
+
 /** Stable, non-Datum diagnostic that is safe to show outside the secret seam. */
 export class SecretBindingResolutionError extends Error {
   constructor(
@@ -161,6 +178,12 @@ function secretBindingVisibleTo(
   return viewer?.principalId === owner.principalId;
 }
 
+function secretBindingPersonOwned(
+  binding: Pick<SecretBinding, 'owner'>,
+): boolean {
+  return Boolean(binding.owner && binding.owner.kind !== 'instance');
+}
+
 /**
  * Materialization authority for an owner: an instance binding may serve any
  * consumer; a person's binding serves only that person's invocation (and,
@@ -191,11 +214,7 @@ export type IntegrationSecretBindingGranter = Pick<
  * possible after one side has committed.
  */
 export interface SecretBindingIntegrationAdministration {
-  /** Lists only the references whose binding the viewer can see. */
-  getIntegrationBindings(input: {
-    integrationId: string;
-    viewer?: SecretBindingViewer;
-  }): Promise<{
+  getIntegrationBindings(input: { integrationId: string }): Promise<{
     integrationId: string;
     secretEnvBindingIds: Record<string, string>;
   }>;
@@ -256,30 +275,16 @@ export class SecretBindingIntegrationService
     return this.mutateIntegration ? this.mutateIntegration(id, write) : write();
   }
 
-  async getIntegrationBindings(input: {
-    integrationId: string;
-    viewer?: SecretBindingViewer;
-  }): Promise<{
+  async getIntegrationBindings(input: { integrationId: string }): Promise<{
     integrationId: string;
     secretEnvBindingIds: Record<string, string>;
   }> {
+    // Every reference, unfiltered: `grant` admits only instance bindings to
+    // a shared consumer, so a reference never names a person's binding.
     const def = await this.configLoader.loadIntegration(input.integrationId);
-    const refs = Object.entries(def.secretEnvRefs ?? {});
-    // A reference to another person's binding would name it; show only the
-    // references this viewer could read through `get`.
-    const visible =
-      refs.length > 0
-        ? new Set(
-            (await this.bindings.list(input.viewer)).map(
-              (binding) => binding.id,
-            ),
-          )
-        : new Set<string>();
     return {
       integrationId: input.integrationId,
-      secretEnvBindingIds: Object.fromEntries(
-        refs.filter(([, id]) => visible.has(id)),
-      ),
+      secretEnvBindingIds: { ...(def.secretEnvRefs ?? {}) },
     };
   }
 
@@ -300,9 +305,6 @@ export class SecretBindingIntegrationService
     const def = await this.assertConsumer(input.integrationId, input.envName);
     const configured = def.secretEnvRefs?.[input.envName];
     if (configured && configured !== input.id) {
-      // A hidden or missing id refuses as not found before this check can
-      // reveal which binding the environment uses.
-      await this.requiredVisibleBinding(input.id, input.viewer);
       throw new Error(
         'The integration environment is already bound to a different secret binding.',
       );
@@ -314,11 +316,15 @@ export class SecretBindingIntegrationService
     );
     // Grant FIRST: a config reference never becomes live unless the binding
     // authority has recorded permission for exactly this consumer/env pair.
-    const alreadyGranted = secretBindingHasGrant(current, {
-      kind: 'mcp-integration-env',
-      integrationId: input.integrationId,
-      envName: input.envName,
-    });
+    // A person's binding always goes through `grant`, which refuses it, even
+    // if a grant was recorded before that refusal existed.
+    const alreadyGranted =
+      !secretBindingPersonOwned(current) &&
+      secretBindingHasGrant(current, {
+        kind: 'mcp-integration-env',
+        integrationId: input.integrationId,
+        envName: input.envName,
+      });
     const binding = alreadyGranted
       ? current
       : await this.bindings.grant({
@@ -370,7 +376,6 @@ export class SecretBindingIntegrationService
     const def = await this.assertConsumer(input.integrationId, input.envName);
     const configured = def.secretEnvRefs?.[input.envName];
     if (configured && configured !== input.id) {
-      await this.requiredVisibleBinding(input.id, input.viewer);
       throw new Error(
         'The integration environment is bound to a different secret binding.',
       );
@@ -752,6 +757,10 @@ export class FileSecretBindingAdministration
             input.expectedRevision,
             input.viewer,
           );
+          // After the visibility lookup, so another person's binding still
+          // refuses as not found rather than revealing itself here.
+          if (secretBindingPersonOwned(current))
+            throw new SecretBindingPersonGrantError();
           const alreadyGranted = secretBindingHasGrant(current, input.grant);
           if (alreadyGranted)
             throw new Error('The integration environment is already granted.');

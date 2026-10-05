@@ -9,8 +9,10 @@ import type {
 import {
   SECRET_BINDING_CONFLICT_MESSAGE,
   SECRET_BINDING_NOT_FOUND_MESSAGE,
+  SECRET_BINDING_PERSON_GRANT_MESSAGE,
   SecretBindingConflictError,
   SecretBindingNotFoundError,
+  SecretBindingPersonGrantError,
 } from '../services/secrets/secret-binding-administration.js';
 
 /** Operator-only mount; runtime composition owns its access:manage gate. */
@@ -49,7 +51,6 @@ export function createSecretBindingRoutes(
     return respond(c, () =>
       consumers.getIntegrationBindings({
         integrationId: c.req.param('integrationId'),
-        viewer: viewerOf(c),
       }),
     );
   });
@@ -283,5 +284,7 @@ function secretBindingRouteFailure(error: unknown): {
     return { status: 409, error: SECRET_BINDING_CONFLICT_MESSAGE };
   if (error instanceof SecretBindingNotFoundError)
     return { status: 404, error: SECRET_BINDING_NOT_FOUND_MESSAGE };
+  if (error instanceof SecretBindingPersonGrantError)
+    return { status: 400, error: SECRET_BINDING_PERSON_GRANT_MESSAGE };
   return { status: 400, error: 'Invalid secret binding request.' };
 }

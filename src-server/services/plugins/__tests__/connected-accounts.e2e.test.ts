@@ -626,74 +626,97 @@ test('two principals each reach the MCP server with their own token and cannot u
       envName,
       expectedRevision,
     });
+    const acpHeader = (expectedRevision: number) => ({
+      kind: 'acp-provider-header',
+      connectionId: 'conn-mail',
+      providerId: 'provider-mail',
+      headerName: 'X-Mail-Token',
+      expectedRevision,
+    });
+    const NOT_FOUND = {
+      status: 404,
+      body: JSON.stringify({
+        success: false,
+        error: 'Secret binding not found.',
+      }),
+    };
+    const bobAgainstHiddenAndMissing = async (
+      method: 'GET' | 'POST' | 'PUT',
+      suffix: string,
+      body: unknown,
+    ) => ({
+      hidden: await raw(
+        app,
+        method,
+        `/api/secret-bindings/alice-mail${suffix}`,
+        'bob-credential',
+        body,
+      ),
+      missing: await raw(
+        app,
+        method,
+        `/api/secret-bindings/no-such-binding${suffix}`,
+        'bob-credential',
+        body,
+      ),
+    });
     // Someone else's binding answers exactly like an id that does not exist:
     // same status, same bytes, on every route that names a binding.
-    const assertHiddenLikeMissing = async () => {
-      const probes: Array<[string, 'GET' | 'POST' | 'PUT', string, unknown]> = [
-        ['get', 'GET', '', undefined],
-        [
-          'replace',
-          'PUT',
-          '',
-          { name: 'Taken', authRef: { env: 'TAKEN' }, expectedRevision: 1 },
-        ],
-        ['revoke', 'POST', '/revoke', { expectedRevision: 1 }],
-        ['bind', 'POST', '/bind', consumer('MAIL_TOKEN', 1)],
-        ['unbind', 'POST', '/unbind', consumer('MAIL_TOKEN', 1)],
-      ];
-      for (const [label, method, suffix, body] of probes) {
-        const hidden = await raw(
-          app,
-          method,
-          `/api/secret-bindings/alice-mail${suffix}`,
-          'bob-credential',
-          body,
-        );
-        const missing = await raw(
-          app,
-          method,
-          `/api/secret-bindings/no-such-binding${suffix}`,
-          'bob-credential',
-          body,
-        );
-        expect(hidden, label).toEqual(missing);
-        expect(hidden, label).toEqual({
-          status: 404,
-          body: JSON.stringify({
-            success: false,
-            error: 'Secret binding not found.',
-          }),
-        });
-      }
-    };
-    await assertHiddenLikeMissing();
+    const probes: Array<[string, 'GET' | 'POST' | 'PUT', string, unknown]> = [
+      ['get', 'GET', '', undefined],
+      [
+        'replace',
+        'PUT',
+        '',
+        { name: 'Taken', authRef: { env: 'TAKEN' }, expectedRevision: 1 },
+      ],
+      ['revoke', 'POST', '/revoke', { expectedRevision: 1 }],
+      ['bind', 'POST', '/bind', consumer('MAIL_TOKEN', 1)],
+      ['unbind', 'POST', '/unbind', consumer('MAIL_TOKEN', 1)],
+      ['acp-bind', 'POST', '/bind', acpHeader(1)],
+      ['acp-unbind', 'POST', '/unbind', acpHeader(1)],
+    ];
+    for (const [label, method, suffix, body] of probes) {
+      const { hidden, missing } = await bobAgainstHiddenAndMissing(
+        method,
+        suffix,
+        body,
+      );
+      expect(hidden, label).toEqual(missing);
+      expect(hidden, label).toEqual(NOT_FOUND);
+    }
 
-    // The owner binds and unbinds their own binding to a stdio env.
-    const aliceBind = await post(
-      app,
-      '/api/secret-bindings/alice-mail/bind',
-      'alice-credential',
-      consumer('MAIL_TOKEN', 1),
-    );
-    expect(aliceBind.status, JSON.stringify(aliceBind.body)).toBe(200);
-    expect(aliceBind.body.data).toMatchObject({
-      outcome: 'complete',
-      binding: { id: 'alice-mail', revision: 2 },
-    });
-    const mailGrant = {
-      kind: 'mcp-integration-env',
-      integrationId: LOCAL,
-      envName: 'MAIL_TOKEN',
+    // The owner cannot grant their binding to a shared child: a stdio MCP
+    // child or ACP provider names no principal, so it could never use it.
+    const PERSON_GRANT = {
+      status: 400,
+      body: JSON.stringify({
+        success: false,
+        error:
+          'A person-owned secret binding cannot be granted to a shared integration or provider.',
+      }),
     };
-    expect(
-      (await get(app, '/api/secret-bindings/alice-mail', 'alice-credential'))
-        .body.data.grants,
-    ).toEqual([mailGrant]);
-    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toEqual({
-      MAIL_TOKEN: 'alice-mail',
-    });
-    // Bound, the env's reference still cannot tell Bob which binding it is.
-    await assertHiddenLikeMissing();
+    for (const [label, body] of [
+      ['mcp-env', consumer('MAIL_TOKEN', 1)],
+      ['acp-header', acpHeader(1)],
+    ] as const) {
+      expect(
+        await raw(
+          app,
+          'POST',
+          '/api/secret-bindings/alice-mail/bind',
+          'alice-credential',
+          body,
+        ),
+        label,
+      ).toEqual(PERSON_GRANT);
+    }
+    const aliceAfter = (
+      await get(app, '/api/secret-bindings/alice-mail', 'alice-credential')
+    ).body.data;
+    expect(aliceAfter).toMatchObject({ revision: 1, grants: [] });
+    expect(aliceAfter.acpProviderHeaderGrants).toBeUndefined();
+    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toBeUndefined();
 
     // An instance binding binds exactly as before, for anyone.
     const crmBind = await post(
@@ -703,34 +726,49 @@ test('two principals each reach the MCP server with their own token and cannot u
       consumer('CRM_TOKEN', 1),
     );
     expect(crmBind.status, JSON.stringify(crmBind.body)).toBe(200);
-    expect(crmBind.body.data.binding.grants).toEqual([
-      { ...mailGrant, envName: 'CRM_TOKEN' },
-    ]);
-    const integrationRefs = async (credential: Credential) =>
-      (await get(app, `/api/secret-bindings/integrations/${LOCAL}`, credential))
-        .body.data.secretEnvBindingIds;
-    expect(await integrationRefs('alice-credential')).toEqual({
-      MAIL_TOKEN: 'alice-mail',
-      CRM_TOKEN: 'shared-crm',
-    });
-    expect(await integrationRefs('bob-credential')).toEqual({
-      CRM_TOKEN: 'shared-crm',
-    });
-
-    const aliceUnbind = await post(
-      app,
-      '/api/secret-bindings/alice-mail/unbind',
-      'alice-credential',
-      consumer('MAIL_TOKEN', 2),
-    );
-    expect(aliceUnbind.status, JSON.stringify(aliceUnbind.body)).toBe(200);
-    expect(aliceUnbind.body.data).toMatchObject({
+    expect(crmBind.body.data).toMatchObject({
       outcome: 'complete',
-      binding: { id: 'alice-mail', revision: 3, grants: [] },
+      binding: {
+        id: 'shared-crm',
+        revision: 2,
+        grants: [
+          {
+            kind: 'mcp-integration-env',
+            integrationId: LOCAL,
+            envName: 'CRM_TOKEN',
+          },
+        ],
+      },
     });
-    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toEqual({
-      CRM_TOKEN: 'shared-crm',
-    });
+    // Every caller, including a device without a person, sees every
+    // reference: none can name a person's binding.
+    for (const credential of [
+      'alice-credential',
+      'bob-credential',
+      'kiosk-credential',
+    ] as const) {
+      expect(
+        (
+          await get(
+            app,
+            `/api/secret-bindings/integrations/${LOCAL}`,
+            credential,
+          )
+        ).body.data,
+        credential,
+      ).toEqual({
+        integrationId: LOCAL,
+        secretEnvBindingIds: { CRM_TOKEN: 'shared-crm' },
+      });
+    }
+    // On an env bound to another binding, Alice's hidden id and a missing id
+    // still answer Bob identically.
+    const boundEnv = await bobAgainstHiddenAndMissing(
+      'POST',
+      '/bind',
+      consumer('CRM_TOKEN', 1),
+    );
+    expect(boundEnv.hidden).toEqual(boundEnv.missing);
     // The body cannot name another principal as owner.
     const forged = await post(app, '/api/secret-bindings', 'bob-credential', {
       id: 'forged',

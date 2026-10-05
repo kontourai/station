@@ -1359,15 +1359,19 @@ owner id is an existing human `PrincipalRef.id` from request resolution; a paire
 device without a person, a non-human principal, or a hosted request owns none
 ([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
 List, get, replace, revoke, and integration bind/unbind (including the grant and
-ungrant inside them) take the request principal as viewer, so an owner can bind their
-own binding to a stdio MCP env. One typed not-found refusal covers a missing binding
-and another person's, and `/api/secret-bindings` returns it as the same 404 body on
-get, replace, revoke, bind, and unbind; request validation that runs before the lookup
-still returns 400 for both. The integration binding projection lists only references
-whose binding the viewer can see. A caller without a viewer, including stored-env
-migration, sees and grants only instance bindings. Resolution refuses a person-owned binding with
-`owner_mismatch` unless the invocation names that principal (and Project); shared MCP
-children and ACP providers name none, so they never receive a person's secret.
+ungrant inside them) take the request principal as viewer. One typed not-found refusal
+covers a missing binding and another person's, and `/api/secret-bindings` returns it as
+the same 404 body on get, replace, revoke, bind, and unbind; request validation that
+runs before the lookup still returns 400 for both. `create` with an id already in use
+refuses whoever owns it, so it reveals that the id exists; that follows from the single
+global id namespace and is accepted for now. A caller without a viewer, including
+stored-env migration, sees and grants only instance bindings. Resolution refuses a
+person-owned binding with `owner_mismatch` unless the invocation names that principal
+(and Project). Stdio MCP children and ACP providers are shared and name none, so
+`grant` refuses a person-owned binding for either consumer (a typed 400, checked after
+the not-found lookup) until a child can serve a single principal. New integration env
+references therefore name only instance bindings, and the integration binding
+projection lists every reference, unfiltered, for every caller.
 
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
