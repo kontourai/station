@@ -40,7 +40,11 @@
 
     "scripts/__tests__/qualification-evidence.test.ts",
 
-    "scripts/__tests__/qualification-repair.test.ts"
+    "scripts/__tests__/qualification-repair.test.ts",
+
+    ".github/workflows/qualification-health.yml",
+
+    "scripts/qualification-health.mjs"
   ],
 
   "checks": [

@@ -18,6 +18,7 @@ const run = (id = 1, hours = 1, extra = {}) => ({
   status: 'completed',
   conclusion: 'success',
   created_at: ago(hours),
+  updated_at: ago(hours - 0.2),
   html_url: `https://example.test/runs/${id}`,
   ...extra,
 });
@@ -41,6 +42,7 @@ async function observe({
   runs = [run()],
   jobs = { 1: [gate()] },
   issues = [issue],
+  manualRuns = [] as ReturnType<typeof run>[],
   failJobs = false,
   enabled = true,
 } = {}) {
@@ -66,7 +68,11 @@ async function observe({
     }
     reads.push(path);
     if (path.endsWith('/runs'))
-      response.end(JSON.stringify({ workflow_runs: runs }));
+      response.end(
+        JSON.stringify({
+          workflow_runs: path.includes('/nightly.yml/') ? manualRuns : runs,
+        }),
+      );
     else if (path.endsWith('/jobs')) {
       if (failJobs) {
         response.writeHead(503);
@@ -218,6 +224,45 @@ describe('qualification health through the GitHub API', () => {
           gate(),
           gate({
             name: 'nightly / 3 · Publish native cohort / Record ledger and markers',
+          }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(true);
+  });
+
+  it('retains an unresolved delivery past the run lookback until actual publication', async () => {
+    const { result } = await observe({
+      issues: [
+        {
+          ...issue,
+          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z"} -->',
+        },
+      ],
+    });
+    expect(result.healthy).toBe(false);
+    expect(result.summary).toContain('/actions/runs/99');
+  });
+
+  it('allows a successful manual recovery to resolve the retained delivery', async () => {
+    const { result } = await observe({
+      issues: [
+        {
+          ...issue,
+          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z"} -->',
+        },
+      ],
+      manualRuns: [
+        run(2, 1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'workflow_dispatch',
+        }),
+      ],
+      jobs: {
+        1: [gate()],
+        2: [
+          gate({
+            name: '3 · Publish native cohort / Record ledger and markers',
           }),
         ],
       },

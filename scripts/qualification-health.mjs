@@ -13,6 +13,28 @@ export async function checkQualificationHealth(
   now = Date.now(),
 ) {
   const options = { env };
+  const issues = await listGithub(
+    'issues?state=all&labels=bug,P1',
+    null,
+    options,
+  );
+  const issue = issues.find(
+    (item) =>
+      !item.pull_request &&
+      item.title === TITLE &&
+      item.user?.login === 'github-actions[bot]',
+  );
+  const marker = /<!-- station-qualification-health:(\{[^\n]*\}) -->/.exec(
+    issue?.state === 'open' ? issue.body : '',
+  );
+  const retained = marker ? JSON.parse(marker[1]) : null;
+  if (
+    retained &&
+    (!Number.isSafeInteger(retained.id) ||
+      retained.id <= 0 ||
+      !Number.isFinite(Date.parse(retained.at)))
+  )
+    throw new Error('Invalid retained delivery incident');
   const since = new Date(now - 48 * HOUR).toISOString();
   const runs = (
     await listGithub(
@@ -71,13 +93,61 @@ export async function checkQualificationHealth(
     });
   }
   const latest = observed[0];
-  const failedDelivery = observed.find(
-    (item) =>
-      item.passed &&
-      item.run.status === 'completed' &&
-      item.run.conclusion !== 'success',
+  const failures = observed
+    .filter(
+      (item) =>
+        item.passed &&
+        item.run.status === 'completed' &&
+        item.run.conclusion !== 'success',
+    )
+    .map((item) => ({ id: item.run.id, at: item.run.updated_at }));
+  if (failures.some((item) => !Number.isFinite(Date.parse(item.at))))
+    throw new Error('Invalid failed delivery timestamp');
+  const failedDelivery = [...failures, ...(retained ? [retained] : [])].sort(
+    (a, b) => Date.parse(b.at) - Date.parse(a.at),
+  )[0];
+  const manualRuns = await listGithub(
+    `actions/workflows/nightly.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
+    'workflow_runs',
+    options,
   );
-  const delivered = observed.find((item) => item.delivered);
+  const recoveries = [];
+  for (const run of manualRuns.filter(
+    (run) =>
+      run.path === '.github/workflows/nightly.yml' &&
+      run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
+      run.head_branch === 'main' &&
+      run.event === 'workflow_dispatch' &&
+      run.status === 'completed' &&
+      run.conclusion === 'success',
+  )) {
+    const jobs = await listGithub(
+      `actions/runs/${run.id}/jobs`,
+      'jobs',
+      options,
+    );
+    recoveries.push(
+      ...jobs.filter(
+        (job) =>
+          job.name.endsWith(
+            '3 · Publish native cohort / Record ledger and markers',
+          ) && job.conclusion === 'success',
+      ),
+    );
+  }
+  const delivered = [
+    ...observed
+      .filter((item) => item.delivered && item.run.conclusion === 'success')
+      .map((item) => item.run.updated_at),
+    ...recoveries.map((job) => job.completed_at),
+  ].some(
+    (at) =>
+      Number.isFinite(Date.parse(at)) &&
+      Date.parse(at) <= now &&
+      failedDelivery &&
+      Date.parse(at) > Date.parse(failedDelivery.at),
+  );
+  const pendingDelivery = !delivered ? failedDelivery : null;
   const green = observed
     .filter((item) => item.passed)
     .sort((a, b) => b.completed - a.completed)[0];
@@ -94,20 +164,17 @@ export async function checkQualificationHealth(
       'No successful source qualification within 14 hours (two cadence intervals plus two-hour grace).',
     );
   if (
-    latest &&
-    !latest.passed &&
-    latest.run.status !== 'completed' &&
-    now - Date.parse(latest.run.created_at) > 3 * HOUR
+    observed.some(
+      (item) =>
+        !item.passed &&
+        item.run.status !== 'completed' &&
+        now - Date.parse(item.run.created_at) > 3 * HOUR,
+    )
   )
     reasons.push(
       'The latest qualification has remained queued or running for more than 3 hours.',
     );
-  if (
-    failedDelivery &&
-    (!delivered ||
-      Date.parse(delivered.run.created_at) <=
-        Date.parse(failedDelivery.run.created_at))
-  )
+  if (pendingDelivery)
     reasons.push(
       'Source qualification passed, but its Nightly decision or publication did not complete successfully.',
     );
@@ -127,8 +194,8 @@ export async function checkQualificationHealth(
     green
       ? `Latest passing gate: ${green.run.html_url}, source \`${green.run.head_sha}\`, completed ${new Date(green.completed).toISOString()}.`
       : 'No passing qualification gate found in the last 48 hours.',
-    failedDelivery
-      ? `Latest failed qualified delivery run: ${failedDelivery.run.html_url}. A later skipped publication does not resolve it.`
+    pendingDelivery
+      ? `Unresolved qualified delivery run: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${pendingDelivery.id}. A later skipped publication does not resolve it.`
       : 'No failed qualified delivery run found in the last 48 hours.',
     '',
     'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run main-qualification.yml --repo ' +
@@ -136,19 +203,12 @@ export async function checkQualificationHealth(
       ' --ref main -F force=true`.',
     'This watchdog launches no tests, dispatches no runs and changes no publication authority. Nightly remains bound to an exact qualified source.',
   ];
-  const issues = await listGithub(
-    'issues?state=all&labels=bug,P1',
-    null,
-    options,
-  );
-  const issue = issues.find(
-    (item) =>
-      !item.pull_request &&
-      item.title === TITLE &&
-      item.user?.login === 'github-actions[bot]',
-  );
   if (reasons.length) {
-    const body = lines.join('\n');
+    const body =
+      lines.join('\n') +
+      (pendingDelivery
+        ? `\n\n<!-- station-qualification-health:${JSON.stringify(pendingDelivery)} -->`
+        : '');
     if (issue?.state !== 'open' || issue.body !== body)
       await github(issue ? `issues/${issue.number}` : 'issues', {
         env,

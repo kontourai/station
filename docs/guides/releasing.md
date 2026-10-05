@@ -73,7 +73,11 @@ failed Nightly decision or publication after source qualification passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
 
-The tracker closes only when all observed conditions are healthy. A missing or
+Delivery failures remain in the tracker beyond its 48-hour run lookback until
+a later successful native ledger job, including manual Nightly recovery,
+resolves them. A green qualification that skips delivery because the source
+is already reserved cannot clear the failure. The tracker closes only when
+all observed conditions are healthy. A missing or
 skipped qualification gate is not a success, even if the overall run is green.
 API errors fail the watchdog without clearing its issue; Main pipeline health
 watches watchdog failures. The watchdog has its own GitHub schedule, so it can
@@ -170,7 +174,7 @@ for local automation credentials and the repository instructions for arm/confirm
 Nightly has two entry points, and both serialize on one `nightly` concurrency
 group:
 
-- **From qualification** (dormant until the owner sets the repository variable
+- **From qualification** (enabled when the owner sets the repository variable
   `STATION_QUALIFIED_NIGHTLY` to `enabled`, after admitting
   `main-qualification.yml@refs/heads/main` to the GCP workload identity
   condition that Android staging uses). When a main qualification run passes, it calls
@@ -185,15 +189,16 @@ group:
   reservation already names the commit, or a native Nightly shipped less than
   20 hours ago. That keeps this entry at about one build a day. A reserved
   commit without a ledger row is not retried automatically; dispatch Nightly
-  to retry. npm trusted publishing matches the top-level workflow, so this
-  entry skips the CLI publication until `main-qualification.yml` is a
-  confirmed trusted publisher.
+  to retry. npm trusted publishing matches the top-level workflow: configure
+  `main-qualification.yml` as a trusted publisher for the CLI before enabling
+  this entry. A rejected OIDC exchange fails the job; it is not a successful
+  skip.
 - **Manual recovery.** Nightly has no independent schedule. Its dispatch
   qualifies the workflow-event SHA, reusing valid exact-source evidence or
   running fresh qualification when necessary. It cannot silently select an
   older green ancestor. Before relying on CLI delivery from the qualified
   entry, confirm npm trusts the top-level `main-qualification.yml` workflow;
-  the existing OIDC preflight skips CLI publication when that trust is absent.
+  the OIDC preflight fails publication when that trust is absent.
 
 The native cohort refuses a source its published markers already contain, so a
 Nightly that waited behind a newer one cannot move the markers back. A failed
