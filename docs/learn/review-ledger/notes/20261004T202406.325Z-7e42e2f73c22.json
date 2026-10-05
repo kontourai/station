@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/reference/product-laws.md","note":"Generated projection is unchanged: the manifest bounds text still says 150s total runtime, which remains the base constant MAX_PRODUCT_LAW_RUNTIME_MS. The gate scales only the applied ceiling at run time via productLawRuntimeBudgetMs, and the unscaled constant still feeds renderProductLawSection.","inputs":["docs/reference/product-laws.md","scripts/lib/product-laws.mjs","scripts/product-law-gate.mjs"]}
+  ]
+}

@@ -36,7 +36,8 @@ rather than creating a second Interface reference.
 
 ## RecoveryLedger
 
-The RecoveryLedger Interface owns arm, immutable projection, due/profile claim,
+The RecoveryLedger Interface owns arm, immutable projection, due/profile claim
+(and the user's immediate claim of a waiting usage-limit stop, #3157),
 provider observation, startup reconciliation, terminal outcomes, cancellation,
 and compensation. `arm` is idempotent by fingerprint: a collision returns the
 original durable intent rather than merging caller input. Snapshots are frozen

@@ -12,6 +12,16 @@ vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
   useShowSurfacePage: () => showSurfacePage,
 }));
+// The rows' git locations and project colours are read from the session
+// and Project queries (the dock's own hooks), and this file mounts no query
+// client. The cross-surface agreement is pinned in ActivityList.test and
+// ChatInboxHoverCard.test, which feed those reads.
+vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
+  useGitLocationByThreadId: () => new Map(),
+}));
+vi.mock('../../../hooks/useProjectAccents', () => ({
+  useProjectAccents: () => new Map(),
+}));
 
 import { HomeSurface } from '../HomeSurface';
 
@@ -133,12 +143,32 @@ describe('HomeSurface composition', () => {
     showSurfacePage.mockClear();
   });
 
-  test('keeps the page heading and the guided actions', () => {
+  test('an empty Station keeps the page heading and leads with the cards (V1)', () => {
+    renderHome({ workItems: [] });
+    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
+    expect(screen.queryByText('Skip to recent work')).toBeNull();
+  });
+
+  test('a page with work leads with the form and the lanes; the cards wait below (V1, Q3, U2)', () => {
     renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
-    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: "What's next?" })).toBeNull();
+    // Document order: the start form, then the work, then the cards (U2: the
+    // skip link reaches the work in one stop).
+    const skip = screen.getByRole('link', { name: 'Skip to recent work' });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    const actions = screen.getByRole('region', { name: 'Work actions' });
+    const form = screen.getByRole('form', { name: 'Start work' });
+    expect(skip.getAttribute('href')).toBe(`#${recent.id}`);
+    expect(
+      form.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      recent.compareDocumentPosition(actions) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   // #1582 E5: the card named the project by its SLUG while the sidebar named
@@ -146,7 +176,7 @@ describe('HomeSurface composition', () => {
   // carries a slug, so the name comes from the catalog record keyed by it.
   test('the last-project card names the project the way the sidebar does', () => {
     renderHome({}, vi.fn(), { type: 'project', slug: 'station' });
-    const card = screen.getByRole('button', { name: /Open last project/ });
+    const card = screen.getByRole('button', { name: /Last project/ });
     expect(card.textContent).toContain('Station');
     expect(card.textContent).not.toContain('station');
   });
@@ -157,7 +187,7 @@ describe('HomeSurface composition', () => {
       projectSlug: 'station',
       layoutSlug: 'coding',
     });
-    const card = screen.getByRole('button', { name: /Open last project/ });
+    const card = screen.getByRole('button', { name: /Last project/ });
     expect(card.textContent).toContain('Station');
     expect(card.textContent).not.toContain('station');
   });
@@ -166,9 +196,24 @@ describe('HomeSurface composition', () => {
     // The section renders a skeleton until the catalog settles, so an
     // unmatched slug here means the project is gone — not that it is loading.
     renderHome({}, vi.fn(), { type: 'project', slug: 'retired-project' });
-    const card = screen.getByRole('button', { name: /Open last project/ });
+    const card = screen.getByRole('button', { name: /Last project/ });
     expect(card.textContent).toContain('retired-project');
   });
+
+  // #3312: a section and the form inside it were both named "Start work",
+  // two landmarks with one name. The form is the one.
+  test.each([[[]], [[item('a', 'Some work', 'Station', 3, 'Running')]]])(
+    'Home has one "Start work" landmark, the form (work: %#)',
+    (workItems) => {
+      renderHome({ workItems });
+      expect(screen.getAllByRole('form', { name: 'Start work' })).toHaveLength(
+        1,
+      );
+      expect(screen.queryAllByRole('region', { name: 'Start work' })).toEqual(
+        [],
+      );
+    },
+  );
 
   test('the start card names the agent it can actually open on', () => {
     renderHome();
@@ -214,7 +259,7 @@ describe('HomeSurface composition', () => {
     },
   );
 
-  test('renders the activity chart and the counts alongside one work list', () => {
+  test('renders the activity chart, past one row, alongside one work list', () => {
     renderHome({
       workItems: [
         item('a', 'Wire the delegate verbs', 'Station', 2, 'Running'),
@@ -226,7 +271,7 @@ describe('HomeSurface composition', () => {
     ).toBeTruthy();
     const recent = screen.getByRole('region', { name: 'Recent work' });
     expect(
-      within(recent).getByRole('heading', { name: 'Running (1)' }),
+      within(recent).getByRole('heading', { name: 'Running · 1' }),
     ).toBeTruthy();
     // The one-list constraint, pinned: an item appears exactly once in the
     // list. Two recent-work lists is the failure this composition exists to
@@ -260,9 +305,6 @@ describe('HomeSurface composition', () => {
     });
     const rows = document.querySelectorAll('.home-heat__row');
     expect(rows.length).toBe(5);
-    expect(
-      document.querySelector('.home-pulse__stats')?.textContent,
-    ).not.toContain('Projects');
   });
 
   /**
@@ -271,7 +313,7 @@ describe('HomeSurface composition', () => {
    * pins the shared one through the observable consequence: a snoozed item is
    * absent from the list AND counted as snoozed by the caption.
    */
-  test('a snoozed item is hidden from the list and counted by the caption', () => {
+  test('a snoozed item is hidden from the list and counted by the shelf', () => {
     localStorage.setItem(
       'station.activity.snoozed',
       JSON.stringify({ snoozy: NOW + 60 * 60_000 }),
@@ -280,18 +322,13 @@ describe('HomeSurface composition', () => {
       workItems: [
         item('snoozy', 'Snoozed work', 'Station', 4, 'Running'),
         item('other', 'Visible work', 'Station', 6, 'Running'),
+        item('elsewhere', 'Other project work', 'Forage', 8, 'Running'),
       ],
     });
     expect(screen.queryByText('Snoozed work')).toBeNull();
-    const snoozedStat = Array.from(
-      document.querySelectorAll('.home-pulse__stat'),
-    ).find(
-      (stat) =>
-        stat.querySelector('.home-pulse__label')?.textContent === 'Snoozed',
-    );
-    expect(snoozedStat?.querySelector('.home-pulse__value')?.textContent).toBe(
-      '1',
-    );
+    // The shelf's own heading carries the count: no second strip of numbers.
+    expect(screen.getByRole('button', { name: 'Snoozed · 1' })).toBeTruthy();
+    expect(document.querySelector('.home-pulse__stats')).toBeNull();
     // …and it is absent from the chart too, which reads the same lanes.
     expect(
       document.querySelector('.home-heat__rows')?.textContent,
@@ -315,6 +352,7 @@ describe('HomeSurface composition', () => {
       workItems: [
         item('snoozy', 'Snoozed work', 'Station', 4, 'Running'),
         item('other', 'Visible work', 'Station', 6, 'Running'),
+        item('elsewhere', 'Other project work', 'Forage', 8, 'Running'),
       ],
     });
     // The newest item in the bucket names the bar, and while snoozy is
@@ -323,11 +361,7 @@ describe('HomeSurface composition', () => {
       screen.queryByRole('button', { name: /open Snoozed work/ }),
     ).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Snoozed, 1, open the snoozed shelf',
-      }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Snoozed · 1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Wake Snoozed work' }));
 
     expect(
@@ -338,9 +372,6 @@ describe('HomeSurface composition', () => {
   test('a failed load sends the reader to Activity rather than counting nothing', () => {
     const { model: m } = renderHome({ workItems: [], workError: true });
     expect(screen.getByText('Recent work unavailable')).toBeTruthy();
-    // No counts at all: a caption for lanes that are not on the page would
-    // print four zeroes over an error.
-    expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(m.retryWork).not.toHaveBeenCalled();
@@ -349,9 +380,18 @@ describe('HomeSurface composition', () => {
     ).toEqual([]);
   });
 
-  test('an empty list renders neither counts nor a chart', () => {
+  test('an empty list renders no chart, only the one-line empty state', () => {
     renderHome({ workItems: [] });
-    expect(document.querySelector('.home-pulse__stats')).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Where the work has been' }),
+    ).toBeNull();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
+  });
+
+  test('one project row is not a chart either (V3)', () => {
+    renderHome({
+      workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
+    });
     expect(
       screen.queryByRole('heading', { name: 'Where the work has been' }),
     ).toBeNull();
@@ -389,6 +429,7 @@ describe('HomeSurface: what is clickable', () => {
       workItems: [
         item('older', 'Older work', 'Station', 30, 'Running'),
         item('newer', 'Newer work', 'Station', 5, 'Running'),
+        item('elsewhere', 'Other project work', 'Forage', 8, 'Running'),
       ],
     });
     const bar = screen.getByRole('button', { name: /open Newer work/ });
@@ -402,6 +443,7 @@ describe('HomeSurface: what is clickable', () => {
     const { onNavigate } = renderHome({
       workItems: [
         item('a', 'Work', 'station', 5, 'Running', { projectSlug: 'station' }),
+        item('b', 'Other work', 'Forage', 8, 'Running'),
       ],
       projects: [{ id: 'p1', slug: 'station', name: 'Station' }],
     });
@@ -416,6 +458,7 @@ describe('HomeSurface: what is clickable', () => {
     const { onNavigate } = renderHome({
       workItems: [
         item('a', 'Work', 'Station', 5, 'Running', { projectSlug: 'station' }),
+        item('b', 'Other work', 'Forage', 8, 'Running'),
       ],
     });
     screen.getByRole('button', { name: 'Open the Station project' }).click();
@@ -438,6 +481,7 @@ describe('HomeSurface: what is clickable', () => {
         item('a', 'Work', 'station (unverified name match)', 5, 'Running', {
           projectSlug: 'station',
         }),
+        item('b', 'Other work', 'Forage', 8, 'Running'),
       ],
     });
     expect(screen.queryByRole('button', { name: /project$/ })).toBeNull();
@@ -458,81 +502,6 @@ describe('HomeSurface: what is clickable', () => {
   test('“No project” never becomes a link', () => {
     renderHome({ workItems: [item('a', 'Work', 'No project', 5, 'Running')] });
     expect(screen.queryByRole('button', { name: /Open the/ })).toBeNull();
-  });
-
-  /**
-   * Counts are controls only where their population is on the page, and the
-   * accessible name says where it goes rather than repeating the number.
-   */
-  test('counts with a rendered lane are labelled controls; counts without one are not', () => {
-    renderHome({
-      workItems: [
-        item('a', 'Running work', 'Station', 2, 'Running'),
-        item('b', 'Old work', 'Station', 600),
-      ],
-    });
-    expect(
-      screen.getByRole('button', {
-        name: 'Running, 1, show the Running lane',
-      }),
-    ).toBeTruthy();
-    // Empty live lanes render nothing, so their zero counts are text.
-    expect(screen.queryByRole('button', { name: /^Needs you,/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Idle,/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Active now,/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Projects,/ })).toBeNull();
-    // Nothing is snoozed and nothing is in the "Recently finished" lane, so
-    // neither renders and neither count offers a destination.
-    expect(screen.queryByRole('button', { name: /^Snoozed,/ })).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: /^Just finished,/ }),
-    ).toBeNull();
-  });
-
-  test('the snoozed count opens the collapsed shelf it counts', () => {
-    localStorage.setItem(
-      'station.activity.snoozed',
-      JSON.stringify({ snoozy: NOW + 60 * 60_000 }),
-    );
-    renderHome({
-      workItems: [
-        item('snoozy', 'Snoozed work', 'Station', 4, 'Running'),
-        item('other', 'Visible work', 'Station', 6, 'Running'),
-      ],
-    });
-    const shelf = screen.getByRole('button', { name: /^Snoozed \(1\)$/ });
-    expect(shelf.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Snoozed, 1, open the snoozed shelf',
-      }),
-    );
-    expect(
-      screen
-        .getByRole('button', { name: /^Snoozed \(1\)$/ })
-        .getAttribute('aria-expanded'),
-    ).toBe('true');
-    expect(screen.getByText('Snoozed work')).toBeTruthy();
-  });
-
-  test('every count target it offers is an element that exists', () => {
-    renderHome({
-      workItems: [
-        item('a', 'Running work', 'Station', 2, 'Running'),
-        item('b', 'Done work', 'Station', 3, 'Completed'),
-      ],
-    });
-    // "Just finished" is a rendered lane here, so its control must land on a
-    // real heading rather than scrolling nowhere.
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Just finished, 1, show the Recently finished lane',
-      }),
-    );
-    expect(
-      document.getElementById('home-recently-finished-heading'),
-    ).toBeTruthy();
-    expect(document.activeElement?.id).toBe('home-recently-finished-heading');
   });
 });
 

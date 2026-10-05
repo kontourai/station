@@ -301,6 +301,7 @@ describe('vended tool compatibility', () => {
       configLoader: {
         loadIntegration: vi.fn().mockResolvedValue(toolDef),
       } as any,
+      serverPort: 41031,
       mcpCustody: new MCPLocalConnectionCustody(),
       mcpConnectionStatus,
       integrationMetadata,

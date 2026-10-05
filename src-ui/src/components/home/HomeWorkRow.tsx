@@ -1,3 +1,4 @@
+import type { GitReadLocation } from '@kontourai/station-sdk';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
@@ -12,7 +13,9 @@ interface HomeWorkRowProps {
    */
   agents: readonly SessionIconAgent[];
   onOpen: (task: HomeLaneItem) => void;
-  onSnooze?: (task: HomeLaneItem, trigger: HTMLButtonElement) => void;
+  /** Present on the live lanes: the row's snooze control, which opens the
+   *  shared duration choice and reports the chosen wake time. */
+  onSnooze?: (task: HomeLaneItem, wakeAt: number) => void;
   /**
    * #2312: offer "Discard draft" (a server delete) when the row is a Draft
    * the server can name. Set by the Drafts section only.
@@ -31,6 +34,22 @@ export interface HomeRowContext {
    *  that changes lane keeps its sheet. */
   detailsFor: string | null;
   setDetailsFor: (id: string | null) => void;
+  /**
+   * Which chrome the rows render (B5, C8): `hover` on a fine pointer, where
+   * the hover card and the snooze control appear over the time slot on
+   * hover or focus, exactly as in the dock; `touch` on a coarse pointer,
+   * where the row keeps its always-visible 44px Details and one action.
+   * Decided once by the section from `useCoarsePointer`.
+   */
+  chrome: 'hover' | 'touch';
+  /**
+   * The rows' hover-card git sections, by thread id — the dock's own
+   * derivation (`useGitLocationByThreadId`), so a row names the same branch
+   * on Home as in the inbox.
+   */
+  gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
+  /** The sidebar's project colours (`useProjectAccents`), by slug. */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
 }
 
 /** The discard itself is the button's own server command; Home has no tab
@@ -38,10 +57,9 @@ export interface HomeRowContext {
 const afterDraftDiscarded = () => {};
 
 /**
- * Home's work row is the shared inbox row (#3043), in the always-visible
- * `touch` chrome: Home is used on phones, where there is no hover to reveal
- * a snooze control with. Its Details action opens the row's metadata card
- * as a sheet (without a git section: Home resolves no session folders).
+ * Home's work row is the shared inbox row (#3043), in the chrome its
+ * pointer calls for. A Home row used to show the (i) and clock on every row
+ * on every pointer — twenty icons on a ten-row page.
  */
 export function renderHomeWorkRow({
   task,
@@ -68,12 +86,29 @@ export function renderHomeWorkRow({
           context.setDetailsFor(open ? task.id : null)
         }
         size={size}
-        chrome="touch"
+        chrome={context.chrome}
         agents={agents}
         isWoken={isWoken}
+        // Resolved exactly as `InboxGroupList` resolves the dock's rows.
+        gitLocation={context.gitLocationByThreadId?.get(
+          task.orchestrationThreadId ?? task.chatSessionId ?? '',
+        )}
+        // A remote row's slug names a project on another Station, so it is
+        // not this Station's project and never takes its colour.
+        projectAccent={
+          task.projectSlug && !task.environmentId
+            ? context.projectAccentBySlug?.get(task.projectSlug)
+            : undefined
+        }
         onActivate={() => onOpen(task)}
-        onSnoozeMenu={
-          onSnooze ? (_item, trigger) => onSnooze(task, trigger) : undefined
+        onSnoozeWake={
+          onSnooze
+            ? (_item, wakeAt) => {
+                // Home's live lanes hold nothing snoozed, so `null` (unsnooze)
+                // never arrives here; the shelf below wakes rows.
+                if (wakeAt !== null) onSnooze(task, wakeAt);
+              }
+            : undefined
         }
         onDraftDiscarded={discardDraft ? afterDraftDiscarded : undefined}
       />

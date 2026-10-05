@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * CLI for the native Nightly cohort decision (#1780).
  *
@@ -18,9 +19,9 @@
  * missing ref or unreadable ledger is an error, never "no rows".
  */
 
-import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { DEPLOY_LEDGER_JSON_PATH } from './deploy-ledger.mjs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   decideNativeCohort,
@@ -87,7 +88,7 @@ export function parseArgs(argv) {
  * does not parse throws — the decision must not run on a guess.
  */
 export function readLedgerFromGit(repoRoot, ref) {
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     'git',
     ['show', `${ref}:${DEPLOY_LEDGER_JSON_PATH}`],
     { cwd: repoRoot, encoding: 'utf8', windowsHide: true },
@@ -122,7 +123,33 @@ function emitSummary(lines) {
   }
 }
 
-export function main(argv, { readLedger = readLedgerFromGit } = {}) {
+/**
+ * Whether `ancestor` is a strict ancestor of `descendant` in the checkout.
+ * `git merge-base --is-ancestor` exits 0 for yes and 1 for no; anything else
+ * (an unknown commit, a shallow history) throws rather than reading as "no".
+ */
+function isStrictAncestorFromGit(repoRoot, ancestor, descendant) {
+  if (ancestor === descendant) return false;
+  const result = spawnSyncBounded(
+    'git',
+    ['merge-base', '--is-ancestor', ancestor, descendant],
+    { cwd: repoRoot, encoding: 'utf8', windowsHide: true },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error(
+    `git merge-base --is-ancestor ${ancestor} ${descendant} failed: ${(result.stderr || result.stdout || '').trim()}`,
+  );
+}
+
+export function main(
+  argv,
+  {
+    readLedger = readLedgerFromGit,
+    isStrictAncestor = isStrictAncestorFromGit,
+  } = {},
+) {
   const options = parseArgs(argv);
   if (options === null) {
     console.error(usage());
@@ -131,16 +158,29 @@ export function main(argv, { readLedger = readLedgerFromGit } = {}) {
   let decision;
   try {
     const ledgerEntries = readLedger(options.repoRoot, options.ledgerRef);
+    // Only a marker that is not at the candidate can be ahead of it.
+    const markerAhead = (markerSha, candidateSha) =>
+      markerSha !== '' &&
+      markerSha !== candidateSha &&
+      isStrictAncestor(options.repoRoot, candidateSha, markerSha);
     decision = decideNativeCohort({
       headSha: options.headSha,
       platforms: {
         android: {
           markerSha: options.androidMarker,
           candidateSha: options.androidCandidate,
+          markerAhead: markerAhead(
+            options.androidMarker,
+            options.androidCandidate,
+          ),
         },
         macos: {
           markerSha: options.desktopMarker,
           candidateSha: options.desktopCandidate,
+          markerAhead: markerAhead(
+            options.desktopMarker,
+            options.desktopCandidate,
+          ),
         },
       },
       ledgerEntries,
@@ -157,7 +197,12 @@ export function main(argv, { readLedger = readLedgerFromGit } = {}) {
           `Native cohort builds for ${options.headSha}:`,
           ...decision.reasons.map((reason) => `- ${reason}`),
         ]
-      : [NO_COHORT_NEEDED],
+      : decision.reasons.length > 0
+        ? [
+            `No native cohort for ${options.headSha}:`,
+            ...decision.reasons.map((reason) => `- ${reason}`),
+          ]
+        : [NO_COHORT_NEEDED],
   );
   return 0;
 }

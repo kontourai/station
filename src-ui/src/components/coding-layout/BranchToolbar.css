@@ -1,71 +1,182 @@
-/* BranchToolbar — in-app git branch switcher, commit, and push controls for the
-   coding layout. Sits in the workspace header above the diff/file surface. */
+/* BranchToolbar — the Diff pane's git rows: view switch + branch chip + push on
+   the first, commit message + Commit on the second (only while there is
+   something to commit). Quiet chrome: chips and icons, one primary button. */
 
 .branch-toolbar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  flex-direction: column;
+  /* 8px: the first row's 44px hit areas reach 6px past its 32px, and must
+     not reach the commit row's. */
+  gap: var(--space-4);
+  padding: var(--space-4) 12px;
   border-bottom: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-  flex-wrap: wrap;
 }
 
 .branch-toolbar--no-repo {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-4);
   color: var(--text-secondary);
 }
 
 .branch-toolbar__no-repo-text {
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--text-secondary);
 }
 
-/* ── Repo switcher ─────────────────────────────────────────────────────── */
-
-.branch-toolbar__repo {
-  position: relative;
+/* A stretched column item in Chromium takes its min-content width when the
+   column's own width is not definite (a pane sized by its region), which let
+   the rows run past the pane at phone width. The cap keeps each row inside. */
+.branch-toolbar > * {
+  max-width: 100%;
 }
 
-.branch-toolbar__repo-trigger,
-.branch-toolbar__repo-label {
+/* Row 1: the pane's leading control, then the scope chips at the right. */
+.branch-toolbar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 32px;
+  min-width: 0;
+}
+
+.branch-toolbar__scope {
+  display: flex;
+  align-items: center;
+  /* Push's 44px hit area reaches 8px past its 28px box. */
+  gap: var(--space-4);
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* ── Chips (repo, branch): borderless, truncating, a caret ──────────────── */
+
+.branch-toolbar__repo,
+.branch-toolbar__switcher {
+  position: relative;
+  min-width: 0;
+}
+
+.branch-toolbar__chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 6px;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-3) 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--text-primary);
-  font-size: var(--text-base);
-}
-
-.branch-toolbar__repo-trigger {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
+  font-size: var(--text-md);
+  font-weight: 500;
   cursor: pointer;
 }
 
-.branch-toolbar__repo-trigger:hover {
+.branch-toolbar__chip:hover:not(:disabled),
+.branch-toolbar__chip[aria-expanded="true"] {
   background: var(--bg-hover);
 }
 
-.branch-toolbar__repo-label {
-  background: none;
-  border: 1px solid transparent;
+.branch-toolbar__chip:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
-.branch-toolbar__repo-icon {
-  color: var(--text-secondary);
+.branch-toolbar__chip .choice-caret {
+  width: 12px;
+  height: 12px;
+  margin-left: 0;
 }
 
-.branch-toolbar__repo-name {
-  font-weight: 600;
-  max-width: 180px;
+.branch-toolbar__chip-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.branch-toolbar__branch-trigger .branch-toolbar__chip-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+}
+
+.branch-toolbar__branch-icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+
 .branch-toolbar__repo-pin {
+  display: inline-flex;
   font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* ── Push: an icon with the ahead count ─────────────────────────────────── */
+
+.branch-toolbar__push {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.branch-toolbar__push:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
+.branch-toolbar__push:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The 44px hit area without a bigger box (the same device ActionRow uses). */
+.branch-toolbar__push::after,
+.branch-toolbar__chip::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+
+.branch-toolbar__sync {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Menus (repo, branch) ───────────────────────────────────────────────── */
+
+.branch-toolbar__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 20;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.2));
+  padding: 4px;
 }
 
 .branch-toolbar__repo-menu {
@@ -112,62 +223,6 @@
   cursor: default;
 }
 
-/* ── Branch switcher ───────────────────────────────────────────────────── */
-
-.branch-toolbar__switcher {
-  position: relative;
-}
-
-.branch-toolbar__branch-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: var(--text-base);
-}
-
-.branch-toolbar__branch-trigger:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.branch-toolbar__branch-trigger:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.branch-toolbar__branch-icon {
-  flex: none;
-  color: var(--text-secondary);
-}
-
-.branch-toolbar__branch-name {
-  font-weight: 600;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.branch-toolbar__menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 240px;
-  max-height: 320px;
-  overflow-y: auto;
-  z-index: 20;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.2));
-  padding: 4px;
-}
-
 .branch-toolbar__menu-status {
   padding: 8px 10px;
   color: var(--text-secondary);
@@ -182,10 +237,10 @@
   padding: 6px 8px;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   cursor: pointer;
-  font-size: var(--text-base);
+  font-size: var(--text-md);
   text-align: left;
 }
 
@@ -228,16 +283,16 @@
   padding: 4px 8px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: var(--text-base);
+  font-size: var(--text-md);
 }
 
 .branch-toolbar__new-branch-create {
   padding: 4px 10px;
   background: var(--accent-primary, var(--bg-tertiary));
   border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-on-accent);
   cursor: pointer;
   font-size: var(--text-sm);
@@ -248,90 +303,47 @@
   cursor: default;
 }
 
-/* ── Commit ────────────────────────────────────────────────────────────── */
+/* ── Row 2: commit ──────────────────────────────────────────────────────── */
 
 .branch-toolbar__commit {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 200px;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .branch-toolbar__commit-input {
   flex: 1;
   min-width: 0;
+  min-height: 30px;
   padding: 4px 10px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: var(--text-base);
+  font-size: var(--text-md);
 }
 
 .branch-toolbar__commit-input:disabled {
   opacity: 0.6;
 }
 
-.branch-toolbar__commit-btn,
-.branch-toolbar__push-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: var(--text-base);
+.branch-toolbar__commit-btn {
+  flex: none;
   white-space: nowrap;
-}
-
-.branch-toolbar__commit-btn:hover:not(:disabled),
-.branch-toolbar__push-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.branch-toolbar__commit-btn:disabled,
-.branch-toolbar__push-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.branch-toolbar__sync {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
 }
 
 .branch-toolbar__error {
   color: var(--error-text);
   font-size: var(--text-sm);
-  flex-basis: 100%;
+  overflow-wrap: anywhere;
 }
 
-/* ── Mobile (tap targets + compact 2-row layout) ───────────────────────── */
+/* ── Coarse pointers: 44px fields (the chips and push already carry it) ─── */
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .branch-toolbar {
-    gap: 6px;
-    padding: 6px 10px;
-  }
-
-  /* Row 1: repo + branch. Row 2: commit field + Commit + Push.
-     A wide min-width forces the commit block to wrap to its own line, while
-     leaving just enough room on that line for the Push button to sit beside it. */
-  .branch-toolbar__commit {
-    flex: 1 1 60%;
-    min-width: 60%;
-  }
-
-  .branch-toolbar__repo-trigger,
-  .branch-toolbar__repo-label,
-  .branch-toolbar__branch-trigger,
   .branch-toolbar__commit-input,
-  .branch-toolbar__commit-btn,
-  .branch-toolbar__push-btn {
+  .branch-toolbar__commit-btn {
     min-height: 44px;
   }
 }

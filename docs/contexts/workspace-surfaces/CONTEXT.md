@@ -211,8 +211,10 @@ _Avoid_: raw route push for project layout navigation
 - A coding workspace composes separate file, diff, terminal, chat and evidence
   panes. The built-in Coding layout shows Chat on its stack's Chat page and
   each pane as a drill-in of a chromeless host whose selection is
-  `navigationSelection="explicit"`; the Chat position's effects (the phone's
-  maximized dock, the File Preview deep link) are
+  `navigationSelection="explicit"` below the wide fold and `"replace"` past
+  it, where the pane is a side panel beside Chat (#3040); the Chat
+  position's effects (the phone's maximized dock, the File Preview deep
+  link — skipped for the intent the Files pane wrote itself) are
   `useCodingChatPositionEffects` in
   [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx),
   run by the stack while its Chat page is on screen. Neither owns the pane

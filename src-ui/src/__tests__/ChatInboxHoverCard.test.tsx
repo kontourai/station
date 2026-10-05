@@ -26,20 +26,36 @@
  */
 
 import { SESSION_INVENTORY_V2 } from '@kontourai/station-contracts/session-inventory';
-import { useGitStatusQuery } from '@kontourai/station-sdk';
+import {
+  type OrchestrationSessionSummary,
+  useGitStatusQuery,
+  useOrchestrationSessionsQuery,
+} from '@kontourai/station-sdk';
 import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
 import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InboxRow } from '../components/chat-dock/ChatDockInboxRows';
-import type { HomeWorkItem } from '../views/home/home-view-model';
+import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
+import {
+  buildOrchestrationItems,
+  type HomeWorkItem,
+} from '../views/home/home-view-model';
+import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
 
 vi.mock(
   '@kontourai/station-sdk',
   async (importOriginal: () => Promise<Record<string, unknown>>) => {
     const actual = await importOriginal();
-    return { ...actual, useGitStatusQuery: vi.fn() };
+    return {
+      ...actual,
+      useGitStatusQuery: vi.fn(),
+      // Home's rows read their git locations and project colours from these
+      // (`useGitLocationByThreadId`, `useProjectAccents`).
+      useOrchestrationSessionsQuery: vi.fn(() => ({ data: [] })),
+      useProjectsQuery: vi.fn(() => ({ data: [], isSuccess: true })),
+    };
   },
 );
 vi.mock('@kontourai/station-sdk/conversation-pull-request-links', () => ({
@@ -365,7 +381,7 @@ describe('inbox hover card pull requests (projects that have Git)', () => {
     await openCard(workItem(), '/repo/station');
     await waitFor(() =>
       expect(screen.getByTestId('inbox-row-hover-card').textContent).toContain(
-        'Pull request links unavailable.',
+        'Pull requests unavailable',
       ),
     );
   });
@@ -448,7 +464,88 @@ describe('inbox hover card basis section', () => {
     } as never);
     await openCard(workItem());
     expect(screen.getByTestId('inbox-row-hover-card').textContent).toContain(
-      'Basis unavailable.',
+      'Basis unavailable',
     );
+  });
+});
+
+/**
+ * Home's work rows are the same row, so their cards carry the same git
+ * section — resolved from the session records by the dock's own derivation
+ * (`useGitLocationByThreadId`), never a second one.
+ */
+describe('the git section on Home', () => {
+  function homeSession(
+    over: Partial<OrchestrationSessionSummary> = {},
+  ): OrchestrationSessionSummary {
+    return {
+      provider: 'codex',
+      threadId: 'thread-home',
+      status: 'ready',
+      controlMode: 'station-owned',
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 3,
+      createdAt: '2026-09-13T11:00:00.000Z',
+      updatedAt: '2026-09-13T11:59:00.000Z',
+      answerability: { answerable: true },
+      displayTitle: 'Wire the release gate',
+      projectSlug: 'station',
+      cwd: '/repo/station-worktrees/release-gate',
+      ...over,
+    } satisfies OrchestrationSessionSummary as OrchestrationSessionSummary;
+  }
+
+  function HomeRows({ items }: { items: HomeWorkItem[] }) {
+    const lanes = useHomeWorkLanes(items);
+    return (
+      <HomeRecentWorkSection
+        lanes={lanes}
+        workItems={items}
+        workLoading={false}
+        workDegraded={false}
+        workError={false}
+        agents={[]}
+        remoteUnavailable={[]}
+        remoteAuthenticationRequired={[]}
+        onOpen={vi.fn()}
+        onViewActivity={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+  }
+
+  async function openHomeCard(session: OrchestrationSessionSummary) {
+    // The server's session list, as the dock and Home both read it.
+    vi.mocked(useOrchestrationSessionsQuery).mockReturnValue({
+      data: [session],
+    } as never);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <HomeRows items={buildOrchestrationItems([session], [])} />
+      </QueryClientProvider>,
+    );
+    fireEvent.focus(screen.getByTestId('inbox-row'));
+    return screen.findByTestId('inbox-row-hover-card');
+  }
+
+  it("a Home row's card reads git at its session's folder and names the branch", async () => {
+    vi.mocked(useGitStatusQuery).mockReturnValue({
+      data: { ...gitRepo(), branch: 'feat/release-gate' },
+      isLoading: false,
+      error: null,
+    } as never);
+    const card = await openHomeCard(homeSession());
+    expect(vi.mocked(useGitStatusQuery).mock.calls.at(-1)![0]).toEqual({
+      projectSlug: 'station',
+      workingDir: '/repo/station-worktrees/release-gate',
+    });
+    expect(card.textContent).toContain('feat/release-gate');
+  });
+
+  it('a Home row whose session names no Project reads no git', async () => {
+    const card = await openHomeCard(homeSession({ projectSlug: undefined }));
+    expect(vi.mocked(useGitStatusQuery).mock.calls.at(-1)![0]).toBeNull();
+    expect(card.textContent).not.toContain('Git');
   });
 });

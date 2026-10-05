@@ -1,0 +1,7 @@
+{
+  "revision": "69971c9eb6ea4774f0bd3261f172e0633fdd1638",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md now quotes the stall watchdog's silence wording as rendered (No response from Claude Code for …, naming the turn's engine), matching TurnActivityProgress.tsx; no other claim changed.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

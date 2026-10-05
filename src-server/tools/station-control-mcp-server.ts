@@ -13,6 +13,7 @@ import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
+import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
@@ -25,10 +26,12 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
+import { registerSessionSearchTools } from './station-control-session-search-tools.js';
 import {
   getStationControlCaller,
   jsonToolResult,
 } from './station-control-shared.js';
+import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
 
 /**
  * #2377 slice A: the tool-side half of the station-control authority table.
@@ -86,7 +89,7 @@ function stationControlToolMetadata(name: string) {
     ['Agents', /agent/],
     ['Projects', /project|layout|^board_/],
     ['Chats', /conversation|session|message/],
-    ['Tasks', /task|delegat|ssh_environment/],
+    ['Tasks', /task|delegat|ssh_environment|pull_request/],
     ['Scheduling', /job|schedul/],
     ['Skills', /skill/],
     ['Integrations', /integration|provider|plugin/],
@@ -113,7 +116,11 @@ function stationControlToolMetadata(name: string) {
 export class StationControlToolRegistry {
   constructor(
     private readonly server: McpServer,
-    private readonly catalog?: (name: string, description: string) => void,
+    private readonly catalog?: (
+      name: string,
+      description: string,
+      shape?: z.ZodRawShape,
+    ) => void,
     private readonly allowedTools?: readonly string[],
   ) {}
 
@@ -124,7 +131,7 @@ export class StationControlToolRegistry {
     callback: ToolCallback<z.ZodObject<Shape>>,
   ) {
     if (this.allowedTools && !this.allowedTools.includes(name)) return;
-    this.catalog?.(name, description);
+    this.catalog?.(name, description, shape);
     return this.server.registerTool(
       name,
       {
@@ -226,11 +233,12 @@ export function createStationControlMcpServer(): McpServer {
 
 export function createSelectedStationControlMcpServer(
   allowedTools?: readonly string[],
-  catalog?: (name: string, description: string) => void,
+  catalog?: (name: string, description: string, shape?: z.ZodRawShape) => void,
+  profile: 'station-control' | 'station-knowledge' = 'station-control',
 ): McpServer {
   const server = new McpServer(
     {
-      name: 'station-control',
+      name: profile,
       version: '2.0.0',
     },
     {
@@ -246,6 +254,10 @@ export function createSelectedStationControlMcpServer(
     catalog,
     allowedTools,
   );
+  if (profile === 'station-knowledge') {
+    registerKnowledgeDataTools(registry);
+    return server;
+  }
   registerAgentTools(registry);
   registerBoardTools(registry);
   registerCatalogTools(registry);
@@ -253,7 +265,9 @@ export function createSelectedStationControlMcpServer(
   registerPlatformTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
+  registerSessionSearchTools(registry);
   registerNotifyTools(registry);
+  registerDeclarePullRequestTools(registry);
   return server;
 }
 

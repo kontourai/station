@@ -43,6 +43,60 @@ repository-owned private-tailnet deployment described in the
 [deployment guide](../guides/deployment.md) private, and do not expose it to an
 untrusted network.
 
+Consent decisions are served by a separate listener on its own origin. By
+default review URLs are `http://<request host>:<consent port>`. If
+`STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
+second Tailscale Serve mapping to the consent port), Station issues review URLs
+at that origin and accepts a decision from it when the request `Host` is that
+name and the `Origin` header equals it exactly, in addition to the existing
+nonce, Fetch Metadata and session checks. The port-pinned
+`http://<host>:<consent port>` path still works alongside it. The HTTPS name
+must be the same hostname as the app's, because the host-only consent cookie is
+not sent across hostnames and a mismatch fails closed as `unauthenticated`. The setting adds no authority: a different
+HTTPS origin is refused, the origin is not an `ALLOWED_ORIGINS` entry, and a
+malformed value (http, path, userinfo, wildcard, IP literal, port 0, trailing-dot host) stops
+startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
+marking it so would break the plain-http consent path. See
+the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
+
+Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
+`STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
+(an IP-only Station has no remote operator sign-in). A paired browser opens an
+enrollment request and sees a six-digit code; the host operator types that code
+into `station environment operator passkeys approve <code>`, and only then may
+the WebAuthn registration ceremony run. The host listing never prints the code,
+so confirming means comparing the two screens. Properties, each pinned by a test
+in `operator-passkey-enrollment.test.ts`:
+
+- The code is compared in constant time against every pending request, works
+  once, expires after five minutes, and five wrong codes in five minutes lock
+  confirmation (the right code included). At most five requests are live.
+- The request id is a bearer capability bound to the requesting browser's
+  credential; another browser gets the same answer as for an unknown id.
+- Each registration challenge is single-use (taken before verification, so a
+  failed attempt burns it), expires within two minutes, and belongs to one
+  confirmed request. One confirmation enrolls one passkey.
+- The expected origin and RP ID come from the configured origin, never from the
+  request. User verification is required, attestation is `none`, and a
+  cross-origin (framed) ceremony is refused. Every state-changing route also
+  needs the exact `Origin`, `Sec-Fetch-Site: same-origin`, a JSON content type
+  and a paired-device cookie.
+- Any paired device may open a request, so approval is informed: the host sees
+  the requesting device's id, pairing date and scopes (from the pairing
+  registry, not the device-chosen name), an interactive `approve` asks for
+  confirmation, a non-interactive one must name the device (`--device`), and a
+  device that borrows the operator-browser label is shown as a paired device.
+  `deny` can withdraw an approval until the passkey is created.
+- Only the public key is stored, in a private SQLite file created at the first
+  enrollment under the Station home. Logs and metrics carry no code, request id, challenge or credential id.
+- The enrollment state lives in process memory; a restart drops pending
+  requests, and the browser asks again.
+
+Nothing accepts an enrolled passkey yet: sign-in and step-up are later slices.
+Revoking a passkey is a host action (`... passkeys revoke <id>`) until remote
+revoke with a step-up from another passkey (D8) lands. See
+[Enroll an operator passkey](../guides/operator-passkeys.md).
+
 Origin and authentication are independent controls:
 
 - Origin limits which browser origins may call Station. It never identifies or

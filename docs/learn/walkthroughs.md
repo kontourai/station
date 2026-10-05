@@ -105,7 +105,7 @@ does not move the detail out of reach. At narrow widths they stack vertically.
 
 ![The same record list and detail at a narrow browser width.](media/repository-knowledge-narrow.png)
 
-These captures use an actual imported snapshot: 1,149 records and 2,089 links.
+These captures use an actual imported snapshot: 1,656 records and 3,278 links.
 Those counts describe this capture, not a fixed application limit or the latest
 repository. The record identifies the snapshot and attributes its purpose text
 to the module map. No model, embedding service or vector index was used.
