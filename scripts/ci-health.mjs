@@ -208,7 +208,11 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
   const regression = runs.filter(
     (r) =>
       r.event === 'merge_group' &&
-      ['Merge-queue regression', 'Merge integration'].includes(r.name) &&
+      [
+        'Merge-queue regression',
+        'Merge integration',
+        'PR: Merge integration',
+      ].includes(r.name) &&
       r.conclusion != null &&
       r.conclusion !== 'cancelled' &&
       r.run_started_at &&
@@ -622,7 +626,7 @@ export function qualificationMetrics(runs, jobs) {
   const qualified = runs
     .filter(
       (run) =>
-        run.name === 'Main qualification' &&
+        ['Main qualification', 'Main: Qualification'].includes(run.name) &&
         run.head_branch === 'main' &&
         ['schedule', 'workflow_dispatch'].includes(run.event),
     )

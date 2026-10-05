@@ -1,4 +1,4 @@
-name: Security analysis
+name: "PR: Security analysis"
 
 on:
   push:

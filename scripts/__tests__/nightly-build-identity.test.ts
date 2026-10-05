@@ -706,7 +706,7 @@ describe('the nightly workflow keeps its promises', () => {
     // required string input (#1453).
     const stageSource = workflow.slice(
       0,
-      workflow.indexOf('\nname: Nightly native cohort'),
+      workflow.indexOf('\nname: "Nightly: Native cohort"'),
     );
     expect(stageSource).not.toContain('inputs.build');
     expect(workflow).toContain(
