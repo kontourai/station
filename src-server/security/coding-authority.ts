@@ -103,6 +103,14 @@ export const WORKING_DIRECTORY_NOT_GRANTED_CODE =
   'working-directory-not-granted' as const;
 
 /**
+ * The refusal code for choosing a command Station will run (an engine
+ * connection's command and arguments, a tool server's, a shell). The decision
+ * is {@link refusesWorkingDirectoryChoice}, the same one as for a folder: a
+ * caller who can make Station run a command it chose can run commands.
+ */
+export const COMMAND_NOT_GRANTED_CODE = 'command-not-granted' as const;
+
+/**
  * Choosing a working folder takes the same authority as running commands
  * there: the folder is where an engine session or a Project's coding routes
  * run. The one rule behind `POST /api/projects`' and `PUT

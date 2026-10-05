@@ -35,6 +35,10 @@ import {
   captureConfigurationMutation,
   configurationMutationResponse,
 } from '../system/configuration-activation.js';
+import {
+  changesAny,
+  refuseUngrantedCommandChoice,
+} from '../working-directory-authority.js';
 
 function getProviderConnections(): ACPConnectionConfig[] {
   return listProviders('acpConnections').flatMap((entry: any) =>
@@ -387,6 +391,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.post('/connections', validate(acpConnectionSchema), async (c) => {
+    // The command and folder a connection runs are chosen here.
+    const commandRefused = refuseUngrantedCommandChoice(c);
+    if (commandRefused) return commandRefused;
     return configurationMutationResponse(
       await captureConfigurationMutation(
         ctx.applyAgentConfigurationMutation,
@@ -458,6 +465,12 @@ export function createACPRoutes(ctx: RuntimeContext) {
                 404,
               );
             const previous = config.connections[idx];
+            // Changing what a connection runs, or where, is choosing a
+            // command; renaming or toggling it is not.
+            if (changesAny(body, previous, ['command', 'args', 'cwd'])) {
+              const commandRefused = refuseUngrantedCommandChoice(c);
+              if (commandRefused) return commandRefused;
+            }
             const next = { ...previous, ...body, id };
             if (isDeepStrictEqual(previous, next)) {
               return c.json({ success: true, data: previous });

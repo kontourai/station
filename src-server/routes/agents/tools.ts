@@ -51,6 +51,10 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
+import {
+  changesAny,
+  refuseUngrantedCommandChoice,
+} from '../working-directory-authority.js';
 
 /**
  * Optional collaborators for the MCP-UI tool-call proxy (S2 approval+audit).
@@ -348,6 +352,11 @@ export function createToolRoutes(
   app.post('/', validate(integrationSchema), async (c) => {
     try {
       const input = getBody(c) as ToolDef;
+      // A tool server's command and arguments are what Station will spawn.
+      if (changesAny(input, undefined, ['command', 'args'])) {
+        const commandRefused = refuseUngrantedCommandChoice(c);
+        if (commandRefused) return commandRefused;
+      }
       const { env, ...safe } = input;
       delete safe.storedEnvNames;
       if (env)
@@ -740,6 +749,10 @@ export function createToolRoutes(
         delete update.env;
       }
       const existing = await mcpService.getIntegration(id);
+      if (changesAny(update, existing, ['command', 'args'])) {
+        const commandRefused = refuseUngrantedCommandChoice(c);
+        if (commandRefused) return commandRefused;
+      }
       // GET intentionally redacts env, so an ordinary edit round-trip omits it.
       // Omission and partial submission preserve untouched stored secrets.
       const merged: ToolDef = { ...existing, ...update, id };

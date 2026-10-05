@@ -18,9 +18,12 @@
  * - `POST /api/projects/attach` with a `workingDirectory` and `PUT
  *   /api/projects/:slug/identity/execution-root` with a path.
  */
+
 import { resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { Context } from 'hono';
 import {
+  COMMAND_NOT_GRANTED_CODE,
   refusesWorkingDirectoryChoice,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../security/coding-authority.js';
@@ -70,13 +73,49 @@ export function refuseUngrantedRuntimeCwd(
   cwd: unknown,
   projectFolder: string | undefined,
 ): Response | undefined {
-  if (typeof cwd !== 'string' || !cwd.trim()) return undefined;
+  // Compared exactly as dispatched: the value is not trimmed here, because
+  // the dispatch does not trim it, so " <folder>" is a different folder.
+  if (typeof cwd !== 'string' || cwd === '') return undefined;
   if (
     projectFolder !== undefined &&
-    projectFolder.trim() !== '' &&
-    resolve(expandTilde(cwd.trim())) ===
-      resolve(expandTilde(projectFolder.trim()))
+    projectFolder !== '' &&
+    resolve(expandTilde(cwd)) === resolve(expandTilde(projectFolder))
   )
     return undefined;
   return refuseUngrantedWorkingDirectory(c);
+}
+
+/**
+ * A 403 when this request may not choose a command Station will run. The same
+ * decision as for a folder ({@link refusesWorkingDirectoryChoice}); only the
+ * code and wording differ. Nothing has been saved or run when it answers.
+ */
+export function refuseUngrantedCommandChoice(c: Context): Response | undefined {
+  if (!refusesWorkingDirectoryChoice(c.req.raw, grantedPairingScope(c)))
+    return undefined;
+  return c.json(
+    {
+      success: false,
+      code: COMMAND_NOT_GRANTED_CODE,
+      error:
+        "Only this Station's operator, or a device the operator allowed to run commands (the coding:exec grant), can choose a command for Station to run. Nothing was saved.",
+    },
+    403,
+  );
+}
+
+/** Whether `body` sets any of `keys` to a value other than `current`'s. */
+export function changesAny(
+  body: object,
+  current: object | undefined,
+  keys: readonly string[],
+): boolean {
+  return keys.some(
+    (key) =>
+      Object.hasOwn(body, key) &&
+      !isDeepStrictEqual(
+        Reflect.get(body, key),
+        current === undefined ? undefined : Reflect.get(current, key),
+      ),
+  );
 }

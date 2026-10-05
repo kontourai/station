@@ -57,6 +57,10 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import {
+  changesAny,
+  refuseUngrantedCommandChoice,
+} from '../working-directory-authority.js';
+import {
   captureConfigurationMutation,
   configurationActivationPayload,
   configurationMutationStatus,
@@ -404,6 +408,16 @@ export function createConfigRoutes(
           },
           400,
         );
+      }
+
+      // The terminal shell is a program Station will start; changing it is
+      // choosing a command.
+      if (Object.hasOwn(body as object, 'terminalShell')) {
+        const current = await configLoader.loadAppConfig();
+        if (changesAny(body as object, current, ['terminalShell'])) {
+          const commandRefused = refuseUngrantedCommandChoice(c);
+          if (commandRefused) return commandRefused;
+        }
       }
 
       if (Object.hasOwn(body as object, 'logLevel')) {

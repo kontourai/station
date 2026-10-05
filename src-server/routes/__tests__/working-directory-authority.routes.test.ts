@@ -7,6 +7,7 @@
  * the services behind them are recorders, so "nothing happened" is "the
  * recorder was never called".
  */
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   PAIRING_SCOPE_CODING_EXEC,
@@ -28,7 +29,9 @@ import { createStarterWorkRoutes } from '../starter-work.js';
 const makeTempDir = trackTempDirs();
 afterEach(() => vi.unstubAllEnvs());
 
-const PROJECT_FOLDER = '/work/the-project';
+// Under the home directory so the `~` spelling of it can be tested.
+const PROJECT_DIR_NAME = 'station-wd-authority-project';
+const PROJECT_FOLDER = join(homedir(), PROJECT_DIR_NAME);
 
 async function fixture() {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
@@ -160,7 +163,7 @@ const ROUTES = [
     recorder: 'dispatch',
     withFolder: (cwd: string) => ({ runtimeConfig: { cwd } }),
     withoutFolder: () => ({ agentId: 'builder' }),
-    projectFolder: () => ({ runtimeConfig: { cwd: PROJECT_FOLDER } }),
+    projectFolder: (cwd: string) => ({ runtimeConfig: { cwd } }),
   },
   {
     name: 'POST /api/starter-work/launch (start-task)',
@@ -178,11 +181,11 @@ const ROUTES = [
       operationId: 'op-1',
       task: { projectId: 'p-1', title: 'T' },
     }),
-    projectFolder: () => ({
+    projectFolder: (cwd: string) => ({
       starterId: 'start-task',
       operationId: 'op-1',
       task: { projectId: 'p-1', title: 'T' },
-      dispatch: { runtimeConfig: { cwd: PROJECT_FOLDER } },
+      dispatch: { runtimeConfig: { cwd } },
     }),
   },
   {
@@ -271,17 +274,46 @@ describe.each(ROUTES)('$name', (route) => {
     expect(calls(f)).toBe(2);
   });
 
-  if (route.projectFolder)
-    test("admits the Task Project's own folder for a device without the grant", async () => {
+  if (route.projectFolder) {
+    const withCwd = route.projectFolder;
+    // The Project's own folder, however it is spelled, is not a choice.
+    test.each([
+      ['exactly', PROJECT_FOLDER],
+      ['with a trailing slash', `${PROJECT_FOLDER}/`],
+      ['in its ~ form', `~/${PROJECT_DIR_NAME}`],
+      ['through a redundant segment', `${PROJECT_FOLDER}/./`],
+    ])(
+      "admits the Task Project's own folder %s for a device without the grant",
+      async (_label, cwd) => {
+        const f = await fixture();
+        const device = f.pair('standard');
+        const res = await f.send(
+          device,
+          route.method,
+          route.path,
+          withCwd(cwd),
+        );
+        expect(res.status).toBeLessThan(300);
+        expect(calls(f)).toBe(1);
+      },
+    );
+
+    // A different folder, however close, is a choice. The dispatch does not
+    // trim, so a padded spelling is another folder, not the Project's.
+    test.each([
+      ['a sibling reached through ..', `${PROJECT_FOLDER}/../elsewhere`],
+      ['a child folder', `${PROJECT_FOLDER}/child`],
+      ['a prefix match that is another folder', `${PROJECT_FOLDER}-other`],
+      ['the folder with a trailing space', `${PROJECT_FOLDER} `],
+      ['the folder with a leading space', ` ${PROJECT_FOLDER}`],
+      ['blank padding only', '   '],
+    ])('refuses %s for a device without the grant', async (_label, cwd) => {
       const f = await fixture();
       const device = f.pair('standard');
-      const res = await f.send(
-        device,
-        route.method,
-        route.path,
-        route.projectFolder(),
-      );
-      expect(res.status).toBeLessThan(300);
-      expect(calls(f)).toBe(1);
+      const res = await f.send(device, route.method, route.path, withCwd(cwd));
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(REFUSAL_CODE);
+      expect(calls(f)).toBe(0);
     });
+  }
 });
