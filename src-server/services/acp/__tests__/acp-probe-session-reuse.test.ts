@@ -63,6 +63,7 @@ process.stdin.on('data', (chunk) => {
       }
       case 'session/resume':
       case 'session/load': {
+        if (caps._meta && caps._meta.hangReattach) break;
         if (!fs.existsSync(sessionFile(params.sessionId))) { fail(id, 'Path not found.'); break; }
         reply(id, capabilityAnswer);
         break;
@@ -131,8 +132,17 @@ function fakeAgent(agentCapabilities: Record<string, unknown>) {
     config,
     logger,
     stationHome,
-    newProbe: (overrides: Partial<ACPConnectionConfig> = {}) =>
-      new ACPProbe({ ...config, ...overrides }, logger, stationHome),
+    newProbe: (
+      overrides: Partial<ACPConnectionConfig> = {},
+      operationTimeoutMs?: number,
+    ) =>
+      new ACPProbe(
+        { ...config, ...overrides },
+        logger,
+        stationHome,
+        undefined,
+        operationTimeoutMs,
+      ),
     storedSessions: () => readdirSync(store),
     store,
     methods: (): string[] =>
@@ -253,6 +263,29 @@ describe('#3411 capability probes do not leak agent sessions', () => {
       'ACPProbe could not reattach its probe session; creating a new one',
       expect.objectContaining({ id: 'fake-agent', step: 'resume' }),
     );
+  }, 30_000);
+
+  test('a reattach that never answers costs one failed probe, not every later one', async () => {
+    const agent = fakeAgent({
+      sessionCapabilities: { resume: {} },
+      _meta: { hangReattach: true },
+    });
+    const probe = agent.newProbe({}, 1_500);
+    try {
+      await probeTimes(probe, 1);
+      // The hung session/resume times out within the probe budget...
+      await expect(probe.probe()).resolves.toBe(false);
+      expect(probe.getModes()).toEqual(EXPECTED_MODES);
+      // ...and the next probe skips reattaching rather than hanging again.
+      await probeTimes(probe, 1);
+    } finally {
+      await probe.dispose();
+    }
+    expect(agent.methods()).toEqual([
+      'session/new',
+      'session/resume',
+      'session/new',
+    ]);
   }, 30_000);
 
   test('a user-configured directory is never searched for a session to adopt', async () => {
