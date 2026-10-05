@@ -17,6 +17,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
