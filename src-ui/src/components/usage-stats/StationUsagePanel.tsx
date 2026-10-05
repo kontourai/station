@@ -46,7 +46,9 @@ function rowsFor(stats: UsageStats, group: Group): Row[] {
       label: 'Unknown / unallocated',
       ...unknown,
     });
-  return rows.sort((a, b) => a.label.localeCompare(b.label));
+  return rows.sort(
+    (a, b) => b.messages - a.messages || a.label.localeCompare(b.label),
+  );
 }
 
 const amount = (value: number | undefined) =>
@@ -59,6 +61,7 @@ export function StationUsagePanel() {
   const query = useStationUsageQuery(scope ?? undefined, { enabled: expanded });
   const overview = scope?.isCurrent() && !query.error ? query.data : undefined;
   const rows = overview ? rowsFor(overview.stats, group) : [];
+  const peak = rows.reduce((max, row) => Math.max(max, row.messages), 1);
   return (
     <section
       className="usage-rollup station-usage"
@@ -66,10 +69,8 @@ export function StationUsagePanel() {
     >
       <div className="usage-rollup__header">
         <div>
-          <h3 id="station-usage-title">This Station · operator overview</h3>
-          <p>
-            Recorded usage across this instance. Peer Stations are excluded.
-          </p>
+          <h3 id="station-usage-title">This Station</h3>
+          <p>Operator view · local usage only</p>
         </div>
         <Button
           size="sm"
@@ -102,19 +103,28 @@ export function StationUsagePanel() {
           />
         ) : overview ? (
           <>
-            <p>
-              {overview.stats.lifetime.totalMessages.toLocaleString()} recorded
-              messages or completed turns
-              {' · '}
-              {overview.stats.lifetime.totalConversations.toLocaleString()}{' '}
-              conversations
-            </p>
-            <p>
-              Snapshot rebuilt{' '}
-              {overview.stats.snapshot?.rescannedAt ?? 'at an unknown time'}.{' '}
-              Figures cover retained observations. Missing measurements and
-              attribution remain unknown.
-            </p>
+            <dl className="station-usage__totals">
+              <div>
+                <dt>Messages / turns</dt>
+                <dd>
+                  {overview.stats.lifetime.totalMessages.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt>Conversations</dt>
+                <dd>
+                  {overview.stats.lifetime.totalConversations.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt>Reported cost</dt>
+                <dd>{amount(overview.stats.lifetime.reportedCostUsd)}</dd>
+              </div>
+              <div>
+                <dt>Estimate</dt>
+                <dd>{amount(overview.stats.lifetime.estimatedCostUsd)}</dd>
+              </div>
+            </dl>
             <div className="usage-rollup__controls">
               <label>
                 Breakdown{' '}
@@ -122,86 +132,138 @@ export function StationUsagePanel() {
                   value={group}
                   onChange={(event) => setGroup(event.target.value as Group)}
                 >
-                  <option value="provider">Recorded engine / provider</option>
+                  <option value="provider">Provider / engine</option>
                   <option value="model">Model</option>
-                  <option value="principal">Recorded person / principal</option>
-                  <option value="date">Recorded UTC day</option>
+                  <option value="principal">Person</option>
+                  <option value="date">UTC day</option>
                 </select>
               </label>
             </div>
-            <p>
-              Reported costs and estimates are separate subtotals. A person is
-              attributed only from recorded identity evidence.
-            </p>
-            <details>
-              <summary>Measurement coverage</summary>
-              <p>
-                This overview includes retained conversation history and engine
-                sessions. Direct invocations, inference served for peers, voice,
-                realtime, embeddings, and provider activity outside recorded
-                sessions are not independently metered here. Fleet-routed usage
-                recorded in a conversation is counted once.
-              </p>
-              <p>
-                Context occupancy is not consumed tokens. Some harnesses report
-                activity without token or cost measurements. UTC days describe
-                recorded observations, not exact billing dates.
-              </p>
-              <p>
-                Engine source:{' '}
-                {overview.stats.snapshot?.engineUsage ?? 'unknown'}. Skipped
-                message records:{' '}
-                {overview.stats.snapshot?.skippedMessages ?? 'unknown'}. Saved
-                messages missing cost:{' '}
-                {overview.stats.snapshot?.missingMessageCosts ?? 'unknown'}.
-              </p>
-            </details>
-            <div className="usage-rollup__table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Group</th>
-                    <th>Messages / turns</th>
-                    <th>Input</th>
-                    <th>Output</th>
-                    <th>Cache read</th>
-                    <th>Cache write</th>
-                    <th>Reported cost</th>
-                    <th>Estimate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <th scope="row">{row.label}</th>
-                      <td>{row.messages.toLocaleString()}</td>
-                      <td>
-                        {row.tokenReports?.input
-                          ? row.inputTokens.toLocaleString()
-                          : '—'}
-                      </td>
-                      <td>
-                        {row.tokenReports?.output
-                          ? row.outputTokens.toLocaleString()
-                          : '—'}
-                      </td>
-                      <td>
-                        {row.tokenReports?.cacheRead
-                          ? (row.cacheReadTokens?.toLocaleString() ?? '—')
-                          : '—'}
-                      </td>
-                      <td>
-                        {row.tokenReports?.cacheWrite
-                          ? (row.cacheWriteTokens?.toLocaleString() ?? '—')
-                          : '—'}
-                      </td>
-                      <td>{amount(row.reportedCostUsd)}</td>
-                      <td>{amount(row.estimatedCostUsd)}</td>
+            {rows.length > 0 ? (
+              <ol
+                className="station-usage__ranking"
+                aria-label="Recorded activity breakdown"
+              >
+                {rows.map((row) => (
+                  <li
+                    key={row.id}
+                    className={
+                      row.id === 'unallocated'
+                        ? 'station-usage__unknown'
+                        : undefined
+                    }
+                  >
+                    <div className="station-usage__rank-label">
+                      <span>{row.label}</span>
+                      <strong>{row.messages.toLocaleString()}</strong>
+                    </div>
+                    <div className="station-usage__track" aria-hidden="true">
+                      <span
+                        style={{ width: `${(row.messages / peak) * 100}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <Empty
+                variant="compact"
+                label="No recorded activity in this breakdown"
+              />
+            )}
+            <details className="station-usage__details">
+              <summary>Tokens & costs</summary>
+              <div className="usage-rollup__table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Group</th>
+                      <th>Messages / turns</th>
+                      <th>Input</th>
+                      <th>Output</th>
+                      <th>Cache read</th>
+                      <th>Cache write</th>
+                      <th>Reported cost</th>
+                      <th>Estimate</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.id}>
+                        <th scope="row">{row.label}</th>
+                        <td>{row.messages.toLocaleString()}</td>
+                        <td>
+                          {row.tokenReports?.input
+                            ? row.inputTokens.toLocaleString()
+                            : '—'}
+                        </td>
+                        <td>
+                          {row.tokenReports?.output
+                            ? row.outputTokens.toLocaleString()
+                            : '—'}
+                        </td>
+                        <td>
+                          {row.tokenReports?.cacheRead
+                            ? (row.cacheReadTokens?.toLocaleString() ?? '—')
+                            : '—'}
+                        </td>
+                        <td>
+                          {row.tokenReports?.cacheWrite
+                            ? (row.cacheWriteTokens?.toLocaleString() ?? '—')
+                            : '—'}
+                        </td>
+                        <td>{amount(row.reportedCostUsd)}</td>
+                        <td>{amount(row.estimatedCostUsd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            <details className="station-usage__details">
+              <summary>Coverage & sources</summary>
+              <p>
+                Retained conversations and engine sessions only. Direct
+                invocations, peer serving, voice, realtime, embeddings and
+                unrecorded provider activity are not metered here. Fleet usage
+                saved in conversations is counted once.
+              </p>
+              <p>
+                Missing measurements show —; reported zero stays zero. Context
+                occupancy is not consumed tokens. Dates use recorded UTC days;
+                people require recorded identity. Unknown attribution stays
+                unallocated. Costs are partial reported totals and estimates,
+                not a bill.
+              </p>
+              <dl className="station-usage__sources">
+                <div>
+                  <dt>Updated</dt>
+                  <dd>
+                    {overview.stats.snapshot?.rescannedAt
+                      ? new Date(
+                          overview.stats.snapshot.rescannedAt,
+                        ).toLocaleString()
+                      : 'Unknown'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Engine source</dt>
+                  <dd>{overview.stats.snapshot?.engineUsage ?? 'unknown'}</dd>
+                </div>
+                <div>
+                  <dt>Unreadable messages</dt>
+                  <dd>
+                    {overview.stats.snapshot?.skippedMessages ?? 'unknown'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Messages without cost</dt>
+                  <dd>
+                    {overview.stats.snapshot?.missingMessageCosts ?? 'unknown'}
+                  </dd>
+                </div>
+              </dl>
+            </details>
             {overview.stats.snapshot?.mirroredEngineActivity && (
               <p>{overview.stats.snapshot.mirroredEngineActivity.reason}</p>
             )}

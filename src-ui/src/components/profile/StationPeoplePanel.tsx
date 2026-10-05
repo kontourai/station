@@ -56,10 +56,7 @@ export function StationPeoplePanel() {
   return (
     <section aria-labelledby="station-people-title">
       <h3 id="station-people-title">People paired with this Station</h3>
-      <p>
-        Profiles use approved person bindings. Connection status reflects open
-        Station event streams.
-      </p>
+      <p>Approved profiles · paired devices</p>
       {!scope ? (
         <p>Connect to this Station to view paired profiles.</p>
       ) : query.isLoading ? (
@@ -71,7 +68,7 @@ export function StationPeoplePanel() {
           description={
             query.error instanceof StationHttpError &&
             [401, 403].includes(query.error.status)
-              ? 'Pairing-management access is required to view these profiles. Automatic refresh is paused for this connection.'
+              ? 'Pairing-management access required. Refresh paused.'
               : 'This connection could not read the device registry.'
           }
           action={

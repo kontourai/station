@@ -203,8 +203,9 @@ rate limit; an explicit retry can reauthorize it. This surface grants no access 
 
 ### Operator view of this instance
 
-Open **Profile → This Station · operator overview → View station usage**.
-The authorized local operator can inspect retained usage by recorded engine or
+Open **Profile → This Station → View station usage**.
+Activity bars rank recorded messages and completed turns; **Tokens & costs** opens
+the full measurement table. The authorized local operator can inspect usage by engine or
 provider, model, person/principal, and UTC day. **Unknown / unallocated** keeps
 missing attribution visible. Identity comes from server-stamped events; saved
 message metadata cannot certify a person. Corrections and deletions change
@@ -226,9 +227,13 @@ contain durable token/cost measurements. Fleet-routed measurements saved in a
 conversation are counted through that conversation once. Do not add serving and
 consumer observations together without shared call correlation. Context
 occupancy is not consumed tokens, and some harnesses report activity without
-usage. The overview's **Measurement coverage** explains these boundaries;
+usage. The overview's **Coverage & sources** explains these boundaries;
 missing measurements are not zero. Fixture/source verification does not prove a
 live provider invoice, every plan, or historical usage recovery.
+
+The Profile page keeps receipts, milestones, diagnostics, and detailed activity
+history in expandable sections. **About these totals** explains the summary
+without repeating it above every chart. Access and refresh failures remain visible.
 
 ## Quick Start
 

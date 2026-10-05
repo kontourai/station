@@ -182,17 +182,12 @@ export function ProfilePage() {
       <div className="profile-container">
         <div className="profile-usage-status">
           <div>
-            <p>Usage on this Station · updates while this page is open.</p>
-            <p>
+            <span>Station usage</span>
+            <span>
               {usageStats?.snapshot?.rescannedAt
-                ? `Snapshot rebuilt ${new Date(usageStats.snapshot.rescannedAt).toLocaleString()}`
-                : 'Snapshot rebuild time unavailable'}
-            </p>
-            <p>
-              Counts combine saved messages and completed engine turns. Costs
-              may combine estimates and provider reports; they are not a billing
-              statement.
-            </p>
+                ? `Updated ${new Date(usageStats.snapshot.rescannedAt).toLocaleString()}`
+                : 'Update time unavailable'}
+            </span>
           </div>
           <Button
             size="sm"
@@ -234,7 +229,7 @@ export function ProfilePage() {
             <AuthStatusBadge expanded />
           </div>
           <div className="profile-hero-content">
-            <UserIcon size={120} className="profile-card__avatar" />
+            <UserIcon size={72} className="profile-card__avatar" />
             <div className="profile-hero-info">
               <div>
                 <div className="profile-card__info">
@@ -272,7 +267,7 @@ export function ProfilePage() {
                     </h2>
                     {usageStats?.lifetime.firstMessageDate && (
                       <span className="profile-card__title">
-                        First daily record (UTC){' '}
+                        First recorded activity (UTC){' '}
                         {new Date(
                           usageStats.lifetime.firstMessageDate,
                         ).toLocaleDateString(undefined, { timeZone: 'UTC' })}
@@ -290,8 +285,7 @@ export function ProfilePage() {
                 </div>
               </div>
               <p className="profile-hero-subtitle">
-                {totalMessages.toLocaleString()} messages and engine turns
-                recorded on this Station
+                {totalMessages.toLocaleString()} recorded messages / turns
               </p>
               {totalCost > 0 && (
                 <div className="profile-hero-badges">
@@ -300,13 +294,20 @@ export function ProfilePage() {
                   </div>
                 </div>
               )}
-              {costCoverage && <p>{costCoverage}</p>}
               <ProfileUsageGraph usageStats={usageStats ?? null} />
-              <p>
-                {usageStats?.snapshot?.projection === 'retained-source-v1'
-                  ? 'Daily history covers dated retained observations, including completed engine turns.'
-                  : 'Daily history covers Station-recorded messages only.'}
-              </p>
+              <details className="profile-disclosure profile-disclosure--inline">
+                <summary>About these totals</summary>
+                <p>
+                  Station-wide saved messages and completed engine turns. Costs
+                  include estimates and provider reports, not a billing total.
+                </p>
+                <p>
+                  {usageStats?.snapshot?.projection === 'retained-source-v1'
+                    ? 'Daily history includes dated retained observations and engine turns.'
+                    : 'Daily history covers Station-recorded messages only.'}
+                </p>
+                {costCoverage && <p>{costCoverage}</p>}
+              </details>
               {historyGap && <p>{historyGap}</p>}
             </div>
           </div>
@@ -316,32 +317,40 @@ export function ProfilePage() {
           <StationPeoplePanel />
         </div>
 
-        <div className="profile-stats-grid">
-          <div className="profile-card">
-            <UsageStatsPanel />
-          </div>
-          <div className="profile-card">
-            <AchievementsBadge links={achievementLinks} />
-          </div>
-        </div>
-
-        <div className="profile-card">
-          <UsageRollupPanel />
-        </div>
-
         <div className="profile-card">
           <StationUsagePanel />
         </div>
 
-        <div className="profile-card">
-          <InsightsDashboard />
+        <div className="profile-card profile-usage-summary">
+          <UsageStatsPanel />
         </div>
 
+        <details className="profile-disclosure">
+          <summary>
+            Usage across Stations <span>Receipts & peer totals</span>
+          </summary>
+          <UsageRollupPanel />
+        </details>
+
+        <details className="profile-disclosure">
+          <summary>Milestones</summary>
+          <AchievementsBadge links={achievementLinks} />
+        </details>
+
+        <details className="profile-disclosure">
+          <summary>
+            Diagnostics <span>Tools, errors & activity</span>
+          </summary>
+          <InsightsDashboard />
+        </details>
+
         {totalMessages > 0 && (
-          <div className="profile-timeline">
-            <h3 className="profile-timeline-title">📈 Activity History</h3>
+          <details className="profile-disclosure">
+            <summary>
+              Activity history <span>Daily records</span>
+            </summary>
             <ActivityTimeline />
-          </div>
+          </details>
         )}
       </div>
       {showUserLookup && user?.alias && (

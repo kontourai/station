@@ -202,15 +202,13 @@ export function UsageStatsPanel() {
           <span>
             <ChartGlyph />
           </span>
-          <span>Usage Statistics</span>
+          <span>Usage</span>
         </h3>
       </div>
 
-      <p className="usage-period-note">
-        {usageStats?.snapshot?.projection === 'retained-source-v1'
-          ? 'Totals rebuild from retained observations. Corrections and deletions change these totals; ambiguous dates and models remain unallocated.'
-          : 'This older summary retains historical totals and uses the latest engine model. Rebuild it to refresh the recorded evidence.'}
-      </p>
+      {usageStats?.snapshot?.projection !== 'retained-source-v1' && (
+        <p className="usage-period-note">Older summary · rebuild to refresh.</p>
+      )}
       <UsagePeriodSelector value={period} onChange={setPeriod} />
 
       {range ? (
@@ -238,7 +236,7 @@ export function UsageStatsPanel() {
               control that appears to scope numbers it doesn't (the
               station#3214/#3222 defect class). */}
           <p className="usage-period-note">
-            Lifetime figures — the period above does not filter them.
+            Model and agent breakdowns · all time
           </p>
         </div>
       )}

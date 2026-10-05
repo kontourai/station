@@ -80,7 +80,11 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
   fireEvent.change(screen.getByRole('combobox', { name: 'Breakdown' }), {
     target: { value: 'principal' },
   });
-  expect(screen.getByText('Unknown / unallocated')).toBeTruthy();
+  expect(
+    within(
+      screen.getByRole('list', { name: 'Recorded activity breakdown' }),
+    ).getByText('Unknown / unallocated'),
+  ).toBeTruthy();
   state.error = new StationHttpError(403, 'denied');
   view.rerender(<StationUsagePanel />);
   expect(screen.queryByRole('table')).toBeNull();

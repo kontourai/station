@@ -274,9 +274,7 @@ describe('UsageStatsPanel period selector', () => {
       screen.getByRole('heading', { level: 4, name: 'All time' }),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        'Lifetime figures — the period above does not filter them.',
-      ),
+      screen.getByText('Model and agent breakdowns · all time'),
     ).toBeTruthy();
     // Back to All time: divider gone, breakdown unchanged.
     selectPeriod('All time');
