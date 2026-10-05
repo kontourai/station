@@ -395,3 +395,111 @@ test("a question's header is shown with it; a form with no header draws no heade
     container.querySelector('.input-request-card__field-header'),
   ).toBeNull();
 });
+
+// #3410 fix round 2: field names that are Object.prototype members.
+const PROTO_FORM: InputRequestForm = {
+  schema: 'station.input-request/v1',
+  source: 'harness:codex',
+  requester: 'Codex',
+  message: 'Prototype-named fields',
+  body: {
+    kind: 'form',
+    fields: [
+      { name: 'constructor', title: 'Builder', required: true, kind: 'string' },
+      {
+        name: 'toString',
+        title: 'Format',
+        required: true,
+        kind: 'choice',
+        options: [
+          { value: 'pdf', label: 'PDF' },
+          { value: 'html', label: 'HTML' },
+        ],
+        allowCustom: true,
+      },
+      {
+        name: 'hasOwnProperty',
+        title: 'Tags',
+        required: true,
+        kind: 'multi-choice',
+        options: [{ value: 'a', label: 'A' }],
+      },
+    ],
+  },
+};
+
+test('fields named constructor, toString and hasOwnProperty start empty, answer, and send by their own names', async () => {
+  render(<InputRequestCard form={PROTO_FORM} onRespond={respond} />);
+  // Nothing inherited reads as an answer or as an error.
+  expect(
+    screen.getByRole<HTMLInputElement>('textbox', { name: /Builder/ }).value,
+  ).toBe('');
+  expect(
+    screen.getByRole<HTMLInputElement>('radio', { name: 'PDF' }).checked,
+  ).toBe(false);
+  expect(document.querySelectorAll('[aria-invalid="true"]')).toHaveLength(0);
+  fireEvent.change(screen.getByRole('textbox', { name: /Builder/ }), {
+    target: { value: 'Ada' },
+  });
+  fireEvent.click(screen.getByRole('radio', { name: /Other/ }));
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Your answer to Format' }),
+    { target: { value: 'Markdown' } },
+  );
+  fireEvent.click(screen.getByRole('checkbox', { name: 'A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await waitFor(() => expect(respond).toHaveBeenCalledOnce());
+  const [action, content] = respond.mock.calls[0];
+  expect(action).toBe('accept');
+  expect(Object.keys(content)).toEqual([
+    'constructor',
+    'toString',
+    'hasOwnProperty',
+  ]);
+  expect(JSON.parse(JSON.stringify(content))).toEqual({
+    constructor: 'Ada',
+    toString: { custom: 'Markdown' },
+    hasOwnProperty: ['a'],
+  });
+});
+
+test('an unanswered constructor field is the one marked, and its draft restores', async () => {
+  const view = render(
+    <InputRequestCard
+      form={PROTO_FORM}
+      draftKey="proto-request"
+      onRespond={respond}
+    />,
+  );
+  fireEvent.click(screen.getByRole('radio', { name: 'PDF' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  const builder = screen.getByRole('textbox', { name: /Builder/ });
+  expect(builder.getAttribute('aria-invalid')).toBe('true');
+  expect(screen.getByText('Builder is required.')).toBeTruthy();
+  expect(
+    screen.getByRole('group', { name: /Format/ }).getAttribute('aria-invalid'),
+  ).toBeNull();
+  fireEvent.change(builder, { target: { value: 'Grace' } });
+  await waitFor(() =>
+    expect(JSON.stringify(storage.values.get('proto-request'))).toContain(
+      'Grace',
+    ),
+  );
+  view.unmount();
+  render(
+    <InputRequestCard
+      form={PROTO_FORM}
+      draftKey="proto-request"
+      onRespond={respond}
+    />,
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLInputElement>('textbox', { name: /Builder/ }).value,
+    ).toBe('Grace'),
+  );
+  expect(
+    screen.getByRole<HTMLInputElement>('radio', { name: 'PDF' }).checked,
+  ).toBe(true);
+});

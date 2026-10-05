@@ -55,7 +55,7 @@ function plainPrototype(value: object): boolean {
  * 'form' })` has no `kind` here). Anything else — an array, a class
  * instance, an object with any other prototype — is refused (null).
  */
-function own(value: unknown): Record<string, unknown> | null {
+export function ownRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (!plainPrototype(value)) return null;
   const snapshot: Record<string, unknown> = Object.create(null);
@@ -63,12 +63,38 @@ function own(value: unknown): Record<string, unknown> | null {
     snapshot[key] = (value as Record<string, unknown>)[key];
   return snapshot;
 }
+const own = ownRecord;
+
+/**
+ * An untrusted array, read by its own indexes only: a plain array becomes a
+ * fresh copy with each element read once (a hole reads as `undefined`).
+ * Anything else — not an array, or an array with another prototype — is
+ * refused (null). The ingress companion of {@link ownRecord}.
+ */
+export function ownArray(value: unknown): unknown[] | null {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype)
+    return null;
+  const length = value.length;
+  const copy: unknown[] = [];
+  for (let index = 0; index < length; index += 1)
+    copy.push(Object.hasOwn(value, index) ? value[index] : undefined);
+  return copy;
+}
+
+/**
+ * A field-keyed dictionary with no prototype, so a field named `constructor`
+ * or `toString` reads as itself and never as something inherited.
+ */
+function dictionary<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
 
 /**
  * Stored requests are read strictly: a key this version does not define is
  * a refusal, not something to drop. That is what keeps a decision's
  * `effect` from ever riding inside a form. A JSON `"__proto__"` key is an
- * own key like any other, and so refused too.
+ * own key like any other, and so refused too. `ownRecord` snapshots are
+ * null-prototype, which this accepts.
  */
 function onlyKeys(value: Record<string, unknown>, allowed: readonly string[]) {
   return (
@@ -126,12 +152,9 @@ function readOption(input: unknown): InputRequestOption | null {
   });
 }
 
-function readOptions(value: unknown): InputRequestOption[] | null {
-  if (
-    !Array.isArray(value) ||
-    value.length < 1 ||
-    value.length > INPUT_REQUEST_MAX_OPTIONS
-  )
+function readOptions(input: unknown): InputRequestOption[] | null {
+  const value = ownArray(input);
+  if (!value || value.length < 1 || value.length > INPUT_REQUEST_MAX_OPTIONS)
     return null;
   const options: InputRequestOption[] = [];
   for (const item of value) {
@@ -142,6 +165,14 @@ function readOptions(value: unknown): InputRequestOption[] | null {
   }
   return options;
 }
+
+/**
+ * A field named `__proto__` is refused. JSON parsers keep it as an own key,
+ * but the request route's schema (Zod) drops it and object spreads
+ * reinterpret it, so an answer to it could never arrive intact. Every other
+ * name, `constructor` or `toString` included, is an ordinary field.
+ */
+const REFUSED_FIELD_NAMES = new Set(['__proto__']);
 
 const BASE_KEYS = [
   'name',
@@ -169,6 +200,7 @@ export function readInputRequestField(
     !value ||
     !text(value.name, MAX_NAME_CHARS) ||
     !value.name ||
+    REFUSED_FIELD_NAMES.has(value.name) ||
     typeof value.required !== 'boolean' ||
     !optionalHeader(value.header) ||
     !optionalText(value.title, MAX_LABEL_CHARS) ||
@@ -286,11 +318,12 @@ export function readInputRequestField(
       )
         return null;
       const options = readOptions(value.options);
-      const fallback = value.default;
+      const fallback =
+        value.default === undefined ? undefined : ownArray(value.default);
       if (
         !options ||
-        (fallback !== undefined &&
-          (!Array.isArray(fallback) ||
+        (value.default !== undefined &&
+          (!fallback ||
             new Set(fallback).size !== fallback.length ||
             fallback.some(
               (item) => !options.some((option) => option.value === item),
@@ -339,14 +372,14 @@ export function readInputRequestForm(input: unknown): InputRequestForm | null {
     !body ||
     !onlyKeys(body, ['kind', 'fields']) ||
     body.kind !== 'form' ||
-    !Array.isArray(body.fields) ||
-    body.fields.length > INPUT_REQUEST_MAX_FIELDS
+    !ownArray(body.fields) ||
+    (body.fields as unknown[]).length > INPUT_REQUEST_MAX_FIELDS
   )
     return null;
   const source = readSource(value.source);
   if (!source || source === 'approval') return null;
   const fields: InputRequestField[] = [];
-  for (const item of body.fields) {
+  for (const item of ownArray(body.fields) ?? []) {
     const field = readInputRequestField(item);
     if (!field || fields.some((other) => other.name === field.name))
       return null;
@@ -385,13 +418,13 @@ export function readLegacyHarnessQuestions(
   const value = own(input);
   if (
     !value ||
-    !Array.isArray(value.questions) ||
-    value.questions.length < 1 ||
-    value.questions.length > 16
+    !ownArray(value.questions) ||
+    (value.questions as unknown[]).length < 1 ||
+    (value.questions as unknown[]).length > 16
   )
     return null;
   const questions: LegacyHarnessQuestion[] = [];
-  for (const item of value.questions) {
+  for (const item of ownArray(value.questions) ?? []) {
     const question = own(item);
     if (
       !question ||
@@ -404,12 +437,12 @@ export function readLegacyHarnessQuestions(
       typeof question.multiple !== 'boolean' ||
       typeof question.allowCustom !== 'boolean' ||
       typeof question.secret !== 'boolean' ||
-      !Array.isArray(question.options) ||
-      question.options.length > 32
+      !ownArray(question.options) ||
+      (question.options as unknown[]).length > 32
     )
       return null;
     const options: LegacyHarnessQuestion['options'] = [];
-    for (const entry of question.options) {
+    for (const entry of ownArray(question.options) ?? []) {
       const option = own(entry);
       if (
         !option ||
@@ -540,14 +573,15 @@ export function harnessAnswersToInputContent(
 ): unknown {
   const map = own(answers);
   if (!map) return answers;
-  const content: Record<string, unknown> = {};
+  const content = dictionary<unknown>();
   for (const [name, raw] of Object.entries(map)) {
     const field = form.body.fields.find((item) => item.name === name);
     const answer = own(raw);
+    const optionIds = ownArray(answer?.optionIds);
     if (
       !field ||
       !answer ||
-      !Array.isArray(answer.optionIds) ||
+      !optionIds ||
       !onlyKeys(answer, ['optionIds', 'custom']) ||
       (answer.custom !== undefined && typeof answer.custom !== 'string')
     ) {
@@ -564,7 +598,7 @@ export function harnessAnswersToInputContent(
       (secret ? answer.custom.length > 0 : answer.custom.trim().length > 0)
         ? answer.custom
         : undefined;
-    const ids = answer.optionIds as unknown[];
+    const ids = optionIds;
     if (field.kind === 'string')
       content[name] = ids.length > 0 ? ids : (custom ?? '');
     else if (field.kind === 'multi-choice')
@@ -735,13 +769,53 @@ export function inputRequestContentProblems(
   form: InputRequestForm,
   input: unknown,
 ): { fields: Record<string, string>; form?: string } {
+  return problemsOf(form, admitContent(input));
+}
+
+/**
+ * One read of untrusted content, detached from it: a null-prototype
+ * dictionary of each own key's value, read once. Arrays are copied element by
+ * element and a custom answer becomes a fresh `{ custom }`, so a getter that
+ * answers differently on a second read never reaches anything validated here
+ * or sent on. A value that is not plain data (a class instance, another
+ * prototype) becomes `null`, which every field refuses. Null when the
+ * content is not a set of fields at all.
+ */
+function admitContent(input: unknown): Record<string, unknown> | null {
   const value = own(input);
+  if (!value) return null;
+  const content = dictionary<unknown>();
+  for (const key of Object.keys(value)) content[key] = admitValue(value[key]);
+  return content;
+}
+
+function admitValue(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    const items = ownArray(value);
+    return items ? items.map(admitValue) : null;
+  }
+  const record = own(value);
+  if (!record) return null;
+  const keys = Object.keys(record);
+  if (keys.length === 1 && keys[0] === 'custom')
+    return { custom: record.custom };
+  return record;
+}
+
+function problemsOf(
+  form: InputRequestForm,
+  value: Record<string, unknown> | null,
+): { fields: Record<string, string>; form?: string } {
   if (!value)
-    return { fields: {}, form: 'The answer must be a set of fields.' };
+    return {
+      fields: dictionary<string>(),
+      form: 'The answer must be a set of fields.',
+    };
   const unknown = Object.keys(value).find(
     (key) => !form.body.fields.some((field) => field.name === key),
   );
-  const fields: Record<string, string> = {};
+  const fields = dictionary<string>();
   for (const field of form.body.fields) {
     const has =
       Object.hasOwn(value, field.name) && value[field.name] !== undefined;
@@ -763,18 +837,24 @@ export function inputRequestContentProblems(
 
 /**
  * Validate accepted content against the form that was opened. Throws the
- * first problem, worded for the person; returns the content unchanged when
- * it is valid. Never coerces or truncates.
+ * first problem, worded for the person; when it is valid, returns a
+ * detached, null-prototype snapshot of exactly the content it checked. Never
+ * coerces or truncates.
  */
 export function validateInputRequestContent(
   form: InputRequestForm,
   value: unknown,
 ): InputRequestContent {
-  const problems = inputRequestContentProblems(form, value);
+  // Validate and return the same detached snapshot, never the caller's
+  // object: what was checked is exactly what is sent on.
+  const content = admitContent(value);
+  const problems = problemsOf(form, content);
   if (problems.form) throw new Error(problems.form);
-  const first = form.body.fields.find((field) => problems.fields[field.name]);
+  const first = form.body.fields.find((field) =>
+    Object.hasOwn(problems.fields, field.name),
+  );
   if (first) throw new Error(problems.fields[first.name]);
-  return value as InputRequestContent;
+  return content as InputRequestContent;
 }
 
 /** Read a response carried through storage or a reply, or null. Shape only. */

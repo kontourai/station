@@ -23,9 +23,12 @@ import { Button } from '../Button';
 import {
   CUSTOM_CHOICE,
   clearInputRequestDraft,
+  fieldMap,
   type InputRequestDraft,
   readInputRequestDraft,
   saveInputRequestDraft,
+  withField,
+  withoutField,
 } from './inputRequestDrafts';
 import {
   RequestCard,
@@ -44,13 +47,13 @@ const CARD_STATE: Record<InputRequestAction, RequestCardState> = {
 };
 
 function initialDraft(form: InputRequestForm): InputRequestDraft {
-  const values: InputRequestDraft['values'] = {};
+  const values: InputRequestDraft['values'] = fieldMap();
   for (const field of form.body.fields) {
     if (field.default === undefined) continue;
     values[field.name] =
       typeof field.default === 'number' ? String(field.default) : field.default;
   }
-  return { values, custom: {} };
+  return { values, custom: fieldMap() };
 }
 
 /**
@@ -62,7 +65,7 @@ function contentFromDraft(
   form: InputRequestForm,
   draft: InputRequestDraft,
 ): Record<string, unknown> {
-  const content: Record<string, unknown> = {};
+  const content = fieldMap<unknown>();
   for (const field of form.body.fields) {
     const value = draft.values[field.name];
     if (value === undefined) continue;
@@ -147,7 +150,9 @@ export function InputRequestCard({
   const [pending, setPending] = useState<InputRequestAction>();
   const [done, setDone] = useState<InputRequestAction>();
   const [error, setError] = useState<string>();
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>(
+    fieldMap<string>,
+  );
   const [saved, setSaved] = useState<boolean>();
   const edited = useRef(false);
   const controls = useRef(new Map<string, HTMLElement>());
@@ -164,8 +169,8 @@ export function InputRequestCard({
     void readInputRequestDraft(draftKey, form).then((stored) => {
       if (active && stored && !edited.current)
         setDraft((previous) => ({
-          values: { ...previous.values, ...stored.values },
-          custom: { ...previous.custom, ...stored.custom },
+          values: Object.assign(fieldMap(), previous.values, stored.values),
+          custom: Object.assign(fieldMap(), previous.custom, stored.custom),
         }));
     });
     return () => {
@@ -196,20 +201,20 @@ export function InputRequestCard({
     edited.current = true;
     setSaved(undefined);
     setError(undefined);
-    setFieldErrors(({ [name]: _cleared, ...rest }) => rest);
+    setFieldErrors((previous) => withoutField(previous, name));
     setDraft((previous) => ({
       ...previous,
-      values: { ...previous.values, [name]: value },
+      values: withField(previous.values, name, value),
     }));
   };
   const updateCustom = (name: string, text: string) => {
     edited.current = true;
     setSaved(undefined);
     setError(undefined);
-    setFieldErrors(({ [name]: _cleared, ...rest }) => rest);
+    setFieldErrors((previous) => withoutField(previous, name));
     setDraft((previous) => ({
       ...previous,
-      custom: { ...previous.custom, [name]: text },
+      custom: withField(previous.custom, name, text),
     }));
   };
 

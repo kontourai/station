@@ -738,3 +738,84 @@ test('#3390: the server refuses content that fails the opened form even when the
     }),
   );
 });
+
+test('#3410: fields named constructor, toString and hasOwnProperty answer through the route by their own names', async () => {
+  const f = await fixture();
+  f.store.appendEvent({
+    ...opened('proto-event'),
+    requestType: 'approval',
+    payload: {
+      inputRequest: {
+        schema: 'station.input-request/v1',
+        source: 'mcp:fixture',
+        requester: 'fixture',
+        message: 'Prototype-named fields',
+        body: {
+          kind: 'form',
+          fields: [
+            {
+              name: 'constructor',
+              title: 'Builder',
+              required: true,
+              kind: 'string',
+            },
+            {
+              name: 'toString',
+              title: 'Format',
+              required: true,
+              kind: 'choice',
+              options: [{ value: 'pdf', label: 'PDF' }],
+              allowCustom: true,
+            },
+            {
+              name: 'hasOwnProperty',
+              title: 'Tags',
+              required: true,
+              kind: 'multi-choice',
+              options: [{ value: 'a', label: 'A' }],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const post = (body: unknown) =>
+    f.app.request('/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const accept = {
+    type: 'respondToRequest',
+    threadId: 'session-a',
+    requestId: 'request-a',
+    expectedRequestEventId: 'proto-event',
+    decision: 'accept',
+  };
+  // Missing: refused for exactly that field, not read as inherited.
+  const missing = await post({
+    ...accept,
+    content: { toString: 'pdf', hasOwnProperty: ['a'] },
+  });
+  expect(missing.status).toBeGreaterThanOrEqual(400);
+  expect(JSON.stringify(await missing.json())).toContain(
+    'Builder is required.',
+  );
+  expect(f.respond).not.toHaveBeenCalled();
+  const content = {
+    constructor: 'Ada',
+    toString: { custom: 'Markdown' },
+    hasOwnProperty: ['a'],
+  };
+  expect((await post({ ...accept, content })).status).toBe(200);
+  expect(f.respond).toHaveBeenCalledOnce();
+  const context = (f.respond.mock.calls[0] as unknown[])[3] as {
+    inputContent: unknown;
+  };
+  expect(Object.keys(context.inputContent as object)).toEqual([
+    'constructor',
+    'toString',
+    'hasOwnProperty',
+  ]);
+  expect(JSON.parse(JSON.stringify(context.inputContent))).toEqual(content);
+});

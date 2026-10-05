@@ -6,6 +6,8 @@ import { INPUT_REQUEST_SCHEMA } from '@kontourai/station-contracts/input-request
 import {
   harnessQuestionField,
   inputRequestAnswerTexts,
+  ownArray,
+  ownRecord,
   readInputRequestForm,
 } from '@kontourai/station-shared/input-request';
 
@@ -22,10 +24,21 @@ import {
  * Field names are the engine's own question identity (Claude's question
  * index, Codex's question id) and option values are option indexes, so the
  * answer maps back without trusting any label to be unique.
+ *
+ * Every engine record is snapshotted by its own keys at this ingress, at
+ * every level (`ownRecord` / `ownArray`): an inherited `isSecret`, option or
+ * question is never read, and an object with another prototype is refused.
  */
 
-function record(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+/** One question, already read from an engine record by its own keys. */
+interface HarnessQuestionInput {
+  id: unknown;
+  header: unknown;
+  prompt: unknown;
+  options: unknown[];
+  multiple: boolean;
+  allowCustom: boolean;
+  secret: boolean;
 }
 
 const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
@@ -33,31 +46,41 @@ const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
 function harnessForm(
   engine: 'claude' | 'codex',
   requester: string,
-  questions: unknown[],
+  questions: HarnessQuestionInput[],
 ): InputRequestForm | null {
   if (questions.length < 1 || questions.length > 16) return null;
   const fields = [];
   for (const question of questions) {
-    if (!record(question)) return null;
-    const options = question.options;
+    const { options } = question;
     if (
       typeof question.id !== 'string' ||
       !question.id ||
       typeof question.prompt !== 'string' ||
       !question.prompt.trim() ||
-      !Array.isArray(options) ||
       options.length > 32 ||
-      options.some(
-        (option) =>
-          !record(option) ||
-          typeof option.label !== 'string' ||
-          !option.label.trim() ||
-          (option.description !== undefined &&
-            typeof option.description !== 'string'),
-      ) ||
-      (options.length === 0 && question.allowCustom !== true)
+      (options.length === 0 && !question.allowCustom)
     )
       return null;
+    const admitted: Array<{ id: string; label: string; description?: string }> =
+      [];
+    for (const [index, entry] of options.entries()) {
+      const option = ownRecord(entry);
+      if (
+        !option ||
+        typeof option.label !== 'string' ||
+        !option.label.trim() ||
+        (option.description !== undefined &&
+          typeof option.description !== 'string')
+      )
+        return null;
+      admitted.push({
+        id: String(index),
+        label: option.label,
+        ...(typeof option.description === 'string'
+          ? { description: option.description }
+          : {}),
+      });
+    }
     fields.push(
       harnessQuestionField({
         id: question.id,
@@ -65,14 +88,10 @@ function harnessForm(
           ? { header: question.header }
           : {}),
         prompt: question.prompt,
-        options: options.map((option, index) => ({
-          id: String(index),
-          label: (option as { label: string }).label,
-          description: (option as { description?: string }).description,
-        })),
-        multiple: question.multiple === true,
-        allowCustom: question.allowCustom === true,
-        secret: question.secret === true,
+        options: admitted,
+        multiple: question.multiple,
+        allowCustom: question.allowCustom,
+        secret: question.secret,
       }),
     );
   }
@@ -87,44 +106,42 @@ function harnessForm(
 
 /** Claude `AskUserQuestion` input → form. Null when Station cannot render it. */
 export function claudeInputRequest(input: unknown): InputRequestForm | null {
-  if (
-    !record(input) ||
-    !Array.isArray(input.questions) ||
-    input.questions.length > 4
-  )
-    return null;
+  const raw = ownRecord(input);
+  const list = ownArray(raw?.questions);
+  if (!list || list.length > 4) return null;
   const prompts = new Set<unknown>();
-  for (const question of input.questions) {
-    if (!record(question) || prompts.has(question.question)) return null;
+  const questions: HarnessQuestionInput[] = [];
+  for (const [index, entry] of list.entries()) {
+    const question = ownRecord(entry);
+    const options = ownArray(question?.options);
+    if (!question || !options || prompts.has(question.question)) return null;
     prompts.add(question.question);
-  }
-  return harnessForm(
-    'claude',
-    'Claude',
-    input.questions.map((question, index) => ({
+    questions.push({
       id: String(index),
       header: question.header,
       prompt: question.question,
-      options: question.options,
+      options,
       multiple: question.multiSelect === true,
       allowCustom: true,
       secret: false,
-    })),
-  );
+    });
+  }
+  return harnessForm('claude', 'Claude', questions);
 }
 
 /**
  * Claude takes each answer back keyed by its question text, as one string.
- * `content` must already be valid for `form`.
+ * The text is the admitted question's own (the form field's `title`), never
+ * re-read from the engine's input. `content` must already be valid for
+ * `form`.
  */
 export function claudeAnswers(
-  input: { questions: Array<{ question: string }> },
   form: InputRequestForm,
   content: InputRequestContent,
 ): Record<string, string> {
   return Object.fromEntries(
     form.body.fields.map((field) => [
-      input.questions[Number(field.name)].question,
+      field.title ?? field.name,
       inputRequestAnswerTexts(field, content[field.name]).join(', '),
     ]),
   );
@@ -132,19 +149,19 @@ export function claudeAnswers(
 
 /** Codex `item/tool/requestUserInput` params → form. */
 export function codexInputRequest(params: unknown): InputRequestForm | null {
-  if (!record(params) || !Array.isArray(params.questions)) return null;
-  const questions: unknown[] = [];
-  for (const question of params.questions) {
-    if (
-      !record(question) ||
-      (question.options !== null && !Array.isArray(question.options))
-    )
-      return null;
+  const list = ownArray(ownRecord(params)?.questions);
+  if (!list) return null;
+  const questions: HarnessQuestionInput[] = [];
+  for (const entry of list) {
+    const question = ownRecord(entry);
+    if (!question) return null;
+    const options = question.options === null ? [] : ownArray(question.options);
+    if (!options) return null;
     questions.push({
       id: question.id,
       header: question.header,
       prompt: question.question,
-      options: Array.isArray(question.options) ? question.options : [],
+      options,
       multiple: false,
       allowCustom: question.options === null || question.isOther === true,
       secret: question.isSecret === true,

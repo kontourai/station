@@ -2170,11 +2170,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         );
         pending.toolInput = {
           ...pending.toolInput,
-          answers: claudeAnswers(
-            pending.toolInput as { questions: Array<{ question: string }> },
-            pending.inputRequest,
-            content,
-          ),
+          answers: claudeAnswers(pending.inputRequest, content),
         };
       } else if (context?.inputContent !== undefined)
         throw new Error('A declined question cannot carry answers.');

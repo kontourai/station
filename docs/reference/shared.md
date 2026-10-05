@@ -57,12 +57,19 @@ person a structured question" source maps into. Types come from
   body is a refusal (null), never dropped. Every object is read by its own
   keys: one whose prototype is not `Object.prototype` or `null` (an
   `Object.create(...)` value, or a JSON `"__proto__"` key turned into a
-  prototype) is refused, so no inherited property is ever read as data.
+  prototype) is refused, so no inherited property is ever read as data. A
+  field may be named `constructor`, `toString` or any other ordinary name;
+  `__proto__` is refused, because the request route's schema drops that key
+  and an answer to it could never arrive. The MCP and harness adapters read
+  each engine or server payload through the same own-key snapshots
+  (`ownRecord`, `ownArray`) before mapping it.
 - `inputRequestFromRequestEvent` reads a `request.opened` event's
   `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire`,
   adapted to a form.
 - `validateInputRequestContent` validates accepted content against the form
-  that was opened and throws the first problem, worded for the person;
+  that was opened and throws the first problem, worded for the person. It
+  returns a detached, null-prototype snapshot of exactly what it checked
+  (each value read once), never the caller's object;
   `inputRequestContentProblems` returns every problem by field. Nothing is
   coerced or truncated. The browser renderer and the server's answer path run
   the same function; the server runs it whatever the client did.

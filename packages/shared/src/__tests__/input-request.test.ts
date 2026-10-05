@@ -515,3 +515,186 @@ describe('inherited properties never count', () => {
     ).toEqual({ deployment: '0', credential: 'x' });
   });
 });
+
+/**
+ * Fix round 2 (#3410 review): a field may be named after an
+ * `Object.prototype` member. Every field-keyed map is prototype-free, so such
+ * a field is answered like any other and never reads as already answered or
+ * already wrong.
+ */
+describe('fields named after Object.prototype members', () => {
+  const PROTO: InputRequestForm = {
+    schema: 'station.input-request/v1',
+    source: 'mcp:fixture',
+    requester: 'fixture',
+    message: 'Prototype-named fields',
+    body: {
+      kind: 'form',
+      fields: [
+        {
+          name: 'constructor',
+          title: 'Builder',
+          required: true,
+          kind: 'string',
+        },
+        {
+          name: 'toString',
+          title: 'Format',
+          required: true,
+          kind: 'choice',
+          options: [
+            { value: 'pdf', label: 'PDF' },
+            { value: 'html', label: 'HTML' },
+          ],
+          allowCustom: true,
+        },
+        {
+          name: 'hasOwnProperty',
+          title: 'Tags',
+          required: true,
+          kind: 'multi-choice',
+          options: [{ value: 'a', label: 'A' }],
+        },
+      ],
+    },
+  };
+
+  test('the form is admitted and correct content is accepted and returned whole', () => {
+    expect(readInputRequestForm(structuredClone(PROTO))).toEqual(PROTO);
+    const content = {
+      constructor: 'Ada',
+      toString: { custom: 'Markdown' },
+      hasOwnProperty: ['a'],
+    };
+    const problems = inputRequestContentProblems(PROTO, content);
+    expect(Object.keys(problems.fields)).toEqual([]);
+    expect(problems.form).toBeUndefined();
+    const admitted = validateInputRequestContent(PROTO, content);
+    expect(Object.keys(admitted)).toEqual([
+      'constructor',
+      'toString',
+      'hasOwnProperty',
+    ]);
+    expect(admitted.constructor).toBe('Ada');
+    expect(admitted.toString).toEqual({ custom: 'Markdown' });
+    expect(admitted.hasOwnProperty).toEqual(['a']);
+  });
+
+  test('an unanswered one is reported missing, by its own name, and nothing else is', () => {
+    const problems = inputRequestContentProblems(PROTO, {
+      toString: 'pdf',
+      hasOwnProperty: ['a'],
+    });
+    expect(Object.entries(problems.fields)).toEqual([
+      ['constructor', 'Builder is required.'],
+    ]);
+    expect(() =>
+      validateInputRequestContent(PROTO, {
+        toString: 'pdf',
+        hasOwnProperty: ['a'],
+      }),
+    ).toThrow('Builder is required.');
+  });
+
+  test("a legacy questionnaire's `constructor` question translates and answers", () => {
+    const form = inputRequestFromRequestEvent({
+      provider: 'codex',
+      payload: {
+        questionnaire: {
+          questions: [
+            {
+              id: 'constructor',
+              header: 'Builder',
+              prompt: 'Who builds it?',
+              options: [],
+              multiple: false,
+              allowCustom: true,
+              secret: false,
+            },
+          ],
+        },
+      },
+    })!;
+    expect(form.body.fields[0].name).toBe('constructor');
+    expect(
+      validateInputRequestContent(
+        form,
+        harnessAnswersToInputContent(form, {
+          constructor: { optionIds: [], custom: 'Ada' },
+        }),
+      ).constructor,
+    ).toBe('Ada');
+  });
+
+  test('a field named `__proto__` is refused at admission, from storage and from an MCP server', () => {
+    const stored = structuredClone(PROTO) as any;
+    stored.body.fields[0].name = '__proto__';
+    expect(readInputRequestForm(stored)).toBeNull();
+    const params = JSON.parse(
+      '{"message":"m","requestedSchema":{"type":"object","properties":{"__proto__":{"type":"string"}}}}',
+    );
+    expect(inputRequestFromMcpElicitation('fixture', params)).toBeNull();
+  });
+});
+
+/**
+ * Fix round 2: validation returns the detached snapshot it checked, never the
+ * caller's object, so a getter cannot answer one way to the validator and
+ * another way to whatever is sent on.
+ */
+describe('validation returns what it checked', () => {
+  test('a getter is read once; the result keeps that value and is detached', () => {
+    let reads = 0;
+    const content = {
+      get target() {
+        reads += 1;
+        return reads === 1 ? '0' : 'not-an-option';
+      },
+      checks: ['unit'],
+      token: 't',
+    };
+    const admitted = validateInputRequestContent(FORM, content);
+    expect(reads).toBe(1);
+    expect(admitted).not.toBe(content);
+    expect(admitted.target).toBe('0');
+    expect(admitted.target).toBe('0');
+    expect(Object.getOwnPropertyDescriptor(admitted, 'target')?.get).toBe(
+      undefined,
+    );
+  });
+
+  test("a custom answer's getter is read once too", () => {
+    let reads = 0;
+    const answer = {
+      get custom() {
+        reads += 1;
+        return reads === 1 ? 'A canary host' : '';
+      },
+    };
+    const admitted = validateInputRequestContent(FORM, {
+      target: answer,
+      checks: ['unit'],
+      token: 't',
+    });
+    // Counted before any assertion touches `answer` (a matcher's diff would
+    // read the getter itself).
+    const readsDuringValidation = reads;
+    expect(readsDuringValidation).toBe(1);
+    expect((admitted.target as { custom: string }).custom).toBe(
+      'A canary host',
+    );
+    expect(admitted.target).toEqual({ custom: 'A canary host' });
+    expect(admitted.target === answer).toBe(false);
+  });
+
+  test('an array is copied, so a later change to it is not in the result', () => {
+    const checks = ['unit'];
+    const admitted = validateInputRequestContent(FORM, {
+      target: '0',
+      checks,
+      token: 't',
+    });
+    checks.push('browser');
+    expect(admitted.checks).toEqual(['unit']);
+  });
+});

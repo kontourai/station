@@ -12,6 +12,7 @@ import {
   harnessAnswersToInputContent,
   harnessQuestionField,
   inputRequestAnswerTexts,
+  ownRecord,
   readLegacyHarnessQuestions,
   validateInputRequestContent,
 } from './input-request.js';
@@ -59,25 +60,32 @@ export function validateHarnessQuestionAnswers(
   value: unknown,
 ): HarnessQuestionAnswers {
   const form = questionnaireForm(questionnaire);
-  validateInputRequestContent(form, harnessAnswersToInputContent(form, value));
-  // Valid: return the canonical answers (a blank custom answer dropped).
-  const answers = value as HarnessQuestionAnswers;
+  // The canonical answers are read back from the validated, detached content
+  // (a blank custom answer already dropped), never from the caller's object.
+  const content = validateInputRequestContent(
+    form,
+    harnessAnswersToInputContent(form, value),
+  );
   return Object.fromEntries(
-    questionnaire.questions.map((question) => {
-      const answer = answers[question.id];
-      const custom =
-        typeof answer.custom === 'string' &&
-        (question.secret
-          ? answer.custom.length > 0
-          : answer.custom.trim().length > 0)
-          ? answer.custom
-          : undefined;
+    form.body.fields.map((field) => {
+      const answer = content[field.name];
+      const items = Array.isArray(answer) ? answer : [answer];
+      const optionIds: string[] = [];
+      let custom: string | undefined;
+      for (const item of items) {
+        if (typeof item === 'string')
+          if (field.kind === 'string') custom = item;
+          else optionIds.push(item);
+        else if (
+          item &&
+          typeof item === 'object' &&
+          Object.hasOwn(item, 'custom')
+        )
+          custom = (item as { custom: string }).custom;
+      }
       return [
-        question.id,
-        {
-          optionIds: [...answer.optionIds],
-          ...(custom !== undefined ? { custom } : {}),
-        },
+        field.name,
+        { optionIds, ...(custom !== undefined ? { custom } : {}) },
       ];
     }),
   );
@@ -91,9 +99,7 @@ export function harnessAnswerTexts(
   const field = harnessQuestionField(question);
   const content = harnessAnswersToInputContent(
     questionnaireForm({ questions: [question] }),
-    {
-      [question.id]: answers[question.id],
-    },
+    { [question.id]: ownRecord(answers)?.[question.id] },
   ) as Record<string, InputRequestValue>;
   return inputRequestAnswerTexts(field, content[question.id]);
 }

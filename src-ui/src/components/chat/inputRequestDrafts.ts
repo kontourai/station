@@ -1,4 +1,5 @@
 import type { InputRequestForm } from '@kontourai/station-contracts/input-request';
+import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
 import { createStore, del, get, keys, set } from 'idb-keyval';
 
 /**
@@ -11,6 +12,34 @@ export interface InputRequestDraft {
   custom: Record<string, string>;
 }
 
+/**
+ * Field-keyed maps have no prototype, so a field named `constructor` or
+ * `toString` reads as itself and never as an inherited property. Every
+ * update builds a fresh one.
+ */
+export function fieldMap<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
+export function withField<T>(
+  map: Record<string, T>,
+  name: string,
+  value: T,
+): Record<string, T> {
+  const next = Object.assign(fieldMap<T>(), map);
+  next[name] = value;
+  return next;
+}
+
+export function withoutField<T>(
+  map: Record<string, T>,
+  name: string,
+): Record<string, T> {
+  const next = Object.assign(fieldMap<T>(), map);
+  delete next[name];
+  return next;
+}
+
 /** The draft value that stands for "my own answer" in a choice field. */
 export const CUSTOM_CHOICE = '\u0000custom';
 
@@ -20,23 +49,28 @@ const store = createStore('station-harness-question-drafts', 'answers');
 const MAX_DRAFTS = 32;
 const MAX_TEXT = 12000;
 
-function record(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 /**
  * Keep only what this form could have produced, and never a secret field:
  * a draft is device storage, read back without the person in the loop.
  */
 function admitted(form: InputRequestForm, value: unknown): InputRequestDraft {
-  const draft: InputRequestDraft = { values: {}, custom: {} };
-  if (!record(value) || !record(value.values)) return draft;
-  const custom = record(value.custom) ? value.custom : {};
+  const draft: InputRequestDraft = { values: fieldMap(), custom: fieldMap() };
+  // Device storage is read like any untrusted input: by its own keys only.
+  const stored = ownRecord(value);
+  const values = ownRecord(stored?.values);
+  if (!values) return draft;
+  const custom = ownRecord(stored?.custom) ?? fieldMap<unknown>();
   for (const field of form.body.fields) {
-    if ('secret' in field && field.secret) continue;
-    const item = value.values[field.name];
+    if (
+      (field.kind === 'string' ||
+        field.kind === 'choice' ||
+        field.kind === 'multi-choice') &&
+      field.secret
+    )
+      continue;
+    const item = values[field.name];
     const choices =
-      'options' in field
+      field.kind === 'choice' || field.kind === 'multi-choice'
         ? new Set([
             ...field.options.map((option) => option.value),
             ...(field.allowCustom ? [CUSTOM_CHOICE] : []),
@@ -50,23 +84,29 @@ function admitted(form: InputRequestForm, value: unknown): InputRequestDraft {
         if (typeof item === 'string' && choices?.has(item))
           draft.values[field.name] = item;
         break;
-      case 'multi-choice':
-        if (Array.isArray(item))
+      case 'multi-choice': {
+        const items = ownArray(item);
+        if (items)
           draft.values[field.name] = [
             ...new Set(
-              item.filter(
+              items.filter(
                 (entry): entry is string =>
                   typeof entry === 'string' && !!choices?.has(entry),
               ),
             ),
           ];
         break;
+      }
       default:
         if (typeof item === 'string')
           draft.values[field.name] = item.slice(0, MAX_TEXT);
     }
     const text = custom[field.name];
-    if ('allowCustom' in field && field.allowCustom && typeof text === 'string')
+    if (
+      (field.kind === 'choice' || field.kind === 'multi-choice') &&
+      field.allowCustom &&
+      typeof text === 'string'
+    )
       draft.custom[field.name] = text.slice(0, MAX_TEXT);
   }
   return draft;

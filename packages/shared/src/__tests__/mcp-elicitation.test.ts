@@ -105,3 +105,69 @@ describe('inputRequestFromMcpElicitation (#3284 → #3390)', () => {
     ).toThrow(/color must be one of the offered choices/);
   });
 });
+
+/**
+ * Fix round 2 (#3410 review): the MCP edge reads the server's request by its
+ * own keys at every level, so nothing inherited is mapped into the form.
+ */
+describe('inputRequestFromMcpElicitation reads only own keys', () => {
+  const viaJsonProto = (inherited: unknown) =>
+    Object.assign(
+      {},
+      JSON.parse(`{"__proto__": ${JSON.stringify(inherited)}}`),
+    );
+  const schema = () => structuredClone(REQUEST.requestedSchema) as any;
+  test.each([
+    ['params', () => Object.create(structuredClone(REQUEST))],
+    ['params (JSON __proto__)', () => viaJsonProto(REQUEST)],
+    [
+      'requestedSchema',
+      () => ({ ...REQUEST, requestedSchema: Object.create(schema()) }),
+    ],
+    [
+      'properties',
+      () => ({
+        ...REQUEST,
+        requestedSchema: {
+          ...schema(),
+          properties: Object.create(schema().properties),
+        },
+      }),
+    ],
+    [
+      'a property schema',
+      () => {
+        const s = schema();
+        s.properties.name = Object.create({ type: 'string', title: 'Name' });
+        return { ...REQUEST, requestedSchema: s };
+      },
+    ],
+    [
+      'array items',
+      () => {
+        const s = schema();
+        s.properties.tags.items = viaJsonProto({ type: 'string', enum: ['a'] });
+        return { ...REQUEST, requestedSchema: s };
+      },
+    ],
+    [
+      'a oneOf entry',
+      () => {
+        const s = schema();
+        s.properties.color.oneOf[0] = Object.create({
+          const: 'red',
+          title: 'Red',
+        });
+        return { ...REQUEST, requestedSchema: s };
+      },
+    ],
+  ])('refuses an inherited %s', (_label, build) => {
+    expect(inputRequestFromMcpElicitation('fixture', build())).toBeNull();
+  });
+
+  test('positive control: the same request as own keys maps', () => {
+    expect(
+      inputRequestFromMcpElicitation('fixture', structuredClone(REQUEST)),
+    ).not.toBeNull();
+  });
+});

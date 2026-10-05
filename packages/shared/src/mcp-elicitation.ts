@@ -9,6 +9,8 @@ import {
   INPUT_REQUEST_MAX_FIELDS,
   INPUT_REQUEST_MAX_OPTIONS,
   INPUT_REQUEST_MAX_TEXT_CHARS,
+  ownArray,
+  ownRecord,
   readInputRequestForm,
 } from './input-request.js';
 
@@ -30,9 +32,9 @@ const FORMATS = new Set<InputRequestStringFormat>([
   'date-time',
 ]);
 
-function record(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
+// Every level of the server's request is read through the shared own-key
+// snapshots (`ownRecord` / `ownArray`) before any value is copied, so an
+// inherited schema property, option or bound is never mapped into the form.
 
 function optionalText(value: unknown, max: number): string | undefined | null {
   if (value === undefined) return undefined;
@@ -53,19 +55,18 @@ function optionalFinite(value: unknown): number | undefined | null {
 }
 
 function readOptions(
-  values: unknown,
-  labels?: unknown,
+  rawValues: unknown,
+  rawLabels?: unknown,
 ): InputRequestOption[] | null {
-  if (!Array.isArray(values) || values.length < 1) return null;
+  const values = ownArray(rawValues);
+  const labels = rawLabels === undefined ? undefined : ownArray(rawLabels);
+  if (!values || values.length < 1) return null;
   if (values.length > INPUT_REQUEST_MAX_OPTIONS) return null;
-  if (
-    labels !== undefined &&
-    (!Array.isArray(labels) || labels.length !== values.length)
-  )
+  if (labels === null || (labels && labels.length !== values.length))
     return null;
   const options: InputRequestOption[] = [];
   for (const [index, value] of values.entries()) {
-    const label = Array.isArray(labels) ? labels[index] : value;
+    const label = labels ? labels[index] : value;
     if (
       typeof value !== 'string' ||
       value.length > MAX_LABEL_CHARS ||
@@ -79,12 +80,14 @@ function readOptions(
   return options;
 }
 
-function readTitledOptions(entries: unknown): InputRequestOption[] | null {
-  if (!Array.isArray(entries)) return null;
+function readTitledOptions(raw: unknown): InputRequestOption[] | null {
+  const entries = ownArray(raw);
+  if (!entries) return null;
   const values: unknown[] = [];
   const labels: unknown[] = [];
-  for (const entry of entries) {
-    if (!record(entry)) return null;
+  for (const item of entries) {
+    const entry = ownRecord(item);
+    if (!entry) return null;
     values.push(entry.const);
     labels.push(entry.title ?? entry.const);
   }
@@ -97,10 +100,11 @@ function readTitledOptions(entries: unknown): InputRequestOption[] | null {
  */
 function fieldFromSchema(
   name: string,
-  schema: unknown,
+  raw: unknown,
   required: boolean,
 ): InputRequestField | null {
-  if (!record(schema)) return null;
+  const schema = ownRecord(raw);
+  if (!schema) return null;
   const title = optionalText(schema.title, MAX_LABEL_CHARS);
   const description = optionalText(schema.description, MAX_DESCRIPTION_CHARS);
   if (title === null || description === null) return null;
@@ -180,8 +184,8 @@ function fieldFromSchema(
     };
   }
   if (schema.type === 'array') {
-    const items = schema.items;
-    if (!record(items)) return null;
+    const items = ownRecord(schema.items);
+    if (!items) return null;
     const options =
       items.anyOf !== undefined
         ? readTitledOptions(items.anyOf)
@@ -192,10 +196,11 @@ function fieldFromSchema(
     const minItems = optionalCount(schema.minItems);
     const maxItems = optionalCount(schema.maxItems);
     if (minItems === null || maxItems === null) return null;
-    const fallback = schema.default;
+    const fallback =
+      schema.default === undefined ? undefined : ownArray(schema.default);
     if (
-      fallback !== undefined &&
-      (!Array.isArray(fallback) ||
+      schema.default !== undefined &&
+      (!fallback ||
         fallback.some(
           (value) =>
             typeof value !== 'string' ||
@@ -223,30 +228,31 @@ function fieldFromSchema(
  */
 export function inputRequestFromMcpElicitation(
   serverId: string,
-  params: unknown,
+  rawParams: unknown,
 ): InputRequestForm | null {
-  if (!record(params) || (params.mode !== undefined && params.mode !== 'form'))
+  const params = ownRecord(rawParams);
+  if (!params || (params.mode !== undefined && params.mode !== 'form'))
     return null;
   const message = params.message;
-  const schema = params.requestedSchema;
+  const schema = ownRecord(params.requestedSchema);
+  const properties = ownRecord(schema?.properties);
   if (
     typeof message !== 'string' ||
-    !record(schema) ||
+    !schema ||
     schema.type !== 'object' ||
-    !record(schema.properties)
+    !properties
   )
     return null;
-  const required = schema.required ?? [];
+  const required =
+    schema.required === undefined ? [] : ownArray(schema.required);
   if (
-    !Array.isArray(required) ||
+    !required ||
     required.some(
-      (name) =>
-        typeof name !== 'string' ||
-        !Object.hasOwn(schema.properties as object, name),
+      (name) => typeof name !== 'string' || !Object.hasOwn(properties, name),
     )
   )
     return null;
-  const entries = Object.entries(schema.properties);
+  const entries = Object.entries(properties);
   if (entries.length > INPUT_REQUEST_MAX_FIELDS) return null;
   const fields: InputRequestField[] = [];
   for (const [name, property] of entries) {
