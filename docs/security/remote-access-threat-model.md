@@ -704,18 +704,41 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   read by both gates). Anyone else gets `403 working-directory-not-granted`
   and nothing is saved; an update that sends the folder the Project already
   has is not a change, and every other Project edit keeps its operate tier.
-  The rule is the same wherever a request names a folder to start in: a
-  session start whose `target.workspace` is `{ kind: 'directory' }` (`POST
-  /api/orchestration/chat`, `/chat/delegated`, `/chat/background`,
-  `/conversations/:id/handoff` and `/delegations`) is refused with the same
-  `403 working-directory-not-granted` for a paired device without
-  `coding:exec`, and nothing is started
-  ([`workspace-authority.ts`](../../src-server/routes/orchestration/workspace-authority.ts),
-  reading `mayChooseWorkingDirectory` beside the Project gate). A `delegation`
-  device and a `standard` device alike need the grant: `terminal:operate` is
-  not the authority. A `kind: 'project'` target is already confined to that
-  Project's folder and is unchanged, and the operator in person and a
-  station-control tool call (confined by `scopeDispatch`) keep their own rules.
+  The same rule is applied, as a separate check per route, to these routes and
+  to no others
+  ([`working-directory-authority.ts`](../../src-server/routes/working-directory-authority.ts),
+  reading `mayChooseWorkingDirectory` beside the Project gate); a paired
+  device that lacks `coding:exec` gets the same `403
+  working-directory-not-granted` and nothing happens:
+  - a session start whose `target.workspace` is `{ kind: 'directory' }`:
+    `POST /api/orchestration/chat`, `/chat/delegated`, `/chat/background`,
+    `/conversations/:id/handoff` and `/delegations`;
+  - `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
+    (`start-task`) with a `runtimeConfig.cwd` other than the folder of the
+    Task's own Project (naming that folder is not a choice, and the Project
+    page sends it);
+  - `POST /api/projects/attach` with a `workingDirectory`, and `PUT
+    /api/projects/:slug/identity/execution-root` setting a path (clearing it
+    is not a choice).
+
+  The check fails closed: a request is refused unless it is Station's own
+  server code or the operator in person or a device holding `coding:exec`, so
+  a kind of caller added later is refused until it is decided. `terminal:operate`
+  is not the authority: a `delegation` device and a `standard` device alike
+  need the grant. A `kind: 'project'` target is already confined to that
+  Project's folder and is unchanged, and a station-control tool call is
+  confined by `scopeDispatch`. Not a folder choice, so unchanged: the Task
+  `workspaceBinding` paths (they name a Task's recorded workspace and are read
+  for task output, not used as a session folder) and the Project-confined
+  coding routes.
+
+  A saved SSH Environment's dispatch is pinned by the sender to a
+  `{ kind: 'directory' }` workspace at the verified project path when the
+  caller names no Project, and travels with this Station's outbound peer
+  credential. A receiver that holds that peer as a `delegation` or `standard`
+  device refuses it with the same code until the operator grants that peer
+  device `coding:exec`; naming a Project (sent as `kind: 'project'`) needs no
+  grant.
 
 The same owner also gates elevation to the `never` approval posture through
 `mayGrantFullAccess`: an Agent cannot grant full access to itself or another
@@ -745,6 +768,13 @@ What this does not close, stated so nobody assumes it does:
   skip there; junctions stand in for links), git other than 2.50.1,
   hard-linked object stores, Git LFS, reftable repositories as linked
   worktrees (refused), a Project that is a submodule's checkout.
+- **An `orchestration:operate` device can register an ACP connection.**
+  `POST` and `PUT /acp/connections` take an arbitrary `command` and `cwd`
+  and sit under the `/acp` family's operate tier
+  (`orchestration:operate`; `src-server/security/pairing-route-scopes.ts`),
+  with no further check in the handler. For such a device the folder rule
+  above does not bound where a process it registers runs; this is a separate
+  decision and is not changed here.
 - `terminal:operate` (in the `standard` preset) already opens an interactive
   shell on this host. A `standard` device therefore runs commands whatever the
   Run commands switch says: the switch narrows only devices without the
