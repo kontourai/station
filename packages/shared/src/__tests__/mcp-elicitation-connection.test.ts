@@ -125,24 +125,71 @@ describe.each(['modern', 'legacy'] as const)(
   },
 );
 
-test('two concurrent routes on one connection refuse rather than guess', async () => {
-  const connection = await connect('modern');
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const outer = connection.withElicitationRoute!(
-    async () => ({ action: 'cancel' }),
-    () => held,
-  );
-  const outcome = await askDetails(connection, async () => ({
-    action: 'accept',
-    content: { name: 'Ada' },
-  })).then(
+/** Settles to `{ value }` or `{ error }`, so a refusal can be asserted. */
+const settle = (promise: Promise<unknown>) =>
+  promise.then(
     (value) => ({ value }),
     (error: Error) => ({ error: error.message }),
   );
-  release();
-  await outer;
-  expect(JSON.stringify(outcome)).toMatch(/several concurrent tool calls/);
-});
+
+describe.each(['modern', 'legacy'] as const)(
+  'every request in flight on the connection counts, bridged or not (%s era)',
+  (era) => {
+    test('a bridged call alone is still routed', async () => {
+      const connection = await connect(era);
+      const routed: unknown[] = [];
+      expect(
+        await askDetails(connection, async (request) => {
+          routed.push(request.params);
+          return { action: 'accept', content: { name: 'Ada' } };
+        }),
+      ).toEqual({ action: 'accept', content: { name: 'Ada' } });
+      expect(routed).toHaveLength(1);
+    });
+
+    test('an unbridged call alone is refused', async () => {
+      const connection = await connect(era);
+      const outcome = await settle(askDetails(connection));
+      expect(JSON.stringify(outcome)).toMatch(/No Station turn is waiting/);
+      expect(JSON.stringify(outcome)).not.toMatch(/"action":"accept"/);
+    });
+
+    test('an unbridged call concurrent with a bridged one is refused, and neither gets the other’s answer', async () => {
+      const connection = await connect(era);
+      // A: a turn's call whose form is open and still being answered.
+      let answerA!: () => void;
+      const answered = new Promise<void>((resolve) => {
+        answerA = resolve;
+      });
+      const formsShownToA: unknown[] = [];
+      let formOpen!: () => void;
+      const opened = new Promise<void>((resolve) => {
+        formOpen = resolve;
+      });
+      const a = askDetails(connection, async (request) => {
+        formsShownToA.push(request.params);
+        // A's person answers their own form once released; any further form
+        // routed here is answered at once, as the person would, so a
+        // misrouted form surfaces as a leaked answer rather than a hang.
+        if (formsShownToA.length === 1) {
+          formOpen();
+          await answered;
+        }
+        return { action: 'accept', content: { name: 'A-private' } };
+      });
+      await opened;
+      // B: an unbridged call on the same connection (an MCP Apps or
+      // station-control call) that elicits while A is in flight.
+      const b = await settle(askDetails(connection));
+      answerA();
+      expect(await a).toEqual({
+        action: 'accept',
+        content: { name: 'A-private' },
+      });
+      // B's form never reached A, and A's answer never reached B.
+      expect(formsShownToA).toHaveLength(1);
+      expect(JSON.stringify(b)).toMatch(/several concurrent requests/);
+      expect(JSON.stringify(b)).not.toMatch(/A-private|"action":"accept"/);
+    });
+  },
+);
