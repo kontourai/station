@@ -134,7 +134,16 @@ describe('an external engine declares a pull request: the Task shows it, a merge
 
   afterEach(async () => {
     __resetStationControlMcpTokensForTests();
-    for (const close of closers.splice(0)) await close();
+    const failures: unknown[] = [];
+    for (const close of closers.splice(0)) {
+      try {
+        await close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length)
+      throw new AggregateError(failures, 'Engine declaration teardown failed');
   });
 
   async function setup() {
@@ -355,6 +364,12 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     const configured = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
+    closers.unshift(async () => {
+      // The room workers share the orchestration SQLite file. Retire them
+      // before orchestration shutdown marks sessions closed in that store.
+      const closed = await configured.projectTaskRoomRuntime?.close();
+      expect(closed?.kind).toBe('closed');
+    });
     await configured.kitLifecycleReady;
     // `configureRuntimeRoutes` registers the real forge CLIs (`github`,
     // `gitlab`); this fake is a provider of its own.

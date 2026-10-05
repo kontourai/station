@@ -31,7 +31,7 @@ The Stable/preview source-archive path uses these three installer inputs:
 
 The tag-triggered release workflow produces those inputs and uploads
 them only after the full native release inventory validates. It creates a draft;
-the protected manual `Publish Station release` workflow revalidates that draft
+the protected manual `Release: Publish` workflow revalidates that draft
 and is the only workflow allowed to publish it. The tag workflow identity and
 the release tag must name the same Git ref.
 
@@ -185,8 +185,8 @@ git tag -s v0.2.0-preview.1 "$reviewed_sha" -m 'Station v0.2.0-preview.1'
 git push origin v0.2.0-preview.1
 ```
 
-Wait for `Stage Station release`. Inspect its draft and inventory, then approve
-`Publish Station release` for that tag. Confirm that the manual workflow
+Wait for `Release: Stage`. Inspect its draft and inventory, then approve
+`Release: Publish` for that tag. Confirm that the manual workflow
 published a prerelease and verify each downloaded input independently:
 
 ```sh

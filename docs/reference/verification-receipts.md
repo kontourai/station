@@ -570,7 +570,7 @@ invalid range, checkout failure, or overflow fails closed instead of reporting
 docs-only.
 
 Heavy jobs own lane-specific concurrency groups only after classification. A
-docs-only push therefore runs the independent Secret Scan and classifier but
+docs-only push therefore runs the independent PR: Secret scan and classifier but
 does not enter or cancel fast, full-regression, browser, or container work.
 Manual dispatches fail closed to heavy verification. The local deterministic
 policy gate is `npm run gate:ci-change-classifier`; its fixtures include more

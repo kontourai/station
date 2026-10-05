@@ -29,8 +29,18 @@
   height: 100%;
   object-fit: cover;
 }
+/* A glyph (an emoji or symbol, an agent's or a project's) scales with the
+   icon box, like the bundled marks' 72% above. A bare percentage resolves
+   against the INHERITED text size, which drew the same ~9px glyph in a 16px
+   row mark and a 48px header; `--icon-size` is the box BrandIcon sets
+   inline. A multi-letter text glyph (an engine default such as "MV") would
+   overflow the tile at 72%, so it takes the initials' share instead. */
 .brand-icon__glyph {
-  font-size: 70%;
+  font-size: calc(var(--icon-size, 24px) * 0.72);
+  line-height: 1;
+}
+.brand-icon__glyph--text {
+  font-size: max(calc(var(--icon-size, 24px) * 0.42), 9px);
 }
 .brand-icon__initials {
   /* archive#1424: a bare percentage font-size
