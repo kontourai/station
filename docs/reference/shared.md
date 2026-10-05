@@ -558,8 +558,12 @@ project runs in its own worktree. `none` means the project has no directory,
 so the agent decides: the home folder, an ACP connection's folder, or a
 private folder Station makes. `unavailable` means a start would be refused,
 or the folder did not answer within the list read's per-project time limit;
-`reason` says which. The list reads folders asynchronously, so a folder on a
-drive that does not respond never holds the list. A `runsAt` sent back in a
+`reason` says which. The list reads folders asynchronously and answers
+within that limit even when a drive does not respond, but the read itself
+still holds one of the server's file-system threads until the drive answers.
+So the list never starts a second check of a folder whose first check is still
+out, and once two checks have outlived their limit it starts no new ones:
+those projects read `unavailable` at once until a stuck check settles. A `runsAt` sent back in a
 project update is ignored.
 
 ---

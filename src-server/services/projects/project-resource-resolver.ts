@@ -261,6 +261,58 @@ export const RUN_LOCATION_TIMEOUT_MS = 1500;
 export const RUN_LOCATION_TIMED_OUT_REASON =
   "Station could not check this project's folder in time (it may be on a drive that is not responding).";
 
+/**
+ * Folder checks that have not settled, shared by every list read in this
+ * process. The time box frees the HTTP response, not the libuv thread: an
+ * `fs.promises` call on a mount that does not answer holds one of the four
+ * default threadpool threads until the mount does, and with all four held
+ * every async file read in the server (and dns, and zlib) waits behind them.
+ * So a list read never starts a second check of the same folder while one is
+ * still out (it waits on the first), and once `MAX_STUCK_FOLDER_CHECKS`
+ * checks have outlived their time box it starts no new ones at all: the
+ * project reads as `unavailable` at once until a stuck check settles.
+ */
+const pendingFolderChecks = new Map<string, Promise<unknown>>();
+const stuckFolderChecks = new Set<string>();
+export const MAX_STUCK_FOLDER_CHECKS = 2;
+
+/** Test seam: forget every check (a hung stub never settles on its own). */
+export function resetRunLocationFolderChecksForTests(): void {
+  pendingFolderChecks.clear();
+  stuckFolderChecks.clear();
+}
+
+function guardFolderChecks(
+  fs: RunLocationFs,
+  timeoutMs: number,
+): RunLocationFs {
+  const guarded =
+    <T>(op: string, run: (path: string) => Promise<T>) =>
+    (path: string): Promise<T> => {
+      const key = `${op}\u0000${path}`;
+      const pending = pendingFolderChecks.get(key);
+      if (pending) return pending as Promise<T>;
+      if (stuckFolderChecks.size >= MAX_STUCK_FOLDER_CHECKS)
+        return Promise.reject(new Error(RUN_LOCATION_TIMED_OUT_REASON));
+      const timer = setTimeout(() => stuckFolderChecks.add(key), timeoutMs);
+      timer.unref?.();
+      const check = run(path).finally(() => {
+        clearTimeout(timer);
+        pendingFolderChecks.delete(key);
+        stuckFolderChecks.delete(key);
+      });
+      // The caller handles the rejection; this copy only keeps the map honest.
+      check.catch(() => {});
+      pendingFolderChecks.set(key, check);
+      return check;
+    };
+  return {
+    exists: guarded('exists', fs.exists),
+    realpath: guarded('realpath', fs.realpath),
+    isDirectory: guarded('isDirectory', fs.isDirectory),
+  };
+}
+
 async function withRunLocationTimeout(
   pending: Promise<ProjectRunsAt>,
   timeoutMs: number,
@@ -360,7 +412,9 @@ export class ProjectResourceResolver {
    * and manifest per project, one bindings read for all of them), touches the
    * project folders only through async `fs.promises`, runs the projects
    * concurrently, and gives each one `timeoutMs` before it reads as
-   * `unavailable` — "could not check the folder".
+   * `unavailable` — "could not check the folder". A folder that does not
+   * answer still holds a threadpool thread until its mount does; see
+   * `guardFolderChecks` for how few of those a list read will ever start.
    *
    * `none` is a project with no directory at all: where its chats run then
    * depends on the agent (home, an ACP connection's folder, or a private one),
@@ -390,7 +444,7 @@ export class ProjectResourceResolver {
     const io: ResolutionIo = {
       identity: 'trust-records',
       findBinding,
-      ...(options.fs ?? ASYNC_RUN_LOCATION_FS),
+      ...guardFolderChecks(options.fs ?? ASYNC_RUN_LOCATION_FS, timeoutMs),
     };
     const entries = await Promise.all(
       projectSlugs.map(
@@ -690,7 +744,7 @@ export class ProjectResourceResolver {
       | { kind: 'working-directory' },
     identity: IdentityCheck,
   ): Promise<ResourceResolutionResult> {
-    // Only `describeProjectRunLocation` skips this, and it never reports the
+    // Only `describeProjectRunLocations` skips this, and it never reports the
     // result as `bound` to anyone: it names a directory, not a repository.
     if (identity === 'trust-records')
       return { state: 'bound', resourceId: resource.id, path: absolutePath };
