@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"Fix round for #3391: projects.ts changes are the list's runsAt batch call and dropping runsAt from project bodies; no layout or profile claim in this guide is affected.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

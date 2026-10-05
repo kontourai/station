@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"examples/enterprise-layout/README.md","note":"Fix round for #3391: the example neither reads runsAt nor sends project updates with it; no claim changes.","inputs":["examples/enterprise-layout/README.md","src-server/routes/projects/projects.ts"]}
+  ]
+}
