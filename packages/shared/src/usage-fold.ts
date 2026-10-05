@@ -621,6 +621,8 @@ class UsageObservationCollector {
       principalId?: string;
     }
   >();
+  private costSegments = new CumulativeCostSegments();
+  private costSegment?: string;
   private committedCosts: UsageObservation[] = [];
   private activity: UsageObservation[] = [];
   private turnModels = new Map<string, string>();
@@ -660,12 +662,9 @@ class UsageObservationCollector {
       }
     }
     if (event.method === 'session.started') {
-      // Tokens are thread cumulative; only the cost process epoch restarts.
-      const costs = this.figures.get('reportedCostUsd');
-      if (costs)
-        for (const cost of costs.values()) this.committedCosts.push(cost);
-      this.figures.delete('reportedCostUsd');
-      this.previous.delete('reportedCostUsd');
+      this.costSegments.sessionStarted(
+        sessionStartedResumedNativeSession(event),
+      );
     }
     if (event.method === 'turn.completed') {
       this.completedTurns.add(event.turnId);
@@ -705,6 +704,15 @@ class UsageObservationCollector {
     if (!figures) {
       figures = new Map();
       this.figures.set(field, figures);
+    }
+    if (field === 'reportedCostUsd' && cumulative) {
+      const segment = this.costSegments.observe(value);
+      if (this.costSegment !== undefined && segment !== this.costSegment) {
+        for (const cost of figures.values()) this.committedCosts.push(cost);
+        figures.clear();
+        this.previous.delete(field);
+      }
+      this.costSegment = segment;
     }
     const previous = this.previous.get(field);
     const row = this.attribution(event);

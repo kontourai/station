@@ -56,11 +56,14 @@ figures. Retention therefore limits current coverage.
 The shared usage fold applies each provider's token and cost scopes once while
 producing record allocations. Per-call measurements use their recorded model.
 Initial cumulative thread/process baselines and intervals crossing model changes
-remain unallocated by model and principal. A downward cumulative correction cannot
-identify the earlier buckets to subtract from, so that field's corrected total is
+remain unallocated by model and principal. A downward cumulative token correction
+cannot identify the earlier buckets to subtract from, so its corrected total is
 unallocated by date, model and principal. Thread-cumulative Codex tokens survive
-process restarts; Claude cost begins a separate process epoch. These distributions
-are recorded observations, not an exact consumption split or a billing statement.
+process restarts. Claude cost allocations use the same running-total segments as
+the session total: a resumed process continues its previous total; a fresh process
+or a lower cost figure starts a new segment and retains the previous spend.
+These distributions are recorded observations, not an exact consumption split
+or a billing statement.
 
 `tokenReports` counts retained measurement contributions, including explicit zero.
 A numeric compatibility sum without a corresponding report remains unmeasured.

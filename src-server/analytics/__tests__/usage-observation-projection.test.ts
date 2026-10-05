@@ -382,7 +382,7 @@ test('real usage GET allocates retained per-call facts across UTC days, models a
   }
 });
 
-test('cumulative restatements survive restarts and corrections without inventing model or date splits, while Claude cost epochs remain distinct', async () => {
+test('cumulative restatements survive restarts and corrections without inventing model or date splits, while Claude cost segments remain distinct', async () => {
   const f = fixture();
   try {
     f.start('codex', 'codex');
@@ -424,17 +424,17 @@ test('cumulative restatements survive restarts and corrections without inventing
     expect(stats.lifetime).toMatchObject({
       totalInputTokens: 340,
       totalOutputTokens: 40,
-      totalCost: 0.6,
     });
+    expect(stats.lifetime.totalCost).toBeCloseTo(0.8);
     expect(stats.byModel['model-a'].inputTokens).toBe(30);
     expect(stats.byModel['model-b'].inputTokens).toBe(30);
     expect(stats.unallocated?.model.inputTokens).toBe(280);
     expect(stats.unallocated?.date).toMatchObject({
       inputTokens: 280,
-      cost: 0.1,
+      cost: 0,
     });
     expect(stats.byDate['2026-08-01'].cost).toBe(0.5);
-    expect(stats.byDate['2026-08-02'].cost).toBe(0);
+    expect(stats.byDate['2026-08-02'].cost).toBeCloseTo(0.3);
   } finally {
     f.store.close();
   }
