@@ -215,6 +215,23 @@ describe('Home and the dock start the same way', () => {
     ui.cleanupListener();
   });
 
+  test('with the dock bound to a project both open on that project', () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    const dock = ui.dock();
+    expect(projectChip(home).getAttribute('aria-label')).toBe(
+      'Project: Station',
+    );
+    expect(projectChip(dock).getAttribute('aria-label')).toBe(
+      'Project: Station',
+    );
+    expect(agentChip(home).getAttribute('aria-label')).toBe(
+      agentChip(dock).getAttribute('aria-label'),
+    );
+    ui.cleanupListener();
+  });
+
   test('an Agent chosen in the dock is remembered and is what Home starts next', async () => {
     const ui = renderBoth();
     const home = screen.getByTestId('home');
