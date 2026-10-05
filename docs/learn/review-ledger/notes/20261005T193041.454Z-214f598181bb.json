@@ -1,0 +1,13 @@
+{
+  "revision": "9a88f5f694f1ec02ead8cec16e28797936c25c36",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#3390: docs/ui/responsive-action-surfaces.txt now lists InputRequestCard in place of HarnessQuestionCard and McpElicitationCard (the decision buttons live in ToolCallDisplay, already listed). This document's claims about the inventory's format and the responsive floor are unchanged.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"#3390: docs/ui/responsive-action-surfaces.txt now lists InputRequestCard in place of HarnessQuestionCard and McpElicitationCard (the decision buttons live in ToolCallDisplay, already listed). This document's claims about the inventory's format and the responsive floor are unchanged.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3390: docs/ui/responsive-action-surfaces.txt now lists InputRequestCard in place of HarnessQuestionCard and McpElicitationCard (the decision buttons live in ToolCallDisplay, already listed). This document's claims about the inventory's format and the responsive floor are unchanged.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3390: docs/ui/responsive-action-surfaces.txt now lists InputRequestCard in place of HarnessQuestionCard and McpElicitationCard (the decision buttons live in ToolCallDisplay, already listed). This document's claims about the inventory's format and the responsive floor are unchanged.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}
