@@ -99,6 +99,10 @@ describe('ChatDockProjectSwitcherSheet', () => {
         '.chat-dock__project-switcher-icon',
       );
       expect(alpha?.querySelector('img')?.getAttribute('src')).toBe(image);
+      // The bar's sizing class stays on the bar: an icon is not a 3px bar.
+      expect(alpha?.querySelector('.chat-dock__project-switcher-accent')).toBe(
+        null,
+      );
       // A refused value is not an icon: Beta keeps its colour bar.
       const beta = row('Beta').querySelector<HTMLElement>(
         '.chat-dock__project-switcher-accent',

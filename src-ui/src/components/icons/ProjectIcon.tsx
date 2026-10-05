@@ -33,7 +33,10 @@ interface ProjectIconProps {
    * - `none`: nothing, for a surface that draws the accent itself.
    */
   fallback?: 'dot' | 'bar' | 'initials' | 'none';
+  /** Applied to whichever mark renders: the icon or the swatch. */
   className?: string;
+  /** Applied to the colour swatch only, for a surface that styles it. */
+  swatchClassName?: string;
   /**
    * Set ONLY where no text beside the icon names the project. Without it the
    * icon is `aria-hidden`: a row that says "Station" next to the mark must not
@@ -59,6 +62,7 @@ export function ProjectIcon({
   accent,
   fallback = 'dot',
   className,
+  swatchClassName,
   label,
 }: ProjectIconProps) {
   const icon = displayableProjectIcon(project.icon);
@@ -95,6 +99,7 @@ export function ProjectIcon({
         'project-icon',
         `project-icon--${fallback}`,
         className,
+        swatchClassName,
       )}
       data-project-icon={fallback}
       style={{ ...swatch, backgroundColor: accent }}

@@ -86,6 +86,29 @@ describe('ProjectIcon', () => {
     );
   });
 
+  test('a swatch-only class never lands on an icon', () => {
+    const icon = mark(
+      <ProjectIcon
+        project={{ name: 'Station', icon: PNG }}
+        size={28}
+        accent="red"
+        fallback="bar"
+        swatchClassName="bar-only"
+      />,
+    );
+    expect(icon?.classList.contains('bar-only')).toBe(false);
+    const bar = mark(
+      <ProjectIcon
+        project={{ name: 'Station' }}
+        size={28}
+        accent="red"
+        fallback="bar"
+        swatchClassName="bar-only"
+      />,
+    );
+    expect(bar?.classList.contains('bar-only')).toBe(true);
+  });
+
   test('draws nothing when there is no icon and nothing to fall back to', () => {
     expect(mark(<ProjectIcon project={{ name: 'Station' }} size={12} />)).toBe(
       null,

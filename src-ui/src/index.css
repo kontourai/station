@@ -2436,6 +2436,11 @@ button:hover {
   align-items: center;
   justify-content: center;
 }
+.chat-dock__project-switcher-accent {
+  width: 3px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+}
 .chat-dock__project-switcher-name {
   display: flex;
   align-items: center;

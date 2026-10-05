@@ -197,7 +197,7 @@ export function ChatDockProjectSwitcherSheet({
                       size={28}
                       accent={accents.get(project.slug)}
                       fallback="bar"
-                      className="chat-dock__project-switcher-accent"
+                      swatchClassName="chat-dock__project-switcher-accent"
                     />
                   </span>
                   <span className="chat-dock__project-switcher-name">
