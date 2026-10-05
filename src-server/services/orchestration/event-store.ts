@@ -4988,6 +4988,19 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /** Whether the thread has ever recorded any `turn.*` event. */
+  hasTurnFacts(threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_events
+           WHERE thread_id = ? AND method LIKE 'turn.%'
+           LIMIT 1`,
+        )
+        .get(threadId) !== undefined
+    );
+  }
+
   firstEventByMethod(
     threadId: string,
     method: string,
@@ -5064,6 +5077,51 @@ export class EventStore {
       )
       .get(threadId) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * #3159: the typed prompts of `threadIds`' turns that contain `needle`,
+   * with who sent each (`clientOrigin.actor`, which Station resolved from the
+   * request's credential; absent on turns recorded without one). `needle` is
+   * only a narrowing prefilter: the caller parses each prompt for the exact
+   * reference it is looking for. One indexed lookup per thread
+   * (`thread_id, method, sequence`), at most `limitPerThread` rows each.
+   */
+  turnPromptsContaining(
+    threadIds: readonly string[],
+    needle: string,
+    limitPerThread = 256,
+  ): Array<{ prompt: string; actor?: unknown }> {
+    const statement = this.db.prepare(
+      `SELECT json_extract(payload, '$.prompt') AS prompt,
+              json_extract(payload, '$.clientOrigin.actor') AS actor
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'turn.started'
+         AND typeof(json_extract(payload, '$.prompt')) = 'text'
+         AND instr(json_extract(payload, '$.prompt'), ?) > 0
+       ORDER BY sequence ASC
+       LIMIT ?`,
+    );
+    const prompts: Array<{ prompt: string; actor?: unknown }> = [];
+    for (const threadId of new Set(threadIds)) {
+      const rows = statement.all(threadId, needle, limitPerThread) as Array<{
+        prompt: string;
+        actor: string | null;
+      }>;
+      for (const row of rows) {
+        let actor: unknown;
+        try {
+          actor = row.actor === null ? undefined : JSON.parse(row.actor);
+        } catch {
+          actor = undefined;
+        }
+        prompts.push({
+          prompt: row.prompt,
+          ...(actor === undefined ? {} : { actor }),
+        });
+      }
+    }
+    return prompts;
   }
 
   /**
@@ -11303,13 +11361,21 @@ export class EventStore {
   private claimRecoveryDispatch(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /**
+     * #3157: the user's own "Resume now" on a usage-limit stop. It claims a
+     * waiting (`armed`) or left-to-the-user (`manual`) usage-limit intent
+     * before its due time, and is still an ordinary `due` dispatch.
+     */
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
     now: string;
   }): ConnectionRecoveryIntent | null {
-    const eligibility =
-      input.kind === 'due'
+    const immediate = input.kind === 'due' && input.immediate === true;
+    const eligibility = immediate
+      ? "outcome IN ('armed', 'manual') AND usage_limit = 1"
+      : input.kind === 'due'
         ? "outcome = 'armed' AND due_at IS NOT NULL AND due_at <= ?"
         : "outcome IN ('armed', 'manual')";
     const row = this.db
@@ -11337,7 +11403,7 @@ export class EventStore {
         input.owner.identityKind,
         input.now,
         input.fingerprint,
-        ...(input.kind === 'due' ? [input.now] : []),
+        ...(input.kind === 'due' && !immediate ? [input.now] : []),
       ) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
   }
@@ -11684,9 +11750,11 @@ export class EventStore {
    * cancel request itself so startup fences it before any timer is rebuilt.
    *
    * #3157: a usage-limit intent that is only waiting for its provider reset,
-   * or that the user was left to resume, holds no dispatch to stop. It is not fenced: a
-   * restart rebuilds its timer (`reconcile`), and the coordinator re-checks
-   * the Session before any dispatch. */
+   * or that the user was left to resume (`manual`, whether the setting was off
+   * or the provider gave no reset), holds no dispatch to stop. It is not
+   * fenced: a restart rebuilds its timer (`reconcile`), a manual one is never
+   * dispatched on its own, and the coordinator re-checks the Session before
+   * any dispatch. */
   private cancelShutdownRecoveries(now: string): RecoveryTransition {
     const result = this.db
       .prepare(
@@ -11698,8 +11766,7 @@ export class EventStore {
              AND COALESCE(usage_limit, 0) = 1
              AND (
                (outcome = 'armed' AND decision = 'wait-until-reset')
-               OR (outcome = 'manual'
-                   AND COALESCE(outcome_reason, '') = 'auto-resume-off')
+               OR outcome = 'manual'
              )
            )`,
       )

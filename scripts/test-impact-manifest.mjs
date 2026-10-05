@@ -900,6 +900,29 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'fail-closed orchestration transfer comparator',
   },
   {
+    pattern: 'scripts/lib/transfer-capture-barrier.ts',
+    tests: [
+      'scripts/__tests__/transfer-capture-barrier.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+    ],
+    reason: 'capture barrier deadline derived from the configured bound',
+  },
+  {
+    pattern: 'scripts/lib/liveness-scale.mjs',
+    tests: [
+      'scripts/__tests__/liveness-scale.test.ts',
+      'scripts/__tests__/prepush-orchestration-transfer.test.ts',
+    ],
+    reason: 'host-pressure liveness scale consumers and transfer scope',
+  },
+  {
+    pattern: 'scripts/lib/liveness-scale-resolve.mjs',
+    tests: ['scripts/__tests__/liveness-scale.test.ts'],
+    reason:
+      'host-pressure liveness scale resolution and the pre-push resolver CLI',
+  },
+  {
     pattern: 'scripts/lib/transfer-capture-progress.ts',
     tests: [
       'scripts/__tests__/transfer-capture-progress.test.ts',

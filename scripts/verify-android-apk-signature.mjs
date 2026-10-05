@@ -1,5 +1,5 @@
-import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export class ApkSignatureVerificationError extends Error {
@@ -36,7 +36,7 @@ export function verifyAndroidApkSignature(
     throw new ApkSignatureVerificationError();
   }
   const expected = normalizeSha256Fingerprint(expectedFingerprint);
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     apksigner,
     ['verify', '--verbose', '--print-certs', apkPath],
     { encoding: 'utf8', windowsHide: true },
