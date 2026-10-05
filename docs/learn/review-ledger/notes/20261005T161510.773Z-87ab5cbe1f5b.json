@@ -1,0 +1,7 @@
+{
+  "revision": "09c85b03ddb2c50e48c18d6617e000a59a0bec58",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#3386: Activity entry now states the project filter's No project option lists Sessions no project claims, including attached transcripts from a folder in no project's repository. Checked against activity-list-model.ts (NO_PROJECT_FILTER, matchesActivityProject, activityProjectOptions) and ActivityList.test.tsx; rendered in a real browser on an isolated instance.","inputs":["docs/glossary.md","src-ui/src/views/activity/activity-list-model.ts"]}
+  ]
+}

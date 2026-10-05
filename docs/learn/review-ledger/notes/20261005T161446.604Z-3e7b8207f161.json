@@ -1,0 +1,7 @@
+{
+  "revision": "09c85b03ddb2c50e48c18d6617e000a59a0bec58",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3386: added one process-heavy entry to scripts/vitest-resource-manifest.mjs for a new execFileSync git test, which is the rule this file states; no prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

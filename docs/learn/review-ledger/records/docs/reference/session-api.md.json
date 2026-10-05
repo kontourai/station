@@ -68,7 +68,9 @@
 
     "src-ui/src/hooks/orchestration/queueDrain.ts",
 
-    "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-server/services/orchestration/attached-session-repository.ts"
   ],
 
   "checks": [
