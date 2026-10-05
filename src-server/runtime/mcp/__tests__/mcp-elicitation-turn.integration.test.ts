@@ -11,8 +11,6 @@
  * pipe: the injected chunks are written to the adapter's fetch stream as the
  * route would write them.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -21,6 +19,7 @@ import {
   MCPLocalConnectionCustody,
 } from '@kontourai/station-shared/mcp';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -57,6 +56,9 @@ async function eventually<T>(read: () => T | undefined): Promise<T> {
 }
 
 describe('#3284 MCP elicitation through a Station turn', () => {
+  // Registered before the afterEach below, so it removes the directory after
+  // the event store and connection are closed, and on failure too.
+  const makeTempDir = trackTempDirs();
   let tmp: string;
   let connection: MCPConnection;
   let eventStore: EventStore;
@@ -67,7 +69,7 @@ describe('#3284 MCP elicitation through a Station turn', () => {
   let endStream: () => void;
 
   beforeEach(async () => {
-    tmp = mkdtempSync(join(tmpdir(), 'mcp-elicitation-turn-'));
+    tmp = makeTempDir('mcp-elicitation-turn-');
     connection = await connectMCP({
       id: 'fixture',
       kind: 'mcp',
@@ -195,7 +197,6 @@ describe('#3284 MCP elicitation through a Station turn', () => {
     await adapter.stopSession(THREAD).catch(() => undefined);
     await connection.close();
     eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   /** Run the tool as the turn would, and wait for its form to open. */

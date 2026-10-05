@@ -38,9 +38,9 @@ export class McpPromptRefusal extends Error {
   }
 }
 
-export const MCP_PROMPT_MAX_ARGUMENT_CHARS = 12000;
+const MCP_PROMPT_MAX_ARGUMENT_CHARS = 12000;
 /** Bound on the text a prompt may insert; larger output is refused. */
-export const MCP_PROMPT_MAX_TEXT_CHARS = 100_000;
+const MCP_PROMPT_MAX_TEXT_CHARS = 100_000;
 
 function promptServerIds(spec: AgentSpec): string[] {
   return [...new Set(spec.tools?.mcpServers ?? [])].filter(
