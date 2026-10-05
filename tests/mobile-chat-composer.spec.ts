@@ -848,7 +848,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   await expect(approvalWork).toBeVisible();
   await expect(approvalWork).toContainText('Cancelled');
   await expect(
-    transcript.getByRole('img', { name: 'Awaiting approval' }),
+    transcript.getByRole('img', { name: 'Needs approval' }),
   ).toHaveCount(0);
   // `callLabel` speaks the bare infinitive for an unresolved call
   // (`utils/tool-call-labels.ts:181-199`): "Used" is the resolved past tense.
