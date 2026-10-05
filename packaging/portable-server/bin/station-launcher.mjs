@@ -909,8 +909,16 @@ class Launcher {
         child.kill('SIGKILL');
         await waitForExit(child, 10_000);
         this.ownStop(version);
+        return;
       }
     }
+    // Self-supervised (Windows), the version's own `stop` also follows an
+    // orderly exit: measured on a Windows runner, `service run`'s shutdown
+    // could refuse to signal its UI ("identity could not be verified") and
+    // exit with it still running, which left the home active and failed the
+    // update's backup; `station stop` by record stopped it. With nothing
+    // left running it does nothing.
+    if (this.selfSupervised) this.ownStop(version);
   }
 
   runVersionCommand(version, args) {

@@ -1106,8 +1106,12 @@ describe('a self-supervised launcher, as on Windows (#2675 W3)', {
     // Windows has no SIGTERM: the old version saw its channel close.
     expect(log).not.toContain('1.0.0 term');
     expect(log.indexOf('1.0.0 launcher-gone')).toBeGreaterThanOrEqual(0);
-    expect(log.indexOf('1.0.0 update-home backup')).toBeGreaterThan(
+    // ...and its own `stop` by record follows, before the home is backed up.
+    expect(log.indexOf('1.0.0 stop')).toBeGreaterThan(
       log.indexOf('1.0.0 launcher-gone'),
+    );
+    expect(log.indexOf('1.0.0 update-home backup')).toBeGreaterThan(
+      log.indexOf('1.0.0 stop'),
     );
     expect(currentVersion(install)).toBe('1.1.0');
   });
