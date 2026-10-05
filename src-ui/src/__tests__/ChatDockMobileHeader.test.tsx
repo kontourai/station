@@ -14,6 +14,18 @@ import {
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 // The sheet's project picker and connection control mount inside this bar's
 // tree; `useIsMobile`/`useNavigation` are mocked so neither needs a real
 // `matchMedia` breakpoint or router.

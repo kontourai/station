@@ -18,6 +18,16 @@ vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
   useShowSurfacePage: () => showSurfacePage,
 }));
+// The rows' git locations and project colours are read from the session
+// and Project queries (the dock's own hooks), and this file mounts no query
+// client. The cross-surface agreement is pinned in ActivityList.test and
+// ChatInboxHoverCard.test, which feed those reads.
+vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
+  useGitLocationByThreadId: () => new Map(),
+}));
+vi.mock('../../../hooks/useProjectAccents', () => ({
+  useProjectAccents: () => new Map(),
+}));
 
 // The start composer owns its own tests (`HomeStartComposer.test.tsx`); here
 // it is the one "Start work" form whose place and compactness Home decides.

@@ -45,6 +45,18 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { ResponsiveDialogHeader } from '../components/ResponsiveDialogSurface';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 const SRC_UI_ROOT = path.resolve(__dirname, '..');
 
 function readSource(relativePath: string): string {

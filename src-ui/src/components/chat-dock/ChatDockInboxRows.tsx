@@ -149,6 +149,22 @@ export function inboxRowIconAgent(
 }
 
 /**
+ * The project's colour as a dot before its name. Decorative (`aria-hidden`):
+ * the name beside it is what says which project, and the colour is never
+ * applied to text.
+ */
+function ProjectAccentSwatch({ accent }: { accent: string | undefined }) {
+  if (!accent) return null;
+  return (
+    <span
+      className="inbox-row__project-accent"
+      aria-hidden="true"
+      style={{ backgroundColor: accent }}
+    />
+  );
+}
+
+/**
  * The row's metadata hover card (`ChatInboxHoverCard`), lazily chunk-loaded
  * on first open so the dock's eager bundle never carries the card's data
  * imports. Hover opens it after the same delay `GitTooltip` uses; focus
@@ -357,6 +373,14 @@ interface InboxRowProps {
    */
   gitLocation?: GitReadLocation;
   /**
+   * The row's project colour (`useProjectAccents`, the sidebar's own
+   * allocation), drawn as a decorative swatch before the project name.
+   * Never a text colour: the name stays as text in the row's own
+   * foreground. Absent (no project, or a host without the project list)
+   * draws no swatch.
+   */
+  projectAccent?: string;
+  /**
    * `card` (the default) is the full row for work that needs you, is
    * running or is idle. `slim` is the one-line row for snoozed and settled
    * work: status icon, title, status word, time.
@@ -429,6 +453,7 @@ export function InboxRow({
   onDraftDiscarded,
   agents,
   gitLocation,
+  projectAccent,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
@@ -759,7 +784,7 @@ export function InboxRow({
                 {!actionsInDetails && (
                   <>
                     {' '}
-                    ·{' '}
+                    · <ProjectAccentSwatch accent={projectAccent} />
                     <span className="inbox-row__project">
                       {item.projectLabel}
                     </span>
@@ -793,6 +818,7 @@ export function InboxRow({
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 <FolderGlyph />
+                <ProjectAccentSwatch accent={projectAccent} />
                 <span className="inbox-row__project">{item.projectLabel}</span>
               </span>
             )}
@@ -909,6 +935,12 @@ export interface InboxGroupListProps {
    * across renders for the same reason `agents` is.
    */
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
+  /**
+   * Project accents by slug (`useProjectAccents`). Rows resolve their own
+   * `projectAccent` from `item.projectSlug`. Referentially stable, like the
+   * other shared props.
+   */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
   actionsInDetails?: InboxRowProps['actionsInDetails'];
@@ -939,6 +971,7 @@ export function InboxGroupList({
   onDraftDiscarded,
   agents,
   gitLocationByThreadId,
+  projectAccentBySlug,
   chrome,
   actionsInDetails,
   workFacts,
@@ -998,6 +1031,11 @@ export function InboxGroupList({
         gitLocationByThreadId?.get(
           item.orchestrationThreadId ?? item.chatSessionId ?? '',
         ) ?? undefined
+      }
+      projectAccent={
+        item.projectSlug
+          ? projectAccentBySlug?.get(item.projectSlug)
+          : undefined
       }
     />
   );

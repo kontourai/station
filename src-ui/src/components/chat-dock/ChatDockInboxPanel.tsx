@@ -77,6 +77,8 @@ export interface ChatDockInboxPanelProps {
    * other shared props — the `memo()` wrap compares shallowly.
    */
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
+  /** Project accents by slug; see `InboxGroupListProps.projectAccentBySlug`. */
+  projectAccentBySlug?: InboxGroupListProps['projectAccentBySlug'];
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
   workFacts?: InboxGroupListProps['workFacts'];
 }
@@ -104,6 +106,7 @@ function ChatDockInboxPanelImpl({
   now: suppliedNow,
   agents,
   gitLocationByThreadId,
+  projectAccentBySlug,
   workFacts,
 }: ChatDockInboxPanelProps) {
   // One coarse tick for the whole list's relative times, rather than a new
@@ -156,6 +159,7 @@ function ChatDockInboxPanelImpl({
             now={now}
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
+            projectAccentBySlug={projectAccentBySlug}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
             collapsible={{ sections, onToggle: toggleSection }}
