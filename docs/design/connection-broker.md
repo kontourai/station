@@ -601,8 +601,10 @@ terminal, plugin, pairing, consent and generic operator routes refuse proof
 authority even when the proven Device holds broad scopes. A separate closed
 relay-management and Project access management inventory now has native
 transport and fixed account-proof preparation; it requires explicit management
-scope and independent Project IAM. The account-bound Device gate integration
-remains pending #3210. The one [native Device request
+scope and independent Project IAM. The account-bound gate admits only exact
+native relay-management leaves with current Device/account binding and separate
+management scope; credential-only account-bound Devices remain gated.
+Capabilities return neutral false without management authority. The one [native Device request
 authority](../../src-server/security/native-device-request-authority.ts) mints
 the credential-free principal on the final Request, and every later seam
 (account-bound gate, orchestration principal, Project membership authority,

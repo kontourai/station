@@ -134,8 +134,12 @@ Project role; relay management conveys no terminal, Agent or Task publication
 authority. Native writes use a dedicated fixed account-operation preparer;
 the generic account read signer remains GET/HEAD only.
 
-The source route tables admit only closed management leaves. The account-bound
-Device gate integration remains pending [#3210](https://github.com/kontourai/station/issues/3210).
+The source route tables and account-bound gate share an exact native relay-leaf
+classifier. Current Device proof/account binding and session remain required,
+and management independently requires `relay:manage`. Credential-only
+account-bound Devices remain refused; capabilities are a neutral false without
+management authority. [Project IAM](deployment-authentication.md#native-relay-management-admission)
+is unchanged.
 These source controls and diagnostic tests do not establish a released Nightly,
 physical-device or two-human relay onboarding result. Follow the
 [connection steps](connections.md#invite-a-device-to-a-relay-station) and

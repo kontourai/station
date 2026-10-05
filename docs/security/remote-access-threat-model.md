@@ -205,7 +205,10 @@ its account continuation and actual provider session; it leaves Device custody
 independent. The closed native relay-management and Project access
 administration leaves use a dedicated account host operation. Project IAM
 remains independent; terminal, Agent and Task share/unshare authority are
-excluded. The account-bound Device gate integration remains pending #3210.
+excluded. Account-bound relay management now admits only exact native-proof
+leaves with current Device/account binding and separate `relay:manage`. Ordinary
+credential-only account-bound Devices remain refused; capabilities are a neutral
+read with `canManage: false` without management authority.
 Other resource writes and compute remain unsupported.
 Desktop and mobile host command registration is source evidence; fresh native
 application enrollment and physical-device acceptance remain separate evidence.

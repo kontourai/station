@@ -175,8 +175,11 @@ Station health, authority and member Project/shared-work reads; fixed account
 challenge/exchange/revoke and invitation acceptance are separate control leaves.
 The separate closed management inventory adds relay setup/invitation/Device
 decisions and Project access administration without granting terminal, Agent
-or Task publication writes. Account-bound Device gate integration remains
-pending #3210. Account continuation and Project membership remain independent. A mounted
+or Task publication writes. The account-bound gate admits only exact native
+relay-management leaves with current Device/account proof and separate
+`relay:manage`; credential-only account-bound Devices remain refused.
+Capabilities are neutral false without management authority. Account
+continuation and Project membership remain independent. A mounted
 consumer is not proof of a completed fresh native or physical Project journey.
 
 Rust verifies the exact Station-signed nonce, connection identity, offer/answer

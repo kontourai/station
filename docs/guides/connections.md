@@ -222,8 +222,13 @@ issuer secret. See [the broker operator path](self-hosted-broker.md#station-invi
 and [native verification limits](native-shell-verification.md#relay-management-source-integration).
 
 This is source integration with diagnostic checks, not a released Nightly or
-physical-device delivery receipt. The account-bound route gate still needs the
-closed management leaves integrated after [#3210](https://github.com/kontourai/station/issues/3210).
+physical-device delivery receipt. For account-bound Devices, the gate admits only
+the exact native relay-management leaves with current Device proof and account
+binding/session. Management separately requires explicit `relay:manage`; a
+credential-only account-bound Device remains refused. The capabilities read
+returns `canManage: false` without management authority and grants nothing.
+Project access administration still requires Project IAM. See the
+[exact admission inventory](deployment-authentication.md#native-relay-management-admission).
 
 ## Saved Station addresses
 

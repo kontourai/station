@@ -32,7 +32,9 @@ pending Device. The captured decision retains the actual human actor and
 rechecks Device/account/provider currentness and the target after awaits.
 This does not change the original operator-only pairing routes, enroll an
 account, or grant Project membership. Native Project administration additionally
-requires Project IAM. The account-bound gate integration remains pending #3210;
+requires Project IAM. The account-bound gate now admits only exact native relay
+leaves with current Device/account proof and separate `relay:manage`; ordinary
+credential-only account-bound Devices remain gated. Capabilities grant nothing;
 this source addition is not released Nightly, physical-device or two-human proof.
 
 The [connector](../../src-server/services/connections/self-hosted-broker-connector.ts)

@@ -179,9 +179,12 @@ in [environment security](../../packages/contracts/src/environment-security.ts),
 is an explicitly operator-promoted Device scope excluded from presets/defaults.
 It admits closed management leaves and does not replace Project roles or grant
 Agent, terminal, or Task publication authority. Native account-managed POSTs
-use their dedicated host operation, not the generic read signer. Account-bound
-Device gate integration remains pending #3210; contract availability alone
-proves neither route admission nor a released native journey.
+use their dedicated host operation, not the generic read signer. For relay
+management, account-bound Devices reach only exact leaves through current native proof
+and account binding/session, with separate `relay:manage` for management.
+Credential-only account-bound Devices remain gated; capabilities return neutral
+false without management authority. Contract availability is not a released
+native journey receipt.
 
 ## Scheduler deferral events
 

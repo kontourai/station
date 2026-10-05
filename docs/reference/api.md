@@ -3184,7 +3184,10 @@ The selected native relay member route permits bounded Station observations
 and Project/shared-work reads, its fixed account operations, and the closed
 relay-management/Project access management inventory. The latter uses dedicated
 native account proof preparation and requires management scope plus independent
-Project IAM. The account-bound Device gate integration remains pending #3210.
+Project IAM. The account-bound gate admits only the exact native relay leaves
+with current Device proof and account binding/session; `relay:manage` remains a
+separate management requirement. Credential-only account-bound Devices stay
+refused, and the capabilities read grants no authority.
 Other SDK mutations, terminal, Agent and Task publication writes are refused;
 generic operator and compute surfaces remain unsupported. Native
 continuation revocation retires that continuation and its provider session,

@@ -230,8 +230,10 @@ Full Project invitation links are accepted as token input without changing the
 selected Station.
 
 This records inspected source integration, not a completed native delivery.
-The account-bound Device gate still needs the exact management leaves after
-[#3210](https://github.com/kontourai/station/issues/3210). Existing simulator
+The account-bound gate now admits exact native relay-management leaves with
+current Device/account proof and separate management scope; credential-only
+account-bound Devices remain refused. This inspected source change does not
+turn a composition keeper into native runtime qualification. Existing simulator
 records for #3114, #3190 and #3199 remain evidence of their own earlier journeys;
 they do not qualify these new operator controls. Released Nightly, physical
 iOS/Android, process-lifecycle and two-human operator/recipient verification

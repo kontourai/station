@@ -92,7 +92,9 @@ Unsupported resources and writes fail before peer allocation in the
 [Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
 The generic library does not choose that policy. Management does not replace
 Project IAM or grant terminal, Agent or Task publication authority. The
-account-bound Device gate integration remains pending #3210.
+account-bound gate admits only exact native relay-management leaves with
+current Device/account proof and separate `relay:manage`; credential-only
+account-bound Devices remain gated. Capabilities grant no management authority.
 [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
 [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
 mount the host transport; the

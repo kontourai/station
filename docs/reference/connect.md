@@ -152,8 +152,9 @@ Project and authority reads, plus a dedicated fixed native account operation
 for the closed relay-management and Project access administration leaves.
 Unsupported resources and writes fail before peer creation; this is not a
 general operator Workspace transport. Management does not replace Project IAM
-or grant terminal, Agent or Task publication authority. The account-bound
-Device gate integration remains pending #3210. The CLI
+or grant terminal, Agent or Task publication authority. Account-bound relay
+management requires current native Device/account proof and explicit
+`relay:manage`; a credential-only account-bound Device remains gated. The CLI
 continues to exclude these routes from default selection. Focused source tests do not establish executed
 Tauri IPC, packaged-client, physical-device or complete authenticated
 Project-journey evidence.

@@ -1827,9 +1827,11 @@ These clients require current operator or explicitly promoted `relay:manage`
 authority. Native management POSTs use a dedicated fixed host account operation;
 generic account read preparation remains GET/HEAD only. The closed Project
 access leaves still require Project IAM. This scope adds no terminal, Agent,
-or shared-Task publication authority. The account-bound Device route-gate
-integration remains pending #3210, and source availability is not release or
-physical-device qualification.
+or shared-Task publication authority. Account-bound management requires the
+exact native relay leaves, current Device/account binding and session, and
+separate `relay:manage`. Credential-only account-bound Devices remain refused;
+capabilities are neutral false without management authority. Source availability
+is not release or physical-device qualification.
 
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project

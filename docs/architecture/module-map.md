@@ -147,8 +147,11 @@ and preset scopes. Only closed relay and Project access management leaves are
 admitted; Project `manage-members` remains independently necessary. A dedicated
 native account host operation prepares the management POSTs without widening
 the generic GET/HEAD signer. Agent, terminal and Task share/unshare authority
-are excluded. The account-bound Device route gate still awaits exact management
-leaf integration after #3210; this source composition has no released Nightly,
+are excluded. The [account-bound gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
+uses the same exact relay-leaf classifier and admits account-bound management
+only with current native proof/account binding and separate `relay:manage`.
+Credential-only account-bound Devices remain gated; capabilities are neutral
+false without management authority. This source composition has no released Nightly,
 physical-device or two-human qualification receipt.
 
 The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
