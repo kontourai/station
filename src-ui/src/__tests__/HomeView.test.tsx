@@ -491,7 +491,7 @@ describe('HomeView', () => {
   });
 
   // #1582 B9: a chat created and never typed into is not work. It produced a
-  // "Continue most recent work → New chat" card that a reload erased, because
+  // Continue card naming "New chat" that a reload erased, because
   // Home read the same unfiltered selection the inboxes do. Home takes
   // `useOpenWorkChats`; swapping it back for `useOpenChats` reddens this.
   test('a chat nothing has been put into produces no continue-work card', () => {
@@ -796,7 +796,7 @@ describe('HomeView', () => {
 
   // #2310 review M3: the newest session is a Draft (nothing ever sent). The
   // card must continue the most recent WORK, not an empty session.
-  test('"Continue most recent work" skips a newer Draft', () => {
+  test('the Continue card skips a newer Draft', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
     fixtures.defaultModelLabel = 'Model not reported';
@@ -1662,7 +1662,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
   // read-only remote card (no local work at all), the primary CTA — which
   // can only ever continue a LOCAL item — must not render rather than
   // silently target a remote card that no-ops on click.
-  test('AC1: the "Continue most recent work" CTA does not render when only remote sessions exist', () => {
+  test('AC1: the Continue card does not render when only remote sessions exist', () => {
     fixtures.remoteSessionsResult = {
       environments: [
         {
