@@ -64,6 +64,7 @@ import {
   buildTestImpactManifest,
   isEscalationPath,
   matches,
+  mergeQueueRegressionPaths,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
@@ -1966,6 +1967,9 @@ export async function planChangedVerificationShards(
     shardCount,
     changedPathCount: changed.paths.length,
     deferredLanes: selection.lanes,
+    // Paths whose consumers only the merge-queue full regression runs; the
+    // queue's decision reads this beside deferredLanes.
+    mergeQueueRegressionPaths: mergeQueueRegressionPaths(changed.paths),
     escalated: selection.escalated,
     productLaws: productLawRouting.productLaws,
     ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),
