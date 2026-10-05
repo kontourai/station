@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -200,6 +201,14 @@ describe('OpenCodeSessionSource', () => {
     expect(new Set(result.events.map((event) => event.eventId)).size).toBe(
       result.events.length,
     );
+    // The per-answer envelope shows OpenCode usage only because its scope is
+    // declared per-turn; an undeclared engine reads as a disclosed gap.
+    expect(
+      assembleTurnProvenanceEnvelopes(result.events)[0]?.usage,
+    ).toMatchObject({
+      state: 'observed',
+      value: { inputTokens: 120, outputTokens: 45 },
+    });
     expect(await source.read(session, result.cursor)).toMatchObject({
       outcome: 'ok',
       events: [],
