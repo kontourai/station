@@ -56,7 +56,7 @@ message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
 explicit replacement; an unavailable preference keeps its reason and repair.
-Home’s quick-start recommendation remains runnable. The mobile overflow holds
+Home’s composer shows the same remembered Agent, repair included; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
 chat actions rather than repeating the app header’s connection-health row.
 When fullscreen chat hides that header, its actions sheet retains Station
 management and connection state.
