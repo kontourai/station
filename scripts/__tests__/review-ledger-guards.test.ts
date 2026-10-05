@@ -925,8 +925,10 @@ describe('note archives (#3394)', () => {
       commit(f.root, 'advance that archives only part of the baseline');
       const result = check(f.root, scoped);
       expect(result.status).toBe(1);
+      // A refused archive moves nothing, so the note it took is removed.
       expect(result.blocking).toEqual([
         expect.objectContaining({ rule: 'archive-unbacked', path: archive }),
+        expect.objectContaining({ rule: 'note-removed', path: f.notes[0] }),
       ]);
     });
 
