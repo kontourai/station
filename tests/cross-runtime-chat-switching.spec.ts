@@ -999,6 +999,17 @@ async function seedCrossRuntimeRoutes(
   );
 }
 
+/** The dock's start composer, opened from the dock's one New. */
+function dockComposer(page: Page) {
+  return page
+    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('form', { name: 'Start work' });
+}
+
+/**
+ * Opens the dock's start composer and its Agent chip's list, the Agents this
+ * context offers. Returns that list.
+ */
 async function openNewChatModal(page: Page) {
   // The dock bar has one New and no Open (design round 2026-10, B1).
   const newChatButton = page
@@ -1006,11 +1017,13 @@ async function openNewChatModal(page: Page) {
     .getByRole('button', { name: 'New chat', exact: true });
   await expect(newChatButton).toBeVisible({ timeout: 10_000 });
   await newChatButton.click();
-  await expect(page.locator('.new-chat-modal')).toBeVisible({ timeout: 5_000 });
-  await page
-    .getByRole('form', { name: 'New chat draft' })
+  await expect(dockComposer(page)).toBeVisible({ timeout: 5_000 });
+  await dockComposer(page)
     .getByRole('button', { name: /^Agent:/ })
     .click();
+  const agents = page.getByRole('dialog', { name: 'Choose agent' });
+  await expect(agents).toBeVisible();
+  return agents;
 }
 
 function assistantRows(page: Page) {
@@ -1332,7 +1345,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await page.goto('/');
     await expect(
       page
-        .getByRole('button', { name: /^Continue/ })
+        .getByRole('region', { name: 'Continue', exact: true })
         .getByText(LONG_HOME_TITLE),
     ).toBeVisible();
     const bounds = await page.evaluate(() => ({
@@ -1394,62 +1407,87 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       'ACP Alpha transcript loaded.',
     );
 
-    await openNewChatModal(page);
-    await expect(page.locator('.new-chat-modal__context-button')).toContainText(
-      'Alpha Project',
-    );
+    const alphaAgents = await openNewChatModal(page);
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+      dockComposer(page).getByRole('button', {
+        name: 'Project: Alpha Project',
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'Claude Runtime' }),
+      alphaAgents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
     ).toBeVisible();
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      alphaAgents.locator('.new-chat-modal__agent', {
+        hasText: 'Claude Runtime',
+      }),
     ).toBeVisible();
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'Codex Runtime' }),
+      alphaAgents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+    ).toBeVisible();
+    await expect(
+      alphaAgents.locator('.new-chat-modal__agent', {
+        hasText: 'Codex Runtime',
+      }),
     ).toHaveCount(0);
+    await alphaAgents.press('Escape');
+    await expect(alphaAgents).toHaveCount(0);
 
-    await page.locator('.new-chat-modal__context-button').click();
+    await dockComposer(page)
+      .getByRole('button', { name: /^Project: / })
+      .click();
     await page
-      .locator('.new-chat-modal__dropdown')
+      .getByRole('dialog', { name: 'Choose project' })
       .getByRole('button', { name: /Beta Project/ })
       .click();
-
-    await expect(page.locator('.new-chat-modal__context-button')).toContainText(
-      'Beta Project',
-    );
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'Codex Runtime' }),
+      dockComposer(page).getByRole('button', {
+        name: 'Project: Beta Project',
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await dockComposer(page)
+      .getByRole('button', { name: /^Agent:/ })
+      .click();
+    const betaAgents = page.getByRole('dialog', { name: 'Choose agent' });
+    await expect(
+      betaAgents.locator('.new-chat-modal__agent', {
+        hasText: 'Codex Runtime',
+      }),
     ).toBeVisible();
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+      betaAgents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
     ).toHaveCount(0);
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'Claude Runtime' }),
+      betaAgents.locator('.new-chat-modal__agent', {
+        hasText: 'Claude Runtime',
+      }),
     ).toHaveCount(0);
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      betaAgents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
     ).toHaveCount(0);
 
-    await page
+    await betaAgents
       .locator('.new-chat-modal__agent', { hasText: 'Codex Runtime' })
       .click();
     await expect(
-      page
-        .getByRole('form', { name: 'New chat draft' })
-        .getByRole('button', { name: 'Agent: Codex Runtime', exact: true }),
+      dockComposer(page).getByRole('button', {
+        name: /^Agent: Codex Runtime(?: · [^,]+)?$/,
+      }),
     ).toBeVisible();
     await page
       .getByRole('dialog', { name: 'New chat', exact: true })
       .press('Escape');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
+    // Nothing started: the open chat is unchanged. The project chip is
+    // remembered (owner, 2026-10): it rebound the dock's project for new
+    // chats, exactly as the project switcher does.
     await expect(chatList.locator('button[aria-current="true"]')).toContainText(
       'ACP Alpha Chat',
     );
     await expect(page.locator('.chat-dock__project-badge')).toContainText(
-      'Alpha Project',
+      'Beta Project',
     );
   });
 
@@ -1540,13 +1578,13 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
         .and(page.locator('[aria-current="true"]')),
     ).toBeVisible({ timeout: 15_000 });
 
-    await openNewChatModal(page);
+    const agents = await openNewChatModal(page);
 
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      agents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
     ).toBeVisible();
     await expect(
-      page.locator('.new-chat-modal__agent', { hasText: 'other-cli' }),
+      agents.locator('.new-chat-modal__agent', { hasText: 'other-cli' }),
     ).toHaveCount(0);
   });
 });
