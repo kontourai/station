@@ -558,7 +558,9 @@ export function hiddenCommandLines(
     const a = args as Record<string, unknown>;
     const command = a.command ?? a.cmd ?? a.cmdline;
     if (typeof command === 'string' && command.trim()) text = command;
-    else if (Array.isArray(command) && command.length > 0) return 0;
+    else if (Array.isArray(command) && command.length > 0) {
+      text = argvText(command);
+    }
   }
   if (
     text === undefined &&
@@ -568,6 +570,12 @@ export function hiddenCommandLines(
     text = toolName;
   }
   return text === undefined ? 0 : Math.max(0, displayLines(text).length - 1);
+}
+
+/** An argv array as the one string a label shows: its elements joined by a
+ * space, as before #3382. */
+function argvText(command: readonly unknown[]): string {
+  return command.map(String).join(' ');
 }
 
 /** One leading `NAME=value ` whose value is a plain literal: no `$`,
@@ -646,7 +654,10 @@ function extractTarget(
       return commandTarget(command, trimEnv);
     }
     if (Array.isArray(command) && command.length > 0) {
-      return truncate(command.join(' '));
+      // An argv array (`['bash', '-c', 'echo a\nrm -rf /']`) can carry a
+      // multi-line script in one element, so it gets the same first line and
+      // line count. Never env-trimmed: in an argv, `FOO=1` is the program.
+      return commandTarget(argvText(command), false);
     }
     return null;
   }

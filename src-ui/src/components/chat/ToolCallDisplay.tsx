@@ -1,4 +1,8 @@
 import {
+  hasHiddenCharacters,
+  revealHiddenCharacters,
+} from '@kontourai/station-shared/display-text';
+import {
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
   toolRequestSessionGrant,
@@ -538,20 +542,43 @@ function ToolCallDetails({
           ? 'Success'
           : null;
 
+  const showArgs = commandValue === undefined || hasRemainingArgs;
+  // #3382: the raw views are what an approval is decided from, so a bidi
+  // override or zero-width character in them is shown, never applied.
+  const hiddenWarning =
+    commandValue !== undefined && hasHiddenCharacters(commandValue)
+      ? 'This command contains hidden characters, shown below as «U+…».'
+      : showArgs &&
+          typeof argsJson === 'string' &&
+          hasHiddenCharacters(argsJson)
+        ? 'These arguments contain hidden characters, shown below as «U+…».'
+        : undefined;
+
   return (
     <div className="tool-call__details">
+      {hiddenWarning && (
+        <p className="tool-call__hidden-warning" role="note">
+          {hiddenWarning}
+        </p>
+      )}
       {commandValue !== undefined && (
         <div className="tool-call__section">
           <strong>Command:</strong>
           <pre className="tool-call__code tool-call__code--command">
-            {commandValue}
+            <RevealedText text={commandValue} />
           </pre>
         </div>
       )}
-      {(commandValue === undefined || hasRemainingArgs) && (
+      {showArgs && (
         <div className="tool-call__section">
           <strong>Arguments:</strong>
-          <pre className="tool-call__code">{argsJson}</pre>
+          <pre className="tool-call__code">
+            {typeof argsJson === 'string' ? (
+              <RevealedText text={argsJson} />
+            ) : (
+              argsJson
+            )}
+          </pre>
         </div>
       )}
       {result !== undefined && (
@@ -633,6 +660,35 @@ function ToolCallDetails({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * #3382: raw text exactly as written, except that each hidden character (a
+ * bidi control, a zero-width character, a control other than LF and tab) is
+ * shown as its own muted «U+XXXX» token instead of being applied. The DOM
+ * text is then the value in logical order.
+ */
+function RevealedText({ text }: { text: string }) {
+  const segments = useMemo(() => revealHiddenCharacters(text), [text]);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === 'text' ? (
+          segment.text
+        ) : (
+          <span
+            // Segments are positional and never reorder.
+            // biome-ignore lint/suspicious/noArrayIndexKey: positional segments of one string.
+            key={index}
+            className="tool-call__hidden-char"
+            title={`Hidden character: ${segment.name}. Shown here instead of being applied.`}
+          >
+            {segment.token}
+          </span>
+        ),
+      )}
+    </>
   );
 }
 

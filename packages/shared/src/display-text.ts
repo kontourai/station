@@ -87,3 +87,95 @@ export function displayLength(value: string): number {
   for (const _ of value) count += 1;
   return count;
 }
+
+/**
+ * Characters a raw view must not apply or hide: bidi marks, embeddings,
+ * overrides and isolates (as `BIDI_CONTROLS`), the zero-width space, word
+ * joiner and BOM (U+200B, U+2060, U+FEFF), and every C0/C1 control but LF and
+ * tab, which a raw view shows as the line break and spacing they are.
+ */
+const HIDDEN_CHARACTERS =
+  /[\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]|[^\P{Cc}\n\t]/gu;
+
+/** One run of a raw value: text shown as written, or a hidden character
+ * shown as its token (`hiddenCharacterToken`). */
+export type RevealedSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'hidden'; codePoint: number; token: string; name: string };
+
+/** "«U+202E»": how a raw view shows a hidden character. Guillemets, not
+ * angle brackets: they cannot be read as shell redirection, and the bundled
+ * Latin-1 font subset draws them. */
+export function hiddenCharacterToken(codePoint: number): string {
+  return `«U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}»`;
+}
+
+const HIDDEN_CHARACTER_NAMES: Readonly<Record<number, string>> = {
+  0x061c: 'arabic letter mark',
+  0x200b: 'zero-width space',
+  0x200e: 'left-to-right mark',
+  0x200f: 'right-to-left mark',
+  0x202a: 'left-to-right embedding',
+  0x202b: 'right-to-left embedding',
+  0x202c: 'pop directional formatting',
+  0x202d: 'left-to-right override',
+  0x202e: 'right-to-left override',
+  0x2060: 'word joiner',
+  0x2066: 'left-to-right isolate',
+  0x2067: 'right-to-left isolate',
+  0x2068: 'first strong isolate',
+  0x2069: 'pop directional isolate',
+  0xfeff: 'zero-width no-break space',
+};
+
+function hiddenCharacterName(codePoint: number): string {
+  return HIDDEN_CHARACTER_NAMES[codePoint] ?? 'control character';
+}
+
+/**
+ * A raw value split so that a view can show it exactly as written EXCEPT for
+ * the characters that would change what it looks like without being seen
+ * (`HIDDEN_CHARACTERS`): each of those becomes its own segment, to be shown
+ * as a visible token instead of being applied. Joining the segments' `text`
+ * and `token` gives the value in logical order, so a right-to-left override
+ * cannot make `echo done` read `echo enod`. Line breaks, tabs, spaces and all
+ * other text are untouched.
+ */
+export function revealHiddenCharacters(value: string): RevealedSegment[] {
+  const segments: RevealedSegment[] = [];
+  let last = 0;
+  for (const match of value.matchAll(HIDDEN_CHARACTERS)) {
+    const index = match.index ?? 0;
+    if (index > last) {
+      segments.push({ kind: 'text', text: value.slice(last, index) });
+    }
+    const codePoint = match[0].codePointAt(0)!;
+    segments.push({
+      kind: 'hidden',
+      codePoint,
+      token: hiddenCharacterToken(codePoint),
+      name: hiddenCharacterName(codePoint),
+    });
+    last = index + match[0].length;
+  }
+  if (last < value.length) {
+    segments.push({ kind: 'text', text: value.slice(last) });
+  }
+  return segments;
+}
+
+/** Whether `revealHiddenCharacters` would reveal anything in `value`. */
+export function hasHiddenCharacters(value: string): boolean {
+  HIDDEN_CHARACTERS.lastIndex = 0;
+  const found = HIDDEN_CHARACTERS.test(value);
+  HIDDEN_CHARACTERS.lastIndex = 0;
+  return found;
+}
+
+/** `revealHiddenCharacters` as one string, for a server-side or plain-text
+ * raw view. */
+export function revealHiddenCharactersText(value: string): string {
+  return revealHiddenCharacters(value)
+    .map((segment) => (segment.kind === 'text' ? segment.text : segment.token))
+    .join('');
+}

@@ -1226,3 +1226,26 @@ describe('toolRequestPreview — display form (#3382)', () => {
     );
   });
 });
+
+describe('revealHiddenCharacters (#3382)', () => {
+  test('tokens every hidden character and leaves LF, tab and text as written', async () => {
+    const { revealHiddenCharactersText, hasHiddenCharacters } = await import(
+      '../display-text.js'
+    );
+    const open = String.fromCodePoint(0xab);
+    const close = String.fromCodePoint(0xbb);
+    const hidden = [
+      0x202e, 0x2066, 0x200f, 0x061c, 0x200b, 0x2060, 0xfeff, 0x85, 0x07, 0x0d,
+    ];
+    for (const codePoint of hidden) {
+      const value = `a${String.fromCodePoint(codePoint)}b`;
+      const hex = codePoint.toString(16).toUpperCase().padStart(4, '0');
+      expect(revealHiddenCharactersText(value)).toBe(
+        `a${open}U+${hex}${close}b`,
+      );
+      expect(hasHiddenCharacters(value)).toBe(true);
+    }
+    expect(revealHiddenCharactersText('a\n\tb  c')).toBe('a\n\tb  c');
+    expect(hasHiddenCharacters('a\n\tb  c')).toBe(false);
+  });
+});

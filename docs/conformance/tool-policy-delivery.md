@@ -451,7 +451,10 @@ promising more than it does:
   purpose and the inbox row's title and body drop bidi controls (U+202A–202E,
   U+2066–2069, LRM, RLM, ALM) and turn control characters, C1 included, into
   spaces (`packages/shared/src/display-text.ts`, shared with the transcript
-  label). The details view keeps the raw arguments.
+  label). The details view shows the raw arguments, except that hidden
+  characters (bidi controls, U+200B, U+2060, U+FEFF, and controls other than
+  LF and tab) appear as visible `«U+XXXX»` tokens under a "contains hidden
+  characters" warning, so they are never applied next to Allow and Deny.
 - **"Redacted" means known credential shapes.** `redactSecrets`
   (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
   removes recognised credential patterns and `key=value` pairs whose key looks

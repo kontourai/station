@@ -552,7 +552,8 @@ describe('ToolCallDisplay — a delete is never worded as a read (#3364)', () =>
 });
 
 // #3364 review: the approval label is sanitised; the details keep the raw
-// arguments the user is being asked to allow.
+// arguments the user is being asked to allow, with hidden characters shown
+// as tokens (#3382).
 describe('ToolCallDisplay — an approval label strips bidi controls (#3364)', () => {
   test('the label drops the RLO and the details still show it', () => {
     render(
@@ -572,7 +573,9 @@ describe('ToolCallDisplay — an approval label strips bidi controls (#3364)', (
     expect(label.textContent).toBe('Run echo txt.exe');
     fireEvent.click(document.querySelector('button.tool-call__line')!);
     const details = document.querySelector('.tool-call')!.textContent!;
-    expect(details).toContain('echo \u202Etxt.exe');
+    // #3382: the details show the RLO as a visible token rather than
+    // applying it (or dropping it).
+    expect(details).toContain(`echo ${token('202E')}txt.exe`);
   });
 });
 
@@ -690,5 +693,80 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     expect(
       screen.getByRole('button', { name: 'Allow Bash for this session' }),
     ).toBeTruthy();
+  });
+});
+
+// #3382 follow-up: the raw details sit next to Allow and Deny for a pending
+// multi-line command, so they show hidden characters instead of applying
+// them. Tokens are built from code points so the source stays plain ASCII.
+const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+const token = (hex: string) =>
+  `${String.fromCodePoint(0xab)}U+${hex}${String.fromCodePoint(0xbb)}`;
+
+describe('ToolCallDisplay — raw details reveal hidden characters (#3382)', () => {
+  test('an RLO in a command is shown as a token, in logical order, with LF and tab kept', () => {
+    pendingBash({ command: `echo ${RLO}done${PDF}\nrm${NEL}-rf /\tx` });
+    const block = document.querySelector('.tool-call__code--command')!;
+    expect(block.textContent).toBe(
+      `echo ${token('202E')}done${token('202C')}\nrm${token('0085')}-rf /\tx`,
+    );
+    // Nothing in the DOM can still reorder or hide text.
+    expect(block.textContent).not.toContain(RLO);
+    expect(block.textContent).not.toContain(NEL);
+    const marker = block.querySelector('.tool-call__hidden-char')!;
+    expect(marker.textContent).toBe(token('202E'));
+    expect(marker.getAttribute('title')).toContain('right-to-left override');
+    expect(
+      document.querySelector('.tool-call__hidden-warning')!.textContent,
+    ).toContain('This command contains hidden characters');
+    // The label and the details now agree.
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run echo done (+1 line)',
+    );
+  });
+
+  test('a zero-width character in the arguments is revealed', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'zw-1',
+          toolName: 'Write',
+          args: { file_path: `a${ZERO_WIDTH_SPACE}b.txt`, content: 'x' },
+          state: 'call',
+          needsApproval: true,
+          approvalId: 'a1',
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    const args = document.querySelector('.tool-call__code')!;
+    expect(args.textContent).toContain(`a${token('200B')}b.txt`);
+    expect(args.textContent).not.toContain(ZERO_WIDTH_SPACE);
+    expect(
+      document.querySelector('.tool-call__hidden-warning')!.textContent,
+    ).toContain('These arguments contain hidden characters');
+  });
+
+  test('a command with nothing hidden shows no marker and no warning', () => {
+    pendingBash({ command: 'echo a\n\tb' });
+    expect(
+      document.querySelector('.tool-call__code--command')!.textContent,
+    ).toBe('echo a\n\tb');
+    expect(document.querySelector('.tool-call__hidden-char')).toBeNull();
+    expect(document.querySelector('.tool-call__hidden-warning')).toBeNull();
+  });
+
+  test('an argv command counts its lines and opens like a string command', () => {
+    pendingBash({ command: ['bash', '-c', 'echo a\nrm -rf /'] });
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run bash -c echo a (+1 line)',
+    );
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
   });
 });
