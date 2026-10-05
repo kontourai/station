@@ -17,6 +17,7 @@
  * ever shows up in what a person sees.
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
@@ -481,7 +482,7 @@ describe('assistant avatar engine mark (#3355)', () => {
     role: 'assistant' as const,
     content: 'OK',
     turnId: 'turn-7',
-    agentSlug: 'release-reviewer',
+    agentSlug: agentId('release-reviewer'),
     provenance: envelope({ engine: observed({ provider: 'codex' }) }),
   };
 
