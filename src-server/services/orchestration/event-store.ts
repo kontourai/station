@@ -37,6 +37,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   type ProviderSession,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -232,6 +233,11 @@ import {
   type RecoveryTransition,
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
+import {
+  createSqliteSessionControlRequestKeys,
+  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
+  type SessionControlRequestKeys,
+} from './session-control-request-keys.js';
 import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
@@ -509,6 +515,14 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                     AND epoch.method = 'session.started'
                     AND epoch.sequence <= e.sequence) AS process_epoch
 `;
+
+/** A session that names a parent conversation; see `listSessionsNamingParents`. */
+export interface SessionNamingParent {
+  threadId: string;
+  parentId: string;
+  binding: 'delegation-context' | 'parent-task-id';
+  stationDerived: boolean;
+}
 
 /** One `token-usage.updated` row with the receipt facts joined onto it. */
 export interface UsageReceiptEventRow {
@@ -1862,6 +1876,7 @@ export class EventStore {
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
+  private sessionControlKeys?: SessionControlRequestKeys;
 
   constructor(
     dbPath: string,
@@ -2010,6 +2025,8 @@ export class EventStore {
         confirmed_turn_id TEXT,
         PRIMARY KEY (thread_id, client_input_id)
       )`);
+      // #3160: the request keys behind `send_to_session` / `interrupt_session`.
+      this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -4701,6 +4718,12 @@ export class EventStore {
    * - `parent-task-id`: only `metadata.parentTaskId`, which a delegation
    *   request may set itself. Used only when there is no delegation context.
    *
+   * `stationDerived` (#3323) is true only when a `session.started` row of the
+   * session names that same parent AND carries the dispatch route's
+   * provenance stamp saying Station derived the context from the calling
+   * session or its own runtime attested it. The stamp is a reserved key a
+   * caller can never set, so a request's bare claim never reads as derived.
+   *
    * Every session.started/session.configured row is examined once for the
    * whole batch of parents (one level of a tree read), through the method
    * index; there is no index on the JSON fields. Reads one candidate past
@@ -4711,19 +4734,11 @@ export class EventStore {
     parentIds: readonly string[],
     limit: number,
   ): {
-    sessions: Array<{
-      threadId: string;
-      parentId: string;
-      binding: 'delegation-context' | 'parent-task-id';
-    }>;
+    sessions: SessionNamingParent[];
     truncated: boolean;
   } {
     const unique = [...new Set(parentIds)];
-    const result: Array<{
-      threadId: string;
-      parentId: string;
-      binding: 'delegation-context' | 'parent-task-id';
-    }> = [];
+    const result: SessionNamingParent[] = [];
     let truncated = false;
     if (unique.length === 0 || limit < 1)
       return { sessions: result, truncated };
@@ -4742,6 +4757,13 @@ export class EventStore {
                     json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
                     json_extract(e.payload, '$.metadata.parentConversationId'))) AS verified_parent,
                   MAX(json_extract(e.payload, '$.metadata.parentTaskId')) AS claimed_parent,
+                  MAX(CASE
+                    WHEN e.method = 'session.started'
+                     AND json_extract(e.payload, '$.metadata.${DELEGATION_PROVENANCE_METADATA_KEY}') IN ('caller-derived', 'runtime-attested')
+                    THEN COALESCE(
+                      json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
+                      json_extract(e.payload, '$.metadata.parentConversationId'))
+                  END) AS derived_parent,
                   MIN(e.global_sequence) AS first_sequence
              FROM orchestration_events e
             WHERE e.method IN ('session.started', 'session.configured')
@@ -4757,6 +4779,7 @@ export class EventStore {
         thread_id: string;
         verified_parent: unknown;
         claimed_parent: unknown;
+        derived_parent: unknown;
       }>;
       // One row past the bound proves there is more than it allows.
       if (rows.length > limit) truncated = true;
@@ -4782,6 +4805,7 @@ export class EventStore {
               threadId: row.thread_id,
               parentId: verified,
               binding: 'delegation-context',
+              stationDerived: row.derived_parent === verified,
             });
           }
           continue;
@@ -4792,6 +4816,7 @@ export class EventStore {
             threadId: row.thread_id,
             parentId: claimed,
             binding: 'parent-task-id',
+            stationDerived: false,
           });
         }
       }
@@ -11289,6 +11314,12 @@ export class EventStore {
       );
   }
 
+  /** #3160: the durable request keys of Station Control's Session tools. */
+  sessionControlRequestKeys(): SessionControlRequestKeys {
+    this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(this.db);
+    return this.sessionControlKeys;
+  }
+
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
   readSteerInput(input: {
     threadId: string;
@@ -12036,6 +12067,11 @@ export class EventStore {
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_steer_inputs WHERE thread_id = ?')
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM session_control_request_keys WHERE caller_session_id = ?',
+        )
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_request_state WHERE thread_id = ?')

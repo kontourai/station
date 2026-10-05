@@ -164,25 +164,25 @@ test.describe('pr-smoke live chat send', () => {
       page.getByRole('button', { name: 'Station home' }),
     ).toBeVisible({ timeout: 20_000 });
     await statusReady;
-    await page
-      .locator('.home-view__goal-actions')
-      .getByRole('button', { name: 'New chat', exact: true })
-      .click();
-    await page
-      .getByRole('form', { name: 'New chat draft' })
-      .getByRole('button', { name: /^Agent:/ })
-      .click();
-    const agentRow = page.locator(
-      `.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`,
-    );
+    // Home's start composer is the one way to start a chat: choose the
+    // Agent on its chip, then Start sends through the dock.
+    const draft = page.getByRole('form', { name: 'Start work' });
+    await draft.getByRole('button', { name: /^Agent:/ }).click({
+      timeout: 20_000,
+    });
+    const agentRow = page
+      .getByRole('dialog', { name: 'Choose agent' })
+      .locator(`.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`);
     await expect(agentRow).toBeVisible({ timeout: 20_000 });
     await agentRow.click();
-    const draft = page.getByRole('form', { name: 'New chat draft' });
+    await expect(
+      page.getByRole('dialog', { name: 'Choose agent' }),
+    ).toHaveCount(0);
     await draft
-      .getByRole('textbox', { name: 'Message', exact: true })
+      .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('pr-smoke real send.');
     expect(chatRequests).toHaveLength(0);
-    await draft.getByRole('button', { name: 'Send', exact: true }).click();
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await ensureChatDockOpen(page);
     // This is pr-smoke's own merge-gate spec
     // (retries:0, fail-and-fix) — a bare `expect.poll` here reads a real

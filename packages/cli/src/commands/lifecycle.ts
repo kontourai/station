@@ -320,6 +320,16 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // must name the host the browser is talking to, or the cookie that
   // authorizes it — scoped by host, not origin — is never sent.
   const INTERNAL_PROXY_FORWARDED_HOST_HEADER = 'x-station-proxy-forwarded-host';
+  // #2894: this proxy's own attestation that its client sent forwarding
+  // headers. `tailscale-*` is stripped below, so the fact must travel here.
+  const INTERNAL_PROXY_CLIENT_FORWARDED_HEADER =
+    'x-station-proxy-client-forwarded';
+  const CLIENT_FORWARDING_HEADERS = [
+    'forwarded',
+    'x-forwarded-for',
+    'x-forwarded-host',
+    'x-real-ip',
+  ];
   const INTERNAL_TENANT_HEADER = 'x-station-internal-tenant';
   // #2589: the Station-agent relay's orchestration thread. The backend
   // already ignores it from a `remote` caller; stripped here too.
@@ -563,6 +573,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
     }
     const ingressIdentity = tailscaleIngress?.identity;
     const browserVisibleHost = req.headers.host;
+    // Read before anything is stripped: did the hop in front of this proxy
+    // forward the request?
+    const clientForwarded = Object.keys(req.headers).some(
+      (name) =>
+        CLIENT_FORWARDING_HEADERS.includes(name) ||
+        name.startsWith('tailscale-'),
+    );
     const headers: Record<string, string | string[] | undefined> = {
       ...req.headers,
       host: `127.0.0.1:${upstreamPort}`,
@@ -577,6 +594,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     delete headers[INTERNAL_INGRESS_IDENTITY_HEADER];
     delete headers[INTERNAL_PROXY_PEER_HEADER];
     delete headers[INTERNAL_PROXY_FORWARDED_HOST_HEADER];
+    delete headers[INTERNAL_PROXY_CLIENT_FORWARDED_HEADER];
     delete headers[INTERNAL_TENANT_HEADER];
     delete headers[INTERNAL_ORCHESTRATION_THREAD_HEADER];
     for (const name of Object.keys(headers)) {
@@ -604,6 +622,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     if (browserVisibleHost) {
       headers[INTERNAL_PROXY_FORWARDED_HOST_HEADER] = browserVisibleHost;
     }
+    if (clientForwarded) headers[INTERNAL_PROXY_CLIENT_FORWARDED_HEADER] = '1';
     if (ingressIdentity) {
       headers[INTERNAL_INGRESS_IDENTITY_HEADER] = Buffer.from(
         JSON.stringify(ingressIdentity),

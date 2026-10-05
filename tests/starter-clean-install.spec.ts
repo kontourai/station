@@ -126,7 +126,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     );
     expect(completedConfig.telemetryEnabled).not.toBe(true);
     await expect(
-      page.getByRole('dialog', { name: 'New Chat', exact: true }),
+      page.getByRole('dialog', { name: 'New chat', exact: true }),
     ).toBeVisible();
     const stationAgent = page.locator(
       '.new-chat-modal__agent[data-agent-slug="station"]',

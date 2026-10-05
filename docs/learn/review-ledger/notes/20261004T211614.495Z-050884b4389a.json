@@ -1,0 +1,7 @@
+{
+  "revision": "9d00a88b193502f33e0aefaf7f88c2e62c7454db",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Checked: planned passkey files are now prose, not repo paths; meaning unchanged; no ALLOWED_MISSING entries.","inputs":["docs/design/operator-device-access.md"]}
+  ]
+}

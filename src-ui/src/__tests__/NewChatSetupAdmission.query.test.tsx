@@ -84,7 +84,11 @@ beforeEach(() => {
     origin: authority.apiBase,
     requestAuthority: authority,
   }));
-  window.matchMedia = vi.fn().mockReturnValue({ matches: false });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   Element.prototype.scrollIntoView = vi.fn();
   navigationStore.navigate('/');
 });
