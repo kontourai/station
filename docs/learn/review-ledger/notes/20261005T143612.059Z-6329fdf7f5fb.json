@@ -1,0 +1,7 @@
+{
+  "revision": "a5f5c0af85d7242115b9ca6567b2ad0c4f3e5078",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the ConnectionService ownership claims (admission, configuration matching, durable smoke results): unaffected by the engine-identity listing change, which smoke does not read. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/connections/connection-service.ts"]}
+  ]
+}

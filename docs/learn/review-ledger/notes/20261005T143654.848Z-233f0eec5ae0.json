@@ -1,0 +1,7 @@
+{
+  "revision": "a5f5c0af85d7242115b9ca6567b2ad0c4f3e5078",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the ConnectionService engine-attribution paragraph and Engine identity boundaries against connection-service.ts, adapter-identity.ts and routes/connections/acp.ts: listEngineConnectionIdentities still derives per Adapter with no probe and the public-identity resolver is unchanged. The new ACP native-id refusal and stored-collision rule are documented in the ACP guide, which owns /acp routes; nothing here contradicts them. No prose change.","inputs":["docs/architecture/module-map.md","src-server/providers/adapter-identity.ts","src-server/routes/connections/acp.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}
