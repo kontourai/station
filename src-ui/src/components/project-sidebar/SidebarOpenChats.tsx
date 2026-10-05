@@ -3,14 +3,16 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
-import { useRowProjectMarks } from '../../hooks/useRowProjectMarks';
 import {
   chatTaskSessionId,
   type HomeWorkItem,
 } from '../../views/home/home-view-model';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
-import type { RowProjectMarks } from '../inbox-row/row-project-marks';
+import {
+  type RowProjectMarks,
+  rowProjectMarks,
+} from '../inbox-row/row-project-marks';
 import { SkeletonBlock } from '../state';
 import './SidebarOpenChats.css';
 
@@ -19,17 +21,20 @@ export function SidebarOpenChats({
   items,
   now,
   workFacts,
+  projectAccentBySlug,
+  projectIconBySlug,
   onActivate,
 }: {
   items: HomeWorkItem[];
   now: number;
   /** Status facts by item id, so a chat reads here as it does in the dock. */
   workFacts?: WorkFactsById;
+  /** The sidebar's project colours (`useProjectAccents`), by slug. */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The projects' icons (`useProjectIcons`), by slug. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
   onActivate: (item: HomeWorkItem) => void;
 }) {
-  // The project colour and icon every other work row wears, by the same rule
-  // (`rowProjectMarks`: a remote row takes neither).
-  const projectMarks = useRowProjectMarks();
   return (
     <>
       {items.map((item) => (
@@ -38,7 +43,9 @@ export function SidebarOpenChats({
           item={item}
           now={now}
           facts={workFacts?.get(item.id)}
-          marks={projectMarks(item)}
+          // The mark every other work row wears, by the same rule
+          // (`rowProjectMarks`: a remote row takes neither).
+          marks={rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
           onActivate={onActivate}
         />
       ))}

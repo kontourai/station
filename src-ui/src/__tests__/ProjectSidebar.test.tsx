@@ -114,6 +114,8 @@ vi.mock('../contexts/open-chats-store', () => {
       modelLabel: chat.model ?? 'Model not reported',
       lifecycleLabel: 'Recent',
       updatedAt: 0,
+      projectSlug: chat.projectSlug,
+      environmentId: chat.environmentId,
     }));
   return {
     useOpenChats: fakeOpenChats,
@@ -217,7 +219,6 @@ import { RecentChatList } from '../components/chat-start/RecentChatList';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
-import { SidebarOpenChats } from '../components/project-sidebar/SidebarOpenChats';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { useGitLocationByThreadId } from '../hooks/useGitLocationByThreadId';
@@ -1103,7 +1104,7 @@ describe('a project wears the same colour everywhere', () => {
     );
   }
 
-  test('the sidebar, the switcher, the dock inbox and Home agree on beta', () => {
+  test('the sidebar, the switcher, the dock inbox and Home agree on beta', async () => {
     resetState();
     projects.push(
       { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
@@ -1159,13 +1160,17 @@ describe('a project wears the same colour everywhere', () => {
     };
     const dockColour = rowColour(<DockInbox items={[betaWork]} />);
     const homeColour = rowColour(<Home items={[betaWork]} />);
-    const openChatsColour = rowColour(
-      <SidebarOpenChats
-        items={[betaWork]}
-        now={Date.now()}
-        onActivate={vi.fn()}
-      />,
-    );
+    // The sidebar's own Open chats row, rendered by the real sidebar.
+    chats['beta-work'] = {
+      title: 'Tidy the beta release notes',
+      projectSlug: 'beta',
+    };
+    const openChatsView = renderSidebar(<ProjectSidebar />);
+    await openChatsView.findByText('Tidy the beta release notes');
+    const openChatsColour = openChatsView.container.querySelector<HTMLElement>(
+      '#sidebar-open-chats .inbox-row__project-accent',
+    )?.style.backgroundColor;
+    openChatsView.unmount();
     const recentColour = rowColour(
       <RecentChatList
         items={[betaWork]}
@@ -1191,7 +1196,7 @@ describe('a project wears the same colour everywhere', () => {
     });
   });
 
-  test("the sidebar's Open chats and New Chat's recent rows wear a project's icon, and a remote row wears neither mark", () => {
+  test("the sidebar's Open chats and New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
     resetState();
     projects.push({
       id: 'p-beta',
@@ -1232,15 +1237,30 @@ describe('a project wears the same colour everywhere', () => {
       view.unmount();
       return rows;
     };
-    expect(
-      marks(
-        <SidebarOpenChats
-          items={[local, remote]}
-          now={Date.now()}
-          onActivate={vi.fn()}
-        />,
-      ),
-    ).toEqual(['🧭', null]);
+    // The sidebar's own Open chats rows, rendered by the real sidebar.
+    chats['beta-local'] = { title: 'Local beta work', projectSlug: 'beta' };
+    chats['beta-remote'] = {
+      title: 'Remote beta work',
+      projectSlug: 'beta',
+      environmentId: 'peer-1',
+    };
+    const sidebar = renderSidebar(<ProjectSidebar />);
+    await sidebar.findByText('Remote beta work');
+    const openChatMarks = Object.fromEntries(
+      [
+        ...sidebar.container.querySelectorAll(
+          '#sidebar-open-chats [data-testid="inbox-row"]',
+        ),
+      ].map((row) => [
+        row.querySelector('.inbox-row__title')?.textContent,
+        row.querySelector('.inbox-row__project-accent')?.textContent ?? null,
+      ]),
+    );
+    sidebar.unmount();
+    expect(openChatMarks).toEqual({
+      'Local beta work': '🧭',
+      'Remote beta work': null,
+    });
     expect(
       marks(
         <RecentChatList
