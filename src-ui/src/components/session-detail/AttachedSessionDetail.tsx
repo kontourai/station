@@ -366,9 +366,7 @@ export function AttachedSessionDetail({
         ? 'Continuing…'
         : presentation === 'chat'
           ? 'Continue and send'
-          : outsideProjects
-            ? 'Continue as No project chat'
-            : 'Continue in Station'}
+          : 'Continue in Station'}
     </Button>
   );
   const continuationFeedback = (
@@ -403,7 +401,10 @@ export function AttachedSessionDetail({
             : continuationSupport.reason}
         </p>
         {continuationSupported && outsideProjects && (
-          <p data-testid="attached-continuation-no-project">
+          <p
+            className="sessions-detail__adoption-folder"
+            data-testid="attached-continuation-no-project"
+          >
             {noProjectExplanation}
           </p>
         )}
@@ -713,7 +714,10 @@ export function AttachedSessionDetail({
               : continuationSupport.reason}
           </p>
           {continuationSupported && outsideProjects && (
-            <p data-testid="attached-continuation-no-project">
+            <p
+              className="sessions-detail__adoption-folder"
+              data-testid="attached-continuation-no-project"
+            >
               {noProjectExplanation}
             </p>
           )}

@@ -643,12 +643,12 @@ describe('a conversation no project claims (#3386)', () => {
     );
   });
 
-  test('the inspector offers a No project chat in the conversation folder', () => {
+  test('the inspector explains the No project chat in the conversation folder before Continue', () => {
     renderAttached({
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
     expect(
-      screen.getByRole('button', { name: 'Continue as No project chat' }),
+      screen.getByRole('button', { name: 'Continue in Station' }),
     ).toBeTruthy();
     expect(
       screen.getByTestId('attached-continuation-no-project').textContent,
