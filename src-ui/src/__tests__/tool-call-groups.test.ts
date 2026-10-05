@@ -967,7 +967,7 @@ describe('file verbs without a file stay tool calls (#3364 review)', () => {
       { slug: 'x' },
       'Used station-control/delete agent',
     ],
-  ])('%s reads "%s"', (toolName, args, label) => {
+  ])('%s with %j reads "%s"', (toolName, args, label) => {
     const group = settled(toolName, args);
     expect(group.calls[0]!.kind).toBe('other');
     expect(group.summary).toBe(label);
