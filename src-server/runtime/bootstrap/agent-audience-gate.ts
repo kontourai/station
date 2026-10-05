@@ -88,7 +88,7 @@ export interface AgentAudienceGateDeps {
   listAgents(): Promise<readonly AgentAudienceRecord[]>;
 }
 
-export const MEMBER_AGENT_TURNS_UNAVAILABLE =
+const MEMBER_AGENT_TURNS_UNAVAILABLE =
   'member_agent_turns_unavailable' as const;
 const MEMBER_AGENT_CATALOG_READ_ONLY =
   'member_agent_catalog_read_only' as const;
