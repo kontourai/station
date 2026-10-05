@@ -1,10 +1,10 @@
 import { type ReactNode, type RefObject, useId, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useLongPress } from '../../hooks/useLongPress';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { CheckGlyph, HomeGlyph } from '../icons/Glyph';
 import { LayoutIcon } from '../icons/LayoutIcon';
 import { PickerCreateAction } from '../PickerCreateAction';
-import { projectAccents } from '../project-sidebar/projectAccent';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -136,7 +136,10 @@ export function ChatDockProjectSwitcherSheet({
   onClose,
 }: ChatDockProjectSwitcherSheetProps) {
   const [help, setHelp] = useState<string | null>(null);
-  const accents = projectAccents(projects.map((project) => project.slug));
+  // The sidebar's allocation, not one over whatever list this sheet is
+  // handed: `projectAccents` is set-aware, so allocating over a different
+  // list would give a project a different colour here than in the sidebar.
+  const accents = useProjectAccents();
   const run = (action: () => void) => {
     onClose();
     action();

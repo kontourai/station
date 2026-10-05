@@ -1017,3 +1017,71 @@ describe('#3159: a row whose conversation may be referenced is a drag source', (
     ).toBe(false);
   });
 });
+
+describe("the project's colour is a swatch, never the name's colour", () => {
+  it('draws a decorative dot before the project name, which stays text in the row’s own colour', () => {
+    renderRow(rowFor(), { projectAccent: 'var(--event-tool-call)' });
+    const row = screen.getByTestId('inbox-row');
+    const swatch = row.querySelector<HTMLElement>('.inbox-row__project-accent');
+    expect(swatch).not.toBeNull();
+    expect(swatch!.getAttribute('aria-hidden')).toBe('true');
+    expect(swatch!.style.backgroundColor).toBe('var(--event-tool-call)');
+    // Before the name, beside it on the meta line.
+    const project = row.querySelector<HTMLElement>('.inbox-row__project')!;
+    expect(swatch!.nextElementSibling).toBe(project);
+    expect(project.textContent).toBe('station');
+    // The accent is never a text colour (accent-foreground ratchet).
+    expect(project.style.color).toBe('');
+    expect(
+      row.querySelector('.inbox-row__meta-text')!.getAttribute('style'),
+    ).toBeNull();
+    // The open button's name still says the project in words.
+    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
+      'station',
+    );
+  });
+
+  it('a row with no accent draws no swatch', () => {
+    renderRow(rowFor());
+    expect(document.querySelector('.inbox-row__project-accent')).toBeNull();
+  });
+
+  it('a list resolves each row’s accent by its project slug', () => {
+    const station = rowFor().item;
+    const other = rowFor({ threadId: 'U', projectSlug: 'other' }).item;
+    const unbound = rowFor({ threadId: 'V', projectSlug: undefined }).item;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'idle', label: 'Idle', items: [station, other, unbound] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+          projectAccentBySlug={
+            new Map([
+              ['station', 'var(--event-agent-start)'],
+              ['other', 'var(--event-reasoning)'],
+            ])
+          }
+        />
+      </QueryClientProvider>,
+    );
+    const colours = screen
+      .getAllByTestId('inbox-row')
+      .map(
+        (row) =>
+          row.querySelector<HTMLElement>('.inbox-row__project-accent')?.style
+            .backgroundColor ?? null,
+      );
+    expect(colours).toEqual([
+      'var(--event-agent-start)',
+      'var(--event-reasoning)',
+      null,
+    ]);
+  });
+});
