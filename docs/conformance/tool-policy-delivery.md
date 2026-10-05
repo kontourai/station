@@ -440,21 +440,32 @@ promising more than it does:
   command; for `Edit`/`Write`/`NotebookEdit` it is the file path and **never the
   content being written**, so the reader learns which file is about to change,
   not what it will say. It is also bounded to 160 characters on one line, so a
-  long command's tail — a trailing `; rm -rf /` — can sit past the cap. A
+  long command's tail — a trailing `; rm -rf /` — can sit past the cap; a cut
+  always ends in "…". Padding cannot push it there: runs of spaces, blank
+  lines and invisible characters are collapsed before the value is cut. A
   multi-line command (lines split on LF, CR, CRLF, U+2028 and U+2029) shows its
   lines joined by ` ⏎ `, and when the cap hides whole lines the preview ends
-  with "(+N lines)". The transcript row shows a command's first line with the
-  same count ("Run echo a (+1 line)"), and a pending approval whose command
-  has more than one line opens its details, so the whole command is on screen
-  next to Allow and Deny.
+  with "(+N lines)". The transcript row and the approvals strip card show a
+  command's first line with the same count ("Run echo a (+1 line)"); Codex's
+  command approval title joins its lines the same way, and its strip card is
+  a command row. A pending approval whose command has more than one line, or
+  whose arguments hold a hidden character, opens its details, so the whole
+  command is on screen next to Allow and Deny.
 - **It is shown in display form.** The preview, the tool name, the "Why:"
-  purpose and the inbox row's title and body drop bidi controls (U+202A–202E,
-  U+2066–2069, LRM, RLM, ALM) and turn control characters, C1 included, into
-  spaces (`packages/shared/src/display-text.ts`, shared with the transcript
-  label). The details view shows the raw arguments, except that hidden
-  characters (bidi controls, U+200B, U+2060, U+FEFF, and controls other than
-  LF and tab) appear as visible `«U+XXXX»` tokens under a "contains hidden
-  characters" warning, so they are never applied next to Allow and Deny.
+  purpose, a pending request's title in the session view, and the inbox row's
+  title and body drop bidi controls (U+202A–202E, U+2066–2069, LRM, RLM, ALM)
+  and invisible characters (zero-width space, word joiner, invisible
+  operators, soft hyphen, BOM, tag characters), and turn control characters,
+  C1 included, into spaces (`packages/shared/src/display-text.ts`, shared with
+  the transcript label). The inbox applies this when it reads a row, so a
+  stored approval notification and an input request's title and description
+  are covered too, and OS notifications (web push, the desktop feed, APNs,
+  FCM) carry the same display form. The details view shows the raw
+  arguments, left to right with each right-to-left word isolated, except that
+  hidden characters (the ones above, ZWNJ, a ZWJ that is not joining two
+  emoji, and controls other than LF and tab) appear as visible `«U+XXXX»`
+  tokens under a "contains hidden characters" warning, so they are never
+  applied next to Allow and Deny.
 - **"Redacted" means known credential shapes.** `redactSecrets`
   (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
   removes recognised credential patterns and `key=value` pairs whose key looks

@@ -57,6 +57,10 @@ import type {
   NativePushIosRegistration,
   NativePushRegistration,
 } from '../native-push-registration-store.js';
+import {
+  osNotificationBody,
+  osNotificationTitle,
+} from '../os-notification-text.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
 import { isCardAlerted } from './card-alerted-categories.js';
 import {
@@ -362,8 +366,14 @@ export function composeApnsAlertPlaintext(input: {
     issued_at: String(input.now),
   };
   if (input.hideContent) return JSON.stringify(base);
-  let title = clip(input.notification.title ?? '', MAX_TITLE_CHARS);
-  let body = clip(input.notification.body ?? '', MAX_BODY_CHARS);
+  let title = clip(
+    osNotificationTitle(input.notification.title ?? ''),
+    MAX_TITLE_CHARS,
+  );
+  let body = clip(
+    osNotificationBody(input.notification.body) ?? '',
+    MAX_BODY_CHARS,
+  );
   const compose = () =>
     JSON.stringify({ ...base, title, ...(body ? { body } : {}) });
   let plaintext = compose();

@@ -141,8 +141,16 @@ function ToolCallDisplayComponent({
 }: ToolCallDisplayProps) {
   // `null` until the user toggles the row: until then it follows
   // `openByDefault` below, so a pending multi-line command opens and the row
-  // closes again once the request settles.
-  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+  // closes again once the request settles. A toggle on a pending request is
+  // remembered by request, so it survives the strip card becoming the
+  // transcript row (a different component instance).
+  const toggleKey =
+    toolCall.needsApproval && toolCall.approvalId
+      ? `${toolCall.approvalThreadId ?? ''}:${toolCall.approvalId}`
+      : undefined;
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(() =>
+    toggleKey ? (approvalToggles.get(toggleKey) ?? null) : null,
+  );
 
   const id = toolCall.toolCallId || '';
   // Identity-keyed one-shot entrance (archive#2651): keyed to the tool call
@@ -206,11 +214,18 @@ function ToolCallDisplayComponent({
   // the whole command is on screen next to Allow and Deny. The label shows
   // only the first line and a "(+N lines)" count, and a count is easy to miss:
   // `echo a` then `rm -rf /` must not be approvable from "Run echo a" alone.
+  // Hidden characters open it too, even on one line: the label drops them,
+  // and only the details show them.
   const openByDefault =
     awaitingApproval &&
     Boolean(onApprove) &&
-    hiddenCommandLines(kind, toolName, args) > 0;
+    (hiddenCommandLines(kind, toolName, args) > 0 ||
+      argumentsHideCharacters(args));
   const isExpanded = userExpanded ?? openByDefault;
+  const toggleExpanded = () => {
+    setUserExpanded(!isExpanded);
+    if (toggleKey) rememberToggle(toggleKey, !isExpanded);
+  };
 
   const Glyph = KIND_GLYPH[kind];
   const lineContent = (
@@ -304,7 +319,7 @@ function ToolCallDisplayComponent({
             type="button"
             className="tool-call__line"
             aria-expanded={isExpanded}
-            onClick={() => setUserExpanded(!isExpanded)}
+            onClick={toggleExpanded}
           >
             {lineContent}
             <span className="tool-call__chevron" aria-hidden="true">
@@ -565,7 +580,7 @@ function ToolCallDetails({
       {commandValue !== undefined && (
         <div className="tool-call__section">
           <strong>Command:</strong>
-          <pre className="tool-call__code tool-call__code--command">
+          <pre className="tool-call__code tool-call__code--command" dir="ltr">
             <RevealedText text={commandValue} />
           </pre>
         </div>
@@ -573,7 +588,7 @@ function ToolCallDetails({
       {showArgs && (
         <div className="tool-call__section">
           <strong>Arguments:</strong>
-          <pre className="tool-call__code">
+          <pre className="tool-call__code" dir="ltr">
             {typeof argsJson === 'string' ? (
               <RevealedText text={argsJson} />
             ) : (
@@ -676,7 +691,7 @@ function RevealedText({ text }: { text: string }) {
     <>
       {segments.map((segment, index) =>
         segment.kind === 'text' ? (
-          segment.text
+          isolateRightToLeft(segment.text, index)
         ) : (
           <span
             // Segments are positions in one string and never reorder.
@@ -690,6 +705,55 @@ function RevealedText({ text }: { text: string }) {
       )}
     </>
   );
+}
+
+/** Right-to-left scripts (Hebrew, Arabic, Syriac, Thaana, N'Ko, …). */
+const RIGHT_TO_LEFT =
+  /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+
+/**
+ * #3382: each whitespace-separated word holding right-to-left letters in
+ * its own `<bdi>`, so it reads right to left inside itself but cannot move
+ * the words around it: unisolated, `cp שלום עולם` shows its two arguments
+ * swapped. The block itself is `dir="ltr"`.
+ */
+function isolateRightToLeft(text: string, key: number): React.ReactNode {
+  if (!RIGHT_TO_LEFT.test(text)) return text;
+  return text.split(/(\s+)/).map((part, index) =>
+    RIGHT_TO_LEFT.test(part) ? (
+      // Parts are positions in one string and never reorder.
+      <bdi key={`${key}:${index}`}>{part}</bdi>
+    ) : (
+      part
+    ),
+  );
+}
+
+/** Whether a pending call's arguments hold a character the details reveal. */
+function argumentsHideCharacters(args: unknown): boolean {
+  if (typeof args === 'string') return hasHiddenCharacters(args);
+  if (!args || typeof args !== 'object') return false;
+  const command = (args as Record<string, unknown>).command;
+  // JSON escapes C0 controls, so a command string is also read raw.
+  if (typeof command === 'string' && hasHiddenCharacters(command)) return true;
+  try {
+    return hasHiddenCharacters(JSON.stringify(args) ?? '');
+  } catch {
+    return false;
+  }
+}
+
+/** Remembered expand/collapse choices on pending requests, by request. */
+const approvalToggles = new Map<string, boolean>();
+const MAX_REMEMBERED_TOGGLES = 100;
+
+function rememberToggle(key: string, expanded: boolean): void {
+  approvalToggles.delete(key);
+  approvalToggles.set(key, expanded);
+  if (approvalToggles.size > MAX_REMEMBERED_TOGGLES) {
+    const oldest = approvalToggles.keys().next().value;
+    if (oldest !== undefined) approvalToggles.delete(oldest);
+  }
 }
 
 export const ToolCallDisplay = memo(ToolCallDisplayComponent);

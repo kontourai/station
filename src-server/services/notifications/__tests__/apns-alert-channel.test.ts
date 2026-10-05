@@ -697,6 +697,26 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
 });
 
 describe('composeApnsAlertPlaintext', () => {
+  test('#3382: the sealed title and body are in display form', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const plaintext = composeApnsAlertPlaintext({
+      stationId: ENVIRONMENT_ID,
+      notification: {
+        id: 'n',
+        title: `Approve ${RLO}echo a\nrm -rf /`,
+        body: `run${RLO} it`,
+      },
+      urgency: 'attention',
+      hideContent: false,
+      now: NOW,
+    });
+    const fields = JSON.parse(plaintext) as Record<string, string>;
+    expect(fields.title).toBe(
+      `Approve echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    );
+    expect(fields.body).toBe('run it');
+  });
+
   test('long text is shortened (body first) to fit the gateway limit once sealed', () => {
     const plaintext = composeApnsAlertPlaintext({
       stationId: ENVIRONMENT_ID,

@@ -10,6 +10,7 @@ import {
   DocumentGlyph,
   PlugGlyph,
 } from '../components/icons/Glyph';
+import { unansweredApprovalRequests } from '../hooks/orchestration/pendingRequestRows';
 
 // archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
 // here is exactly the flat `tool-invocation` shape the LIVE orchestration
@@ -571,7 +572,12 @@ describe('ToolCallDisplay — an approval label strips bidi controls (#3364)', (
     );
     const label = document.querySelector('.tool-call__label')!;
     expect(label.textContent).toBe('Run echo txt.exe');
-    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    // #3382: a hidden character opens the details of a pending call.
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
     const details = document.querySelector('.tool-call')!.textContent!;
     // #3382: the details show the RLO as a visible token rather than
     // applying it (or dropping it).
@@ -587,10 +593,14 @@ const NEL = String.fromCodePoint(0x85);
 const BEL = String.fromCodePoint(0x07);
 const LINE_SEPARATOR = String.fromCodePoint(0x2028);
 
+// A toggle is remembered per request, so every render here is its own one.
+let pendingRequestCount = 0;
+
 function pendingBash(
   args: Record<string, unknown>,
   extra: Record<string, unknown> = {},
 ) {
+  pendingRequestCount += 1;
   return render(
     <ToolCallDisplay
       toolCall={{
@@ -600,7 +610,7 @@ function pendingBash(
         args,
         state: 'call',
         needsApproval: true,
-        approvalId: 'a1',
+        approvalId: `pending-${pendingRequestCount}`,
         ...extra,
       }}
       onApprove={vi.fn()}
@@ -740,7 +750,12 @@ describe('ToolCallDisplay — raw details reveal hidden characters (#3382)', () 
         onApprove={vi.fn()}
       />,
     );
-    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    // A hidden character opens a pending call's details on its own.
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
     const args = document.querySelector('.tool-call__code')!;
     expect(args.textContent).toContain(`a${token('200B')}b.txt`);
     expect(args.textContent).not.toContain(ZERO_WIDTH_SPACE);
@@ -768,5 +783,141 @@ describe('ToolCallDisplay — raw details reveal hidden characters (#3382)', () 
         .querySelector('button.tool-call__line')!
         .getAttribute('aria-expanded'),
     ).toBe('true');
+  });
+});
+
+// #3382 review round: F2 (Codex rows), F6 (RTL isolation), F7 (auto-open and
+// names), F5 (more hidden characters).
+const HEBREW_HELLO = String.fromCodePoint(0x5e9, 0x5dc, 0x5d5, 0x5dd);
+const HEBREW_WORLD = String.fromCodePoint(0x5e2, 0x5d5, 0x5dc, 0x5dd);
+const ZERO_WIDTH_NON_JOINER = String.fromCodePoint(0x200c);
+const ZERO_WIDTH_JOINER = String.fromCodePoint(0x200d);
+const SOFT_HYPHEN = String.fromCodePoint(0xad);
+const TAG_LATIN_A = String.fromCodePoint(0xe0061);
+const WOMAN_TECHNOLOGIST = String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb);
+
+describe('ToolCallDisplay — review round (#3382)', () => {
+  test('a Codex command approval (no tool name, command in the payload) is a command row that counts its lines and opens', () => {
+    // The request as the Codex adapter publishes it: the title is the
+    // display form of the command; the payload is the app-server params.
+    const [row] = unansweredApprovalRequests(
+      [],
+      [
+        {
+          provider: 'codex',
+          threadId: 'thread-codex',
+          createdAt: '2026-10-05T00:00:00.000Z',
+          method: 'request.opened',
+          eventId: 'evt-codex',
+          requestId: 'req-codex',
+          requestType: 'approval',
+          title: `echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+          payload: {
+            threadId: 'thread-codex',
+            turnId: 'turn-1',
+            itemId: 'item-1',
+            command: 'echo a\nrm -rf /',
+            cwd: '/work',
+          },
+        } as unknown as Parameters<
+          typeof unansweredApprovalRequests
+        >[1][number],
+      ],
+    );
+    render(<ToolCallDisplay toolCall={row!} onApprove={vi.fn()} />);
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run echo a (+1 line)',
+    );
+    expect(
+      document.querySelector('.tool-call__code--command')!.textContent,
+    ).toBe('echo a\nrm -rf /');
+  });
+
+  test('right-to-left words in the details are isolated, so they cannot swap places', () => {
+    const view = pendingBash({
+      command: `cp ${HEBREW_HELLO} ${HEBREW_WORLD}`,
+    });
+    fireEvent.click(view.container.querySelector('button.tool-call__line')!);
+    const block = view.container.querySelector('.tool-call__code--command')!;
+    expect(block.getAttribute('dir')).toBe('ltr');
+    expect(
+      Array.from(block.querySelectorAll('bdi')).map((bdi) => bdi.textContent),
+    ).toEqual([HEBREW_HELLO, HEBREW_WORLD]);
+    expect(block.textContent).toBe(`cp ${HEBREW_HELLO} ${HEBREW_WORLD}`);
+  });
+
+  test('a hidden character opens a pending one-line command, and the label drops a zero-width space', () => {
+    pendingBash({ command: `rm${ZERO_WIDTH_SPACE} -rf /` });
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run rm -rf /',
+    );
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  test('a multi-line display name that is not a command still counts its lines', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'name-1',
+          name: 'Fetch something\nrm -rf /',
+          state: 'call',
+          needsApproval: true,
+          approvalId: 'name-req',
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    const label = document.querySelector('.tool-call__label')!.textContent!;
+    expect(label.endsWith('Fetch something (+1 line)')).toBe(true);
+    expect(label).not.toContain('rm -rf');
+  });
+
+  test('a collapse on a pending request survives the card moving to another row', () => {
+    const toolCall = {
+      type: 'tool-invocation',
+      toolName: 'Bash',
+      args: { command: 'echo a\nrm -rf /' },
+      state: 'call',
+      needsApproval: true,
+      approvalId: 'moving-req',
+      approvalThreadId: 'thread-move',
+    };
+    const strip = render(
+      <ToolCallDisplay
+        toolCall={{ ...toolCall, toolCallId: 'request:moving-req' }}
+        onApprove={vi.fn()}
+      />,
+    );
+    const line = strip.container.querySelector('button.tool-call__line')!;
+    expect(line.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(line);
+    strip.unmount();
+    const transcript = render(
+      <ToolCallDisplay
+        toolCall={{ ...toolCall, toolCallId: 'call-moving' }}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(
+      transcript.container
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  test('ZWNJ, soft hyphen, invisible operators and tag characters are revealed; a ZWJ inside an emoji is not', () => {
+    pendingBash({
+      command: `a${ZERO_WIDTH_NON_JOINER}b${SOFT_HYPHEN}c${String.fromCodePoint(0x2062)}d${TAG_LATIN_A}e${ZERO_WIDTH_JOINER}f ${WOMAN_TECHNOLOGIST}`,
+    });
+    expect(
+      document.querySelector('.tool-call__code--command')!.textContent,
+    ).toBe(
+      `a${token('200C')}b${token('00AD')}c${token('2062')}d${token('E0061')}e${token('200D')}f ${WOMAN_TECHNOLOGIST}`,
+    );
   });
 });

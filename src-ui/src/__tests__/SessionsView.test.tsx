@@ -1590,6 +1590,28 @@ describe('SessionsView', () => {
     });
   });
 
+  test('#3382: an open request title is shown in display form beside Approve', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    feedEvents = [
+      {
+        provider: 'codex',
+        threadId: 'thread-alpha',
+        createdAt: '2026-06-28T00:00:03.000Z',
+        method: 'request.opened',
+        requestId: 'req-8',
+        requestType: 'approval',
+        title: `echo ${RLO}a\nrm -rf /`,
+      },
+    ];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+
+    const request = screen.getByTestId('session-request');
+    expect(request.querySelector('strong')!.textContent).toBe(
+      `echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    );
+  });
+
   test('surfaces an open request and resolves it', async () => {
     feedEvents = [
       {

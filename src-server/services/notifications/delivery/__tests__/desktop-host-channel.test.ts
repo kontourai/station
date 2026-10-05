@@ -134,6 +134,26 @@ describe('DesktopHostChannel', () => {
     expect(channel.read(DESKTOP, feed.cursor).entries).toEqual([]);
   });
 
+  test('#3382: the feed carries the title and body in display form', async () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const NEL = String.fromCodePoint(0x85);
+    const { channel, bus } = wired();
+    channel.read(DESKTOP, 0);
+    bus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      approval({
+        title: `Approve ${RLO}echo a\nrm -rf /`,
+        body: `builder${NEL}wants${RLO}\nto run it`,
+      }),
+    );
+    await flush();
+    const [entry] = channel.read(DESKTOP, 0).entries;
+    expect(entry).toMatchObject({
+      title: `Approve echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+      body: 'builder wants\nto run it',
+    });
+  });
+
   test('hideContent is applied before the entry is queued: no title, no body', async () => {
     const { channel, bus } = wired(true);
     channel.read(DESKTOP, 0);

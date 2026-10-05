@@ -334,6 +334,24 @@ describe('FcmAlertChannel through the delivery router', () => {
     expect(JSON.stringify(toPhone.data)).not.toContain('migration');
   });
 
+  test('#3382: a phone is sent the title and body in display form', async () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const h = await harness();
+    h.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      notification({
+        title: `Approve ${RLO}echo a\nrm -rf /`,
+        body: `run${RLO} it`,
+      }) as never,
+    );
+    await h.settle();
+    const sent = h.sent.find((s) => s.deviceId === h.phone)!;
+    expect(sent.plaintext.title).toBe(
+      `Approve echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    );
+    expect(sent.plaintext.body).toBe('run it');
+  });
+
   test('a phone that asked to hide content is never sent the text', async () => {
     const h = await harness({ hideContentOn: 'first-phone' });
     h.eventBus.emit(

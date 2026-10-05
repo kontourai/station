@@ -140,3 +140,40 @@ test('a nonblocking question remains answerable after turn completion until the 
     ),
   ).toHaveLength(0);
 });
+
+// #3382: Codex's command approval names no argument bag; its row carries the
+// payload's command, so it is a command row. A network or stdin prompt is
+// not a request to run the command and gets no `{command}`.
+describe('unansweredApprovalRequests — Codex command approvals (#3382)', () => {
+  function codexRequest(payload: Record<string, unknown>) {
+    return {
+      provider: 'codex',
+      threadId: 'thread-codex',
+      createdAt: '2026-10-05T00:00:00.000Z',
+      method: 'request.opened',
+      eventId: 'evt-codex',
+      requestId: 'req-codex',
+      requestType: 'approval',
+      title: 'echo a',
+      payload,
+    } as unknown as CanonicalRuntimeEvent;
+  }
+
+  test('a plain command approval carries its command as the row arguments', () => {
+    const [row] = unansweredApprovalRequests(
+      [],
+      [codexRequest({ command: 'echo a\nrm -rf /', cwd: '/work' })],
+    );
+    expect(row).toMatchObject({ args: { command: 'echo a\nrm -rf /' } });
+  });
+
+  test('a network prompt and a stdin write carry no command arguments', () => {
+    for (const payload of [
+      { command: 'curl x', networkApprovalContext: { host: 'x' } },
+      { command: 'cat', kind: 'writeStdin' },
+    ]) {
+      const [row] = unansweredApprovalRequests([], [codexRequest(payload)]);
+      expect(row).not.toHaveProperty('args');
+    }
+  });
+});

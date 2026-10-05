@@ -1,6 +1,7 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
 import {
-  displayJoinedLines,
+  boundedDisplayText,
+  displayMultilineText,
   truncateDisplay,
 } from '@kontourai/station-shared/display-text';
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
@@ -108,12 +109,19 @@ function presentAskRequest(
   rawTitle: string | undefined,
   description: string | undefined,
 ): { title: string; body?: string } {
-  const title = rawTitle ? `${label}: ${rawTitle}` : label;
+  // #3382: the ask's own title and description are engine text shown
+  // beside its answer, so they are read in display form (no bidi or
+  // invisible characters); the description keeps its line breaks.
+  const shownTitle = rawTitle
+    ? displayRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
+    : undefined;
+  const title = shownTitle ? `${label}: ${shownTitle}` : label;
+  const body = description
+    ? displayRequestMultilineText(description, MAX_DESCRIPTION_LENGTH)
+    : undefined;
   return {
     title,
-    ...(description
-      ? { body: truncateRequestText(description, MAX_DESCRIPTION_LENGTH) }
-      : {}),
+    ...(body ? { body } : {}),
   };
 }
 
@@ -160,10 +168,15 @@ function summarizeToolPayload(
   };
 }
 
-/** `truncateRequestText` in display form: one line (`displayJoinedLines`,
- * so a multi-line command keeps its line breaks visible), cut by code point. */
-function displayRequestText(text: string, max: number): string {
-  return truncateDisplay(displayJoinedLines(redactSecrets(text)), max);
+/** `truncateRequestText` in display form: one line, a multi-line value's
+ * lines kept apart and counted when cut (`boundedDisplayText`). */
+export function displayRequestText(text: string, max: number): string {
+  return boundedDisplayText(redactSecrets(text), max);
+}
+
+/** `truncateRequestText` in display form, keeping line breaks. */
+export function displayRequestMultilineText(text: string, max: number): string {
+  return truncateDisplay(displayMultilineText(redactSecrets(text)), max);
 }
 
 export function truncateRequestText(text: string, max: number): string {

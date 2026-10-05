@@ -8,10 +8,17 @@
  * keep the text exactly as the engine sent it.
  */
 
-/** Bidi marks, embeddings, overrides and isolates (ALM U+061C, LRM, RLM,
- * U+202A–202E, U+2066–2069). Shown text must not reorder what the surface
- * displays ("Trojan source"), so these are removed. */
-const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+/**
+ * Characters that change how text reads without being seen, removed from
+ * every displayed form: bidi marks, embeddings, overrides and isolates (ALM
+ * U+061C, LRM, RLM, U+202A–202E, U+2066–2069), so shown text cannot reorder
+ * ("Trojan source"); and the invisible characters that can hide or smuggle
+ * text: soft hyphen, zero-width space, word joiner and invisible operators
+ * (U+2060–2064), BOM, and tag characters (U+E0000–E007F). ZWJ and ZWNJ are
+ * kept: emoji and several scripts need them, and they cannot hide a word.
+ */
+const INVISIBLE_FORMAT =
+  /[\u00AD\u061C\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu;
 
 /** C0, DEL and C1 controls. Replaced by a space, not deleted, so "a\u0085b"
  * does not merge into one word. */
@@ -28,12 +35,13 @@ const CONTROL_CHARACTERS = /\p{Cc}/gu;
 const LINE_BREAK = /\r\n|[\n\r\u2028\u2029]/u;
 
 /**
- * The displayed form of untrusted text: bidi controls removed, control
- * characters turned into spaces, whitespace collapsed onto one trimmed line.
+ * The displayed form of untrusted text: invisible format characters
+ * (`INVISIBLE_FORMAT`) removed, control characters turned into spaces,
+ * whitespace collapsed onto one trimmed line.
  */
 export function displayText(value: string): string {
   return value
-    .replace(BIDI_CONTROLS, '')
+    .replace(INVISIBLE_FORMAT, '')
     .replace(CONTROL_CHARACTERS, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -88,14 +96,110 @@ export function displayLength(value: string): number {
   return count;
 }
 
+/** Controls other than the line breaks `displayLines` splits on. */
+const NON_BREAK_CONTROLS = /[^\P{Cc}\n\r]/gu;
+/** Runs of whitespace that do not break a line. */
+const INLINE_WHITESPACE = /[^\S\n\r\u2028\u2029]+/gu;
+/** Runs of line breaks, with the spaces around them. */
+const LINE_BREAK_RUNS = / ?(?:(?:\r\n|[\n\r\u2028\u2029]) ?)+/gu;
+
 /**
- * Characters a raw view must not apply or hide: bidi marks, embeddings,
- * overrides and isolates (as `BIDI_CONTROLS`), the zero-width space, word
- * joiner and BOM (U+200B, U+2060, U+FEFF), and every C0/C1 control but LF and
- * tab, which a raw view shows as the line break and spacing they are.
+ * A value with its padding taken out, keeping its lines: invisible format
+ * characters removed, controls turned into spaces, every run of spaces made
+ * one space and every run of blank lines one LF. Linear, so it runs on the
+ * whole unbounded value before a coarse cut: 5000 spaces or 5000 RLOs
+ * between `echo a` and `; rm -rf /` can then not push the second command past
+ * the cut, which they did when padding was only collapsed after it. What a
+ * line says is unchanged; only `displayText` would change it further.
+ */
+export function compactDisplaySource(value: string): string {
+  return value
+    .replace(INVISIBLE_FORMAT, '')
+    .replace(NON_BREAK_CONTROLS, ' ')
+    .replace(INLINE_WHITESPACE, ' ')
+    .replace(LINE_BREAK_RUNS, '\n');
+}
+
+/**
+ * Lines already in display form, shown whole on one line (joined by
+ * `DISPLAY_LINE_SEPARATOR`) within `max` code points.
+ *
+ * - Anything cut ends in "…". `truncated` says the lines themselves are
+ *   already a cut of a longer value, so "…" is added even when they fit.
+ * - When lines go unshown (cut off here, or past `totalLines`), "(+N lines)"
+ *   follows, inside `max`: room for the widest marker the value can need is
+ *   reserved first, so the marker can never push the text past the bound.
+ * - A line counts as shown when its first character is shown.
+ */
+export function boundedJoinedLines(
+  lines: readonly string[],
+  max: number,
+  options: { truncated?: boolean; totalLines?: number } = {},
+): string {
+  const total = Math.max(options.totalLines ?? lines.length, lines.length);
+  const truncated = options.truncated === true;
+  const joined = lines.join(DISPLAY_LINE_SEPARATOR);
+  const length = displayLength(joined);
+  if (!truncated && total === lines.length && length <= max) return joined;
+  const reserve =
+    total > 1 ? displayLength(` ${hiddenLinesMarker(total - 1)}`) : 0;
+  const budget = Math.max(1, max - reserve);
+  let shown: string;
+  let visible: number;
+  if (length <= budget - 1 || (!truncated && length <= budget)) {
+    shown = truncated ? `${joined}…` : joined;
+    visible = length;
+  } else {
+    visible = budget - 1;
+    // Trailing spaces before the "…" would only push it away from the text.
+    shown = `${Array.from(joined).slice(0, visible).join('').trimEnd()}…`;
+  }
+  const marker = hiddenLinesMarker(total - linesStartedWithin(lines, visible));
+  return marker ? `${shown} ${marker}` : shown;
+}
+
+/**
+ * Untrusted text in display form that keeps its line breaks, for a surface
+ * that can show more than one line (a notification body, an OS
+ * notification): each line in `displayText` form, blank lines dropped,
+ * joined by LF.
+ */
+export function displayMultilineText(value: string): string {
+  return displayLines(value).map(displayText).join('\n');
+}
+
+/**
+ * Untrusted text shown on one line next to a decision: its lines in display
+ * form, joined and bounded by `boundedJoinedLines`. The one call for a title
+ * or body that arrives raw (a stored notification, a request title).
+ */
+export function boundedDisplayText(value: string, max: number): string {
+  return boundedJoinedLines(displayLines(value).map(displayText), max);
+}
+
+/** How many of `lines`, joined by `DISPLAY_LINE_SEPARATOR`, have their first
+ * character within the first `visible` code points. */
+function linesStartedWithin(lines: readonly string[], visible: number): number {
+  const separator = displayLength(DISPLAY_LINE_SEPARATOR);
+  let offset = 0;
+  let started = 0;
+  for (const line of lines) {
+    if (offset >= visible) break;
+    started += 1;
+    offset += displayLength(line) + separator;
+  }
+  return started;
+}
+
+/**
+ * Characters a raw view must not apply or hide: everything `displayText`
+ * removes (`INVISIBLE_FORMAT`), ZWNJ, a ZWJ that is not joining two emoji
+ * (inside an emoji sequence it is how the emoji is drawn, so it stays), and
+ * every C0/C1 control but LF and tab, which a raw view shows as the line
+ * break and spacing they are.
  */
 const HIDDEN_CHARACTERS =
-  /[\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]|[^\P{Cc}\n\t]/gu;
+  /[\u00AD\u061C\u200B\u200C\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]|[^\P{Cc}\n\t]|(?<!\p{Extended_Pictographic}|\u{FE0F}|[\u{1F3FB}-\u{1F3FF}])\u200D|\u200D(?!\p{Extended_Pictographic})/gu;
 
 /** One run of a raw value: text shown as written, or a hidden character
  * shown as its token (`hiddenCharacterToken`). */
@@ -111,24 +215,32 @@ export function hiddenCharacterToken(codePoint: number): string {
 }
 
 const HIDDEN_CHARACTER_NAMES: Readonly<Record<number, string>> = {
-  0x061c: 'arabic letter mark',
-  0x200b: 'zero-width space',
-  0x200e: 'left-to-right mark',
-  0x200f: 'right-to-left mark',
-  0x202a: 'left-to-right embedding',
-  0x202b: 'right-to-left embedding',
-  0x202c: 'pop directional formatting',
-  0x202d: 'left-to-right override',
-  0x202e: 'right-to-left override',
-  0x2060: 'word joiner',
-  0x2066: 'left-to-right isolate',
-  0x2067: 'right-to-left isolate',
-  0x2068: 'first strong isolate',
-  0x2069: 'pop directional isolate',
-  0xfeff: 'zero-width no-break space',
+  173: 'soft hyphen',
+  1564: 'arabic letter mark',
+  8203: 'zero-width space',
+  8204: 'zero-width non-joiner',
+  8205: 'zero-width joiner',
+  8206: 'left-to-right mark',
+  8207: 'right-to-left mark',
+  8234: 'left-to-right embedding',
+  8235: 'right-to-left embedding',
+  8236: 'pop directional formatting',
+  8237: 'left-to-right override',
+  8238: 'right-to-left override',
+  8288: 'word joiner',
+  8289: 'function application',
+  8290: 'invisible times',
+  8291: 'invisible separator',
+  8292: 'invisible plus',
+  8294: 'left-to-right isolate',
+  8295: 'right-to-left isolate',
+  8296: 'first strong isolate',
+  8297: 'pop directional isolate',
+  65279: 'zero-width no-break space',
 };
 
 function hiddenCharacterName(codePoint: number): string {
+  if (codePoint >= 0xe0000 && codePoint <= 0xe007f) return 'tag character';
   return HIDDEN_CHARACTER_NAMES[codePoint] ?? 'control character';
 }
 

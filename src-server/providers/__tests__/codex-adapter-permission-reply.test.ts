@@ -586,9 +586,36 @@ describe('#2911 round 4: command approval titles are bounded display text', () =
     },
   );
 
+  test('#3382: a multi-line command keeps its lines apart in the title, and a cut counts the hidden ones', async () => {
+    const RETURN_SYMBOL = String.fromCodePoint(0x23ce);
+    // The app-server's `item/commandExecution/requestApproval` params, sent
+    // over the wire to the real adapter.
+    expect((await titleFor({}, 'echo a\nrm -rf /')).title).toBe(
+      `echo a ${RETURN_SYMBOL} rm -rf /`,
+    );
+    expect((await titleFor({}, 'echo a\r\nrm -rf /')).title).toBe(
+      `echo a ${RETURN_SYMBOL} rm -rf /`,
+    );
+    const long = await titleFor({}, `echo ${'x'.repeat(300)}\nrm -rf /`);
+    expect(
+      long.title.endsWith(`${String.fromCodePoint(0x2026)} (+1 line)`),
+    ).toBe(true);
+    expect(Array.from(long.title).length).toBeLessThanOrEqual(200);
+    expect(long.title).not.toContain('rm -rf');
+    const network = await titleFor(
+      { networkApprovalContext: { host: 'example.com', protocol: 'https' } },
+      'curl x\nrm -rf /',
+    );
+    expect(network.title).toBe(
+      `network access to example.com (https) for: curl x ${RETURN_SYMBOL} rm -rf /`,
+    );
+  });
+
   test('an ordinary command title is one line with no bidi characters, and a cut is marked', async () => {
+    // #3382: the lines stay apart; joined by a space, `rm -rf /` read as
+    // part of `ls`.
     expect((await titleFor({}, 'ls\u202E\nrm -rf /')).title).toBe(
-      'ls rm -rf /',
+      'ls ⏎ rm -rf /',
     );
     const long = await titleFor({}, `echo ${'x'.repeat(300)}`);
     expect(Array.from(long.title)).toHaveLength(200);
@@ -636,7 +663,7 @@ describe('#2911 round 4: command approval titles are bounded display text', () =
       () => openedEvents(events)[0],
       'request.opened',
     );
-    expect(opened.title).toBe('ls ; echo done');
+    expect(opened.title).toBe('ls ⏎ ; echo done');
     expect(opened.payload.command).toBe(raw);
     expect(toolRequestPreviewFromPayload(opened.payload)).toBe(
       toolRequestPreviewFromPayload(request.params),

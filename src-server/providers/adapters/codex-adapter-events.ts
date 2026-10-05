@@ -8,6 +8,10 @@ import type {
   RequestOpenedEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  boundedJoinedLines,
+  displayLines,
+} from '@kontourai/station-shared/display-text';
 import type { ProviderSession } from '../adapter-shape.js';
 import {
   addWorkspaceImageFile,
@@ -443,7 +447,7 @@ const ELLIPSIS = '\u2026';
  * raw command.
  */
 function commandApprovalTitle(payload: Record<string, unknown>): string {
-  const command = displayText(payload.command);
+  const command = commandLines(payload.command);
   if (payload.networkApprovalContext != null) {
     const context = isRecord(payload.networkApprovalContext)
       ? payload.networkApprovalContext
@@ -455,8 +459,24 @@ function commandApprovalTitle(payload: Record<string, unknown>): string {
     return withCommand('input to a running command', ': ', command);
   }
   return command
-    ? keepStart(command, MAX_COMMAND_APPROVAL_TITLE_LENGTH)
+    ? boundedJoinedLines(command, MAX_COMMAND_APPROVAL_TITLE_LENGTH)
     : 'Approve command execution';
+}
+
+/**
+ * #3382: a command's lines, each made one visible line. Every surface shows
+ * this title, so a multi-line command must not collapse into one: joined by a
+ * space, `echo a` then `rm -rf /` read as `echo a rm -rf /`, with no sign a
+ * second command runs. The title joins them with " ⏎ " and says how many a
+ * cut hides (`boundedJoinedLines`), as the approval preview does.
+ */
+function commandLines(value: unknown): string[] | undefined {
+  const text = extractString(value);
+  if (!text) return undefined;
+  const lines = displayLines(text)
+    .map((line) => sanitizeUntrustedDisplayText(line, Number.POSITIVE_INFINITY))
+    .filter(Boolean);
+  return lines.length > 0 ? lines : undefined;
 }
 
 /**
@@ -544,12 +564,12 @@ function protocolLabel(protocol: string | undefined): string {
 function withCommand(
   lead: string,
   separator: string,
-  command: string | undefined,
+  command: readonly string[] | undefined,
 ): string {
   if (!command) return lead;
   const room =
     MAX_COMMAND_APPROVAL_TITLE_LENGTH - codePoints(lead + separator).length;
-  return `${lead}${separator}${keepStart(command, room)}`;
+  return `${lead}${separator}${boundedJoinedLines(command, room)}`;
 }
 
 function codePoints(text: string): string[] {

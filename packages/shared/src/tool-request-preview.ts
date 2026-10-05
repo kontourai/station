@@ -1,10 +1,8 @@
 import {
-  DISPLAY_LINE_SEPARATOR,
-  displayLength,
+  boundedJoinedLines,
+  compactDisplaySource,
   displayLines,
   displayText,
-  hiddenLinesMarker,
-  truncateDisplay,
 } from './display-text.js';
 import { MAX_SANITIZED_TEXT_LENGTH, redactSecrets } from './redaction.js';
 
@@ -853,7 +851,7 @@ function renderValue(value: unknown): string | undefined {
  * command stays separate words.
  *
  * A value with more than one line shows its lines joined by ` ⏎ `
- * (`displayJoinedLines`). When the bound cuts off whole lines, the
+ * (`boundedJoinedLines`). When the bound cuts off whole lines, the
  * line ends with the same "(+N lines)" marker the transcript label uses, kept
  * inside the bound, so the reader knows something is not shown.
  */
@@ -883,47 +881,28 @@ function boundedPreviewLine(value: string): string | undefined {
   // class is `[^\s&;]`: `&` and `;` are the delimiters the contextual pass
   // already anchors values on, so they are exactly the boundaries that make a
   // fragment visible.
-  const cut = value.slice(0, MAX_SANITIZED_TEXT_LENGTH);
+  //
+  // Padding is taken out first (`compactDisplaySource`, linear): before, 5000
+  // spaces or RLOs after `echo a` pushed `; rm -rf /` past this cut, and the
+  // toast showed a bare "echo a" next to Allow Once (#3382).
+  const compact = compactDisplaySource(value);
+  const cut = compact.slice(0, MAX_SANITIZED_TEXT_LENGTH);
   const trailingRun = /[^\s&;]+$/.exec(cut)?.[0] ?? '';
   const sliced =
-    value.length > MAX_SANITIZED_TEXT_LENGTH &&
+    compact.length > MAX_SANITIZED_TEXT_LENGTH &&
     trailingRun.length <= MAX_TRUNCATED_TOKEN_TRIM
       ? cut.slice(0, cut.length - trailingRun.length)
       : cut;
   const lines = displayLines(redactSecrets(sliced)).map(displayText);
   if (lines.length === 0) return undefined;
-  const joined = lines.join(DISPLAY_LINE_SEPARATOR);
-  // Lines past the coarse cut were never redacted and are not shown, but
-  // they are still lines the reader does not see: count them from the raw
-  // value (a linear split, no secret patterns).
-  const cutShort = sliced.length < value.length;
-  const total = cutShort ? displayLines(value).length : lines.length;
-  if (!cutShort && displayLength(joined) <= MAX_TOOL_REQUEST_PREVIEW_LENGTH) {
-    return joined;
-  }
-  if (total <= 1) {
-    return truncateDisplay(joined, MAX_TOOL_REQUEST_PREVIEW_LENGTH);
-  }
-  // Reserve room for the widest marker this value can need; the real one is
-  // never wider, because fewer lines can be hidden than there are after the
-  // first.
-  const reserve = displayLength(` ${hiddenLinesMarker(total - 1)}`);
-  const budget = MAX_TOOL_REQUEST_PREVIEW_LENGTH - reserve;
-  const shown = truncateDisplay(joined, budget);
-  const hidden = total - linesStartedWithin(lines, budget - 1);
-  const marker = hiddenLinesMarker(hidden);
-  return marker ? `${shown} ${marker}` : shown;
-}
-
-/** How many of `lines`, joined by `DISPLAY_LINE_SEPARATOR`, have at least
- * their first character within the first `visible` code points. */
-function linesStartedWithin(lines: readonly string[], visible: number): number {
-  let offset = 0;
-  let started = 0;
-  for (const line of lines) {
-    if (offset >= visible) break;
-    started += 1;
-    offset += displayLength(line) + displayLength(DISPLAY_LINE_SEPARATOR);
-  }
-  return started;
+  // A value cut short here always says so: "…", and the lines past the cut
+  // counted from the whole value (a linear split, no secret patterns).
+  const cutShort = sliced.length < compact.length;
+  return boundedJoinedLines(
+    lines,
+    MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+    cutShort
+      ? { truncated: true, totalLines: displayLines(compact).length }
+      : {},
+  );
 }

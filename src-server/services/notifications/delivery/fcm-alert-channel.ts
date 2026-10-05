@@ -93,6 +93,10 @@ import {
   type NativePushSendFloor,
 } from '../native-push-send-floor.js';
 import { notificationSessionIdentity } from '../notification-session.js';
+import {
+  osNotificationBody,
+  osNotificationTitle,
+} from '../os-notification-text.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
 import { isCardAlerted } from './card-alerted-categories.js';
 import {
@@ -228,8 +232,8 @@ export class FcmAlertChannel implements DeliveryChannel {
     return this.#sendAll(notification.id, to, urgent, (hideContent) => ({
       kind: 'alert',
       ...fitContent(
-        hideContent ? HIDDEN_TITLE : notification.title,
-        hideContent ? HIDDEN_BODY : notification.body,
+        hideContent ? HIDDEN_TITLE : osNotificationTitle(notification.title),
+        hideContent ? HIDDEN_BODY : osNotificationBody(notification.body),
       ),
       urgency: envelope.urgency,
       ...route,

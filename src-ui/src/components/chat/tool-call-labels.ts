@@ -711,7 +711,12 @@ export function callLabel(
   // ACP title: the command line, the path) is shown as the engine wrote it,
   // env-trimmed for a command exactly like an argument would be.
   if (toolName.trim() && !isProgrammaticToolName(toolName)) {
-    return `${verb} ${kind === 'exec' ? commandTarget(toolName, trimEnv) : truncate(toolName)}`;
+    // A multi-line name keeps the same first line and count as a command.
+    return `${verb} ${
+      kind === 'exec'
+        ? commandTarget(toolName, trimEnv)
+        : withHiddenLines(truncate(firstLine(toolName)), toolName)
+    }`;
   }
   const fallbackName = formatToolName(toolName);
   return fallbackName ? `${verb} ${fallbackName}` : verb;

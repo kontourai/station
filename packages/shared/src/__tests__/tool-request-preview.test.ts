@@ -942,7 +942,8 @@ describe('toolRequestPreview', () => {
       const command = `password=${'j'.repeat(4052)};ghp_${'A'.repeat(40)} rest`;
       const preview = toolRequestPreview('Bash', { command });
 
-      expect(preview).toBe('password=[REDACTED];');
+      // #3382: a value cut at the coarse slice says so with "…".
+      expect(preview).toBe('password=[REDACTED];…');
       expect(preview).not.toContain('ghp_');
     });
 
@@ -1247,5 +1248,96 @@ describe('revealHiddenCharacters (#3382)', () => {
     }
     expect(revealHiddenCharactersText('a\n\tb  c')).toBe('a\n\tb  c');
     expect(hasHiddenCharacters('a\n\tb  c')).toBe(false);
+  });
+});
+
+// #3382 review F1/F10: padding cannot push a command past the coarse cut,
+// and a cut is always visible.
+describe('toolRequestPreview — padding and cuts (#3382)', () => {
+  const RLO = String.fromCodePoint(0x202e);
+  const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+  const RETURN_SYMBOL = String.fromCodePoint(0x23ce);
+  const ELLIPSIS = String.fromCodePoint(0x2026);
+  const codePoints = (value: string) => Array.from(value).length;
+
+  test('5000 spaces between two commands do not hide the second', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${' '.repeat(5000)}; rm -rf /`,
+      }),
+    ).toBe('echo a ; rm -rf /');
+  });
+
+  test('5000 RLOs or zero-width spaces do not hide it either', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${RLO.repeat(5000)}; rm -rf /`,
+      }),
+    ).toBe('echo a; rm -rf /');
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${ZERO_WIDTH_SPACE.repeat(5000)}; rm -rf /`,
+      }),
+    ).toBe('echo a; rm -rf /');
+  });
+
+  test('5000 blank lines collapse to one line break', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${'\n'.repeat(5000)}rm -rf /`,
+      }),
+    ).toBe(`echo a ${RETURN_SYMBOL} rm -rf /`);
+  });
+
+  test('a cut inside line 1 ends in "…" and counts the lines after it', () => {
+    const preview = toolRequestPreview('Bash', {
+      command: `echo ${'x'.repeat(5000)}\nrm -rf /`,
+    })!;
+    expect(preview.endsWith(`${ELLIPSIS} (+1 line)`)).toBe(true);
+    expect(preview).not.toContain('rm -rf');
+    expect(codePoints(preview)).toBeLessThanOrEqual(
+      MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+    );
+  });
+
+  test('a value the coarse cut shortens ends in "…" even when what is left fits', () => {
+    // Redaction shortens the kept prefix to well under the bound.
+    const preview = toolRequestPreview('Bash', {
+      command: `password=${'j'.repeat(5000)} && rm -rf /`,
+    })!;
+    expect(preview.endsWith(ELLIPSIS)).toBe(true);
+  });
+
+  test('a line whose first character falls exactly at the cut is counted as hidden', () => {
+    // 145 + " ⏎ " puts BBBB's first character at code point 148, the first
+    // one the 160 bound less " (+2 lines)" and "…" cannot show.
+    const preview = toolRequestPreview('Bash', {
+      command: `${'a'.repeat(145)}\nBBBB\n${'c'.repeat(50)}`,
+    })!;
+    expect(preview.endsWith('(+2 lines)')).toBe(true);
+    expect(preview).not.toContain('B');
+  });
+});
+
+describe('display form strips more invisible characters (#3382)', () => {
+  test('zero-width space, word joiner, soft hyphen, BOM and tag characters are removed from a preview', async () => {
+    const invisible = [0x200b, 0x2060, 0xad, 0xfeff, 0x2062, 0xe0061].map(
+      (codePoint) => String.fromCodePoint(codePoint),
+    );
+    for (const char of invisible) {
+      expect(toolRequestPreview('Bash', { command: `r${char}m -rf /` })).toBe(
+        'rm -rf /',
+      );
+    }
+  });
+
+  test('a ZWJ between two emoji is left alone; one between letters is revealed', async () => {
+    const { revealHiddenCharactersText } = await import('../display-text.js');
+    const zwj = String.fromCodePoint(0x200d);
+    const emoji = String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb);
+    expect(revealHiddenCharactersText(emoji)).toBe(emoji);
+    expect(revealHiddenCharactersText(`a${zwj}b`)).toBe(
+      `a${String.fromCodePoint(0xab)}U+200D${String.fromCodePoint(0xbb)}b`,
+    );
   });
 });
