@@ -40,6 +40,9 @@ const TASK_ID = 'task-peer-request';
 /** Another paired Station this Station also holds a credential for. */
 const OTHER_ENVIRONMENT_ID = 'environment-other';
 const OTHER_PEER_API = 'http://127.0.0.1:45178';
+/** A verified SSH environment, reached through a loopback tunnel. */
+const SSH_ENVIRONMENT_ID = 'environment-ssh';
+const SSH_API = 'http://127.0.0.1:45179';
 const fetchMock = vi.fn<typeof fetch>();
 
 const remote = createRemoteStationForwarder({
@@ -60,6 +63,23 @@ const remote = createRemoteStationForwarder({
         : null,
   },
 } as never);
+
+const sshRemote = (() => {
+  const view = {
+    profile: {
+      id: 'ssh-profile-1',
+      name: 'Box S',
+      environmentId: SSH_ENVIRONMENT_ID,
+      verifiedProjectPath: '/srv/project',
+      remoteHome: '/home/s',
+    },
+    state: { phase: 'connected', localUrl: SSH_API },
+  } as never;
+  return createRemoteStationForwarder({
+    ssh: { list: () => [view], connect: async () => view },
+    peers: { get: () => null },
+  } as never);
+})();
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -100,6 +120,8 @@ afterEach(() => {
 
 let peerResponse: () => Response;
 let currentRespondCalls: number;
+let sshRespondCalls: number;
+let sshRespondBody: Record<string, unknown>;
 let currentRespondBody: Record<string, unknown>;
 let respondCalls: Array<{ url: string; body: Record<string, unknown> }>;
 let respondStatus: number;
@@ -109,6 +131,8 @@ let respondRefusalBody: Record<string, unknown>;
 beforeEach(() => {
   respondCalls = [];
   currentRespondCalls = 0;
+  sshRespondCalls = 0;
+  sshRespondBody = {};
   currentRespondBody = {};
   respondStatus = 200;
   respondRefusalBody = { success: false, error: 'not allowed here' };
@@ -120,6 +144,10 @@ beforeEach(() => {
       return json({ environmentId: 'environment-here' });
     if (url === `${PEER_API}/api/orchestration/delegations/${TASK_ID}`)
       return peerResponse();
+    if (url === `${SSH_API}/api/orchestration/delegations/${TASK_ID}/respond`) {
+      sshRespondCalls += 1;
+      return json(sshRespondBody, 403);
+    }
     // THIS Station's own respond route, reached by an input naming no
     // environment (a `current` target): it answers with its own refusal.
     if (
@@ -398,6 +426,39 @@ describe('a decision on it is forwarded to the paired Station', () => {
     expect(error?.cause).toMatchObject({
       refusalCode: 'station_control_caller_required',
     });
+  });
+
+  // An SSH target is not a paired Station: its 403 never earns the
+  // paired-Station sentence. It is not this Station either, so it carries no
+  // typed local code; it gets the generic refusal, as before #3315.
+  test("a 403 from an SSH target is neither the paired Station's sentence nor a local code", async () => {
+    sshRespondBody = {
+      success: false,
+      code: 'station_control_caller_required',
+      error: 'SSH-HOST-DETAIL /home/s/secret',
+    };
+    const error = await respondToDelegatedTaskRequest(
+      {
+        taskId: TASK_ID,
+        environmentId: SSH_ENVIRONMENT_ID,
+        requestId: 'req-ssh-1',
+        decision: 'accept',
+        userId: 'default',
+      } as never,
+      undefined,
+      sshRemote,
+    ).then(
+      () => undefined,
+      (caught: unknown) => caught as Error,
+    );
+    expect(sshRespondCalls).toBe(1);
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toBe(
+      'The selected Station could not resolve the delegated task request',
+    );
+    expect(error?.message).not.toBe(PEER_RESPOND_FORBIDDEN_MESSAGE);
+    expect(error?.message).not.toContain('SSH-HOST-DETAIL');
+    expect(error?.cause).toBeUndefined();
   });
 });
 
