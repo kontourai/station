@@ -22,6 +22,7 @@ import {
   isSessionSourceAffinity,
   snapshotSessionSourceAffinity,
 } from '../../providers/sessions/session-source-affinity.js';
+import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   attachedSessionDiscovery,
@@ -32,6 +33,11 @@ import {
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
+import {
+  createPollRepositoryLookup,
+  isWithinRepositoryPath,
+  type RepositoryLookup,
+} from './attached-session-repository.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
 import { EventStoreIngressError } from './event-store.js';
@@ -251,6 +257,20 @@ interface AttachedSessionFollowServiceOptions {
    * event. Optional only so isolated tests can construct the service.
    */
   invalidateSessionOwner?: (threadId: string) => void;
+  /**
+   * #3386: follow a session no project claims, with no project (the UI's
+   * "No project"), instead of dropping it. It is owned by the local operator
+   * exactly like an attributed one, so it is readable by nobody else.
+   *
+   * Defaults to on for a personal Station and OFF for a hosted one: a hosted
+   * runtime has no tenant binding for a transcript in its own engine homes,
+   * and whether such discovery happens at all there is the per-person
+   * opt-in of #3386 Phase C, not this default. Hosted therefore keeps the
+   * old behaviour of skipping it.
+   */
+  followUnattributed?: boolean;
+  /** For tests: how a folder's repository is found. One lookup per poll is built from it. */
+  locateRepository?: RepositoryLookup;
 }
 
 /**
@@ -266,9 +286,12 @@ export class AttachedSessionFollowService {
   private timer: NodeJS.Timeout | undefined;
   private activePoll: Promise<void> | undefined;
   private readonly adoptionLedger: AdoptionLedger;
+  private readonly followUnattributed: boolean;
 
   constructor(private readonly options: AttachedSessionFollowServiceOptions) {
     assertUniqueAttachedSessionSourceKinds(options.sources);
+    this.followUnattributed =
+      options.followUnattributed ?? !isHostedTenantExecutionRequired();
     this.adoptionLedger =
       options.adoptionLedger ?? options.eventStore.createAdoptionLedger();
     this.pollIntervalMs = boundedPollInterval(
@@ -336,6 +359,9 @@ export class AttachedSessionFollowService {
 
   private async poll(): Promise<void> {
     const projectRoots = await this.projectRoots();
+    const repositories = createPollRepositoryLookup(
+      this.options.locateRepository,
+    );
     for (const source of this.options.sources) {
       const startedAt = performance.now();
       let discovered: AttachedSessionDiscoveryResult;
@@ -384,9 +410,10 @@ export class AttachedSessionFollowService {
             ? { affinity: snapshotSessionSourceAffinity(observed.affinity) }
             : {}),
         });
-        const attribution = resolveAttachedProjectRoot(
+        const attribution = await resolveAttachedSessionProject(
           session.cwd,
           projectRoots,
+          repositories,
         );
         attachedSessionProjectAttribution.add(1, {
           source: sourceLabel(source),
@@ -394,8 +421,10 @@ export class AttachedSessionFollowService {
         });
         // An ambiguous attribution is still followed: the session is real and
         // dropping it would hide a live external session entirely. What it
-        // does NOT get is a slug it hasn't earned (archive#1462).
-        if (attribution.state === 'unattributed') continue;
+        // does NOT get is a slug it hasn't earned (archive#1462). The same
+        // holds for an unattributed one (#3386), except on a hosted Station.
+        if (attribution.state === 'unattributed' && !this.followUnattributed)
+          continue;
         await this.follow(source, session, attribution);
         followedSessions += 1;
         // `follow()` performs synchronous EventStore reads and writes. Its
@@ -412,7 +441,7 @@ export class AttachedSessionFollowService {
   private async follow(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
-    attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
+    attribution: AttachedProjectAttribution,
   ): Promise<void> {
     const persistedSessions = this.options.eventStore.readSessions();
     const persisted = persistedSessions.find(
@@ -445,7 +474,14 @@ export class AttachedSessionFollowService {
     }
     if (state.ownership === 'collision') return;
     const fingerprint = attributionFingerprint(attribution);
-    if (state.storedAttribution !== fingerprint) {
+    // #3386: "no project claims it now" never replaces a project the log
+    // already names. The common cause is a removed worktree, whose folder no
+    // longer leads to its repository, and re-filing every such session under
+    // No project would erase a correct attribution for a missing folder.
+    const keepsStoredAttribution =
+      attribution.state === 'unattributed' &&
+      state.storedAttribution !== undefined;
+    if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
       for (const event of attachedSessionEnvelope(
         descriptor,
@@ -1043,6 +1079,87 @@ type AttachedProjectAttribution =
     }
   | { state: 'unattributed' };
 
+/**
+ * #3386: the attribution a poll records, by folder first and then by
+ * repository.
+ *
+ * 1. A project whose folder contains the cwd wins, exactly as
+ *    {@link resolveAttachedProjectRoot} decides it, longest root and
+ *    ambiguity included.
+ * 2. Otherwise the cwd is matched by repository: when it is in a checkout of
+ *    the same repository as a project's folder (the same common git
+ *    directory, so any worktree of it), the cwd's place inside ITS worktree
+ *    is compared with the project folder's place inside its own. A project
+ *    on the repository root therefore claims every worktree of it, and a
+ *    project on `packages/app` claims `packages/app` in every worktree. The
+ *    longest such place wins, and a tie is the same honest ambiguity as in
+ *    step 1 (two projects on two checkouts of one repository).
+ *
+ * Folder first, because a folder match is the stronger claim: it holds for a
+ * project inside a nested repository, which the repository match would give
+ * to the nested repository's own project instead.
+ */
+export async function resolveAttachedSessionProject(
+  cwd: string,
+  projects: AttachedProjectRoot[],
+  repositories: RepositoryLookup,
+): Promise<AttachedProjectAttribution> {
+  const byFolder = resolveAttachedProjectRoot(cwd, projects);
+  if (byFolder.state !== 'unattributed') return byFolder;
+  const canonicalCwd = canonicalPath(cwd);
+  if (!canonicalCwd) return byFolder;
+  const session = await repositories(canonicalCwd);
+  if (!session) return byFolder;
+  let workingDirectory: string | undefined;
+  let place: string | undefined;
+  let candidates: string[] = [];
+  for (const project of projects) {
+    const root = project.workingDirectory
+      ? canonicalPath(project.workingDirectory)
+      : undefined;
+    if (!root) continue;
+    const repository = await repositories(root);
+    if (
+      repository?.commonDir !== session.commonDir ||
+      !isWithinRepositoryPath(session.pathInWorktree, repository.pathInWorktree)
+    )
+      continue;
+    if (
+      place === undefined ||
+      repository.pathInWorktree.length > place.length
+    ) {
+      place = repository.pathInWorktree;
+      workingDirectory = root;
+      candidates = [project.slug];
+    } else if (
+      repository.pathInWorktree === place &&
+      !candidates.includes(project.slug)
+    ) {
+      candidates.push(project.slug);
+    }
+  }
+  return attributionFrom(canonicalCwd, workingDirectory, candidates);
+}
+
+function attributionFrom(
+  cwd: string,
+  workingDirectory: string | undefined,
+  candidates: string[],
+): AttachedProjectAttribution {
+  if (workingDirectory === undefined || candidates.length === 0) {
+    return { state: 'unattributed' };
+  }
+  if (candidates.length === 1) {
+    return { state: 'attributed', slug: candidates[0]!, cwd, workingDirectory };
+  }
+  return {
+    state: 'ambiguous',
+    cwd,
+    workingDirectory,
+    candidates: [...candidates].sort(),
+  };
+}
+
 export function resolveAttachedProjectRoot(
   cwd: string,
   projects: AttachedProjectRoot[],
@@ -1067,23 +1184,7 @@ export function resolveAttachedProjectRoot(
       candidates.push(project.slug);
     }
   }
-  if (workingDirectory === undefined || candidates.length === 0) {
-    return { state: 'unattributed' };
-  }
-  if (candidates.length === 1) {
-    return {
-      state: 'attributed',
-      slug: candidates[0]!,
-      cwd: canonicalCwd,
-      workingDirectory,
-    };
-  }
-  return {
-    state: 'ambiguous',
-    cwd: canonicalCwd,
-    workingDirectory,
-    candidates: [...candidates].sort(),
-  };
+  return attributionFrom(canonicalCwd, workingDirectory, candidates);
 }
 
 // An attached transcript is read from this host's own engine homes, so its
@@ -1100,7 +1201,7 @@ export function resolveAttachedProjectRoot(
 // `invalidateSessionOwner` option), before the event reaches the bus.
 function attachedSessionEnvelope(
   session: AttachedSessionDescriptor,
-  attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
+  attribution: AttachedProjectAttribution,
   fingerprint: string,
   latestEventAt: string | undefined,
   /** The attribution the persisted log already expresses — see {@link envelopeEventId}. */
@@ -1120,14 +1221,17 @@ function attachedSessionEnvelope(
   } as const;
   // archive#1462: an ambiguous attribution carries the named candidates and
   // deliberately no `projectSlug` — every consumer that reads a slug off this
-  // metadata would otherwise read an unproven one.
+  // metadata would otherwise read an unproven one. #3386: an unattributed
+  // one says so explicitly, so the stored fingerprint survives a restart.
   const projectMetadata =
     attribution.state === 'attributed'
       ? { projectSlug: attribution.slug }
-      : {
-          projectAttribution: 'ambiguous' as const,
-          projectCandidates: attribution.candidates,
-        };
+      : attribution.state === 'ambiguous'
+        ? {
+            projectAttribution: 'ambiguous' as const,
+            projectCandidates: attribution.candidates,
+          }
+        : { projectAttribution: 'unattributed' as const };
   return [
     {
       ...base,
@@ -1281,6 +1385,7 @@ function metadataAttributionFingerprint(
 ): string | undefined {
   const slug = metadata?.projectSlug;
   if (typeof slug === 'string' && slug) return `attributed\u0000${slug}`;
+  if (metadata?.projectAttribution === 'unattributed') return 'unattributed';
   if (metadata?.projectAttribution !== 'ambiguous') return undefined;
   const raw = metadata?.projectCandidates;
   if (!Array.isArray(raw)) return undefined;
@@ -1337,8 +1442,9 @@ function metadataAttributionFingerprint(
  * dated no earlier than the newest event already on the thread, and no later.
  */
 function attributionFingerprint(
-  attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
+  attribution: AttachedProjectAttribution,
 ): string {
+  if (attribution.state === 'unattributed') return 'unattributed';
   return attribution.state === 'attributed'
     ? `attributed\u0000${attribution.slug}`
     : // `candidates` is already sorted, so the fingerprint is stable across

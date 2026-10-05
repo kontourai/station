@@ -536,9 +536,15 @@ export class AttachedSessionAdoption {
         `The attached session workspace ${attribution.workingDirectory} is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,
       );
     }
+    // #3386: Activity also lists a session matched to a project only by its
+    // repository (a worktree outside the project folder), and one no project
+    // claims. Neither can be continued yet: adoption records the project
+    // folder as the child's project root (and resolves by folder only), and
+    // this folder is inside no project folder. Widening that is a separate
+    // decision about where such a child may run.
     if (attribution.state === 'unattributed') {
       throw new Error(
-        'The attached session workspace is no longer a configured project.',
+        `The attached session folder ${source.cwd} is not inside a project folder. Continue in Station needs one: add a project for this folder, or keep working in the original app.`,
       );
     }
     return {

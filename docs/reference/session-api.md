@@ -426,7 +426,23 @@ Codex rollout observation reads the local `CODEX_HOME/sessions` directory
 (`~/.codex/sessions` by default) through bounded, read-only pages. It imports
 supported turn boundaries, user messages, assistant text, public reasoning
 summaries, tool activity, cumulative token snapshots, and compaction markers.
-Only transcripts attributed to configured Projects enter the shared follower.
+Every discovered transcript enters the shared follower
+([`AttachedSessionFollowService`](../../src-server/services/orchestration/attached-session-follow-service.ts)),
+which attributes it with `resolveAttachedSessionProject`: first a Project whose
+working directory contains the transcript's cwd (longest root; two Projects on
+one root are `ambiguous` with both named), then a Project whose working
+directory is in the same git repository, read from the `.git` entry and its
+`commondir` pointer without running git
+([`attached-session-repository.ts`](../../src-server/services/orchestration/attached-session-repository.ts)).
+The cwd's path inside its worktree is compared with the Project's path inside
+its own, so any worktree of the repository matches. A transcript neither
+step claims is followed with `projectAttribution: 'unattributed'` and no
+`projectSlug`; the summary then carries neither field. An unattributed result
+never replaces an attribution the log already records. The local operator owns
+every attached transcript whatever its attribution. A hosted runtime
+(`STATION_HOSTED_TENANT_REGISTRY_FILE` set) still skips unattributed
+transcripts. `adoptSession` resolves the Project by working directory only, so
+it refuses a transcript attributed by repository or not at all.
 Encrypted content and subagent sidechain traversal are outside this importer.
 Additional user input after observed assistant or tool activity keeps the same
 native turn identity and is marked as steering. When the rollout does not
