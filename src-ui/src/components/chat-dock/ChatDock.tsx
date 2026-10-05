@@ -65,8 +65,11 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { readNewChatIntent } from '../../lib/newChatIntent';
 import {
   OPEN_PROJECT_CHATS_EVENT,
@@ -589,27 +592,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isFetchedAfterMount: orchestrationSessionsFetchedAfterMount,
   } = useOrchestrationSessionsQuery();
   // The inbox rows' hover cards resolve git facts against the row's local
-  // session working directory (only local sessions have one worth answering:
-  // `useOrchestrationSessionsQuery` never carries remote environments'
-  // sessions, so a remote row cannot resolve a cwd here at all). Referentially
-  // stable for the panel's `memo()` wrap, like `openInboxChatSessionIds`.
-  // #2412: a git read names its Project, so only a session bound to one
-  // gets a git section; an unbound chat's folder is not read.
-  const gitLocationByThreadId = useMemo(
-    () =>
-      new Map(
-        orchestrationSessions
-          .filter((session) => !!session.cwd && !!session.projectSlug)
-          .map((session) => [
-            session.threadId,
-            {
-              projectSlug: session.projectSlug as string,
-              workingDir: session.cwd as string,
-            },
-          ]),
-      ),
-    [orchestrationSessions],
-  );
+  // session working directory — the one derivation Home's rows share.
+  const gitLocationByThreadId = useGitLocationByThreadId();
+  // The sidebar's project colours, so a row's swatch matches its project.
+  const projectAccentBySlug = useProjectAccents();
+  const projectIconBySlug = useProjectIcons();
   // archive#3391: the inboxes name models through the catalog, as Home does.
   const { resolveModelLabel } = useCatalogModelLabel();
   // The one inbox derivation, shared with the sidebar's Open-chats rows.
@@ -2533,6 +2520,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         items: taskItems,
                         agents,
                         gitLocationByThreadId,
+                        projectAccentBySlug,
+                        projectIconBySlug,
                         workFacts,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
@@ -2799,6 +2788,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               agents,
               workFacts,
               gitLocationByThreadId,
+              projectAccentBySlug,
+              projectIconBySlug,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,

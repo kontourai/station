@@ -2549,6 +2549,13 @@ export const consentDecisionOps = meter.createCounter(
       'Consent-listener decision outcomes by result (approved|denied|refused) and refusal reason',
   },
 );
+export const operatorPasskeyEnrollmentOps = meter.createCounter(
+  'station.operator_passkey.enrollment_ops',
+  {
+    description:
+      'Operator passkey enrollment outcomes by step (requested|confirmed|denied|enrolled|revoked|refused) and refusal reason; never a credential, challenge or code',
+  },
+);
 export const consentListenerState = meter.createCounter(
   'station.consent.listener_state',
   {

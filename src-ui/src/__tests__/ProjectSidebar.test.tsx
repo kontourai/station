@@ -211,11 +211,18 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
+import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { useGitLocationByThreadId } from '../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../hooks/useProjectAccents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { HomeWorkItem } from '../views/home/home-view-model';
+import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
 
 // #1765 routed the sidebar status row's command-palette keycap through
 // `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
@@ -752,6 +759,38 @@ describe('project row identity (#2150)', () => {
     const row = screen.getByRole('button', { name: /Campfit/ });
     expect(row.textContent).toContain('🏕️');
   });
+
+  test('an image icon is drawn beside the bar, and stays out of the name', () => {
+    resetState();
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: image,
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    const icon = row.querySelector('.sidebar__project-icon');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.querySelector('img')?.getAttribute('src')).toBe(image);
+  });
+
+  test('a stored value the icon rule refuses is never hotlinked from the row', () => {
+    resetState();
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: 'https://example.com/logo.png',
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('img')).toBeNull();
+    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+  });
 });
 
 /**
@@ -977,5 +1016,119 @@ describe('ProjectSidebar compact rail chat entry (#1348)', () => {
 
     expect(listener).toHaveBeenCalledOnce();
     unregister();
+  });
+});
+
+/**
+ * One project, one colour, on every surface that paints it: the sidebar row,
+ * the dock's project switcher, the dock's inbox rows and Home's work rows.
+ * `projectAccents` is set-aware, so a surface that allocated over its own
+ * list would give a project another colour; each surface reads the shared
+ * `useProjectAccents` allocation instead.
+ */
+describe('a project wears the same colour everywhere', () => {
+  function Home({ items }: { items: HomeWorkItem[] }) {
+    const lanes = useHomeWorkLanes(items);
+    return (
+      <HomeRecentWorkSection
+        lanes={lanes}
+        workItems={items}
+        workLoading={false}
+        workDegraded={false}
+        workError={false}
+        agents={[]}
+        remoteUnavailable={[]}
+        remoteAuthenticationRequired={[]}
+        onOpen={vi.fn()}
+        onViewActivity={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+  }
+
+  /** The dock's inbox, fed the way `ChatDock` feeds it. */
+  function DockInbox({ items }: { items: HomeWorkItem[] }) {
+    return (
+      <ChatDockInboxPanel
+        items={items}
+        activeChatSessionId={null}
+        openChatSessionIds={[]}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        gitLocationByThreadId={useGitLocationByThreadId()}
+        projectAccentBySlug={useProjectAccents()}
+      />
+    );
+  }
+
+  test('the sidebar, the switcher, the dock inbox and Home agree on beta', () => {
+    resetState();
+    projects.push(
+      { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
+      { id: 'p-alpha', slug: 'alpha', name: 'Alpha' },
+      { id: 'p-beta', slug: 'beta', name: 'Beta' },
+    );
+    const betaWork: HomeWorkItem = {
+      id: 'beta-work',
+      kind: 'chat',
+      kindLabel: 'Direct chat',
+      title: 'Tidy the beta release notes',
+      projectLabel: 'Beta',
+      projectSlug: 'beta',
+      agentLabel: 'Codex',
+      modelLabel: 'GPT-5',
+      updatedAt: Date.now() - 60_000,
+      lifecycleLabel: 'Ready',
+      chatSessionId: 'beta-work',
+    };
+
+    const sidebar = renderSidebar(<ProjectSidebar />);
+    const sidebarColour = sidebar.container.querySelector<HTMLElement>(
+      '[title="Open Beta workspace"] .sidebar__project-accent',
+    )?.style.backgroundColor;
+    sidebar.unmount();
+    // Sorted alpha, beta, gamma: beta takes the palette's SECOND colour,
+    // which no allocation over beta alone would give it.
+    expect(sidebarColour).toBe('var(--event-agent-complete)');
+
+    const switcher = renderSidebar(
+      <ChatDockProjectSwitcherSheet
+        anchorRef={{ current: null }}
+        boundProjectSlug="beta"
+        projects={[{ id: 'p-beta', slug: 'beta', name: 'Beta' }]}
+        onOpenProject={vi.fn()}
+        onSwitchProject={vi.fn()}
+        onNewProject={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const switcherColour = switcher.baseElement.querySelector<HTMLElement>(
+      '.chat-dock__project-switcher-accent',
+    )?.style.backgroundColor;
+    switcher.unmount();
+
+    const rowColour = (ui: ReactElement) => {
+      const view = renderSidebar(ui);
+      const colour = view.container.querySelector<HTMLElement>(
+        '.inbox-row__project-accent',
+      )?.style.backgroundColor;
+      view.unmount();
+      return colour;
+    };
+    const dockColour = rowColour(<DockInbox items={[betaWork]} />);
+    const homeColour = rowColour(<Home items={[betaWork]} />);
+
+    expect({
+      switcher: switcherColour,
+      dock: dockColour,
+      home: homeColour,
+    }).toEqual({
+      switcher: sidebarColour,
+      dock: sidebarColour,
+      home: sidebarColour,
+    });
   });
 });

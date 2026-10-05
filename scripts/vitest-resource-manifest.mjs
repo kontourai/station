@@ -493,6 +493,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-impact.test.ts',
   // Bounded Git fixtures run the freshness check and review-record CLIs.
   'scripts/__tests__/documentation-freshness.test.ts',
+  // Bounded Git fixtures run the freshness check and review-record CLIs (#3036).
+  'scripts/__tests__/review-ledger-guards.test.ts',
+  'scripts/__tests__/documentation-review-notes.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',

@@ -137,7 +137,7 @@ Current command availability, with background in the [CLI product design](../des
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
-| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
+| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
 
@@ -358,7 +358,7 @@ parent directories or infer a target from repository contents.
 
 The default Station applies to every command that talks to a Station API,
 including `environment` verbs. Host-side verbs that must run against the local
-Station (`environment access list|approve|deny`) still require a loopback
+Station (`environment access list|approve|deny`, `environment operator passkeys`) still require a loopback
 target — pass the selected channel's loopback `--api-base` explicitly when a
 remote Station is your default. `--station=<name>` also works for these
 verbs, but only for a saved Station whose endpoint is loopback AND that
@@ -2216,6 +2216,10 @@ station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
 station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]

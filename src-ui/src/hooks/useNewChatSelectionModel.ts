@@ -69,7 +69,7 @@ export function resolveProviderManagedAgentConnectionId(
   return managedRuntimeId ? engineConnectionId(managedRuntimeId) : undefined;
 }
 
-import { getContextAgent, getRecentAgentSlugs } from './useRecentAgents';
+import { getRecentAgentSlugs, useContextAgent } from './useRecentAgents';
 
 export interface ACPSelectionConnection {
   id: string;
@@ -342,6 +342,9 @@ export function useNewChatSelectionModel({
   // localStorage-free.
   const lastChosenModelByBinding = useLastChosenModelMap();
   const activeChatsSnapshot = activeChatsStore.getSnapshot();
+  // Live, like the Model memory above: a choice remembered on one surface
+  // re-derives the other surface's default Agent.
+  const rememberedAgentSlug = useContextAgent(namespace, selectedContext);
   const viewModel = useMemo(
     () =>
       buildNewChatModalViewModel({
@@ -384,7 +387,7 @@ export function useNewChatSelectionModel({
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
     preferredAgentSlug:
-      getContextAgent(namespace, selectedContext) ??
+      rememberedAgentSlug ??
       getRecentAgentSlugsForContext(
         activeChatsSnapshot,
         selectedContext,
