@@ -448,9 +448,12 @@ promising more than it does:
   with "(+N lines)". The transcript row and the approvals strip card show a
   command's first line with the same count ("Run echo a (+1 line)"); Codex's
   command approval title joins its lines the same way, and its strip card is
-  a command row. A pending approval whose command has more than one line,
-  whose label is cut ("…"), or whose arguments hold a hidden character opens
-  its details, so the whole command is on screen next to Allow and Deny.
+  a command row. A pending approval opens its details whenever it has
+  arguments to show, so the whole command is on screen next to Allow and
+  Deny: the label can hide part of it in more ways than can be detected
+  (a first line and a count, a cut, dropped characters, a CSS ellipsis at
+  narrow widths). The user can collapse it, and that choice is kept for the
+  request.
 - **It is shown in display form.** The preview, the tool name, the "Why:"
   purpose, a pending request's title in the session view, and the inbox row's
   title and body drop bidi controls (U+202A–202E, U+2066–2069, LRM, RLM, ALM)
@@ -467,7 +470,9 @@ promising more than it does:
   its "(+N lines)" count. The details view shows the raw arguments, left to
   right with each run of right-to-left letters isolated, and only those
   letters (as the row's label and the details' Tool line are, so all three
-  show the same order; a Chromium layout check pins it), except that
+  show the same order; a Chromium layout check pins it), with ligatures and
+  contextual alternates off there and in the toast preview so `../` and `!=`
+  read as typed, except that
   hidden characters (the ones above, ZWNJ, a ZWJ that is not joining two
   emoji, and controls other than LF and tab) appear as visible `«U+XXXX»`
   tokens under a "contains hidden characters" warning, so they are never
