@@ -261,50 +261,118 @@ export const RUN_LOCATION_TIMEOUT_MS = 1500;
 export const RUN_LOCATION_TIMED_OUT_REASON =
   "Station could not check this project's folder in time (it may be on a drive that is not responding).";
 
+export const RUN_LOCATION_BUSY_REASON =
+  'Station is still waiting on other project folders, so it did not check this one yet. Try again shortly.';
+
 /**
- * Folder checks that have not settled, shared by every list read in this
- * process. The time box frees the HTTP response, not the libuv thread: an
+ * Folder checks, shared by every list read in this process.
+ *
+ * The time box frees the HTTP response, not the libuv thread: an
  * `fs.promises` call on a mount that does not answer holds one of the four
  * default threadpool threads until the mount does, and with all four held
  * every async file read in the server (and dns, and zlib) waits behind them.
- * So a list read never starts a second check of the same folder while one is
- * still out (it waits on the first), and once `MAX_STUCK_FOLDER_CHECKS`
- * checks have outlived their time box it starts no new ones at all: the
- * project reads as `unavailable` at once until a stuck check settles.
+ * So at most `MAX_UNSETTLED_FOLDER_CHECKS` checks are ever out at once —
+ * stuck or not, one read or many — which always leaves a thread for the rest
+ * of the server. Further checks wait their turn, first in first out, within
+ * their project's time box; one that never gets a turn reads `unavailable`
+ * with `RUN_LOCATION_BUSY_REASON`, since nothing checked it. A check of a
+ * folder that is already out joins that check instead of queueing another.
+ * Healthy folders answer in well under a millisecond, so the limit costs
+ * them nothing measurable while a hung mount holds at most the slots it
+ * already has.
  */
-const pendingFolderChecks = new Map<string, Promise<unknown>>();
-const stuckFolderChecks = new Set<string>();
-export const MAX_STUCK_FOLDER_CHECKS = 2;
+export const MAX_UNSETTLED_FOLDER_CHECKS = 3;
+
+interface FolderCheck {
+  promise: Promise<unknown>;
+  /** False while it waits for a slot: nothing has looked at the folder. */
+  started: boolean;
+}
+
+const pendingFolderChecks = new Map<string, FolderCheck>();
+const waitingFolderChecks: Array<() => void> = [];
+let unsettledFolderChecks = 0;
+/** Bumped by the test reset, so a check from before it cannot free a slot. */
+let folderCheckGeneration = 0;
 
 /** Test seam: forget every check (a hung stub never settles on its own). */
 export function resetRunLocationFolderChecksForTests(): void {
   pendingFolderChecks.clear();
-  stuckFolderChecks.clear();
+  waitingFolderChecks.length = 0;
+  unsettledFolderChecks = 0;
+  folderCheckGeneration += 1;
 }
 
+/** Test seam: how many folder checks are out right now. */
+export function unsettledRunLocationFolderChecks(): number {
+  return unsettledFolderChecks;
+}
+
+function startWaitingFolderChecks(): void {
+  while (
+    unsettledFolderChecks < MAX_UNSETTLED_FOLDER_CHECKS &&
+    waitingFolderChecks.length > 0
+  )
+    waitingFolderChecks.shift()?.();
+}
+
+/**
+ * `fs` behind the shared limit, for one project: `awaited` collects the
+ * checks this project waits on, so its time box can tell "the folder did not
+ * answer" from "the folder was never checked".
+ */
 function guardFolderChecks(
   fs: RunLocationFs,
   timeoutMs: number,
+  awaited: Set<FolderCheck>,
 ): RunLocationFs {
   const guarded =
     <T>(op: string, run: (path: string) => Promise<T>) =>
     (path: string): Promise<T> => {
       const key = `${op}\u0000${path}`;
-      const pending = pendingFolderChecks.get(key);
-      if (pending) return pending as Promise<T>;
-      if (stuckFolderChecks.size >= MAX_STUCK_FOLDER_CHECKS)
-        return Promise.reject(new Error(RUN_LOCATION_TIMED_OUT_REASON));
-      const timer = setTimeout(() => stuckFolderChecks.add(key), timeoutMs);
-      timer.unref?.();
-      const check = run(path).finally(() => {
-        clearTimeout(timer);
-        pendingFolderChecks.delete(key);
-        stuckFolderChecks.delete(key);
-      });
-      // The caller handles the rejection; this copy only keeps the map honest.
-      check.catch(() => {});
-      pendingFolderChecks.set(key, check);
-      return check;
+      let check = pendingFolderChecks.get(key);
+      if (!check) {
+        const entry: FolderCheck = {
+          promise: Promise.resolve(),
+          started: false,
+        };
+        const generation = folderCheckGeneration;
+        entry.promise = new Promise<T>((resolve, reject) => {
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          const begin = () => {
+            clearTimeout(deadline);
+            entry.started = true;
+            unsettledFolderChecks += 1;
+            Promise.resolve()
+              .then(() => run(path))
+              .then(resolve, reject)
+              .finally(() => {
+                if (generation !== folderCheckGeneration) return;
+                unsettledFolderChecks -= 1;
+                pendingFolderChecks.delete(key);
+                startWaitingFolderChecks();
+              });
+          };
+          if (unsettledFolderChecks < MAX_UNSETTLED_FOLDER_CHECKS) {
+            begin();
+            return;
+          }
+          waitingFolderChecks.push(begin);
+          deadline = setTimeout(() => {
+            const index = waitingFolderChecks.indexOf(begin);
+            if (index >= 0) waitingFolderChecks.splice(index, 1);
+            pendingFolderChecks.delete(key);
+            reject(new Error(RUN_LOCATION_BUSY_REASON));
+          }, timeoutMs);
+          deadline.unref?.();
+        });
+        // The caller handles the rejection; this copy keeps it observed.
+        entry.promise.catch(() => {});
+        pendingFolderChecks.set(key, entry);
+        check = entry;
+      }
+      awaited.add(check);
+      return check.promise as Promise<T>;
     };
   return {
     exists: guarded('exists', fs.exists),
@@ -316,14 +384,19 @@ function guardFolderChecks(
 async function withRunLocationTimeout(
   pending: Promise<ProjectRunsAt>,
   timeoutMs: number,
+  awaited: ReadonlySet<FolderCheck>,
 ): Promise<ProjectRunsAt> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<ProjectRunsAt>((resolve) => {
-    timer = setTimeout(
-      () =>
-        resolve({ kind: 'unavailable', reason: RUN_LOCATION_TIMED_OUT_REASON }),
-      timeoutMs,
-    );
+    timer = setTimeout(() => {
+      const neverChecked = [...awaited].some((check) => !check.started);
+      resolve({
+        kind: 'unavailable',
+        reason: neverChecked
+          ? RUN_LOCATION_BUSY_REASON
+          : RUN_LOCATION_TIMED_OUT_REASON,
+      });
+    }, timeoutMs);
     timer.unref?.();
   });
   try {
@@ -414,7 +487,7 @@ export class ProjectResourceResolver {
    * concurrently, and gives each one `timeoutMs` before it reads as
    * `unavailable` — "could not check the folder". A folder that does not
    * answer still holds a threadpool thread until its mount does; see
-   * `guardFolderChecks` for how few of those a list read will ever start.
+   * `MAX_UNSETTLED_FOLDER_CHECKS` for the limit that keeps one free.
    *
    * `none` is a project with no directory at all: where its chats run then
    * depends on the agent (home, an ACP connection's folder, or a private one),
@@ -441,19 +514,24 @@ export class ProjectResourceResolver {
         throw error;
       };
     }
-    const io: ResolutionIo = {
-      identity: 'trust-records',
-      findBinding,
-      ...guardFolderChecks(options.fs ?? ASYNC_RUN_LOCATION_FS, timeoutMs),
-    };
+    const fs = options.fs ?? ASYNC_RUN_LOCATION_FS;
     const entries = await Promise.all(
-      projectSlugs.map(
-        async (slug) =>
-          [
-            slug,
-            await withRunLocationTimeout(this.describeOne(slug, io), timeoutMs),
-          ] as const,
-      ),
+      projectSlugs.map(async (slug) => {
+        const awaited = new Set<FolderCheck>();
+        const io: ResolutionIo = {
+          identity: 'trust-records',
+          findBinding,
+          ...guardFolderChecks(fs, timeoutMs, awaited),
+        };
+        return [
+          slug,
+          await withRunLocationTimeout(
+            this.describeOne(slug, io),
+            timeoutMs,
+            awaited,
+          ),
+        ] as const;
+      }),
     );
     return new Map(entries);
   }

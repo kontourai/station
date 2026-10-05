@@ -31,10 +31,12 @@ import {
 } from '../project-manifest-store.js';
 import { bindProjectResource } from '../project-resource-binder.js';
 import {
-  MAX_STUCK_FOLDER_CHECKS,
+  MAX_UNSETTLED_FOLDER_CHECKS,
   ProjectResourceResolver,
+  RUN_LOCATION_BUSY_REASON,
   RUN_LOCATION_TIMED_OUT_REASON,
   resetRunLocationFolderChecksForTests,
+  unsettledRunLocationFolderChecks,
 } from '../project-resource-resolver.js';
 
 /**
@@ -434,34 +436,95 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     expect(exists).toHaveBeenCalledTimes(1);
   });
 
-  test('once enough checks are stuck, a new folder is not touched and reads unavailable at once', async () => {
+  /** Hangs any folder under /mnt, like a dead mount; reads the rest. */
+  function mountFs(hung: ReturnType<typeof vi.fn>) {
+    const isHung = (path: string) => path.startsWith('/mnt/');
+    return {
+      exists: (path: string) =>
+        isHung(path) ? hung(path) : Promise.resolve(existsSync(path)),
+      realpath: (path: string) =>
+        isHung(path) ? hung(path) : Promise.resolve(realpathSync(path)),
+      isDirectory: async (path: string) => (isHung(path) ? hung(path) : true),
+    };
+  }
+
+  test('one read over many hung folders never has more than the limit of checks out', async () => {
     const harness = createHome();
-    for (const slug of ['a', 'b', 'c'])
+    const slugs = ['a', 'b', 'c', 'd', 'e', 'f'];
+    for (const slug of slugs)
       await saveProject(harness.adapter, {
         slug,
         workingDirectory: `/mnt/${slug}`,
       });
-    const exists = vi.fn(never);
+    const hung = vi.fn(never);
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(slugs, { timeoutMs: 50, fs: mountFs(hung) });
+
+    expect(hung).toHaveBeenCalledTimes(MAX_UNSETTLED_FOLDER_CHECKS);
+    expect(unsettledRunLocationFolderChecks()).toBe(
+      MAX_UNSETTLED_FOLDER_CHECKS,
+    );
+    expect(MAX_UNSETTLED_FOLDER_CHECKS).toBe(3);
+    expect(
+      [...locations.values()].every(({ kind }) => kind === 'unavailable'),
+    ).toBe(true);
+  });
+
+  test('with checks stuck on dead mounts, a healthy project still reads its folder', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b'])
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    const folder = tempDir('station-run-location-healthy-');
+    await saveProject(harness.adapter, {
+      slug: 'healthy',
+      workingDirectory: folder,
+    });
+    const hung = vi.fn(never);
     const resolver = makeResolver(harness, noGitOnListReads);
-    // Two mounts hang past their time box.
     await resolver.describeProjectRunLocations(['a', 'b'], {
       timeoutMs: 50,
-      fs: { ...hungFs, exists },
+      fs: mountFs(hung),
     });
-    expect(exists).toHaveBeenCalledTimes(MAX_STUCK_FOLDER_CHECKS);
-    const started = Date.now();
+    expect(unsettledRunLocationFolderChecks()).toBe(2);
 
-    const locations = await resolver.describeProjectRunLocations(['c'], {
-      timeoutMs: 10_000,
-      fs: { ...hungFs, exists },
+    const locations = await resolver.describeProjectRunLocations(['healthy'], {
+      timeoutMs: 1_000,
+      fs: mountFs(hung),
     });
 
-    expect(Date.now() - started).toBeLessThan(5_000);
-    expect(locations.get('c')).toEqual({
+    expect(locations.get('healthy')).toEqual({ kind: 'folder', path: folder });
+  });
+
+  test('a check that never gets a turn says it was not checked, not that the folder timed out', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b', 'c', 'd'])
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    const hung = vi.fn(never);
+    const resolver = makeResolver(harness, noGitOnListReads);
+    await resolver.describeProjectRunLocations(['a', 'b', 'c'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+
+    const locations = await resolver.describeProjectRunLocations(['d'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+
+    expect(locations.get('d')).toEqual({
       kind: 'unavailable',
-      reason: expect.stringContaining(RUN_LOCATION_TIMED_OUT_REASON),
+      reason: RUN_LOCATION_BUSY_REASON,
     });
-    expect(exists).toHaveBeenCalledTimes(MAX_STUCK_FOLDER_CHECKS);
+    expect(hung).toHaveBeenCalledTimes(3);
   });
 
   test('a folder that never answers reads as unavailable within the time box, and its neighbours still answer', async () => {

@@ -559,11 +559,16 @@ so the agent decides: the home folder, an ACP connection's folder, or a
 private folder Station makes. `unavailable` means a start would be refused,
 or the folder did not answer within the list read's per-project time limit;
 `reason` says which. The list reads folders asynchronously and answers
-within that limit even when a drive does not respond, but the read itself
-still holds one of the server's file-system threads until the drive answers.
-So the list never starts a second check of a folder whose first check is still
-out, and once two checks have outlived their limit it starts no new ones:
-those projects read `unavailable` at once until a stuck check settles. A `runsAt` sent back in a
+within that limit even when a drive does not respond, but a read on a drive
+that does not respond still holds one of the server's four file-system threads
+until the drive answers. So Station never has more than three folder checks out
+at once, across every list read, which always leaves a thread for the rest of
+the server. A check of a folder that is already being checked joins it, and
+further checks wait their turn within their project's limit. A project whose
+folder never got a turn reads `unavailable` with a reason that says it was not
+checked yet. While three folders on drives that do not respond are still being
+checked, no other folder gets a turn, so every project with a folder reads that
+way until one of those drives answers. A `runsAt` sent back in a
 project update is ignored.
 
 ---
