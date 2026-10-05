@@ -103,7 +103,7 @@
 
 .project-icon-picker__glyph-label {
   /* Its own group, set apart from the tiles above it. */
-  margin-top: var(--space-2);
+  margin-top: var(--space-6);
   margin-bottom: 0;
 }
 
