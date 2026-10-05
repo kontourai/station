@@ -500,7 +500,7 @@ export class AttachedSessionFollowService {
     if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
       const alias = snapshot.get(descriptor.threadId);
       if (alias?.controlMode === 'read-only-attached') {
-        this.deleteAttachedAlias(descriptor.threadId, snapshot);
+        this.deleteAttachedAlias(descriptor.threadId);
       }
       state.ownership = 'collision';
     }
@@ -511,11 +511,15 @@ export class AttachedSessionFollowService {
     // longer leads to its repository, and re-filing every such session under
     // No project would erase a correct attribution for a missing folder.
     // Review F5: unless a project it names no longer exists — a deleted
-    // project's sessions move to No project.
+    // project's sessions move to No project. Delta review D3: an EMPTY
+    // project set is not evidence of deletion — `listProjects()` answers
+    // `[]` when the projects directory is missing or unreadable — so one
+    // such poll never drops a project from every session that names one.
     const keepsStoredAttribution =
       attribution.state === 'unattributed' &&
       state.storedAttribution !== undefined &&
-      storedProjectsStillExist(state.storedAttribution, projectSlugs);
+      (projectSlugs.size === 0 ||
+        storedProjectsStillExist(state.storedAttribution, projectSlugs));
     if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
       for (const event of attachedSessionEnvelope(
@@ -665,7 +669,7 @@ export class AttachedSessionFollowService {
       if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
         const alias = snapshot.get(descriptor.threadId);
         if (alias?.controlMode === 'read-only-attached') {
-          this.deleteAttachedAlias(descriptor.threadId, snapshot);
+          this.deleteAttachedAlias(descriptor.threadId);
         }
         cached.ownership = 'collision';
       }
@@ -683,7 +687,7 @@ export class AttachedSessionFollowService {
       isStationOwnedProviderCursor &&
       persisted?.controlMode === 'read-only-attached'
     ) {
-      this.deleteAttachedAlias(descriptor.threadId, snapshot);
+      this.deleteAttachedAlias(descriptor.threadId);
     }
     // archive#1867 class: never materialize the full thread via listEvents on
     // the cold path — large Claude-import threads (10k–20k events) held the
@@ -800,12 +804,8 @@ export class AttachedSessionFollowService {
   }
 
   /** Deleting the alias removes its recorded owner, so the cached one goes too. */
-  private deleteAttachedAlias(
-    threadId: string,
-    snapshot: PollSessionSnapshot,
-  ): void {
+  private deleteAttachedAlias(threadId: string): void {
     this.options.eventStore.deleteThread(threadId);
-    snapshot.delete(threadId);
     this.options.invalidateSessionOwner?.(threadId);
   }
 

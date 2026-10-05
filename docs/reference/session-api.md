@@ -439,7 +439,9 @@ its own, so any worktree of the repository matches. A transcript neither
 step claims is followed with `projectAttribution: 'unattributed'` and no
 `projectSlug`; the summary then carries neither field. An unattributed result
 never replaces an attribution the log already records, unless a project that
-attribution names is no longer configured. A repository match counts only a
+attribution names is no longer configured while the project set is non-empty
+(an empty set, which `listProjects()` also returns when the projects
+directory is missing, is not treated as a deletion). A repository match counts only a
 genuine checkout: a real `.git` directory that is its own common directory, or
 a linked worktree whose git-written `gitdir` back-pointer names that `.git`.
 A symlinked `.git` or a submodule's `.git` file matches by folder only. The
@@ -447,7 +449,8 @@ local operator owns every attached transcript whatever its attribution, so the
 operator's paired devices with `orchestration:read` can read it through
 `personalConversationAccess`. Imported turns enter the owner-scoped message
 search projection. `AppConfig.attachedSessionsOutsideProjects: false` stops
-following unattributed transcripts from the next poll. A hosted runtime
+following unattributed transcripts from the next poll, already listed ones
+included; it deletes no imported event, search entry or read grant. A hosted runtime
 (`STATION_HOSTED_TENANT_REGISTRY_FILE` set) never follows unattributed
 transcripts. It does follow attributed ones, but without a tenant binding no
 account can read them. `adoptSession` resolves the Project by working directory only, so

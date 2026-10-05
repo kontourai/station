@@ -21,8 +21,13 @@ type NativeIdentity = NonNullable<
  * poll, a Map by thread id, and native identities decoded once per provider
  * make each lookup O(1) (or O(matches)).
  *
- * It mirrors this service's own writes (`set`, `delete`) so a later session
- * in the same poll sees them. A row another writer adds DURING the poll (a
+ * It mirrors the attached alias this service writes (`set`) so a later
+ * descriptor with the same thread id in the same poll is checked against it:
+ * a second source home under one thread id must still be refused
+ * (`attachedSessionAffinityConflicts`). An alias it DELETES is not mirrored:
+ * deletion only follows a collision, which marks the cached follow state
+ * `collision`, and a later descriptor for that thread stops there whatever
+ * the snapshot says. A row another writer adds DURING the poll (a
  * Station-owned start whose transcript is also discovered) is seen on the
  * next poll instead: the cached-state branch re-checks every poll and then
  * removes the attached alias, so the window is one poll interval.
@@ -45,10 +50,6 @@ export class PollSessionSnapshot {
 
   set(session: ProviderSession): void {
     this.byThreadId.set(session.threadId, session);
-  }
-
-  delete(threadId: string): void {
-    this.byThreadId.delete(threadId);
   }
 
   /**

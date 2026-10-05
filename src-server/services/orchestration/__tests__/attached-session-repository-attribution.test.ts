@@ -526,6 +526,45 @@ describe('a session no project claims is followed under No project (#3386)', () 
     expect(reads).toHaveBeenCalledTimes(1);
   });
 
+  // #3386 delta review D1: the snapshot must see the alias this poll just
+  // wrote. One thread id from a second source home in the SAME poll is
+  // refused, exactly as it is on a later poll.
+  test('a second source home under one thread id in the same poll is refused', async () => {
+    const first = {
+      ...session,
+      affinity: { kind: 'claude-config-home', ref: 'home-one' },
+    };
+    const second = {
+      ...session,
+      sourceHandle: 'other-handle',
+      affinity: { kind: 'claude-config-home', ref: 'home-two' },
+    };
+    const read = vi
+      .fn()
+      .mockResolvedValue({ outcome: 'ok', events: [], cursor: 1 });
+    await new AttachedSessionFollowService({
+      sources: [
+        {
+          provider: 'claude',
+          kind: 'claude-transcript',
+          discover: vi
+            .fn()
+            .mockResolvedValue({ outcome: 'ok', sessions: [first, second] }),
+          read,
+        },
+      ],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+    }).pollNow();
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId)
+        ?.attachedSource?.affinity,
+    ).toEqual({ kind: 'claude-config-home', ref: 'home-one' });
+  });
+
   test('its No project is stable across polls and restarts', async () => {
     await follow(() => []).pollNow();
     const first = store.listEvents(session.threadId).length;
@@ -605,7 +644,9 @@ describe('a session no project claims is followed under No project (#3386)', () 
     await follow(() => projects).pollNow();
     expect(summarize().projectSlug).toBe('scratch');
 
-    projects = [];
+    // Another project is still configured, so the set is evidence that
+    // `scratch` is gone (an empty set is not — see the next test).
+    projects = [{ slug: 'other', workingDirectory: join(dir, 'elsewhere') }];
     await follow(() => projects).pollNow();
     expect(summarize().projectSlug).toBeUndefined();
     expect(summarize().projectAttribution).toBeUndefined();
@@ -613,6 +654,29 @@ describe('a session no project claims is followed under No project (#3386)', () 
     const settled = store.listEvents(session.threadId).length;
     await follow(() => projects).pollNow();
     expect(store.listEvents(session.threadId)).toHaveLength(settled);
+  });
+
+  // #3386 delta review D3: `listProjects()` answers [] when the projects
+  // directory is missing, which says nothing about any one project.
+  test("one poll with an empty project list does not drop a removed worktree's project", async () => {
+    const main = repository(join(dir, 'station'));
+    const lane = worktree(main, join(dir, 'station-worktrees', 'lane'), 'lane');
+    session = { ...session, cwd: lane };
+    let projects: AttachedProjectRoot[] = [
+      { slug: 'station', workingDirectory: main },
+    ];
+    await follow(() => projects).pollNow();
+    expect(summarize().projectSlug).toBe('station');
+    git(main, 'worktree', 'remove', '--force', lane);
+    const attributed = store.listEvents(session.threadId).length;
+
+    projects = [];
+    await follow(() => projects).pollNow();
+    projects = [{ slug: 'station', workingDirectory: main }];
+    await follow(() => projects).pollNow();
+
+    expect(summarize().projectSlug).toBe('station');
+    expect(store.listEvents(session.threadId)).toHaveLength(attributed);
   });
 
   // #3386 review F1 (a): the operator's setting, read through the real
@@ -695,8 +759,12 @@ describe('a session no project claims is followed under No project (#3386)', () 
   });
 
   // #3386 review F1 (c): the documented reach — the operator's paired
-  // devices with Activity read access, through the real pairing registry and
-  // the same `personalConversationAccess` closures the runtime wires.
+  // devices with Activity read access — through the real pairing registry.
+  // The `personalConversationAccess` adapter below is a hand-written copy of
+  // the one `runtime-initialize.ts` builds inline (there through
+  // `EnvironmentSecurityService`, which delegates to this same pairing
+  // service); it is not imported, so a change to that wiring is not caught
+  // here.
   test('a paired device with orchestration read access can read a No project session; a revoked or unknown one cannot', async () => {
     const pairingHome = join(dir, 'pairing-home');
     mkdirSync(join(pairingHome, 'security'), { recursive: true, mode: 0o700 });
@@ -731,7 +799,7 @@ describe('a session no project claims is followed under No project (#3386)', () 
 
     const authz = new SessionAuthorization({
       eventStore: store,
-      // runtime-initialize.ts, via EnvironmentSecurityService's delegation.
+      // Mirrors, not imports, runtime-initialize.ts's adapter.
       personalConversationAccess: {
         canRead: (requesterId, ownerId) =>
           pairing.canSharePersonalConversation(requesterId, ownerId),

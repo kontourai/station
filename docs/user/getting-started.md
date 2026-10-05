@@ -440,7 +440,7 @@ Each conversation is filed under a Project by the folder it ran in:
    filter to list these.
 
 A conversation keeps its Project after its worktree is removed. If its Project
-is deleted, it moves to **No project**. A conversation inside a git submodule
+is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
 of a worktree outside the Project folder also lands in **No project**: Station
 follows the submodule's own `.git`, which belongs to a different repository.
 
@@ -452,8 +452,10 @@ paired with Activity read access, including a phone.
 To stop reading conversations from folders outside your Projects, turn off
 **Conversations outside projects** in **Settings → Advanced** (under Station host), then **Save**
 (`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
-next check. Conversations it already read stay in Activity. Conversations
-inside a Project are read either way.
+next check, including for conversations it already lists: new messages in
+them no longer arrive. What it already read stays in Activity, in search and
+readable from your paired devices; turning the setting off removes nothing.
+Conversations inside a Project are read either way.
 
 A hosted Station never reads conversations outside your Projects. It reads the
 ones inside a Project, but no account can open them there.
