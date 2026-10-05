@@ -109,6 +109,14 @@ class AdoptingAdapter extends GateTestAdapter {
 
   async discardSession(): Promise<void> {}
 
+  /** Every turn Station sent to an engine session. */
+  readonly turns: Array<{ threadId: string; input: string }> = [];
+
+  async sendTurn(input: { threadId: string; input: string }) {
+    this.turns.push({ threadId: input.threadId, input: input.input });
+    return { threadId: input.threadId, turnId: `turn-${this.turns.length}` };
+  }
+
   /** Every engine start Station asked for after adoption (a restart's respawn). */
   readonly starts: ProviderSessionStartInput[] = [];
 
@@ -333,6 +341,43 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
     );
     expect(adapter.adoptions).toHaveLength(0);
   });
+});
+
+describe('later messages to the continuation (#3386)', () => {
+  // Activity's own session view sends each later message as `sendTurn` to
+  // the child (useMutableSessionDetailState). These pin that route for the
+  // three kinds of child. The chat dock's route is not covered: it cannot
+  // open an adopted child's conversation (see the round's report).
+  test.each([
+    ['inside the project folder', () => main, undefined],
+    ['in a worktree outside it', () => lane, undefined],
+    [
+      'with no project',
+      () => join(dir, 'home', 'code', 'app'),
+      { kind: 'own-folder' } as const,
+    ],
+  ])(
+    'a child %s takes a second and third message in its own folder',
+    async (_label, folder, target) => {
+      const cwd = folder();
+      mkdirSync(cwd, { recursive: true });
+      const { threadId } = (await adopt(attached(cwd), target)) as {
+        threadId: string;
+      };
+      for (const text of ['second message', 'third message'])
+        await service.dispatch({
+          type: 'sendTurn',
+          input: { threadId, input: text },
+        });
+      expect(adapter.turns).toEqual([
+        { threadId, input: 'second message' },
+        { threadId, input: 'third message' },
+      ]);
+      expect(adapter.adoptions.map((input) => input.cwd)).toEqual([
+        realpathSync.native(cwd),
+      ]);
+    },
+  );
 });
 
 describe('after a restart (#3386)', () => {
