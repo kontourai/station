@@ -258,7 +258,10 @@ stops it through its manager, switches `current`, records the version for its
 launcher, starts nothing, and leaves it stopped. An update the launcher left
 unfinished, or one it could not roll back, is refused until the service
 finishes it. A service installed before the launcher ran Windows services is
-refused with the reinstall command (`station service install`), and
+refused with a migration in order: `service uninstall` with the installed
+version, `install.ps1` again with `STATION_INSTALL_NO_START=1`, then `service
+install` with the new version (the old version's CLI cannot install a launcher
+service, so reinstalling it first would refuse again); and
 `install.ps1 uninstall` still refuses while any service runs the install.
 `station upgrade` from a Windows archive install re-runs the active
 version's `install.ps1` through the system Windows PowerShell; the same rules
