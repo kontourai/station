@@ -258,6 +258,43 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
+  test('the hover card paints above a docked region, not under it', async () => {
+    // A Home row beside a right-docked chat opens its card over that region;
+    // the dock sits at --layer-dock, so a card on the page popover layer is
+    // covered by it. Measured through the real cascade, against the tokens.
+    const pg = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      await pg.setContent(
+        page(
+          '<div class="chat-dock-inbox-hover-card" data-testid="card">card</div>',
+        ),
+      );
+      const layers = await pg.evaluate(() => {
+        const token = (name: string) =>
+          Number.parseInt(
+            getComputedStyle(document.documentElement).getPropertyValue(name),
+            10,
+          );
+        const card = document.querySelector('[data-testid="card"]');
+        if (!card) throw new Error('card not rendered');
+        return {
+          card: Number.parseInt(getComputedStyle(card).zIndex, 10),
+          dock: token('--layer-dock'),
+          navigation: token('--layer-navigation'),
+        };
+      });
+      expect(Number.isFinite(layers.dock)).toBe(true);
+      expect(layers.card).toBeGreaterThan(layers.dock);
+      // Below the navigation layer: the phone's sidebar drawer still covers
+      // a card left open behind it.
+      expect(layers.card).toBeLessThan(layers.navigation);
+    } finally {
+      await pg.close();
+    }
+  });
+
   test('a revealed action is a 44px-tall target that stays inside its own row', async () => {
     const pg = await browser.newPage({
       viewport: { width: 1280, height: 900 },
@@ -414,8 +451,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     });
   });
 
-  /** Every touch-chrome action is 44x44, beside its row, never wrapped under
-   *  it, and the row's title keeps a readable width. */
+  /** Every touch-chrome action is 44x44, inside its row's box (the picker
+   *  pins its one ⋯ to the row's corner, #3144), never spilling below or
+   *  past it, and the row's title keeps a readable width. */
   async function auditTouchRows(
     pg: import('@playwright/test').Page,
     minimumTitleWidth: number,
@@ -436,9 +474,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
     const rows = await pg.evaluate(() =>
       [...document.querySelectorAll('.inbox-row--touch')].map((row) => {
-        const open = row
-          .querySelector('.inbox-row__open')!
-          .getBoundingClientRect();
+        const rowBox = row.getBoundingClientRect();
         const actionsBox = row
           .querySelector('.inbox-row__actions')
           ?.getBoundingClientRect();
@@ -447,10 +483,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           targets: row.querySelectorAll('.inbox-row__action').length,
           title: row.querySelector('.inbox-row__title')!.getBoundingClientRect()
             .width,
-          right: row.getBoundingClientRect().right,
+          right: rowBox.right,
           wrapped: actionsBox
-            ? actionsBox.left < open.right - 0.5 ||
-              actionsBox.top >= open.bottom
+            ? actionsBox.right > rowBox.right + 0.5 ||
+              actionsBox.bottom > rowBox.bottom + 0.5 ||
+              actionsBox.top < rowBox.top - 0.5
             : false,
         };
       }),
@@ -628,7 +665,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           isOpenChat
           now={NOW}
           chrome="touch"
-          snoozeMenuOnly
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
           onCloseChat={vi.fn()}

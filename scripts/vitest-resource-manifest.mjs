@@ -258,6 +258,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
+  // Runs the real capture barrier and the real capture entrypoint as child
+  // processes to prove the configured bound reaches them.
+  'scripts/__tests__/transfer-capture-barrier.test.ts',
   // #3302: runs scripts/liveness-scale.mjs as a child to prove the exit status
   // and stdout contract the pre-push hook consumes, and a real fallow spawn.
   'scripts/__tests__/liveness-scale.test.ts',

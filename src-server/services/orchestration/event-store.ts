@@ -11361,13 +11361,21 @@ export class EventStore {
   private claimRecoveryDispatch(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /**
+     * #3157: the user's own "Resume now" on a usage-limit stop. It claims a
+     * waiting (`armed`) or left-to-the-user (`manual`) usage-limit intent
+     * before its due time, and is still an ordinary `due` dispatch.
+     */
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
     now: string;
   }): ConnectionRecoveryIntent | null {
-    const eligibility =
-      input.kind === 'due'
+    const immediate = input.kind === 'due' && input.immediate === true;
+    const eligibility = immediate
+      ? "outcome IN ('armed', 'manual') AND usage_limit = 1"
+      : input.kind === 'due'
         ? "outcome = 'armed' AND due_at IS NOT NULL AND due_at <= ?"
         : "outcome IN ('armed', 'manual')";
     const row = this.db
@@ -11395,7 +11403,7 @@ export class EventStore {
         input.owner.identityKind,
         input.now,
         input.fingerprint,
-        ...(input.kind === 'due' ? [input.now] : []),
+        ...(input.kind === 'due' && !immediate ? [input.now] : []),
       ) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
   }
@@ -11742,9 +11750,11 @@ export class EventStore {
    * cancel request itself so startup fences it before any timer is rebuilt.
    *
    * #3157: a usage-limit intent that is only waiting for its provider reset,
-   * or that the user was left to resume, holds no dispatch to stop. It is not fenced: a
-   * restart rebuilds its timer (`reconcile`), and the coordinator re-checks
-   * the Session before any dispatch. */
+   * or that the user was left to resume (`manual`, whether the setting was off
+   * or the provider gave no reset), holds no dispatch to stop. It is not
+   * fenced: a restart rebuilds its timer (`reconcile`), a manual one is never
+   * dispatched on its own, and the coordinator re-checks the Session before
+   * any dispatch. */
   private cancelShutdownRecoveries(now: string): RecoveryTransition {
     const result = this.db
       .prepare(
@@ -11756,8 +11766,7 @@ export class EventStore {
              AND COALESCE(usage_limit, 0) = 1
              AND (
                (outcome = 'armed' AND decision = 'wait-until-reset')
-               OR (outcome = 'manual'
-                   AND COALESCE(outcome_reason, '') = 'auto-resume-off')
+               OR outcome = 'manual'
              )
            )`,
       )

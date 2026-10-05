@@ -93,6 +93,9 @@ const fixtures = vi.hoisted(() => ({
   defaultAgent: { slug: 'codex-agent', name: 'Codex' } as any,
   defaultModelLabel: 'gpt-5.3-codex',
   sessionsRefetch: vi.fn(),
+  /** U1: a project's layouts, by slug; absent means none. */
+  layoutsBySlug: {} as Record<string, Array<{ slug: string; type: string }>>,
+  listProjectLayouts: vi.fn(),
   // #2312: the server command a Draft row's discard dispatches.
   discardDraft: vi.fn(async (command: { threadId: string }) => ({
     receipt: {
@@ -249,6 +252,13 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: false,
     refetch: vi.fn(),
   }),
+}));
+vi.mock('@kontourai/station-sdk/client', () => ({
+  // U1: the layouts read Home makes before routing a row to its Coding layout.
+  listProjectLayouts: (_apiBase: string, slug: string) => {
+    fixtures.listProjectLayouts(slug);
+    return Promise.resolve(fixtures.layoutsBySlug[slug] ?? []);
+  },
 }));
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => fixtures.chats,
@@ -407,6 +417,14 @@ describe('HomeView', () => {
     expect(
       screen.getByRole('status', { name: 'Finding available ways to help' }),
     ).toBeTruthy();
+    // Where the cards will stand (Q3), not under the start form: the start
+    // section holds the form alone.
+    expect(
+      within(screen.getByRole('region', { name: 'Start work' })).queryByRole(
+        'status',
+        { name: 'Finding available ways to help' },
+      ),
+    ).toBeNull();
     expect(container.querySelector('.home-view__goal textarea')).toBeTruthy();
     expect(screen.queryByText('No agent is ready yet')).toBeNull();
     expect(
@@ -466,9 +484,7 @@ describe('HomeView', () => {
       },
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(
-      screen.queryByRole('button', { name: /Continue most recent work/i }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
   });
 
   test('the same chat produces the card once its first turn promotes it', () => {
@@ -485,9 +501,111 @@ describe('HomeView', () => {
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     expect(
-      screen.getByRole('button', { name: /Continue most recent work/i })
-        .textContent,
+      screen.getByRole('button', { name: /^Continue/ }).textContent,
     ).toContain('New chat');
+  });
+
+  /**
+   * U1 (design round 2026-10): a chat opened from Home lands where it
+   * lives. A project with a Coding layout centres the chat there; the chat
+   * is still focused first (the same shared action as every other row), and
+   * a project with no Coding layout, or no project, stays in the dock.
+   */
+  test('opening a row whose project has a Coding layout routes to that layout after focusing the chat', async () => {
+    fixtures.layoutsBySlug = {
+      station: [
+        { slug: 'tasks', type: 'tasks' },
+        { slug: 'coding', type: 'coding' },
+      ],
+    };
+    fixtures.listProjectLayouts.mockClear();
+    fixtures.sessions = [
+      {
+        threadId: 'coding-thread',
+        provider: 'claude',
+        model: 'claude-sonnet-4',
+        status: 'ready',
+        assignedAgentSlug: 'codex-agent',
+        projectSlug: 'station',
+        displayTitle: 'Lives in Coding',
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T01:00:00Z',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 2,
+        lifecycleState: 'idle',
+        hasActiveTurn: false,
+      },
+    ];
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    // The row itself, by keyboard: Enter on the focused row is a click.
+    const row = screen.getByRole('button', {
+      name: 'Lives in Coding, station',
+    });
+    row.focus();
+    fireEvent.click(row);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'coding-thread',
+      agentSlug: 'codex-agent',
+    });
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith({
+        type: 'layout',
+        projectSlug: 'station',
+        layoutSlug: 'coding',
+      }),
+    );
+    expect(fixtures.listProjectLayouts).toHaveBeenCalledWith('station');
+    unregister();
+  });
+
+  test('a row whose project has no Coding layout stays in the dock', async () => {
+    fixtures.layoutsBySlug = { station: [{ slug: 'tasks', type: 'tasks' }] };
+    fixtures.sessions = [
+      {
+        threadId: 'dock-thread',
+        provider: 'claude',
+        model: 'claude-sonnet-4',
+        status: 'ready',
+        assignedAgentSlug: 'codex-agent',
+        projectSlug: 'station',
+        displayTitle: 'Stays in the dock',
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T01:00:00Z',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 2,
+        lifecycleState: 'idle',
+        hasActiveTurn: false,
+      },
+    ];
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Stays in the dock, station' }),
+    );
+    expect(focus).toHaveBeenCalledTimes(1);
+    // The lookup settles with no layout: nothing routes.
+    await waitFor(() =>
+      expect(fixtures.listProjectLayouts).toHaveBeenCalledWith('station'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onNavigate).not.toHaveBeenCalled();
+    unregister();
   });
 
   test('orders real timestamps and focuses an active chat continuation', () => {
@@ -528,7 +646,7 @@ describe('HomeView', () => {
     });
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const continueButton = screen.getByRole('button', {
-      name: /Continue most recent work/i,
+      name: /^Continue/,
     });
     expect(continueButton.textContent).toContain('Task-first home');
     expect(continueButton.textContent).toContain('Codex · gpt-5.3-codex');
@@ -558,9 +676,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'unmapped-thread',
     });
@@ -601,9 +717,7 @@ describe('HomeView', () => {
       },
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'worked-thread',
     });
@@ -645,9 +759,18 @@ describe('HomeView', () => {
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const summary = screen.getByText('Drafts (1)');
-    const drafts = summary.closest('details');
+    // Folded by default behind the shared disclosure toggle (C13).
+    const toggle = screen.getByRole('button', { name: 'Drafts · 1' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    const drafts = toggle.closest('section');
     expect(drafts).not.toBeNull();
+    // A Draft untouched for a day sits behind the inner fold (#2312).
+    fireEvent.click(
+      within(drafts as HTMLElement).getByRole('button', {
+        name: '1 older draft',
+      }),
+    );
     expect(
       within(drafts as HTMLElement).getByText('Never prompted title'),
     ).toBeTruthy();
@@ -710,17 +833,18 @@ describe('HomeView', () => {
     activeChatsStore.initChat('fresh-draft');
     renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
 
-    const drafts = screen
-      .getByText('Drafts (2)')
-      .closest('details') as HTMLElement;
-    const older = within(drafts)
-      .getByText('1 older draft')
-      .closest('details') as HTMLDetailsElement;
+    const draftsToggle = screen.getByRole('button', { name: 'Drafts · 2' });
+    fireEvent.click(draftsToggle);
+    const drafts = draftsToggle.closest('section') as HTMLElement;
+    const olderToggle = within(drafts).getByRole('button', {
+      name: '1 older draft',
+    });
     // The 25h Draft is folded, the 23h one is not.
-    expect(older.open).toBe(false);
-    expect(within(older).getByText('Stale draft title')).toBeTruthy();
-    expect(within(older).queryByText('Fresh draft title')).toBeNull();
+    expect(olderToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(within(drafts).queryByText('Stale draft title')).toBeNull();
     expect(within(drafts).getByText('Fresh draft title')).toBeTruthy();
+    fireEvent.click(olderToggle);
+    expect(within(drafts).getByText('Stale draft title')).toBeTruthy();
     // Only Drafts are discardable.
     expect(
       screen.queryByRole('button', {
@@ -779,9 +903,7 @@ describe('HomeView', () => {
     });
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
 
     expect(onNavigate).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledTimes(1);
@@ -819,9 +941,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
 
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'attached-thread',
@@ -894,10 +1014,9 @@ describe('HomeView', () => {
     });
 
     expect(container.querySelector('.home-view__empty')).toBeNull();
-    expect(container.querySelector('.empty.empty--prominent')).toBeTruthy();
-    expect(
-      screen.getByText('Your chats and project work will appear here'),
-    ).toBeTruthy();
+    // One line (V6); the start form above it is the action.
+    expect(container.querySelector('.empty.empty--compact')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
   });
 
   /**
@@ -912,17 +1031,15 @@ describe('HomeView', () => {
     expect(
       screen.queryByRole('button', { name: 'Start your first chat' }),
     ).toBeNull();
-    expect(
-      screen.getByText(/Your chats and project work will appear here/),
-    ).toBeTruthy();
-    // The card it names is the one that stays.
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
+    // The form it defers to is the one that stays.
     expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(
       screen.getAllByRole('textbox', { name: 'What would you like done?' }),
     ).toHaveLength(1);
   });
 
-  test('separates Running from terminal Recently finished work with counts', () => {
+  test('separates Running from terminal Just finished work with counts', () => {
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -957,9 +1074,9 @@ describe('HomeView', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const active = screen.getByRole('region', { name: 'Running (1)' });
+    const active = screen.getByRole('region', { name: 'Running · 1' });
     const recentlyFinished = screen.getByRole('region', {
-      name: 'Recently finished (1)',
+      name: 'Just finished · 1',
     });
     expect(within(active).getByText('Keep working')).toBeTruthy();
     expect(
@@ -1007,7 +1124,6 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate });
 
     expect(screen.getAllByText('Durable local work')).toHaveLength(2);
-    expect(screen.getAllByText(/Durable Task/).length).toBeGreaterThan(0);
     expect(
       screen.getAllByText(/Agent unavailable · Model unavailable/).length,
     ).toBeGreaterThan(0);
@@ -1015,9 +1131,7 @@ describe('HomeView', () => {
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'task',
       taskId: 'task/durable',
@@ -1065,9 +1179,7 @@ describe('HomeView', () => {
 
     expect(screen.queryByText('Raw correlated chat')).toBeNull();
     expect(screen.getAllByText('Persisted task')).toHaveLength(2);
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'task', taskId: 'task-1' });
   });
 });
@@ -1109,6 +1221,76 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     fixtures.sessions = [RUNNING_SESSION];
   });
 
+  /**
+   * B5/C8 (design round 2026-10): a Home row shows no always-visible icon
+   * buttons on a fine pointer. It takes the dock's hover chrome — the snooze
+   * control over the time slot, revealed on hover/focus, and the hover card
+   * for details — and keeps the 44px Details + one action only where there
+   * is no hover to reveal them with.
+   */
+  test('a fine pointer gets the hover chrome: no Details button, snooze behind hover', () => {
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    const [row] = within(recent).getAllByTestId('inbox-row');
+    expect(row.className).toContain('inbox-row--hover');
+    expect(row.className).not.toContain('inbox-row--touch');
+    expect(
+      within(recent).queryByRole('button', {
+        name: `Details for ${ITEM_TITLE}`,
+      }),
+    ).toBeNull();
+    // The one row action is the snooze choice, in the hover slot.
+    const snooze = within(recent).getByRole('button', {
+      name: `Snooze ${ITEM_TITLE}`,
+    });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    expect(snooze.closest('.inbox-row__actions')).not.toBeNull();
+  });
+
+  test('a coarse pointer keeps the 44px touch chrome with Details and one action', () => {
+    const media = window.matchMedia as unknown as ReturnType<typeof vi.fn>;
+    media.mockImplementation((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      media: query,
+      onchange: null,
+    }));
+    try {
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+      const recent = screen.getByRole('region', { name: 'Recent work' });
+      const [row] = within(recent).getAllByTestId('inbox-row');
+      expect(row.className).toContain('inbox-row--touch');
+      expect(
+        within(recent).getByRole('button', {
+          name: `Details for ${ITEM_TITLE}`,
+        }),
+      ).toBeTruthy();
+      expect(
+        within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
+      ).toBeTruthy();
+      expect(
+        within(row)
+          .queryAllByRole('button')
+          .filter((button) => button.closest('.inbox-row__actions')),
+      ).toHaveLength(2);
+    } finally {
+      media.mockImplementation(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        media: '',
+        onchange: null,
+      }));
+    }
+  });
+
   test('snooze button opens the preset menu; selecting a preset moves the row to the snoozed shelf and persists the wake time', async () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const recent = screen.getByRole('region', { name: 'Recent work' });
@@ -1121,14 +1303,14 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       name: `Snooze ${ITEM_TITLE}`,
     });
     const clickedAt = Date.now();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'In 1 hour' }));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
 
     // The row left the active lane for the snoozed shelf.
     expect(
       within(recent).queryByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
     ).toBeNull();
     expect(
-      within(recent).getByRole('button', { name: 'Snoozed (1)' }),
+      within(recent).getByRole('button', { name: 'Snoozed · 1' }),
     ).toBeTruthy();
 
     // `lanes.snooze` really was called with this item's id and the "In 1
@@ -1163,7 +1345,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
 
       expect(within(recent).queryByText(ITEM_TITLE)).toBeNull();
       fireEvent.click(
-        within(recent).getByRole('button', { name: 'Snoozed (1)' }),
+        within(recent).getByRole('button', { name: 'Snoozed · 1' }),
       );
       expect(within(recent).getByText(ITEM_TITLE)).toBeTruthy();
       expect(within(recent).getByText(/Wakes in 1h/)).toBeTruthy();
@@ -1172,7 +1354,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         within(recent).getByRole('button', { name: `Wake ${ITEM_TITLE}` }),
       );
       expect(
-        within(recent).queryByRole('button', { name: 'Snoozed (1)' }),
+        within(recent).queryByRole('button', { name: 'Snoozed · 1' }),
       ).toBeNull();
       expect(within(recent).getByText(ITEM_TITLE)).toBeTruthy();
     });
@@ -1212,6 +1394,21 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       for (let index = 1; index <= 7; index += 1) {
         expect(within(earlier).getByText(`Completed ${index}`)).toBeTruthy();
       }
+      // One flat list, as on Activity (design round 2026-10, C2): the rows
+      // span a week, and still the lane's only heading is "Earlier" — no
+      // dated sub-headings — with the rows newest first.
+      expect(
+        within(earlier)
+          .getAllByRole('heading')
+          .map((heading) => heading.textContent),
+      ).toEqual(['Earlier']);
+      expect(
+        within(earlier)
+          .getAllByText(/^Completed \d$/)
+          .map((title) => title.textContent),
+      ).toEqual(
+        Array.from({ length: 7 }, (_, index) => `Completed ${index + 1}`),
+      );
     });
 
     test('a settled failed row still says Failed', () => {
@@ -1338,7 +1535,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     // primary CTA must skip past it to the most-recent item this Station can
     // actually continue: the local session.
     const continueButton = screen.getByRole('button', {
-      name: /Continue most recent work/i,
+      name: /^Continue/,
     });
     expect(continueButton.textContent).toContain(CODEX_SESSION_TITLE);
     fireEvent.click(continueButton);
@@ -1393,9 +1590,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    expect(
-      screen.queryByRole('button', { name: /Continue most recent work/i }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
   });
 
   // the local list renders synchronously (from `useOrchestrationSessionsQuery`
@@ -1531,7 +1726,15 @@ describe('Home project data follows the host authority (#481 slice A)', () => {
       authorityKey: 'authority-a',
       isCurrent: () => true,
     };
-    const { result, rerender } = renderHook(() => useHomeViewModel(vi.fn()));
+    // The model reads the query cache for a row's project layouts (U1).
+    const queryClient = new QueryClient();
+    const { result, rerender } = renderHook(() => useHomeViewModel(vi.fn()), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
     expect(result.current.projects).toEqual([
       { id: 'home-a-id', slug: 'station', name: 'Home A' },
     ]);

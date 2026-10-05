@@ -257,13 +257,14 @@ describe('ProjectLiveWorkSection', () => {
   test('no rendered row contradicts the lane heading above it', () => {
     const LANE_VOCABULARY: Record<string, string[]> = {
       needsYou: [
-        'Needs attention',
+        'Needs approval',
+        'Needs answer',
         'Waiting on you',
-        'Review pending',
+        'Interrupted',
         'Blocked',
       ],
       running: ['Running'],
-      idle: ['Ready', 'Queued', "Can't answer here"],
+      idle: ['Idle', 'Elsewhere'],
     };
 
     mocks.sessions.push(
@@ -348,16 +349,16 @@ describe('ProjectLiveWorkSection', () => {
 
     // The three A1 shapes, by the word they used to print.
     expect(
-      screen.getByRole('button', { name: /Attached but idle.*Ready/i }),
+      screen.getByRole('button', { name: /Attached but idle.*Idle/i }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Review pending mid-turn.*Needs attention/i,
+        name: /Review pending mid-turn.*Needs approval/i,
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Stranded request.*Can't answer here/i,
+        name: /Stranded request.*Elsewhere/i,
       }),
     ).toBeTruthy();
   });

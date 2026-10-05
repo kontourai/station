@@ -379,7 +379,9 @@ describe('ChatDockBody stale busy wait', () => {
   test('a busy wait with no turn in flight offers Check again', () => {
     const onRetryConversationOpen = vi.fn();
     renderDock({ onRetryConversationOpen });
-    expect(screen.getByText(/still waiting on the active turn/i)).toBeTruthy();
+    expect(
+      screen.getByText(/waiting for the active turn to finish/i),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(onRetryConversationOpen).toHaveBeenCalledOnce();
   });
@@ -405,7 +407,9 @@ describe('ChatDockBody stale busy wait', () => {
 
   test('no dead control when there is no retry handler', () => {
     renderDock({ omitRetry: true });
-    expect(screen.getByText(/still waiting on the active turn/i)).toBeTruthy();
+    expect(
+      screen.getByText(/waiting for the active turn to finish/i),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   });
 
