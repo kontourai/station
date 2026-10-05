@@ -98,6 +98,7 @@ async function loadBuiltinStationControlTools(
       tools: { mcpServers: ['station-control'], available: ['*'] },
     } as any,
     opts: {
+      serverPort: 41031,
       mcpCustody: custody,
       configLoader: {
         loadIntegration: vi.fn().mockResolvedValue({
@@ -345,6 +346,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockResolvedValue({
@@ -397,6 +399,7 @@ describe('loadStrandsTools', () => {
       slug: 'agent-a',
       spec: { tools: { mcpServers: ['demoServer'], available: ['*'] } } as any,
       opts: {
+        serverPort: 41031,
         mcpCustody: new MCPLocalConnectionCustody(),
         configLoader: {
           loadIntegration: vi.fn().mockResolvedValue({
@@ -548,6 +551,7 @@ describe('loadStrandsTools', () => {
       slug: 'agent-a',
       spec: { tools: { mcpServers: ['demoServer'], available: ['*'] } } as any,
       opts: {
+        serverPort: 41031,
         mcpCustody: new MCPLocalConnectionCustody(),
         configLoader: {
           loadIntegration: vi.fn().mockResolvedValue({
@@ -679,6 +683,7 @@ describe('loadStrandsTools', () => {
         tools: { mcpServers: ['broken-option', 'notebook'], available: ['*'] },
       } as any,
       opts: {
+        serverPort: 41031,
         mcpCustody: custodyBrokenFor('broken-option', () =>
           brokenOption.acquire('broken-option', 'managed'),
         ),
@@ -732,6 +737,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['notebook'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi
@@ -797,6 +803,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockRejectedValue(thrown),
@@ -860,6 +867,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockRejectedValue(nodeArgError),
@@ -903,6 +911,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockRejectedValue(hostile),
@@ -939,6 +948,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockRejectedValue(coded),
@@ -992,6 +1002,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockRejectedValue(assertion),
@@ -1043,6 +1054,7 @@ describe('loadStrandsTools', () => {
         opts: {
           // A non-Error throw is the case under test, not an accident. The
           // thrown value IS data, so it is named by type and withheld.
+          serverPort: 41031,
           mcpCustody: custodyBrokenFor('broken-option', () => {
             throw canary as unknown as Error;
           }),
@@ -1091,6 +1103,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['broken-option'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: custodyBrokenFor('broken-option', () => {
             throw new RangeError(long);
           }),
@@ -1129,6 +1142,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             // Preconnect, but a plain Error is not a class the runtime raises
@@ -1172,6 +1186,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          serverPort: 41031,
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockResolvedValue({

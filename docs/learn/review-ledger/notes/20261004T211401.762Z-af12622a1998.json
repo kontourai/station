@@ -1,0 +1,7 @@
+{
+  "revision": "1e29ba6ca985181adf2c097e84a4abc3fbb57258",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"No prose change: it makes no claim about the paired-Station host lookup or request bounds; orchestration-service only scopes the recorded-host lookup to the caller read authority and counts the id bound in code points.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

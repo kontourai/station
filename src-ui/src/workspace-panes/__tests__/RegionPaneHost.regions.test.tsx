@@ -24,7 +24,7 @@ import {
   within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import { RegionShells } from '../../app-shell/RegionShells';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
@@ -34,6 +34,10 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import {
+  REGION_HOST_WARM_TIMEOUT_MS,
+  warmRegionHostImports,
+} from './warmRegionHostImports';
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
@@ -92,6 +96,9 @@ function currentModel(): ReturnType<typeof useRegionModel> {
   if (!model) throw new Error('region model probe never rendered');
   return model;
 }
+
+// First-mount import cost is paid here, once, not inside the first test's waits.
+beforeAll(warmRegionHostImports, REGION_HOST_WARM_TIMEOUT_MS);
 
 beforeEach(() => {
   model = null;

@@ -11,6 +11,7 @@ on:
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
       - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/smoke-install-prebuilt-archive.sh'
       - 'packaging/portable-server/**'

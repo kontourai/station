@@ -18,6 +18,7 @@ import type {
   ClientOrigin,
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -251,6 +252,10 @@ import {
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
+  type ChildWorkTranscriptModule,
+  createChildWorkTranscriptModule,
+} from './child-work-transcript.js';
+import {
   ClientOriginTurnPropagation,
   withClientOrigin,
 } from './client-origin-propagation.js';
@@ -329,6 +334,8 @@ import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  extractPeerPendingRequestObservation,
+  PEER_PENDING_REQUEST_METADATA_KEY,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
@@ -362,6 +369,7 @@ import {
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
+  SessionLifecycleClaimRefusedError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
 import {
@@ -395,7 +403,10 @@ import {
   MAX_ASSISTANT_TURN_EVENTS,
   type SessionQueryModule,
 } from './session-query-module.js';
-import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
+import {
+  SessionRecoveryCoordinator,
+  type UsageLimitRecoveryActionResult,
+} from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -828,6 +839,11 @@ interface OrchestrationServiceOptions {
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
   /**
+   * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
+   * defaults above. Absent means off: an unattended resume spends quota.
+   */
+  resolveUsageLimitAutoResume?: () => Promise<boolean | undefined>;
+  /**
    * #1796: whether the device that granted a session's `host` stamp still
    * holds `approval:full-access` (live, not revoked). Read at every turn
    * start and respawn: a stamp whose device grantor no longer holds it is
@@ -993,6 +1009,24 @@ interface PeerDelegationActivityDispatch {
   target: { kind: 'agent'; id: string };
   projectSlug?: string;
   parentTaskId?: string;
+}
+
+/**
+ * Bounds on the paired Station's request fields this Station persists, in
+ * Unicode code points (`Array.from`), for the id and the title alike.
+ */
+export const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
+export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
+
+/**
+ * A display title past the bound is cut with a visible ellipsis, so a reader
+ * can tell it was shortened; the request id carries identity, not the title.
+ */
+function boundedPeerRequestTitle(title: string): string {
+  const characters = Array.from(title);
+  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
+    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
+    : title;
 }
 
 function peerDelegationActivityThreadId(
@@ -1571,6 +1605,8 @@ export class OrchestrationService {
   readonly conversationOpenResolver: ConversationOpenResolver;
   /** Explicit declared-output inventory; separate from transcript/Basis reads. */
   readonly sessionOutputs: SessionOutputsModule;
+  /** #3163: a child's own read-only transcript, resolved from persisted facts. */
+  readonly childWorkTranscripts: ChildWorkTranscriptModule;
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
@@ -1726,6 +1762,13 @@ export class OrchestrationService {
    * in flight for this thread, at all.
    */
   private readonly inFlightSteers = new Set<string>();
+  /**
+   * Threads with a `sendTurn` dispatch between entry and settlement, counted
+   * (one thread can carry several). A turn holds no coordinator claim or turn
+   * fact until `runTurnStart`, after a run of awaits; this is what makes it
+   * visible to `retireNeverRanSession` during that stretch.
+   */
+  private readonly sendTurnsInDispatch = new Map<string, number>();
   /**
    * #2898: the confinement of the last turn each live engine accepted, and
    * that turn's id. A revocation compares it with the confinement that holds
@@ -2333,6 +2376,16 @@ export class OrchestrationService {
           }
         : {}),
     });
+    this.childWorkTranscripts = createChildWorkTranscriptModule({
+      listChildWorkHistory: (threadId) =>
+        (
+          this.options.eventStore
+            ?.listChildWorkHistoryForThreads([threadId])
+            .get(threadId) ?? []
+        ).map((row) => row.payload),
+      canReadSession: (threadId, authority) =>
+        this.sessionAuthz.canReadSession(threadId, authority),
+    });
     this.monitoringBridge = new OrchestrationMonitoringBridge(
       options.monitoringEmitter,
       (threadId) => this.monitoringContextFor(threadId),
@@ -2470,8 +2523,10 @@ export class OrchestrationService {
       logger: options.logger,
     });
     this.credentialProfileRecovery = new CredentialProfileRecovery({
-      dispatchSendTurn: (replay) =>
-        this.dispatch({ type: 'sendTurn', input: replay }),
+      dispatchSendTurn: async (replay) => {
+        await this.parkEndedEngineForReplay(replay.threadId);
+        return this.dispatch({ type: 'sendTurn', input: replay });
+      },
       providerAcceptsResponse: (provider) =>
         this.options.adapterRegistry.get(provider)?.metadata.recovery
           ?.dispatchSettlement === 'provider-response',
@@ -2657,6 +2712,8 @@ export class OrchestrationService {
         credentialRecovery: this.credentialRecovery,
         isCredentialRestarting: (threadId) =>
           this.credentialProfileRecovery.isRestarting(threadId),
+        autoResume: async () =>
+          (await options.resolveUsageLimitAutoResume?.()) === true,
         onOutcome: ({ failureKind, decision, outcome }) => {
           this.usageTelemetry?.trackSessionRecovery({
             failure_kind: failureKind,
@@ -3649,6 +3706,112 @@ export class OrchestrationService {
     return threadId;
   }
 
+  /**
+   * Record the open request the PAIRED Station reported on its delegated-task
+   * status read (`pendingRequest`), or its absence (`null`). Appends one
+   * `session.configured` observation only when it differs from the last one,
+   * so a steady poll writes nothing. The request id names the paired
+   * Station's request; nothing here makes it answerable locally.
+   */
+  recordPeerDelegationPendingRequest(input: {
+    taskId: string;
+    environmentId: string;
+    pendingRequest: { id: string; type?: string; title?: string } | null;
+    /**
+     * Set when the paired Station has just answered `respond` for this
+     * request id: clear the observation only if it still names that request,
+     * so a newer request observed meanwhile is never erased.
+     */
+    resolvedRequestId?: string;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const session = this.sessionReadModel.get(threadId) ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = extractPeerPendingRequestObservation(events);
+    if (
+      input.resolvedRequestId !== undefined &&
+      current?.id !== input.resolvedRequestId
+    )
+      return false;
+    const rawId = input.pendingRequest?.id.trim();
+    // An id past the bound is refused, never truncated: a cut id would name
+    // a different (or no) request on the paired Station. Nothing usable is
+    // stored, so the inbox shows the note instead of a decision.
+    const idRefused =
+      rawId !== undefined &&
+      Array.from(rawId).length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
+    if (idRefused)
+      this.options.logger.warn(
+        'Refused a paired Station request id over the stored bound',
+        { threadId, length: rawId.length },
+      );
+    const id = idRefused ? undefined : rawId;
+    const title = input.pendingRequest?.title?.trim();
+    const next = id
+      ? {
+          id,
+          ...(input.pendingRequest?.type
+            ? { type: input.pendingRequest.type }
+            : {}),
+          ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          observedAt: new Date().toISOString(),
+        }
+      : null;
+    if (
+      next === null
+        ? current === null || current === undefined
+        : current?.id === next.id &&
+          current.type === next.type &&
+          current.title === next.title
+    )
+      return false;
+    this.projectAndPublishEvent({
+      eventId: `peer-pending-request:${threadId}:${crypto.randomUUID()}`,
+      provider: session.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { [PEER_PENDING_REQUEST_METADATA_KEY]: next },
+    });
+    return true;
+  }
+
+  /**
+   * The paired Stations this Station recorded as hosting `taskId`
+   * (`recordPeerDelegationActivityDispatch` writes one record per
+   * environment and task) among the records `authority` may read. Empty
+   * when no such record names the task.
+   */
+  async peerDelegationHostingEnvironmentIds(
+    taskId: string,
+    authority: SessionReadScope,
+  ): Promise<string[]> {
+    // Read with the caller's own authority: a record the caller cannot read
+    // names no host for it.
+    const sessions = await this.listSessionReadModel(authority);
+    return [
+      ...new Set(
+        sessions.flatMap((session) =>
+          session.delegation?.environmentKind === 'peer' &&
+          session.delegation.taskId === taskId &&
+          session.delegation.environmentId
+            ? [session.delegation.environmentId]
+            : [],
+        ),
+      ),
+    ];
+  }
+
   /** Advance a peer Activity record only from an observed peer lifecycle. */
   recordPeerDelegationActivityOutcome(input: {
     taskId: string;
@@ -4167,7 +4330,12 @@ export class OrchestrationService {
       (event) => event.payload,
     );
 
-    const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
+    // #3157: a waiting usage-limit resume says whether the setting would let
+    // it run unattended now; the coordinator applies it only at the reset.
+    const recovery = latestRecovery
+      ? await this.projectRecovery(latestRecovery)
+      : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
@@ -4199,6 +4367,68 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  private async projectRecovery(
+    latest: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    return latest.usageLimit && latest.outcome === 'armed'
+      ? await this.withUsageLimitAutoResume(latest)
+      : latest;
+  }
+
+  /**
+   * #3157: the chat banner's own read of a Session's usage-limit recovery,
+   * without the Session's whole event list. `null` when the latest recovery
+   * for the Session is not a usage-limit stop. The caller authorizes the read.
+   */
+  async readUsageLimitRecovery(
+    threadId: string,
+  ): Promise<ConnectionRecoveryProjection | null> {
+    this.initialize();
+    const latest = this.recoveryCoordinator?.latestProjection(threadId);
+    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+  }
+
+  /**
+   * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
+   * authorizes the mutation. Each answers with what it did and the projection
+   * as it stands afterward, so a click on a banner that has since settled
+   * reads back the real state instead of acting.
+   */
+  async actOnUsageLimitRecovery(
+    threadId: string,
+    action: 'resume' | 'cancel',
+  ): Promise<{
+    result: UsageLimitRecoveryActionResult;
+    recovery: ConnectionRecoveryProjection | null;
+  }> {
+    this.initialize();
+    const coordinator = this.recoveryCoordinator;
+    const result: UsageLimitRecoveryActionResult = coordinator
+      ? action === 'resume'
+        ? await coordinator.resumeUsageLimitNow(threadId)
+        : await coordinator.cancelUsageLimitWaiting(threadId)
+      : { kind: 'not-waiting' };
+    return { result, recovery: await this.readUsageLimitRecovery(threadId) };
+  }
+
+  /**
+   * #3157: an unreadable setting omits `autoResume` rather than failing the
+   * session read; the coordinator separately treats it as off.
+   */
+  private async withUsageLimitAutoResume(
+    recovery: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    try {
+      return {
+        ...recovery,
+        autoResume:
+          (await this.options.resolveUsageLimitAutoResume?.()) === true,
+      };
+    } catch {
+      return recovery;
+    }
   }
 
   // Conversation lineage/handoff/history forwarders (epic archive#4024,
@@ -4902,7 +5132,13 @@ export class OrchestrationService {
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: import('@kontourai/station-contracts/usage-rollup').UsageReceipt[];
     nextCursor?: string;
@@ -6134,6 +6370,16 @@ export class OrchestrationService {
 
     let steerMetricEngine = 'unknown';
     let steerMetricRecorded = false;
+    // Marked in the same synchronous run that entered the dispatch, before any
+    // await, so `retireNeverRanSession` can see a turn that has been accepted
+    // for dispatch but holds no coordinator claim or turn fact yet.
+    const dispatchedTurnThread =
+      command.type === 'sendTurn' ? command.input.threadId : undefined;
+    if (dispatchedTurnThread !== undefined)
+      this.sendTurnsInDispatch.set(
+        dispatchedTurnThread,
+        (this.sendTurnsInDispatch.get(dispatchedTurnThread) ?? 0) + 1,
+      );
     try {
       switch (command.type) {
         case 'adoptSession':
@@ -7904,6 +8150,116 @@ export class OrchestrationService {
           ? error.code
           : retryableAdapterRefusalCode(error),
       );
+    } finally {
+      if (dispatchedTurnThread !== undefined) {
+        const remaining =
+          (this.sendTurnsInDispatch.get(dispatchedTurnThread) ?? 1) - 1;
+        if (remaining > 0)
+          this.sendTurnsInDispatch.set(dispatchedTurnThread, remaining);
+        else this.sendTurnsInDispatch.delete(dispatchedTurnThread);
+      }
+    }
+    // Unreachable (the switch is exhaustive and every arm returns or throws);
+    // a `finally` stops TypeScript proving that for itself.
+    const unhandled: never = command;
+    throw new Error(`Unhandled orchestration command: ${String(unhandled)}`);
+  }
+
+  /**
+   * Stop the engine of a Session that a model-change successor replaced before
+   * it ever ran a turn (see `ConversationLineage`'s `retirePredecessorSessionId`).
+   *
+   * Unlike the `stopSession` command, this is conditional at the moment it
+   * runs. Under the Session's lifecycle lock (the one `sendTurn` queues behind
+   * to start a turn, and the one an idle park re-checks under) it stops only a
+   * Session that still has no turn fact, has no dispatched or active turn, and
+   * is no longer its conversation's current Session. Every check is synchronous
+   * and the stop begins in the same lock hold, so a turn accepted first wins
+   * and one that arrives later cannot invoke its provider until the stop ends.
+   *
+   * Not covered: a send that has resolved this Session but not yet called
+   * `dispatch` (its resolve-to-dispatch gap in the foreground seam) is
+   * invisible here; closing that needs the resolve step to reserve the Session.
+   */
+  async retireNeverRanSession(
+    threadId: string,
+    context?: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): Promise<
+    | { stopped: true }
+    | {
+        stopped: false;
+        reason:
+          | 'not_found'
+          | 'ineligible'
+          | 'current_session'
+          | 'turn_in_flight'
+          | 'turn_facts';
+      }
+  > {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (
+      !store ||
+      (context?.userId !== undefined &&
+        !this.sessionAuthz.canReadSessionForCommand(
+          threadId,
+          context.userId,
+          context.tenantExecutionContext,
+        ))
+    )
+      return { stopped: false, reason: 'not_found' };
+    if (
+      this.quarantinedThreads.has(threadId) ||
+      this.isPeerDelegationActivityRecord(threadId) ||
+      this.isReadOnlyAttachedSession(threadId)
+    )
+      return { stopped: false, reason: 'ineligible' };
+    const refusal = ():
+      | {
+          stopped: false;
+          reason: 'current_session' | 'turn_in_flight' | 'turn_facts';
+        }
+      | undefined => {
+      const lineage = store.conversationForSession(threadId);
+      if (
+        !lineage ||
+        store.conversationSessions(lineage.conversationId).at(-1)?.sessionId ===
+          threadId
+      )
+        return { stopped: false, reason: 'current_session' };
+      if (
+        this.sendTurnsInDispatch.has(threadId) ||
+        this.sessionExecutionCoordinator.hasActiveTurn(threadId)
+      )
+        return { stopped: false, reason: 'turn_in_flight' };
+      if (store.hasTurnFacts(threadId))
+        return { stopped: false, reason: 'turn_facts' };
+      return undefined;
+    };
+    const early = refusal();
+    if (early) return early;
+    try {
+      return await this.sessionExecutionCoordinator.runLifecycleTransition(
+        threadId,
+        async () => {
+          const late = refusal();
+          if (late) return late;
+          await this.stopSessionNow(threadId);
+          return { stopped: true } as const;
+        },
+      );
+    } catch (error) {
+      // Only the boundary's own refusal means a turn won; a stop that failed
+      // (a start still in progress, an adapter error) is the caller's to see.
+      if (
+        error instanceof SessionLifecycleClaimRefusedError &&
+        error.reason === 'active-turn'
+      )
+        return { stopped: false, reason: 'turn_in_flight' };
+      throw error;
     }
   }
 
@@ -10322,6 +10678,20 @@ export class OrchestrationService {
     // its engine, which is what holds that request.
     const lifecycle = this.readCurrentLifecycleState(threadId);
     return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
+  }
+
+  /**
+   * #3157: an engine that marks a failed turn's session `error` (Claude)
+   * refuses another turn on it, so a recovery replay into that Session would
+   * be refused. Parking stops that engine the way an idle one is stopped, and
+   * the replay's own dispatch restarts it in place from its resume cursor.
+   * No-op for a session that can still take a turn, or one parking refuses.
+   */
+  private async parkEndedEngineForReplay(threadId: string): Promise<void> {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.sessionReadModel.get(threadId)?.status !== 'error')
+      return;
+    await this.parkIdleSession(threadId, adapter, Date.now(), 0);
   }
 
   private parkIdleSession(

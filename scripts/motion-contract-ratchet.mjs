@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASELINE_URL = new URL(
@@ -274,7 +274,7 @@ export function evaluateMotionContract(
 
 function main() {
   const baseline = JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
-  const files = execFileSync(
+  const files = execFileSyncBounded(
     'git',
     ['ls-files', '--', `${CSS_ROOT}*.css`, `${CSS_ROOT}**/*.css`],
     { encoding: 'utf8' },

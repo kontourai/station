@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 
 import { StationHttpError } from '@kontourai/station-sdk/client';
-import {
-  getConversationPullRequestLinks,
-  linkConversationPullRequest,
-} from '@kontourai/station-sdk/conversation-pull-request-links';
+import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * The manual link form is the pull requests panel's job (open by default
- * there) and a rare action in a session's Details (collapsed there). One
- * component, one prop, both consumers.
+ * Linking a pull request is one field behind a `+`: closed by default in a
+ * session's Details (a rare action), open where the consumer asks. The field
+ * reads a number against the suggested repository.
  */
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
@@ -22,13 +25,15 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
     isCurrent: () => true,
   }),
 }));
+const linkConversationPullRequest = vi.fn(async () => ({}));
 vi.mock('@kontourai/station-sdk/conversation-pull-request-links', () => ({
   getConversationPullRequestLinks: vi.fn().mockResolvedValue({
     conversationId: 'c1',
     observedAt: '2026-09-29T00:00:00Z',
     links: [],
   }),
-  linkConversationPullRequest: vi.fn(),
+  linkConversationPullRequest: (...args: unknown[]) =>
+    linkConversationPullRequest(...(args as [])),
   unlinkConversationPullRequest: vi.fn(),
 }));
 
@@ -40,25 +45,60 @@ function renderLinks(linkFormCollapsed?: boolean) {
       <ConversationPullRequestLinks
         conversationId="c1"
         linkFormCollapsed={linkFormCollapsed}
+        suggested={{
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'team', name: 'repo' },
+        }}
       />
     </QueryClientProvider>,
   );
 }
 
-const disclosure = () =>
-  screen
-    .getByText('Link a pull request')
-    .closest('details') as HTMLDetailsElement;
+afterEach(() => cleanup());
 
-describe('ConversationPullRequestLinks link form', () => {
-  test('is open by default (the pull requests panel)', () => {
+describe('ConversationPullRequestLinks link field', () => {
+  test('is closed by default (a session’s Details) and the plus opens it', () => {
     renderLinks();
-    expect(disclosure().open).toBe(true);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    const plus = screen.getByRole('button', { name: 'Link a pull request' });
+    expect(plus.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(plus);
+    expect(plus.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('textbox', { name: 'Pull request' })).toBeTruthy();
+    // No paragraph explains the field; no five-field form.
+    expect(screen.queryByText(/provenance/)).toBeNull();
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
   });
 
-  test('is collapsed when the consumer asks (a session’s Details)', () => {
-    renderLinks(true);
-    expect(disclosure().open).toBe(false);
+  test('is open when the consumer asks, and a number links against the suggested repository', async () => {
+    renderLinks(false);
+    const field = screen.getByRole('textbox', { name: 'Pull request' });
+    const link = screen.getByRole('button', { name: 'Link' });
+    expect((link as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(field, { target: { value: 'nonsense' } });
+    expect((link as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(field, { target: { value: '17' } });
+    fireEvent.click(link);
+    await waitFor(() =>
+      expect(linkConversationPullRequest).toHaveBeenCalledWith(
+        'http://station.test',
+        'c1',
+        {
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'team', name: 'repo' },
+          ref: '17',
+        },
+        expect.anything(),
+      ),
+    );
+  });
+
+  test('says "Nothing linked" in one line when the chat has no links', async () => {
+    renderLinks();
+    expect(await screen.findByText('Nothing linked')).toBeTruthy();
+    expect(screen.queryByText(/appear here|yet\./)).toBeNull();
   });
 });
 
@@ -86,12 +126,13 @@ test('an unavailable read shows its reason, not its field key', async () => {
       <ConversationPullRequestLinks conversationId="c1" />
     </QueryClientProvider>,
   );
-  expect(await screen.findByText('Unknown conversation.')).toBeTruthy();
-  expect(screen.queryByText(/conversationId/)).toBeNull();
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('Unknown conversation.');
+  expect(alert.textContent).not.toContain('conversationId');
 });
 
 test('a refused link shows its reason, not its field key', async () => {
-  vi.mocked(linkConversationPullRequest).mockRejectedValueOnce(
+  linkConversationPullRequest.mockRejectedValueOnce(
     new StationHttpError(
       400,
       'Validation failed: ref Use a pull request number.',
@@ -103,17 +144,12 @@ test('a refused link shows its reason, not its field key', async () => {
       },
     ),
   );
-  renderLinks();
-  await screen.findByText('Nothing is linked to this conversation yet.');
-  for (const [label, value] of [
-    ['Provider', 'github'],
-    ['Host', 'github.com'],
-    ['Owner', 'kontourai'],
-    ['Repository', 'station'],
-    ['Pull request number', '12'],
-  ] as const)
-    fireEvent.change(screen.getByLabelText(label), { target: { value } });
-  fireEvent.click(screen.getByRole('button', { name: 'Link pull request' }));
+  renderLinks(false);
+  await screen.findByText('Nothing linked');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Pull request' }), {
+    target: { value: '12' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Link' }));
   expect((await screen.findByRole('alert')).textContent).toBe(
     'Use a pull request number.',
   );

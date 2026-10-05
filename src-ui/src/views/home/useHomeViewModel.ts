@@ -5,8 +5,11 @@ import {
   useRemoteSessionsQuery,
   useTasksQuery,
 } from '@kontourai/station-sdk';
+import { listProjectLayouts } from '@kontourai/station-sdk/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
+import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
   openChatsStore,
@@ -16,6 +19,11 @@ import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
+import {
+  availablePlacements,
+  dockFoldsToOneRegion,
+  useDockSlotDevice,
+} from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
@@ -172,6 +180,19 @@ function useHomeWorkData(): HomeWorkData {
   };
 }
 
+/**
+ * U1 (design round 2026-10): where a chat opened from Home LIVES. A chat
+ * whose project has a Coding layout belongs in that layout's centre, not in
+ * a dock squeezed under Home; a chat with no project, or whose project has
+ * no Coding layout, stays in the dock, and a device that folds every region
+ * into the bottom dock (a phone) keeps the dock everywhere. Resolves to the
+ * layout's slug, or `null` when the dock is the destination. Read from the
+ * query cache, fetched once when cold; a failed read means "no layout".
+ */
+type CodingLayoutFor = (
+  projectSlug: string | undefined,
+) => Promise<string | null>;
+
 function createContinueWork(
   onNavigate: (view: NavigationView) => void,
   // #928: Activity is a region surface, not a route, so "open this session"
@@ -181,6 +202,7 @@ function createContinueWork(
   // canonical deep link when no region host is mounted.
   showActivitySession: (sessionId: string) => void,
   acknowledge: (conversationId: string, updatedAt: string) => void,
+  codingLayoutFor: CodingLayoutFor,
 ) {
   return (task: HomeWorkItem) => {
     if (task.conversationUpdatedAt) {
@@ -201,7 +223,16 @@ function createContinueWork(
       showActivitySession(task.id);
       return;
     }
+    // The chat is focused first, synchronously: the shared focus action is
+    // what opens or rehydrates it, and the layout route below keeps the
+    // active chat (`navigation-store` carries `chat` across a route change),
+    // so the Coding host centres the chat it finds active.
     openChatsStore.focus(detail);
+    const { projectSlug } = task;
+    if (!projectSlug) return;
+    void codingLayoutFor(projectSlug).then((layoutSlug) => {
+      if (layoutSlug) onNavigate({ type: 'layout', projectSlug, layoutSlug });
+    });
   };
 }
 
@@ -209,6 +240,30 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   const data = useHomeWorkData();
   const acknowledge = useAcknowledgeConversationMutation();
   const showSurface = useShowSurface();
+  const queryClient = useQueryClient();
+  const { apiBase } = useApiBase();
+  // The same fold the region model uses to decide the dock is the only
+  // region: on such a device the Coding layout's chat IS the dock, so the
+  // route adds nothing but a page change.
+  const bottomOnly = dockFoldsToOneRegion(
+    availablePlacements(useDockSlotDevice()),
+  );
+  const codingLayoutFor: CodingLayoutFor = async (projectSlug) => {
+    if (!projectSlug || bottomOnly) return null;
+    try {
+      // The same key `useProjectLayoutsQuery` writes, so a sidebar that has
+      // already listed this project's layouts answers without a request.
+      const layouts: Array<{ slug: string; type?: string }> =
+        await queryClient.fetchQuery({
+          queryKey: ['projects', projectSlug, 'layouts'],
+          queryFn: () => listProjectLayouts(apiBase, projectSlug),
+          staleTime: 60_000,
+        });
+      return layouts.find((layout) => layout.type === 'coding')?.slug ?? null;
+    } catch {
+      return null;
+    }
+  };
   const { agent, effectiveModel } = data.defaultSelection;
   const startIdentity = agent
     ? [
@@ -241,6 +296,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       (sessionId) => showSurface('activity', { session: sessionId }),
       (conversationId, updatedAt) =>
         acknowledge.mutate({ conversationId, updatedAt }),
+      codingLayoutFor,
     ),
   };
 }

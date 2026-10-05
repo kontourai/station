@@ -105,12 +105,13 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
   // guard the dock-open-and-empty state showed two identical "Start a chat"
   // controls — the header's and the body's — and any role-based query would
   // resolve to both.
-  test('yields to the body CTA once the dock is open', () => {
+  test('yields to the body CTA once the dock is open: no second "Start a chat" at all', () => {
     isDockOpen = true;
     renderHeader();
 
     expect(screen.queryByRole('button', { name: 'Start a chat' })).toBeNull();
-    expect(screen.getByText('Start a chat')).toBeTruthy();
+    // Not even as inert text (V13): the pane's own New is in the bar.
+    expect(screen.queryByText('Start a chat')).toBeNull();
   });
 
   test('Chat settings is still one press', () => {

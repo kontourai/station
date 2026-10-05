@@ -41,6 +41,9 @@ what a job did, what a setting contains, or what is in a Project. Answer those
 questions from an authorized live read, or state that only general
 documentation is available.
 
+`station-knowledge` is the separate data server for reading and capturing
+Knowledge records. It requires caller authority; see [Knowledge agent tools](../guides/knowledge.md#agent-tools).
+
 `station-control` is the separate built-in server for Station operations, such
 as creating Agents, running jobs, changing settings, and validating a local
 plugin folder. Installing a plugin through Station's agent tools is refused: a person approves its preview on the Plugins page or with `station plugin install <source>` (see the `plugin-authoring` topic).

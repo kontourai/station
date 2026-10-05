@@ -52,6 +52,19 @@ function captureStderr(run: () => void): string[] {
 }
 
 describe('registerStartInHomeRegistry (station#2904 slice 2)', () => {
+  test('records the bound host so `station open` links to it (#3304)', () => {
+    registerStartInHomeRegistry(
+      'dev',
+      home,
+      3299,
+      5299,
+      process.pid,
+      undefined,
+      '127.0.0.1',
+    );
+    expect(readInstanceRegistry(home).instances.dev.host).toBe('127.0.0.1');
+  });
+
   test('publishes a liveness-complete entry the home-wide readers can see', async () => {
     // `process.pid` as the server pid: alive by construction, and the birth
     // fingerprint resolves for a real process — so this asserts the entry

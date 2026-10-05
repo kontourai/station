@@ -30,7 +30,15 @@ function row(channel: string, sha: string, overrides = {}) {
   };
 }
 
-function atHead(overrides: { android?: string; macos?: string } = {}) {
+type PlatformState = {
+  markerSha: string;
+  candidateSha: string;
+  markerAhead?: boolean;
+};
+
+function atHead(
+  overrides: { android?: string; macos?: string } = {},
+): Record<'android' | 'macos', PlatformState> {
   return {
     android: {
       markerSha: overrides.android ?? HEAD,
@@ -167,6 +175,43 @@ describe('decideNativeCohort', () => {
       ]);
     },
   );
+
+  it.each(['android', 'macos'] as const)(
+    'refuses to publish an older source than the %s marker already ships, even on a rebuild request',
+    (platform) => {
+      // Main qualification's Nightly can queue behind a scheduled Nightly
+      // that ships a newer source; the queued run must not move the markers
+      // back.
+      const platforms = atHead({ [platform]: OLDER });
+      platforms[platform] = { ...platforms[platform], markerAhead: true };
+      const decision = decideNativeCohort({
+        headSha: HEAD,
+        platforms,
+        ledgerEntries: [],
+        rebuildIndex: '2',
+      });
+      expect(decision.build).toBe(false);
+      expect(decision.reasons).toEqual([
+        'refusing to publish an older source than the one already shipped',
+        `${platform}: ${platform === 'android' ? 'refs/tags/nightly' : 'refs/tags/nightly-desktop'} is at ${OLDER}, which already contains source ${HEAD}`,
+      ]);
+    },
+  );
+
+  it('does not read markerAhead on a marker at the source', () => {
+    const platforms = atHead();
+    platforms.android = { ...platforms.android, markerAhead: true };
+    expect(
+      decideNativeCohort({
+        headSha: HEAD,
+        platforms,
+        ledgerEntries: [
+          row('nightly-android', HEAD),
+          row('nightly-desktop', HEAD),
+        ],
+      }),
+    ).toEqual({ build: false, reasons: [] });
+  });
 
   it('does not accept a row at a different SHA as evidence for a marker at HEAD', () => {
     const decision = decideNativeCohort({
@@ -370,6 +415,44 @@ describe('nightly-cohort-decide CLI', () => {
     }
     expect(io.stdout.join('')).toContain('build=true\n');
     expect(io.stdout.join('')).toContain('rebuild_index=3');
+  });
+
+  it('asks for ancestry only for a marker away from the candidate, and refuses a marker ahead of it', () => {
+    const asked: string[][] = [];
+    const io = capture();
+    try {
+      expect(
+        main(
+          [
+            '--head-sha',
+            HEAD,
+            '--android-marker',
+            OLDER,
+            '--android-candidate',
+            HEAD,
+            '--desktop-marker',
+            HEAD,
+            '--desktop-candidate',
+            HEAD,
+          ],
+          {
+            readLedger: () => [],
+            isStrictAncestor: (_root: string, a: string, b: string) => {
+              asked.push([a, b]);
+              return true;
+            },
+          },
+        ),
+      ).toBe(0);
+    } finally {
+      io.restore();
+    }
+    expect(asked).toEqual([[HEAD, OLDER]]);
+    const output = io.stdout.join('');
+    expect(output).toContain('build=false\n');
+    expect(output).toContain(
+      'refusing to publish an older source than the one already shipped',
+    );
   });
 
   it('exits nonzero and writes no build= when the ledger cannot be read or is malformed', () => {

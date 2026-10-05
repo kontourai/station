@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Design round: stale only through the shared inventory file; this change touches no server module and the backend pattern makes no claim about the Diff pane. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","packages/shared/package.json","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}

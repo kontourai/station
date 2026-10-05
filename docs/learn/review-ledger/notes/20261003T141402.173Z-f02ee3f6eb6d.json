@@ -1,0 +1,7 @@
+{
+  "revision": "fddbe13fa0a0ea4ad7e3323d71c718212f540f93",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Design round 2: stale only through the shared inventory file; no server module changed. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","packages/shared/package.json","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}
