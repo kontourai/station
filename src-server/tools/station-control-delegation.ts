@@ -37,7 +37,6 @@ import {
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
-  type RequestOpenedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
@@ -112,7 +111,10 @@ import type {
   OrchestrationService,
   PeerReportedPendingRequest,
 } from '../services/orchestration/orchestration-service.js';
-import { presentOpenRequest } from '../services/orchestration/request-presentation.js';
+import {
+  type PresentableOpenRequest,
+  presentOpenRequest,
+} from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
@@ -3510,13 +3512,40 @@ export function snapshotFor(options: {
 function pendingRequestBody(event: Record<string, unknown>): {
   body?: string;
 } {
-  if (
-    event.method !== 'request.opened' ||
-    typeof event.requestType !== 'string'
-  )
-    return {};
-  const body = presentOpenRequest(event as unknown as RequestOpenedEvent).body;
+  const request = presentableOpenRequest(event);
+  if (!request) return {};
+  const body = presentOpenRequest(request).body;
   return body ? { body } : {};
+}
+
+/**
+ * The fields the presentation reads, each checked off a parsed event record:
+ * a known `requestType`, a string `title` (or none), a string `description`
+ * and an object `payload` only when present in those shapes.
+ */
+function presentableOpenRequest(
+  event: Record<string, unknown>,
+): PresentableOpenRequest | undefined {
+  if (event.method !== 'request.opened') return undefined;
+  const requestType = event.requestType;
+  if (
+    requestType !== 'approval' &&
+    requestType !== 'permission' &&
+    requestType !== 'confirmation' &&
+    requestType !== 'input'
+  )
+    return undefined;
+  const payload = event.payload;
+  return {
+    requestType,
+    title: typeof event.title === 'string' ? event.title : '',
+    ...(typeof event.description === 'string'
+      ? { description: event.description }
+      : {}),
+    ...(payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? { payload: payload as Record<string, unknown> }
+      : {}),
+  };
 }
 
 function parseTaskEventCursor(cursor: string | undefined): number {
