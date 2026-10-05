@@ -307,6 +307,7 @@ async function mockTaskFirstHome(
         base: 'HEAD',
         patch:
           'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx\n' +
+          'index e69de29..8b7a6f1 100644\n' +
           '--- a/src-ui/src/App.tsx\n' +
           '+++ b/src-ui/src/App.tsx\n' +
           '@@ -0,0 +1 @@\n' +
@@ -1769,7 +1770,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
-    expect((await changesRead).status()).toBe(200);
+    const changes = await changesRead;
+    expect(changes.status()).toBe(200);
+    // The pane asked for the file it opened.
+    expect(changes.request().postDataJSON()).toMatchObject({
+      path: 'src-ui/src/App.tsx',
+    });
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();
