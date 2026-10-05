@@ -3,6 +3,10 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import {
+  buildLastChosenModelBindingKey,
+  trackLastChosenModel,
+} from '../hooks/lastChosenModel';
 import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
 
 const state = vi.hoisted(() => ({
@@ -89,6 +93,7 @@ beforeEach(() => {
   state.agents = [OLD];
   state.projects = [PROJECT];
   state.picker = { agentConnections: [], modelConnections: [] };
+  localStorage.clear();
 });
 afterEach(() => {
   cleanup();
@@ -227,5 +232,35 @@ describe('returned New Chat uses current canonical rows within caller scope', ()
     expect(
       view.result.current.modelsForAgent(agent).map((model) => model.id),
     ).toEqual(['gpt-6-astra']);
+  });
+});
+
+// #3312 review: Home stays mounted and names the default selection Start
+// will use, so the selection must follow what it is derived from.
+describe('the default selection stays current for a mounted surface', () => {
+  const TWO_MODELS = {
+    ...OLD,
+    modelOptions: [
+      { id: 'old', name: 'Old' },
+      { id: 'newer', name: 'Newer' },
+    ],
+  } as AgentData;
+
+  test('a Model chosen elsewhere meanwhile becomes the default', () => {
+    state.agents = [TWO_MODELS];
+    const view = renderHook(() =>
+      useNewChatSelectionModel({
+        agents: [TWO_MODELS],
+        projects: [PROJECT],
+        selectedContext: '__global__',
+      }),
+    );
+    expect(view.result.current.defaultSelection.effectiveModel.id).toBe('old');
+    act(() =>
+      trackLastChosenModel(buildLastChosenModelBindingKey(TWO_MODELS), 'newer'),
+    );
+    expect(view.result.current.defaultSelection.effectiveModel.id).toBe(
+      'newer',
+    );
   });
 });
