@@ -1,0 +1,7 @@
+{
+  "revision": "6d5c66731d7c64ea022fa36d0fbb8d008c2c4514",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal round 3 change only swaps the folder line to workspaceHintText and passes the folderless hint to the project rows; no setup-helper or setup-return claim on this page changed. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}
