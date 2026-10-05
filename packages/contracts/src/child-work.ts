@@ -325,6 +325,13 @@ export type ChildWorkDelta =
       status: ChildWorkTerminalStatus;
       result?: ChildWorkResult;
       usage?: ChildWorkUsage;
+      /**
+       * #3308: `usage` is a running figure, not one the engine reported at
+       * settle — set when a stored provisional item is replayed as a settle
+       * (`childWorkSettleFromItem`). Such usage only fills and stays
+       * provisional, so the engine's later final figure still replaces it.
+       */
+      usageProvisional?: true;
       /** Identity a settle can supply when no earlier delta did. */
       identity?: Partial<
         Omit<
@@ -637,32 +644,42 @@ function applyUpsert(
 }
 
 /**
- * #3308: a settled child's usage. A settle that reports usage merges it over
- * a running figure: on a child it settles (`open`), or on one whose usage is
- * still provisional. An open settle without usage leaves the running figure,
- * marked provisional. Otherwise usage a settle reported is sticky and a
- * duplicate may only fill what is absent.
+ * #3308: a settled child's usage, and whether it is still a running figure.
+ *
+ * - Usage a settle reported is sticky: a later settle only fills what is
+ *   absent.
+ * - A running figure (the child's usage when this settle closes it, or usage
+ *   already marked provisional) is replaced by the settle's reported usage,
+ *   field by field. It stays provisional while any of its fields is left
+ *   unreplaced, so a duration-only settle cannot pass a running token count
+ *   off as final.
+ * - A provisional settle (a stored item replayed, `childWorkSettleFromItem`)
+ *   restates a running figure: it only fills, and keeps the usage provisional.
  */
 function settledUsage(
-  existing: ChildWorkItem,
+  existing: ChildWorkItem | undefined,
   usage: ChildWorkUsage | undefined,
-  open: boolean,
+  options: { open: boolean; provisional: boolean },
 ): Pick<ChildWorkItem, 'usage' | 'usageProvisional'> {
-  if (usage && (open || existing.usageProvisional)) {
+  const prior = existing?.usage;
+  if (!(options.open || existing?.usageProvisional) && prior) {
+    // Settled usage: sticky.
     return {
-      usage: { ...existing.usage, ...usage },
-      usageProvisional: undefined,
+      usage: fillAbsent(prior, usage),
+      usageProvisional: existing?.usageProvisional,
     };
   }
-  if (open) {
-    return {
-      usage: existing.usage,
-      usageProvisional: existing.usage ? true : undefined,
-    };
+  // `prior`, when present, is a running figure.
+  if (!usage || options.provisional) {
+    const next = fillAbsent(prior, usage);
+    return { usage: next, usageProvisional: next ? true : undefined };
   }
+  const unreplaced = Object.keys(prior ?? {}).some(
+    (field) => usage[field as keyof ChildWorkUsage] === undefined,
+  );
   return {
-    usage: fillAbsent(existing.usage, usage),
-    usageProvisional: existing.usageProvisional,
+    usage: { ...prior, ...usage },
+    usageProvisional: unreplaced ? true : undefined,
   };
 }
 
@@ -675,6 +692,7 @@ function applySettle(
   const result = normalizeResult(delta.result);
   const usage = normalizeUsage(delta.usage);
   const identity = delta.identity ?? {};
+  const provisional = delta.usageProvisional === true;
   let next: ChildWorkItem;
   if (!existing) {
     // Settle before any listing: record the terminal as a tombstone, so a
@@ -686,8 +704,7 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       ...(result ? { result } : {}),
-      ...(usage ? { usage } : {}),
-      usageProvisional: undefined,
+      ...settledUsage(undefined, usage, { open: true, provisional }),
     });
   } else if (
     existing.status === 'running' ||
@@ -704,7 +721,7 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       result: result ?? existing.result,
-      ...settledUsage(existing, usage, true),
+      ...settledUsage(existing, usage, { open: true, provisional }),
     });
   } else {
     // Sticky terminal: a duplicate settle may only fill what is absent —
@@ -714,7 +731,7 @@ function applySettle(
       ...(fillAbsent(existing, identity as ChildWorkItem) ?? existing),
       status: existing.status,
       result: fillAbsent(existing.result, result),
-      ...settledUsage(existing, usage, false),
+      ...settledUsage(existing, usage, { open: false, provisional }),
     });
   }
   if (sameItem(existing, next)) return state;
@@ -753,6 +770,40 @@ export function applyChildWorkDelta(
         },
       };
   }
+}
+
+/**
+ * A settled item restated as the settle delta that reproduces it, for a
+ * consumer that seeds a registry from stored items (history replay, a
+ * reconnect's session view). Undefined for a running item. Keeps a
+ * provisional usage figure provisional (#3308), so the engine's final figure
+ * can still replace it after the replay.
+ */
+export function childWorkSettleFromItem(
+  item: ChildWorkItem,
+): Extract<ChildWorkDelta, { kind: 'settle' }> | undefined {
+  const {
+    producer,
+    reporterThreadId,
+    childId,
+    status,
+    result,
+    usage,
+    usageProvisional,
+    ...identity
+  } = item;
+  if (!isChildWorkTerminalStatus(status)) return undefined;
+  return {
+    kind: 'settle',
+    producer,
+    reporterThreadId,
+    childId,
+    status,
+    ...(result ? { result } : {}),
+    ...(usage ? { usage } : {}),
+    ...(usage && usageProvisional ? { usageProvisional: true as const } : {}),
+    identity,
+  };
 }
 
 /** Every child a reporter holds (running and settled), in insertion order. */

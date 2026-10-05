@@ -8,6 +8,7 @@ import {
   type ChildWorkRegistryState,
   childWorkForReporter,
   childWorkKey,
+  childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
   projectDelegateChildWork,
@@ -212,6 +213,67 @@ describe('applyChildWorkDelta', () => {
       }),
     );
     expect(get(tomb, 'c')?.usageProvisional).toBeUndefined();
+  });
+
+  test('#3308 a duration-only settle over a running figure leaves it provisional until the token figure arrives', () => {
+    const partial = fold(
+      snapshot(item('a', { usage: { totalTokens: 40141, toolUses: 1 } })),
+      settle('a', 'completed', { usage: { durationMs: 3000 } }),
+    );
+    expect(get(partial, 'a')).toMatchObject({
+      usage: { totalTokens: 40141, toolUses: 1, durationMs: 3000 },
+      usageProvisional: true,
+    });
+    const final = applyChildWorkDelta(
+      partial,
+      settle('a', 'completed', {
+        usage: { totalTokens: 41833, toolUses: 1, durationMs: 3677 },
+      }),
+    );
+    expect(get(final, 'a')?.usage).toEqual({
+      totalTokens: 41833,
+      toolUses: 1,
+      durationMs: 3677,
+    });
+    expect(get(final, 'a')?.usageProvisional).toBeUndefined();
+  });
+
+  test('#3308 childWorkSettleFromItem keeps provisional usage provisional through a replay', () => {
+    const live = fold(
+      snapshot(item('a', { usage: { totalTokens: 40141 } })),
+      settle('a', 'completed'),
+    );
+    const stored = get(live, 'a') as ChildWorkItem;
+    const replay = childWorkSettleFromItem(stored);
+    expect(replay).toMatchObject({
+      kind: 'settle',
+      usage: { totalTokens: 40141 },
+      usageProvisional: true,
+    });
+    expect(replay?.identity).not.toHaveProperty('usageProvisional');
+    const finalSettle = settle('a', 'completed', {
+      usage: { totalTokens: 41833 },
+    });
+    // Replayed into an empty registry (a cold seed or a fresh client)…
+    const cold = fold(replay as ChildWorkDelta, finalSettle);
+    expect(get(cold, 'a')?.usage).toEqual({ totalTokens: 41833 });
+    // …or onto the live provisional item: the replay changes nothing.
+    expect(applyChildWorkDelta(live, replay as ChildWorkDelta)).toBe(live);
+    // A provisional replay never displaces usage a settle reported.
+    const settled = fold(
+      settle('b', 'completed', { usage: { totalTokens: 9 } }),
+    );
+    expect(
+      applyChildWorkDelta(
+        settled,
+        settle('b', 'completed', {
+          usage: { totalTokens: 1 },
+          usageProvisional: true,
+        }),
+      ),
+    ).toBe(settled);
+    // A running item has no settle.
+    expect(childWorkSettleFromItem(item('c'))).toBeUndefined();
   });
 
   test('a reconnect snapshot that omits a running child marks it unresolved, not completed', () => {
