@@ -41,7 +41,7 @@ function swatchFor(task: HomeWorkItem): HTMLElement | null {
           workFacts: buildWorkFacts({ items, sessions }),
           detailsFor: null,
           setDetailsFor: () => {},
-          chrome: 'pointer',
+          chrome: 'hover',
           projectAccentBySlug: new Map([['station', 'var(--accent-orange)']]),
         },
       })}
