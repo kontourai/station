@@ -3,6 +3,12 @@ import {
   setNativePairingExchangeTransport,
 } from '@kontourai/station-connect/device-pairing';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
+import {
+  authenticatedFetch,
+  ChatHttpError,
+  sendExecutionMessage,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { completeVerifiedPairing } from '../../../../../packages/connect/src/react/pairingCompletion.js';
@@ -803,5 +809,124 @@ describe('native authenticated transport', () => {
     expect(setCredential).not.toHaveBeenCalled();
     expect(markDeviceSession).not.toHaveBeenCalled();
     expect(setActiveConnection).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * #3166: Station marks its own JSON answers with `x-station-envelope`, and the
+ * SDK reads that marker to tell a Station refusal from an intermediary's. On
+ * desktop every request goes through this broker, so the marker must survive
+ * the native response and reach the SDK's request seam.
+ */
+describe('Station envelope marker through the native broker (#3166)', () => {
+  // Pinned beside `STATION_ENVELOPE_HEADER` in packages/contracts/src/http.ts.
+  const MARKER = 'x-station-envelope';
+  const REFUSAL = { success: false, error: 'no', code: 'refused' };
+
+  type BrokerReply = {
+    status: number;
+    headers: Record<string, string>;
+    body: unknown;
+  };
+
+  /** Answer each native request with the next reply, as the broker would. */
+  function brokerReplies(replies: BrokerReply[]): void {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command !== 'station_native_http_request') return;
+      const reply = replies.shift();
+      if (!reply) throw new Error('unexpected native request');
+      queueMicrotask(() => {
+        emit({
+          type: 'response',
+          status: reply.status,
+          headers: reply.headers,
+        });
+        emit({
+          type: 'chunk',
+          bytes: [...new TextEncoder().encode(JSON.stringify(reply.body))],
+        });
+        emit({ type: 'end' });
+      });
+    });
+  }
+
+  /** Route the SDK for `origin` through the real native transport. */
+  function useNativeTransport(origin: string): void {
+    setClientCredentialResolver(() => ({
+      origin,
+      transport: nativeAuthenticatedTransport,
+    }));
+  }
+
+  async function refusalFrom(origin: string): Promise<ChatHttpError> {
+    const error = await sendExecutionMessage(origin, {
+      agentId: 'writer',
+      message: 'hello',
+      idempotencyKey: 'k1',
+    } as never).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ChatHttpError);
+    return error as ChatHttpError;
+  }
+
+  beforeEach(() => {
+    bridge.invoke.mockReset();
+    bridge.channels.length = 0;
+  });
+
+  afterEach(() => {
+    setClientCredentialResolver();
+  });
+
+  test('a marked Station refusal is recognised as Station’s own answer', async () => {
+    // A distinct origin per test: what an origin has sent is process-wide.
+    const origin = 'https://marked-refusal.station.test';
+    useNativeTransport(origin);
+    brokerReplies([
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: { success: true, data: [] },
+      },
+      {
+        status: 403,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: REFUSAL,
+      },
+    ]);
+
+    const answer = await authenticatedFetch(`${origin}/api/anything`);
+    // The seam itself: an origin that never marked falls back to body shape
+    // and would also read as Station's, so the outcome alone proves nothing.
+    expect(answer.headers.get(MARKER)).toBe('1');
+    await answer.json();
+    const error = await refusalFrom(origin);
+
+    expect(error.status).toBe(403);
+    expect(error.stationEnvelope).toBe(true);
+  });
+
+  test('after a marked answer, an unmarked refusal in Station’s shape is not Station’s', async () => {
+    const origin = 'https://intermediary-refusal.station.test';
+    useNativeTransport(origin);
+    brokerReplies([
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: { success: true, data: [] },
+      },
+      {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+        body: REFUSAL,
+      },
+    ]);
+
+    await (await authenticatedFetch(`${origin}/api/anything`)).json();
+    const error = await refusalFrom(origin);
+
+    // Only reachable as `false` if the broker's marker on the first answer
+    // taught the SDK that this origin marks its answers.
+    expect(error.status).toBe(403);
+    expect(error.stationEnvelope).toBe(false);
   });
 });
