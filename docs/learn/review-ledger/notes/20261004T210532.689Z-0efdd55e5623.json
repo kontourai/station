@@ -1,0 +1,7 @@
+{
+  "revision": "1e29ba6ca985181adf2c097e84a4abc3fbb57258",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"The capture shows a local request Inspect request dialog; this round only scopes the paired-Station host lookup and its bounds, leaving local inspection unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

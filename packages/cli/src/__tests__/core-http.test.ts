@@ -446,9 +446,13 @@ describe('CLI core commands over HTTP', () => {
         const slug = decodeURIComponent(conversationsMatch[1]);
         sendJson(200, {
           success: true,
-          data: state.conversations.filter(
-            (conversation) => conversation.resourceId === slug,
-          ),
+          // The real route's page envelope, not a bare array.
+          data: {
+            items: state.conversations.filter(
+              (conversation) => conversation.resourceId === slug,
+            ),
+            hasMore: false,
+          },
         });
         return;
       }
@@ -1673,9 +1677,21 @@ describe('CLI core commands over HTTP', () => {
       `--api-base=${apiBase}`,
     ]);
 
-    expect(_consoleLog).toHaveBeenCalledWith(
-      expect.stringContaining('"kind": "managed"'),
-    );
+    // #3304: the route answers `{ items, hasMore }`; the listing must map
+    // the items rather than crash on `conversations.map`.
+    const listed = _consoleLog.mock.calls
+      .map(([line]) => String(line))
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return undefined;
+        }
+      })
+      .find((value) => Array.isArray(value));
+    expect(listed).toEqual([
+      expect.objectContaining({ id: 'conv-http-test', kind: 'managed' }),
+    ]);
     expect(_consoleLog).toHaveBeenCalledWith(
       expect.stringContaining('"id": "conv-http-test"'),
     );
