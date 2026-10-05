@@ -32,7 +32,10 @@ export async function checkQualificationHealth(
     retained &&
     (!Number.isSafeInteger(retained.id) ||
       retained.id <= 0 ||
-      !Number.isFinite(Date.parse(retained.at)))
+      !Number.isFinite(Date.parse(retained.at)) ||
+      !Array.isArray(retained.legs) ||
+      !retained.legs.length ||
+      retained.legs.some((leg) => !['native', 'cli'].includes(leg)))
   )
     throw new Error('Invalid retained delivery incident');
   const since = new Date(now - 48 * HOUR).toISOString();
@@ -84,12 +87,7 @@ export async function checkQualificationHealth(
       passed,
       completed,
       started: starts.length ? Math.min(...starts) : null,
-      delivered: jobs.some(
-        (job) =>
-          job.name.endsWith(
-            '3 · Publish native cohort / Record ledger and markers',
-          ) && job.conclusion === 'success',
-      ),
+      jobs,
     });
   }
   const latest = observed[0];
@@ -100,7 +98,22 @@ export async function checkQualificationHealth(
         item.run.status === 'completed' &&
         item.run.conclusion !== 'success',
     )
-    .map((item) => ({ id: item.run.id, at: item.run.updated_at }));
+    .map((item) => {
+      const failed = item.jobs.filter((job) =>
+        ['failure', 'timed_out', 'cancelled'].includes(job.conclusion),
+      );
+      const cli = failed.some((job) =>
+        job.name.endsWith('3 · Publish CLI to npm nightly'),
+      );
+      const native = failed.some(
+        (job) => !job.name.endsWith('3 · Publish CLI to npm nightly'),
+      );
+      return {
+        id: item.run.id,
+        at: item.run.updated_at,
+        legs: [...(native || !cli ? ['native'] : []), ...(cli ? ['cli'] : [])],
+      };
+    });
   if (failures.some((item) => !Number.isFinite(Date.parse(item.at))))
     throw new Error('Invalid failed delivery timestamp');
   const failedDelivery = [...failures, ...(retained ? [retained] : [])].sort(
@@ -126,28 +139,35 @@ export async function checkQualificationHealth(
       'jobs',
       options,
     );
-    recoveries.push(
-      ...jobs.filter(
-        (job) =>
-          job.name.endsWith(
-            '3 · Publish native cohort / Record ledger and markers',
-          ) && job.conclusion === 'success',
-      ),
-    );
+    recoveries.push({ run, jobs });
   }
-  const delivered = [
-    ...observed
-      .filter((item) => item.delivered && item.run.conclusion === 'success')
-      .map((item) => item.run.updated_at),
-    ...recoveries.map((job) => job.completed_at),
-  ].some(
-    (at) =>
-      Number.isFinite(Date.parse(at)) &&
-      Date.parse(at) <= now &&
-      failedDelivery &&
-      Date.parse(at) > Date.parse(failedDelivery.at),
+  const successfulDeliveries = [...observed, ...recoveries].filter(
+    (item) =>
+      item.run.status === 'completed' && item.run.conclusion === 'success',
   );
-  const pendingDelivery = !delivered ? failedDelivery : null;
+  const recovered = failedDelivery?.legs.every((leg) =>
+    successfulDeliveries.some(
+      (item) =>
+        Number.isFinite(Date.parse(item.run.updated_at)) &&
+        Date.parse(item.run.updated_at) <= now &&
+        Date.parse(item.run.updated_at) > Date.parse(failedDelivery.at) &&
+        item.jobs.some((job) =>
+          leg === 'native'
+            ? job.name.endsWith(
+                '3 · Publish native cohort / Record ledger and markers',
+              ) && job.conclusion === 'success'
+            : job.name.endsWith('3 · Publish CLI to npm nightly') &&
+              job.conclusion === 'success' &&
+              job.steps?.some(
+                (step) =>
+                  step.name ===
+                    'Bind the published CLI receipt to npm registry provenance' &&
+                  step.conclusion === 'success',
+              ),
+        ),
+    ),
+  );
+  const pendingDelivery = recovered ? null : failedDelivery;
   const green = observed
     .filter((item) => item.passed)
     .sort((a, b) => b.completed - a.completed)[0];
@@ -198,9 +218,11 @@ export async function checkQualificationHealth(
       ? `Unresolved qualified delivery run: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${pendingDelivery.id}. A later skipped publication does not resolve it.`
       : 'No failed qualified delivery run found in the last 48 hours.',
     '',
-    'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run main-qualification.yml --repo ' +
+    'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run ' +
+      (pendingDelivery ? 'nightly.yml' : 'main-qualification.yml') +
+      ' --repo ' +
       env.GITHUB_REPOSITORY +
-      ' --ref main -F force=true`.',
+      (pendingDelivery ? ' --ref main`.' : ' --ref main -F force=true`.'),
     'This watchdog launches no tests, dispatches no runs and changes no publication authority. Nightly remains bound to an exact qualified source.',
   ];
   if (reasons.length) {

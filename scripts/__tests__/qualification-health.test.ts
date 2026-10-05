@@ -47,7 +47,12 @@ async function observe({
   enabled = true,
 }: {
   runs?: ReturnType<typeof run>[];
-  jobs?: Record<number, ReturnType<typeof gate>[]>;
+  jobs?: Record<
+    number,
+    (ReturnType<typeof gate> & {
+      steps?: { name: string; conclusion: string }[];
+    })[]
+  >;
   issues?: (typeof issue)[];
   manualRuns?: ReturnType<typeof run>[];
   failJobs?: boolean;
@@ -241,7 +246,7 @@ describe('qualification health through the GitHub API', () => {
       issues: [
         {
           ...issue,
-          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z"} -->',
+          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]} -->',
         },
       ],
     });
@@ -254,7 +259,7 @@ describe('qualification health through the GitHub API', () => {
       issues: [
         {
           ...issue,
-          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z"} -->',
+          body: '<!-- station-qualification-health:{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]} -->',
         },
       ],
       manualRuns: [
@@ -269,6 +274,39 @@ describe('qualification health through the GitHub API', () => {
           gate({
             name: '3 · Publish native cohort / Record ledger and markers',
           }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(true);
+  });
+
+  it('resolves CLI-only failure with registry-bound CLI recovery while native is skipped', async () => {
+    const { result } = await observe({
+      runs: [run(1, 2, { conclusion: 'failure' })],
+      manualRuns: [
+        run(2, 1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'workflow_dispatch',
+        }),
+      ],
+      jobs: {
+        1: [
+          gate(),
+          gate({
+            name: 'nightly / 3 · Publish CLI to npm nightly',
+            conclusion: 'failure',
+          }),
+        ],
+        2: [
+          {
+            ...gate({ name: '3 · Publish CLI to npm nightly' }),
+            steps: [
+              {
+                name: 'Bind the published CLI receipt to npm registry provenance',
+                conclusion: 'success',
+              },
+            ],
+          },
         ],
       },
     });

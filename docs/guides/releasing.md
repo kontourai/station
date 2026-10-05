@@ -74,8 +74,8 @@ passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
 
 Delivery failures remain in the tracker beyond its 48-hour run lookback until
-a later successful native ledger job, including manual Nightly recovery,
-resolves them. A green qualification that skips delivery because the source
+the failed leg has terminal evidence: a later native ledger job or the CLI
+registry-provenance step, including manual Nightly recovery. A green qualification that skips delivery because the source
 is already reserved cannot clear the failure. The tracker closes only when
 all observed conditions are healthy. A missing or
 skipped qualification gate is not a success, even if the overall run is green.
