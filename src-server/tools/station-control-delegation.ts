@@ -74,6 +74,7 @@ import {
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
+import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import {
   assertPreparationRequirementSupported,
   verifyPreparedCheckout,
@@ -1644,6 +1645,30 @@ function answerText(
     : unavailableMessage;
 }
 
+/**
+ * Another Station's refusal to let this Station's device choose a working
+ * folder (403 `working-directory-not-granted`, the closed code of the shared
+ * folder rule). The receiver alone knows whether the operator granted that
+ * device `coding:exec`, so the folder is sent and its refusal is answered here
+ * with this Station's own fixed sentence, never the receiver's text (#2708).
+ */
+export const REMOTE_FOLDER_NOT_GRANTED_MESSAGE =
+  "The selected Station did not allow this Station's device to choose a working folder. Name a Project instead (for example --project), or ask that Station's operator to allow this Station's device to run commands (the coding:exec grant). Nothing was started.";
+
+function remoteFolderRefusal(
+  endpoint: StationEndpoint,
+  status: number,
+  payload: unknown,
+): string | undefined {
+  return endpoint.kind !== 'current' &&
+    status === 403 &&
+    typeof payload === 'object' &&
+    payload !== null &&
+    Reflect.get(payload, 'code') === WORKING_DIRECTORY_NOT_GRANTED_CODE
+    ? REMOTE_FOLDER_NOT_GRANTED_MESSAGE
+    : undefined;
+}
+
 type ForwardedDelegation = {
   delegation?: AgentDelegationContext;
   delegationAttestation?: string;
@@ -1831,12 +1856,9 @@ async function readJson<T>(
     throw new Error(unavailableMessage);
   }
   if (!response.ok) {
-    const message = answerText(
-      endpoint,
-      payload.error,
-      unavailableMessage,
-      response.status,
-    );
+    const message =
+      remoteFolderRefusal(endpoint, response.status, payload) ??
+      answerText(endpoint, payload.error, unavailableMessage, response.status);
     const cause = localRefusalOf(endpoint, payload, message);
     throw new Error(message, cause ? { cause } : undefined);
   }
@@ -2320,12 +2342,9 @@ async function postForegroundMessage(
       );
       if (refusal) throw refusal;
     }
-    const message = answerText(
-      target,
-      payload.error,
-      unavailableMessage,
-      response.status,
-    );
+    const message =
+      remoteFolderRefusal(target, response.status, payload) ??
+      answerText(target, payload.error, unavailableMessage, response.status);
     // #2708/#2795: only this Station's own answer is relayed to the agent,
     // as a `LocalStationRefusal` cause; `code` below is the route contract.
     const cause = localRefusalOf(target, payload, message);
