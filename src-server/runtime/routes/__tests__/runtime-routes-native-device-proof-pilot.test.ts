@@ -2283,11 +2283,48 @@ describe('native Device request-proof pilot over the production composition', ()
       ['orchestration:read', 'orchestration:operate', 'relay:manage'],
       operatorApproval,
     );
+    const login = await h.request('/api/account-auth/sign-in/username', {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      }),
+    });
+    expect(login.status, await login.clone().text()).toBe(200);
+    const accountCookie = login.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ');
+    expect(accountCookie).not.toBe('');
+    await login.text();
+    const credentialOnlyHeaders = {
+      Authorization: `Bearer ${paired.credential}`,
+      Cookie: accountCookie,
+    };
+    const currentAccount = await h.localAccounts.service.authenticate(
+      new Request(`${ORIGIN}/api/relay-management`, {
+        headers: credentialOnlyHeaders,
+      }),
+    );
+    expect(currentAccount.kind).toBe('authenticated');
+    if (currentAccount.kind !== 'authenticated')
+      throw new Error('credential-only fixture needs a real current account');
+    expect(currentAccount.principal.id).toBe(
+      deploymentAccountPrincipal(
+        guest.login.issuer,
+        guest.login.session.subject,
+        GUEST_DISPLAY,
+      ).id,
+    );
     const credentialOnly = await h.request('/api/relay-management', {
-      headers: { Authorization: `Bearer ${paired.credential}` },
+      headers: credentialOnlyHeaders,
     });
     expect(credentialOnly.status).toBe(403);
     await credentialOnly.text();
+    expect(h.describeRelay).not.toHaveBeenCalled();
+    expect(h.prepareRelay).not.toHaveBeenCalled();
+    expect(h.issueRelay).not.toHaveBeenCalled();
     const peer = await h.startNativePeer(paired);
     try {
       await peer.session.establish({
