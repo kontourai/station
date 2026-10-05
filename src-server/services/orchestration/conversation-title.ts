@@ -14,7 +14,21 @@
  * in the second half of the budget and is marked with "…", instead of slicing
  * a word ("`git statu").
  */
-const TITLE_MAX_CODE_POINTS = 80;
+export const CONVERSATION_TITLE_MAX_CODE_POINTS = 80;
+
+/**
+ * Characters a title an agent supplies may not contain: control characters
+ * (`Cc`), line and paragraph separators (`Zl`, `Zp`), the bidi embedding,
+ * override and isolate controls that reorder what a reader sees, and the
+ * zero-width space and byte-order mark. Not all of `Cf`: the zero-width
+ * joiner and non-joiner build emoji sequences and some scripts' words.
+ */
+const UNSAFE_TITLE_CHARACTERS =
+  /[\p{Cc}\p{Zl}\p{Zp}\u200B\uFEFF\u202A-\u202E\u2066-\u2069]/u;
+
+export function hasUnsafeTitleCharacters(title: string): boolean {
+  return UNSAFE_TITLE_CHARACTERS.test(title);
+}
 
 // Emphasis only counts as markdown where it opens at a word start and closes
 // at a word end, as CommonMark would read it. Characters INSIDE a word are
@@ -130,11 +144,13 @@ function plainTitleText(text: string): string {
 
 function boundedTitle(text: string): string {
   const points = Array.from(text);
-  if (points.length <= TITLE_MAX_CODE_POINTS) return text;
-  const head = points.slice(0, TITLE_MAX_CODE_POINTS - 1).join('');
+  if (points.length <= CONVERSATION_TITLE_MAX_CODE_POINTS) return text;
+  const head = points.slice(0, CONVERSATION_TITLE_MAX_CODE_POINTS - 1).join('');
   const boundary = head.search(/\s\S*$/);
   const cut =
-    boundary >= TITLE_MAX_CODE_POINTS / 2 ? head.slice(0, boundary) : head;
+    boundary >= CONVERSATION_TITLE_MAX_CODE_POINTS / 2
+      ? head.slice(0, boundary)
+      : head;
   return `${cut.trimEnd()}\u2026`;
 }
 

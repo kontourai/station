@@ -588,6 +588,16 @@ function ChatMessageListComponent({
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
+    // A transcript with no height (a short dock gives the composer priority and
+    // shrinks it to nothing) cannot be read, so the scroll event its collapse
+    // can dispatch is the layout moving, not the reader leaving the bottom.
+    // Treating it as the latter raised "Scroll to bottom" over a transcript
+    // nobody can see, in the composer's scarcest row. The size observer
+    // re-pins or re-anchors it when it has height again.
+    if (target.clientHeight === 0) {
+      lastClientHeightRef.current = 0;
+      return;
+    }
     const previousClientHeight = lastClientHeightRef.current;
     const resized =
       previousClientHeight !== null &&

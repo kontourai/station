@@ -99,9 +99,8 @@ export function selectProjectScopedChatAgents({
  * engine broken merely because its connection has not finished connecting.
  *
  * The predicate is the addition here: this bucket used to say "can start" for
- * a row the SERVER had already marked `available: false`, so the
- * one-chat-ready-agent shortcut (`selectDirectNewChatAgent`) and the header's
- * quick-start could open a chat with an Agent the picker rendered disabled.
+ * a row the SERVER had already marked `available: false`, so a quick-start
+ * could open a chat with an Agent the picker rendered disabled.
  */
 export function selectChatReadyAgents({
   agents,
@@ -124,20 +123,6 @@ export function selectChatReadyAgents({
         agent,
       ),
   );
-}
-
-/**
- * archive#3309: what the header's New button does. Exactly one chat-ready agent opens
- * a chat directly; anything else opens the picker — including ZERO, where the
- * picker is what explains why nothing can start (an unavailable agent and its
- * repair path are listed there). Named here rather than written inline at the
- * call site so the one-vs-many rule is testable without constructing the whole
- * dock, which no test can currently render.
- */
-export function selectDirectNewChatAgent(
-  chatReadyAgents: AgentData[],
-): AgentData | null {
-  return chatReadyAgents.length === 1 ? chatReadyAgents[0] : null;
 }
 
 export function selectFirstChatTarget({

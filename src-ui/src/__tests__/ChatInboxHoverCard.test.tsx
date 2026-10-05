@@ -365,7 +365,7 @@ describe('inbox hover card pull requests (projects that have Git)', () => {
     await openCard(workItem(), '/repo/station');
     await waitFor(() =>
       expect(screen.getByTestId('inbox-row-hover-card').textContent).toContain(
-        'Pull request links unavailable.',
+        'Pull requests unavailable',
       ),
     );
   });
@@ -448,7 +448,7 @@ describe('inbox hover card basis section', () => {
     } as never);
     await openCard(workItem());
     expect(screen.getByTestId('inbox-row-hover-card').textContent).toContain(
-      'Basis unavailable.',
+      'Basis unavailable',
     );
   });
 });

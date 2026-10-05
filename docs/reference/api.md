@@ -19,6 +19,16 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Station MCP endpoints
+
+`/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
+serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
+Both accept only loopback connections with a live, session-scoped credential
+for that exact server. They use MCP authentication rather than a paired Device
+credential. Tokens for one server cannot open the other, and in-process tokens
+cannot be presented over HTTP. Ordinary API and Project authorization still
+apply to each tool operation.
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
@@ -250,7 +260,7 @@ starts its configuration and connection surfaces; that does not prove the
 Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
-loads `station-control` and `station-docs` on the Station-engine path, installs
+loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
 approval hooks and memory, and processes the configured system prompt. This is
 not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
@@ -507,7 +517,7 @@ service refuses changes that would create a shadow copy.
 ### Delete Integration
 
 `DELETE /integrations/:id` returns `{success: true}` after deletion.
-Runtime-managed built-ins such as `station-control` and `station-docs` return
+Runtime-managed built-ins such as `station-control`, `station-knowledge`, and `station-docs` return
 409 because startup recreates them. Package-supplied definitions must be
 removed through their owning package instead.
 
@@ -1249,6 +1259,31 @@ are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
+
+### Read Usage Receipts and Rollups
+
+`GET /api/analytics/usage-rollup` reads authorized canonical observations, with
+an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
+`from` and `to` can supply the exact window. `groupBy` accepts `provider`,
+`model`, `station`, `conversation`, `task`, or `day`. `pageSize` accepts 1–100;
+`cursor` advances the receipt drilldown without changing the aggregate.
+`localOnly=1` excludes configured peer Stations. The normal response is
+`{success: true, data: {window, rows, coverage, receipts, nextCursor?}}`.
+
+The local aggregate selects at most 500 usage observations independently from
+the page. Source observation limits and the separate global 500-logical-receipt
+limit are disclosed as partial coverage. `localOnly=1&includeAggregate=1`
+adds bounded `aggregateReceipts` for leaf Station transfer, after logical
+replacement/deduplication. Context occupancy alone does not produce a token
+receipt or consumed-usage coverage.
+
+Cumulative token identities survive engine-process restarts; cumulative cost
+identities follow the declared cost-process epochs. `sourceSequence` orders
+same-Station/thread observations when ingestion timestamps tie. Sparse
+cumulative updates retain earlier measured dimensions; unsupported combined
+model/pricing attribution stays unknown or unpriced. The window records
+observations, not a billing statement or precise consumption dates. See
+[Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
 
 ### Get Achievements
 
@@ -2734,6 +2769,41 @@ Project storage, then file-memory adapters, then the authorized orchestration
 reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
+
+`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
+conversation's transcript: `{conversationId, access, notice, messageCount,
+messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
+refused with `conversation_read_limit_out_of_range`, and a page's serialized
+messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
+only after the read is admitted. A station-control caller that is not a bound
+operator is further limited to its own conversation, its scope, or a
+conversation a person referenced in its conversation, and reads as the
+session's owner; a bound operator keeps the operator's reach. An id Station
+has no record of answers `conversation_not_found`; see the
+[read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
+### Agent Conversation Title
+
+`POST /api/conversations/:id/agent-title` with `{title}` is the route behind the
+station-control `rename_session` tool. It answers only a station-control tool
+call with a verified caller (anything else gets `403`
+`station_control_caller_required`), and a store conversation only: a native
+Claude or Codex conversation answers `runtime_title_unsupported`, and
+`POST /api/search` hits are mostly those. Unless the caller is a bound operator
+it reaches only a conversation the calling Session's owner owns (another
+person's reads as `404`); a bound operator caller is not limited to one owner's
+conversations, as with `DELETE /agents/:slug/conversations/:id`. A title is one
+line of 1 to 80 characters with no control, line or paragraph separator, bidi
+embedding, override or isolate, zero-width space or byte-order-mark character
+(the zero-width joiner and non-joiner are allowed); anything else is a `400`,
+refused rather than truncated (leading and trailing spaces are trimmed). It stamps
+`titleSource: 'agent'` in the same serialized step that checks the stored title:
+a title with `titleSource: 'user'` answers `409` `person_title` and is left as
+it was, and a native Claude or Codex conversation answers `409`
+`runtime_title_unsupported`. The success body is
+`{success: true, data: {conversationId, title, titleSource: 'agent'}}`. The
+person's rename stays `PATCH /agents/:slug/conversations/:id`, which stamps
+`titleSource: 'user'`.
 
 ## Additional System Routes
 

@@ -1,0 +1,7 @@
+{
+  "revision": "fb91b0deacf9ac3d59fd86e8e5eaaa3182df74e5",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed against ChatDock.tsx's change: the new onInboxNeedsYouChange callback reads no configuration; no config key or default changed, so the reference stands.","inputs":["docs/reference/config.md","packages/contracts/src/agent.ts","packages/contracts/src/config.ts","packages/contracts/src/settings-registry.ts","pnpm-lock.yaml","schemas/agent.schema.json","src-server/domain/validator.ts","src-server/routes/chat/chat.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/frameworks/strands-tool-loader.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/security/runtime-request-security.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

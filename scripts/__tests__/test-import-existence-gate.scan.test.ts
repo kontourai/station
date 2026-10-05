@@ -5,10 +5,11 @@
  * connects to this test. `runGate` is repeated from the original file, where
  * the fixture-repo cases still use it.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { TEST_FILE_PATTERN } from '../test-import-existence-gate.mjs';
 import { VITEST_TEST_FILE_PATTERN } from '../verification-policy-gate.mjs';
 
@@ -34,7 +35,7 @@ describe('the gate as a real child process', () => {
     // silently drop hundreds of files and still print a confident `OK:`
     // (station#3423 review MEDIUM-1: reproduced live, 1759 -> 1469 files,
     // 290 dropped including qr-round-trip.test.ts itself, exit 0 throughout).
-    const trackedFiles = execFileSync('git', ['ls-files'], {
+    const trackedFiles = execFileSyncBounded('git', ['ls-files'], {
       cwd: repoRoot,
       encoding: 'utf8',
     })
@@ -70,7 +71,7 @@ describe('the gate as a real child process', () => {
   // predicate alone reds this test by name, file, and pattern — it cannot
   // hide behind a re-derivation that shares the bug.
   test('TEST_FILE_PATTERN classifies every tracked path identically to the independent VITEST_TEST_FILE_PATTERN oracle (station#3435 review MEDIUM-1)', () => {
-    const trackedFiles = execFileSync('git', ['ls-files'], {
+    const trackedFiles = execFileSyncBounded('git', ['ls-files'], {
       cwd: repoRoot,
       encoding: 'utf8',
     })

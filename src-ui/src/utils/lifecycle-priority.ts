@@ -49,14 +49,13 @@ export type HomeLifecycleLabel = (typeof HOME_LIFECYCLE_LABELS)[number];
  * above `Completed`: it has not finished, and nothing here can act on it. An
  * earlier version of this comment claimed the renumbering was what stopped a
  * dead session "pinning the top of Home" — review caught that as a claim
- * about a mechanism this file does not have. The genuine top-slot fix is
- * `delegatedTaskPriority` (`utils/sessionDisplay.ts`), which IS an ordering
- * and does feed `prioritizedDelegatedTasks`. What the ranking here actually
- * buys is that a merged chat+orchestration row cannot show "Needs attention"
- * for a request nothing can answer.
+ * about a mechanism this file does not have. (The top-slot fix was a
+ * separate rank for the delegated-work card, removed with that card.) What
+ * the ranking here buys is that a merged chat+orchestration row cannot show
+ * "Needs attention" for a request nothing can answer.
  *
- * Nothing is removed from any list under either mechanism, so the row and
- * its basis stay readable (annotate, never filter).
+ * Nothing is removed from any list by it, so the row and its basis stay
+ * readable (annotate, never filter).
  */
 export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   'Needs attention': 7,
@@ -74,23 +73,6 @@ export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   Unanswerable: 1,
   Completed: 0,
 };
-
-/**
- * The user's wording for a lifecycle label, for surfaces that render the
- * label as text.
- *
- * Every other member of this union is already the user's word — "Running",
- * "Needs attention", "Ready". `'Unanswerable'` is not: it is this system's
- * term for "no path exists in the serving process", and archive#1783 leaked
- * it verbatim to two surfaces (the chat-dock inbox chip, the mobile task
- * switcher's `Current · …` line) purely because the label set is shared.
- * The inbox row's status ladder (`work-status.ts`) says "Can't answer here"
- * for it; this is the same translation for the surfaces that print the
- * label itself, so one term cannot appear two ways.
- */
-export function lifecycleLabelText(label: HomeLifecycleLabel): string {
-  return label === 'Unanswerable' ? "Can't answer here" : label;
-}
 
 export function moreImportantLifecycle(
   left: HomeLifecycleLabel,

@@ -403,3 +403,73 @@ describe('projectDelegateChildWork', () => {
     );
   });
 });
+
+describe('#3163 a child’s own model and transcript identity', () => {
+  const SESSION = '00000000-0000-4000-8000-000000000003';
+  const fold = (...deltas: ChildWorkDelta[]) =>
+    childWorkForReporter(
+      deltas.reduce(applyChildWorkDelta, createEmptyChildWorkRegistry()),
+      REPORTER,
+    );
+
+  test('a reported model survives a later listing that omits it, and the settle keeps it', () => {
+    const model = {
+      id: 'claude-sonnet-4-5',
+      source: 'subagent-reply',
+    } as const;
+    const [settled] = fold(
+      snapshot(item('a')),
+      { kind: 'upsert', item: item('a', { model }) },
+      snapshot(item('a')),
+      settle('a', 'completed'),
+    );
+    expect(settled).toMatchObject({ status: 'completed', model });
+  });
+
+  test.each([
+    ['a synthetic reply', { id: '<synthetic>', source: 'subagent-reply' }],
+    ['an empty id', { id: '  ', source: 'spawn-result' }],
+    ['an over-long id', { id: 'm'.repeat(201), source: 'child-thread' }],
+    ['an unknown source', { id: 'gpt-5.5', source: 'parent-session' }],
+  ])('%s is not a model', (_label, model) => {
+    const [only] = fold(
+      snapshot(item('a', { model: model as ChildWorkItem['model'] })),
+    );
+    expect(only.model).toBeUndefined();
+  });
+
+  test.each([
+    [
+      'a path-like agent id',
+      { sessionId: SESSION, agentId: '../../etc/passwd' },
+    ],
+    ['a non-UUID session', { sessionId: '../x', agentId: 'a1' }],
+    [
+      'an unknown kind',
+      { kind: 'transcript-file', sessionId: SESSION, agentId: 'a1' },
+    ],
+  ])('%s is not a transcript ref', (_label, ref) => {
+    const [only] = fold(
+      snapshot(
+        item('a', {
+          transcript: {
+            kind: 'claude-subagent',
+            ...ref,
+          } as ChildWorkItem['transcript'],
+        }),
+      ),
+    );
+    expect(only.transcript).toBeUndefined();
+  });
+
+  test('a well-formed ref is kept', () => {
+    const transcript = {
+      kind: 'claude-subagent',
+      sessionId: SESSION,
+      agentId: 'a3849bb64b339db79',
+    } as const;
+    expect(fold(snapshot(item('a', { transcript })))[0].transcript).toEqual(
+      transcript,
+    );
+  });
+});

@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 
 function git(args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     encoding: 'utf8',
     windowsHide: true,
   }).trim();

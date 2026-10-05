@@ -10,10 +10,10 @@
 //
 // The scan is line-based and deliberately simple: it sees textual casts, not
 // every way to launder a type. It is a ratchet, not a type system.
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { mergeBaseWith } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -125,11 +125,15 @@ function readJsonFile(path) {
 function readUpstreamBaseline() {
   const ref = mergeBaseWith(UPSTREAM_BASELINE_REF) ?? UPSTREAM_BASELINE_REF;
   try {
-    const stdout = execFileSync('git', ['show', `${ref}:${BASELINE_PATH}`], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    const stdout = execFileSyncBounded(
+      'git',
+      ['show', `${ref}:${BASELINE_PATH}`],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    );
     return JSON.parse(stdout);
   } catch {
     // Baseline not on upstream: this change introduces it, so every entry is

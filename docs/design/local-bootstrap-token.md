@@ -69,7 +69,10 @@ loopback mint route refreshes its one current server-held capability.
 1. Resolve the running instance (registry + `GET /api/system/instance` probe).
 2. Read `<home>/runtime/local-grant.secret` and `POST …/mint-ui-bootstrap`
    directly on loopback → receive the one-time token.
-3. Open `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+3. Open `http://<host>:<ui-port>#station-ui-bootstrap=<token>`. `<host>` is the
+   host the instance recorded in the registry at start (loopback for
+   `--watch`), or `localhost` for a wildcard bind or a missing host. The
+   token redeems on that origin only.
 
 ### Browser (`src-ui/src/lib/local-ui-bootstrap.ts`)
 

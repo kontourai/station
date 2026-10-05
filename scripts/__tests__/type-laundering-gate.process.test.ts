@@ -38,6 +38,9 @@ const ENTRY_HELPER = fileURLToPath(
 const GIT_REF_HELPER = fileURLToPath(
   new URL('../lib/git-ref.mjs', import.meta.url),
 );
+const CAPTURE_HELPER = fileURLToPath(
+  new URL('../lib/bounded-capture.mjs', import.meta.url),
+);
 const CASE_TIMEOUT = 30_000;
 
 const makeTempDir = trackTempDirs();
@@ -61,6 +64,10 @@ function spacedCheckout(source: string): string {
     join(checkout, 'scripts', 'lib', 'module-entry.mjs'),
   );
   copyFileSync(GIT_REF_HELPER, join(checkout, 'scripts', 'lib', 'git-ref.mjs'));
+  copyFileSync(
+    CAPTURE_HELPER,
+    join(checkout, 'scripts', 'lib', 'bounded-capture.mjs'),
+  );
   // The executed bytes must be production's, or reverting the real gate's
   // entry check would not reach this case.
   expect(

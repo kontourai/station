@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added AttentionSessionEnvironment (optional environmentKind 'peer', environmentName) on needs_input and review_pending; checked additive optionality against packages/contracts/src/attention.ts and its UI/server consumers.","inputs":["docs/reference/contracts.md","packages/contracts/src/attention.ts"]}
+  ]
+}
