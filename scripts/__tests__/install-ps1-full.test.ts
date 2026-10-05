@@ -545,6 +545,25 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     expect(existsSync(join(f.installRoot, 'current'))).toBe(false);
   });
 
+  it('refuses a current that names the versions directory itself', () => {
+    const f = fixture();
+    expect(
+      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+        STATION_INSTALL_NO_START: '1',
+      }).status,
+    ).toBe(0);
+    unlinkSync(join(f.installRoot, 'current'));
+    symlinkSync(
+      join(f.installRoot, 'versions'),
+      join(f.installRoot, 'current'),
+    );
+    takeCliRuns(f);
+    const result = core(f, {}, ['uninstall']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('points outside');
+    expect(takeCliRuns(f)).toEqual([]);
+  });
+
   it('refuses to run anything from a current that points outside versions', () => {
     const f = fixture();
     expect(
@@ -972,6 +991,138 @@ describe('install.ps1 installer core: uninstall (#2675 W2)', () => {
     expect(result.stderr).toContain('Station service(s) svc run this install');
     expect(takeCliRuns(f)).toEqual([]);
     expect(existsSync(f.launcher)).toBe(true);
+  });
+
+  it('removes a root not restricted to the user without running anything from it', async () => {
+    const f = fixture();
+    const [server, ui] = await freePorts();
+    expect(
+      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+        STATION_INSTALL_SERVER_PORT: String(server),
+        STATION_INSTALL_UI_PORT: String(ui),
+        STATION_INSTALL_NO_START: '1',
+      }).status,
+    ).toBe(0);
+    // Install refuses it, and names uninstall as the way out.
+    const refused = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1',
+    });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('is not restricted to your account');
+    expect(refused.stderr).toContain(
+      'Remove it with a freshly downloaded install.ps1',
+    );
+    const result = core(f, { STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1' }, [
+      'uninstall',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('removed without running anything from it');
+    expect(takeCliRuns(f)).toEqual([]);
+    expect(existsSync(f.installRoot)).toBe(false);
+    expect(existsSync(f.launcher)).toBe(false);
+    expect(existsSync(f.home)).toBe(true);
+    // A fresh install works afterwards.
+    expect(
+      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+        STATION_INSTALL_SERVER_PORT: String(server),
+        STATION_INSTALL_UI_PORT: String(ui),
+        STATION_INSTALL_NO_START: '1',
+      }).status,
+    ).toBe(0);
+  });
+
+  it('removes a stage-only (W1) root not restricted to the user', () => {
+    const f = fixture();
+    const staged = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+      STATION_INSTALL_STAGE_ONLY: '1',
+    });
+    expect(staged.status, staged.stderr).toBe(0);
+    const result = core(f, { STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1' }, [
+      'uninstall',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(f.installRoot)).toBe(false);
+  });
+
+  it('refuses to remove an untrusted root while a Station may run from it', async () => {
+    const f = fixture();
+    const holder = createServer();
+    servers.push(holder);
+    await new Promise<void>((ready) =>
+      holder.listen(0, '127.0.0.1', () => ready()),
+    );
+    const port = (holder.address() as { port: number }).port;
+    const [, ui] = await freePorts();
+    expect(
+      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+        STATION_INSTALL_SERVER_PORT: String(port),
+        STATION_INSTALL_UI_PORT: String(ui),
+        STATION_INSTALL_NO_START: '1',
+      }).status,
+    ).toBe(0);
+    const result = core(f, { STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1' }, [
+      'uninstall',
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `a Station may be running from ${real(f.installRoot)} (port ${port} is in use)`,
+    );
+    expect(takeCliRuns(f)).toEqual([]);
+    expect(existsSync(join(f.installRoot, 'current'))).toBe(true);
+  });
+
+  it('refuses the test-only untrusted-root override without the test flag', () => {
+    const f = installed();
+    const result = core(
+      f,
+      {
+        STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1',
+        STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '0',
+      },
+      ['uninstall'],
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'STATION_INSTALL_TEST_UNTRUSTED_ROOT is a test-only override',
+    );
+    expect(existsSync(f.installRoot)).toBe(true);
+  });
+
+  it('removes links inside the tree, never what they point at', () => {
+    const f = installed();
+    const outside = join(f.dir, 'outside-keep');
+    mkdirSync(join(outside, 'deep'), { recursive: true });
+    writeFileSync(join(outside, 'deep', 'precious'), 'keep me');
+    symlinkSync(outside, join(f.installRoot, 'versions', 'planted-dir'));
+    symlinkSync(
+      join(outside, 'deep', 'precious'),
+      join(f.installRoot, 'planted-file'),
+    );
+    const result = core(f, {}, ['uninstall']);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(f.installRoot)).toBe(false);
+    expect(readFileSync(join(outside, 'deep', 'precious'), 'utf8')).toBe(
+      'keep me',
+    );
+  });
+
+  it('removes the ownership marker last, so a removal that fails partway can be rerun', () => {
+    const f = installed();
+    const failed = core(f, { STATION_INSTALL_TEST_FAIL_REMOVE: 'versions' }, [
+      'uninstall',
+    ]);
+    expect(failed.status).toBe(1);
+    expect(failed.stderr).toContain('rerun the uninstall once nothing uses it');
+    expect(
+      readFileSync(
+        join(f.installRoot, '.station-portable-install-root'),
+        'utf8',
+      ),
+    ).toBe('station-portable-install-root-v1\n');
+    expect(existsSync(join(f.installRoot, 'versions'))).toBe(true);
+    const rerun = core(f, {}, ['uninstall']);
+    expect(rerun.status, rerun.stderr).toBe(0);
+    expect(existsSync(f.installRoot)).toBe(false);
   });
 
   it('refuses an install root it does not own', () => {

@@ -31,7 +31,6 @@ import {
   realpathSync,
   renameSync,
   rmdirSync,
-  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -194,36 +193,73 @@ export function prepareOwnedRoot(
 }
 
 /**
- * On Windows the install root is restricted to the current user (#2675 W2),
- * as `windows-path-trust.ts` restricts Station's own trust paths: a root this
- * run created gets a protected DACL with one FullControl entry for the
- * current user, inherited by everything installed in it; a root that already
- * existed must still have exactly that DACL. A root another account could
- * write may hold a version that account planted, which the installer would
- * otherwise reuse (its sentinel is only the published sha256), so it is
- * refused rather than repaired. POSIX installs keep install.sh's owner and
- * mode checks.
+ * Why an existing install root is not trusted, or null when it is. On
+ * Windows the install root is restricted to the current user (#2675 W2), as
+ * `windows-path-trust.ts` restricts Station's own trust paths; anything else
+ * may hold a version another account planted (a version's sentinel is only
+ * its published sha256). POSIX installs keep install.sh's owner and mode
+ * checks, so this is null there. STATION_INSTALL_TEST_UNTRUSTED_ROOT=1
+ * (test-only, behind STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1) reports
+ * any root as untrusted, so the refusal and uninstall paths run on every OS.
  */
-export function secureInstallRoot(root: string, created: boolean): void {
-  if (process.platform !== 'win32') return;
-  const target = [{ kind: 'directory' as const, path: root }];
-  try {
-    if (created) hardenWindowsPathsTrusted(runWindowsTrustCommand, target);
-    else assertWindowsPathsTrusted(runWindowsTrustCommand, target);
-  } catch (error) {
-    fail(
-      created
-        ? `could not restrict the install root to your account: ${(error as Error).message}`
-        : `the install root ${root} is not restricted to your account, so nothing in it is trusted (${(error as Error).message}); uninstall and reinstall, or restore its permissions to you alone`,
-    );
+export function installRootTrustProblem(
+  root: string,
+  env: InstallerEnv,
+): string | null {
+  if (env.STATION_INSTALL_TEST_UNTRUSTED_ROOT === '1') {
+    if (env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS !== '1')
+      fail(
+        'STATION_INSTALL_TEST_UNTRUSTED_ROOT is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+      );
+    return 'test-only override';
   }
+  if (process.platform !== 'win32') return null;
+  try {
+    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: root },
+    ]);
+    return null;
+  } catch (error) {
+    return plainPowerShellMessage((error as Error).message);
+  }
+}
+
+/**
+ * A root this run created gets a protected DACL with one FullControl entry
+ * for the current user, inherited by everything installed in it (Windows
+ * only); a root that already existed must still have it, or it is refused
+ * with the way out: uninstall, which runs nothing from it.
+ */
+function secureInstallRoot(
+  root: string,
+  created: boolean,
+  env: InstallerEnv,
+): void {
+  if (created) {
+    if (process.platform !== 'win32') return;
+    try {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'directory', path: root },
+      ]);
+    } catch (error) {
+      fail(
+        `could not restrict the install root to your account: ${plainPowerShellMessage((error as Error).message)}`,
+      );
+    }
+    return;
+  }
+  const problem = installRootTrustProblem(root, env);
+  if (problem !== null)
+    fail(
+      `the install root ${root} is not restricted to your account, so nothing in it is trusted (${problem}). Remove it with a freshly downloaded install.ps1 run as \`powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 uninstall\` (it runs nothing from that root and keeps your data), then install again`,
+    );
 }
 
 /**
  * The install root, owned by this installer, restricted to the current user
  * on Windows.
  */
-export function prepareOwnedInstallRoot(root: string): void {
+export function prepareOwnedInstallRoot(root: string, env: InstallerEnv): void {
   const state = prepareOwnedRoot(
     root,
     INSTALL_ROOT_MARKER,
@@ -234,7 +270,7 @@ export function prepareOwnedInstallRoot(root: string): void {
     fail(
       `STATION_INSTALL_ROOT is not an empty or installer-owned directory: ${root}`,
     );
-  secureInstallRoot(root, state === 'created');
+  secureInstallRoot(root, state === 'created', env);
 }
 
 /**
@@ -297,7 +333,39 @@ function sha256File(path: string): string {
   return hash.digest('hex');
 }
 
-/** Makes a tree writable again (an installed version is sealed) and removes it. */
+/**
+ * Runs a removal, retrying briefly where Windows refuses to delete a file
+ * a process that is just exiting still holds (a stopped Station's node.exe).
+ */
+function removeWithRetries(remove: () => void): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      remove();
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (code === 'ENOENT') return;
+      if (
+        attempt >= 10 ||
+        !['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY'].includes(code)
+      )
+        throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+  }
+}
+
+/**
+ * Removes a tree an installed version is sealed in, without ever following
+ * a link: each entry is lstat'ed, a link (the `current` junction, or one
+ * another account placed in a root it could write) is unlinked itself,
+ * files are unlinked and directories removed only once empty. Nothing is
+ * removed recursively by path, so a directory swapped for a link during the
+ * walk is unlinked, not descended into by a later recursive removal. (Node
+ * offers no handle-relative removal, so a swap between an lstat and the
+ * readdir that follows it remains possible; that window is the walk's
+ * only one.)
+ */
 export function removeTree(path: string): void {
   let info: ReturnType<typeof lstatSync>;
   try {
@@ -306,26 +374,66 @@ export function removeTree(path: string): void {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
-  // A link (the `current` junction on Windows) is removed itself, never
-  // followed: its target is a version this tree does not own.
   if (info.isSymbolicLink()) {
-    unlinkSync(path);
+    removeWithRetries(() => unlinkSync(path));
     return;
   }
-  if (info.isDirectory()) {
-    chmodSync(path, info.mode | 0o700);
-    for (const name of readdirSync(path)) removeTree(join(path, name));
-  } else {
+  if (!info.isDirectory()) {
+    // Writable again (an installed version is sealed read-only); chmod
+    // follows links, so only after lstat showed a plain file.
     chmodSync(path, info.mode | 0o200);
+    removeWithRetries(() => unlinkSync(path));
+    return;
   }
-  // Windows refuses to delete a file a process that is just exiting still
-  // holds (a stopped Station's node.exe); retry briefly before giving up.
-  rmSync(path, {
-    recursive: true,
-    force: true,
-    maxRetries: 10,
-    retryDelay: 200,
-  });
+  chmodSync(path, info.mode | 0o700);
+  for (const name of readdirSync(path)) removeTree(join(path, name));
+  removeWithRetries(() => rmdirSync(path));
+}
+
+/**
+ * Removes an install root with its ownership marker last, so a removal
+ * that fails partway (a file a running process still holds) leaves a root
+ * this installer still recognizes, and the uninstall can simply be rerun.
+ */
+export function removeInstallRoot(root: string, env: InstallerEnv): void {
+  const failOn = env.STATION_INSTALL_TEST_FAIL_REMOVE ?? '';
+  if (failOn && env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS !== '1')
+    fail(
+      'STATION_INSTALL_TEST_FAIL_REMOVE is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+    );
+  try {
+    for (const name of readdirSync(root).sort()) {
+      if (name === INSTALL_ROOT_MARKER) continue;
+      if (name === failOn)
+        throw new Error(`test-only failure removing ${join(root, name)}`);
+      removeTree(join(root, name));
+    }
+    removeTree(join(root, INSTALL_ROOT_MARKER));
+    removeWithRetries(() => rmdirSync(root));
+  } catch (error) {
+    fail(
+      `could not remove all of ${root} (${(error as Error).message}); it is still marked as this installer's, so rerun the uninstall once nothing uses it`,
+    );
+  }
+}
+
+/**
+ * A PowerShell error as one readable line: Windows PowerShell reports a
+ * redirected error stream as CLIXML (`#< CLIXML …`), progress records and
+ * all; this keeps the text before it and the first error record.
+ */
+export function plainPowerShellMessage(message: string): string {
+  const start = message.indexOf('#< CLIXML');
+  if (start < 0) return message;
+  const first = /<S S="Error">([^<]*)<\/S>/.exec(message.slice(start))?.[1];
+  const error = (first ?? '')
+    .replace(/_x000D__x000A_/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .trim();
+  return `${message.slice(0, start)}${error}`.trim();
 }
 
 /**
@@ -1033,7 +1141,7 @@ export async function stageArchive(context: Context): Promise<number> {
   const request = readStageRequest(context.env, 'stage');
   const paths = resolvePaths(context.env, request.requested, request.ring);
   const release = await prepareRelease(context, request, paths, 'stage', () => {
-    prepareOwnedInstallRoot(paths.installRoot);
+    prepareOwnedInstallRoot(paths.installRoot, context.env);
     prepareSafeDirectory(paths.versions);
   });
   context.io.out(`STATION_STAGED_VERSION=${release.payload.version}`);

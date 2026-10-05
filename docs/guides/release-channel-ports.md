@@ -232,6 +232,12 @@ install root before reading or running anything in it, and run a
 protected ACL that grants only the current user, and refuses an existing
 one whose ACL grants anyone else, since a version in it could have been
 planted. `install.ps1` runs the installed `node.exe` only from such a root.
+Such a root (for example one a stage-only run created before the installer
+restricted roots) is removed by uninstalling it with a freshly downloaded
+`install.ps1`: uninstall runs nothing from an unrestricted root, not even its
+`station stop`, so it refuses while a Station still answers on the ports the
+install recorded (stop it first), and otherwise removes the program files
+and keeps the data.
 The launcher directory must not be writable by accounts other than the
 user, SYSTEM and Administrators.
 

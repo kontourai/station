@@ -38,7 +38,8 @@ export async function runInstaller(
   const context = { env, io, tmp };
   try {
     const action = argv[0] ?? 'install';
-    if (action === 'uninstall') return uninstallArchive(context, argv.slice(1));
+    if (action === 'uninstall')
+      return await uninstallArchive(context, argv.slice(1));
     if (action !== 'install')
       fail('usage: install.ps1 [install|uninstall [-PurgeData]]');
     if (argv.length > 1) fail(`unexpected argument: ${argv[1]}`);
