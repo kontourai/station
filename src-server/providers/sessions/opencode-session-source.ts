@@ -869,12 +869,12 @@ function closeQuietly(db: DatabaseSync): void {
 const WAL_INDEX_HEADER_BYTES = 96;
 
 /**
- * A change signature for the store: size and modification time of the
- * database and its WAL, plus the WAL-index header in `-shm`. That header
+ * A change signature for the store: the WAL-index header in `-shm`, which
  * carries SQLite's per-transaction change counter (`iChange`), `mxFrame` and
- * the WAL salts, so a commit changes the signature even when it lands within
- * one mtime tick and leaves every file size the same. The header is read
- * without SQLite's lock: a torn read can only cause a spurious refresh.
+ * the WAL salts, so every commit changes it even within one mtime tick and
+ * at unchanged file sizes; plus the database file's size and mtime, which
+ * cover a store opened without a WAL index. The header is read without
+ * SQLite's lock: a torn read can only cause a spurious refresh.
  */
 function storeSignature(path: string): string {
   const describe = (file: string): string => {
@@ -885,7 +885,7 @@ function storeSignature(path: string): string {
       return '-';
     }
   };
-  return `${describe(path)}|${describe(`${path}-wal`)}|${walIndexHeader(`${path}-shm`)}`;
+  return `${describe(path)}|${walIndexHeader(`${path}-shm`)}`;
 }
 
 function walIndexHeader(shm: string): string {
