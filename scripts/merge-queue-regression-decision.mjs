@@ -30,6 +30,12 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 /** The required status context; ruleset 21782867 names it exactly. */
 export const MERGE_QUEUE_REGRESSION_CHECK = 'Merge-queue regression';
 export const FAST_PATH_SUMMARY = 'no deferred lane: fast path';
+/**
+ * The deferred lanes whose dropped tests the full regression stands in for.
+ * Narrower lanes (an E2E or packaging leg) are not re-run here: the owner
+ * chose this scope to keep the queue under the shared runner cap (#3149).
+ */
+export const FULL_REGRESSION_LANES = Object.freeze(['ci-fast', 'test-full']);
 
 const USAGE =
   'usage: node scripts/merge-queue-regression-decision.mjs --plan=<file> --head=<sha> --base=<base>';
@@ -72,9 +78,12 @@ export function decideMergeQueueRegression(planText, { head, base }) {
     return full(
       'fast-checks plan does not record mergeQueueRegressionPaths: fail closed',
     );
-  if (plan.deferredLanes.length)
+  const covered = plan.deferredLanes.filter((lane) =>
+    FULL_REGRESSION_LANES.includes(lane.id),
+  );
+  if (covered.length)
     return full(
-      `plan defers to ${plan.deferredLanes.map((lane) => lane.id).join(', ')}: full regression`,
+      `plan defers to ${covered.map((lane) => lane.id).join(', ')}: full regression`,
     );
   if (plan.mergeQueueRegressionPaths.length)
     return full(

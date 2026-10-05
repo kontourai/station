@@ -1249,15 +1249,18 @@ plan against the queue base, using the same planner and inputs as `fast-checks`.
 [`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
 then chooses a path:
 
-- **Full regression.** The plan defers to any lane, or it names a
-  `mergeQueueRegression` path. A deferred plan drops related discovery and
+- **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
+  or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
+  packaging leg, take the fast path: the owner limited the scope to keep queue
+  candidates under the shared runner cap. A deferred plan drops related discovery and
   runs no explicit test above 32, so `fast-checks` cannot cover it. A
   `mergeQueueRegression` path, such as the SDK transport or the orchestration
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
   on its own SHA, with exact-source reuse allowed. The required check passes
   only when that run passes.
-- **Fast path.** Any other candidate skips the full regression. The check
+- **Fast path.** Any other candidate, including one deferred only to a narrower
+  lane, skips the full regression. The check
   reports `no deferred lane: fast path`.
 
 The decision fails closed. A missing, unreadable or invalid plan runs the full

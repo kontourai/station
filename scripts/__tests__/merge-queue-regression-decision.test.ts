@@ -206,6 +206,26 @@ describe('fail-closed decisions (child process)', () => {
     expect(result.stdout).toContain('mergeQueueRegressionPaths: fail closed');
   });
 
+  test('only a deferred ci-fast or test-full lane runs the full regression (owner-chosen scope)', async () => {
+    const { file, plan } = await ordinaryPlan();
+    const withLanes = (ids: string[]) => {
+      writeFileSync(
+        file,
+        JSON.stringify({
+          ...plan,
+          deferredLanes: ids.map((id) => ({ id, reason: 'fixture' })),
+        }),
+      );
+      return decide(file).output;
+    };
+    expect(withLanes(['node-pty-foreign-prebuilds'])).toBe(FAST_PATH);
+    expect(withLanes(['ci-fast'])).toBe(RUNS_FULL);
+    expect(withLanes(['test-full'])).toBe(RUNS_FULL);
+    expect(withLanes(['node-pty-foreign-prebuilds', 'test-full'])).toBe(
+      RUNS_FULL,
+    );
+  });
+
   test('a usage fault exits 2 and writes no decision, so the workflow runs the full regression', () => {
     const result = decide('plan.json', { head: 'not-a-sha' });
     expect(result.status).toBe(2);
