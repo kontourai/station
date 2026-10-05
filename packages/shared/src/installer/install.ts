@@ -29,7 +29,6 @@ import {
   readFileSync,
   readSync,
   realpathSync,
-  renameSync,
   rmdirSync,
   statSync,
   unlinkSync,
