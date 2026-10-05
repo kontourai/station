@@ -65,6 +65,7 @@ export function MobileTaskSwitcher({
   workFacts,
   gitLocationByThreadId,
   projectAccentBySlug,
+  projectIconBySlug,
   pending = false,
   loadError = false,
   onRetryLoad,
@@ -110,6 +111,7 @@ export function MobileTaskSwitcher({
   workFacts?: InboxGroupListProps['workFacts'];
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
   projectAccentBySlug?: InboxGroupListProps['projectAccentBySlug'];
+  projectIconBySlug?: InboxGroupListProps['projectIconBySlug'];
   /** True until every read contributing rows has settled. */
   pending?: boolean;
   loadError?: boolean;
@@ -303,6 +305,7 @@ export function MobileTaskSwitcher({
             workFacts={workFacts}
             gitLocationByThreadId={gitLocationByThreadId}
             projectAccentBySlug={projectAccentBySlug}
+            projectIconBySlug={projectIconBySlug}
             showGroupCounts
             chrome="touch"
             actionsInDetails

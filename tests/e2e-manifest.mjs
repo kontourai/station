@@ -437,6 +437,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // instance with a sibling spec.
     'tests/agents-editor-gates.spec.ts',
     'tests/skills-command-routes.spec.ts',
+    // Creates a live project, suspends every LLM connection while it runs one
+    // real turn in that project, and saves the project's icon.
+    'tests/project-icons.spec.ts',
     // D9 resets the whole notification store and acknowledges every pending
     // attention item to get a deterministic bell count; D8 creates, deletes
     // and re-creates two projects by fixed slug. Both are instance-wide
@@ -818,6 +821,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted project lifecycle lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-icons.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "An icon set after creation, end to end: the settings picker uploads a real PNG, the live server validates and persists it, and the sidebar row, a Home row for a real session in that project, and the dock project switcher all draw the stored image. Live because the Home row and the persistence are the server's.",
     exceptions: [],
   },
   {

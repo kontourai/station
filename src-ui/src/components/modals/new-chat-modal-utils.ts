@@ -25,6 +25,7 @@ import {
 } from '../agent-provenance';
 import { AGENT_NOT_SET_UP_LABEL, agentRunnability } from '../agent-runnability';
 import { selectProjectScopedChatAgents } from '../agent-selection-policy';
+import { displayableProjectIcon } from '../icons/ProjectIcon';
 import { resolveNewChatAgentEnable } from './new-chat-agent-enable';
 
 export const GLOBAL_CONTEXT = '__global__';
@@ -354,10 +355,13 @@ export function buildContextOptions(
     if (!project) {
       continue;
     }
+    const icon = displayableProjectIcon(project.icon);
     options.push({
       value: project.slug,
       label: project.name,
-      ...(project.icon ? { icon: project.icon } : { glyph: 'folder' as const }),
+      // Only an icon the contracts rule allows: `LayoutIcon` renders a URL
+      // or path as an <img>, and a legacy stored link must not load here.
+      ...(icon ? { icon } : { glyph: 'folder' as const }),
       workingDirectory: project.workingDirectory,
     });
   }
