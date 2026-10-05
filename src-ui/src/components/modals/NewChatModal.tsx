@@ -2052,12 +2052,18 @@ export function NewChatModal({
                 }
                 currentModel={pickerChoiceFor(modelPickerAgent)?.modelId}
                 defaultModel={modelPickerDefault?.id ?? undefined}
+                // Names what reset restores: a fork's preferred Agent returns
+                // to the source turn's Model, not the Agent default.
                 defaultSourceLabel={
-                  (modelPickerDefault?.source &&
-                    modelSourceLabel(
-                      modelPickerDefault.source,
-                    ).toLowerCase()) ||
-                  'default model'
+                  mode?.kind === 'fork' &&
+                  modelPickerAgent.slug === mode.preferredAgentSlug &&
+                  mode.sourceModel
+                    ? 'source turn'
+                    : (modelPickerDefault?.source &&
+                        modelSourceLabel(
+                          modelPickerDefault.source,
+                        ).toLowerCase()) ||
+                      'default model'
                 }
                 runtimeOptions={
                   pickerChoiceFor(modelPickerAgent)?.providerOptions

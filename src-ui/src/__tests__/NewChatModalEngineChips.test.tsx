@@ -304,6 +304,44 @@ describe('NewChatModal engine chips', () => {
     expect(onSelect.mock.calls[0]?.[8]).not.toHaveProperty('effort');
   });
 
+  test("a fork's reset names the source turn and closes the picker", async () => {
+    render(
+      <NewChatModal
+        agents={[NATIVE_OPENCODE]}
+        projects={[]}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        mode={{
+          kind: 'fork',
+          preferredAgentSlug: NATIVE_OPENCODE.slug,
+          sourceModel: 'historical-model',
+          disclosure: 'Fork independently',
+        }}
+      />,
+    );
+    const dialog = () => screen.queryByRole('dialog', { name: 'Choose model' });
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Model: historical-model/ }),
+    );
+    await screen.findByRole('dialog', { name: 'Choose model' });
+    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
+    fireEvent.click(
+      screen.getByRole('option', { name: /Shared model · Provider one/ }),
+    );
+    await waitFor(() => expect(dialog()).toBeNull());
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Model: Shared model/ }),
+    );
+    await screen.findByRole('dialog', { name: 'Choose model' });
+    // Reset restores the source turn's Model, so it says so.
+    fireEvent.click(screen.getByRole('button', { name: 'Use source turn' }));
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(
+      screen.getByRole('button', { name: /^Model: historical-model/ }),
+    ).toBeTruthy();
+  });
+
   test('disambiguates the two identically-named OpenCode entries with engine chips', () => {
     render(
       <NewChatModal

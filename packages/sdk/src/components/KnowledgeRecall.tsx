@@ -171,7 +171,10 @@ function bodyExcerpt(body: string): string {
  * lower-to-upper case change or after `.`, `_`, `/` or `-`.
  */
 function identifierBreakSegments(title: string): string[] {
-  return title.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[._/-])(?=[^._/-])/);
+  // Lookahead only: regex lookbehind needs Safari 16.4, above the iOS floor.
+  return title
+    .replace(/([a-z0-9])(?=[A-Z])|([._/-])(?=[^._/-])/g, '$1$2\u0000')
+    .split('\u0000');
 }
 
 function BreakableTitle({ title }: { title: string }) {

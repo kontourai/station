@@ -1076,6 +1076,8 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
   await rowModel.click();
   const picker = page.getByRole('dialog', { name: 'Choose model' });
   await picker.getByRole('option', { name: /GPT-5.5/ }).click();
+  // Choosing the Model closes the picker; nothing is left to dismiss.
+  await expect(picker).toBeHidden();
   const chip = startComposer(page).getByRole('button', { name: /^Agent: / });
   await expect(chip).toHaveAccessibleName('Agent: OpenCode · GPT-5.5');
 
@@ -1094,7 +1096,6 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
       ),
     });
   });
-  await page.keyboard.press('Escape');
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill('Plan the change');
