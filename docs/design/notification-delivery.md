@@ -317,7 +317,9 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   is its known-answer vector. The title and body are sealed in display form
   (#3382): bidi controls and invisible characters removed, controls turned
   into spaces, the title on one line with a multi-line title's lines joined
-  by " ⏎ ", the body keeping its line breaks. When the phone's surface asked
+  by " ⏎ ", the body keeping its line breaks. Every cut to the size budget
+  re-bounds the original text, so it ends in "…" and keeps a title's
+  "(+N lines)" count. When the phone's surface asked
   to hide content, the title and body are replaced with generic copy before
   sealing. Station
   notifications carry no FCM collapse key: FCM keeps at most four collapse
