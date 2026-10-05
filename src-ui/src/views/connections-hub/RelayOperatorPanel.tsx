@@ -170,7 +170,12 @@ function OperatorPanel({ scope }: { scope: Scope }) {
     },
   });
   const busy = deviceApproval.isPending || revoke.isPending || deny.isPending;
-  if (!scope.isCurrent() || capabilities.data?.canManage !== true) return null;
+  if (
+    !scope.isCurrent() ||
+    capabilities.data?.canManage !== true ||
+    !capabilities.data.configured
+  )
+    return null;
   if (query.isPending)
     return <SkeletonList count={1} label="Loading devices" />;
   if (query.isError) {
