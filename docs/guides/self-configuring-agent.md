@@ -35,6 +35,31 @@ example does not grant one implicitly.
   delegated worker
 - `search_sessions` and `rename_session` for finding and naming conversations
   (see [Searching and renaming conversations](#searching-and-renaming-conversations))
+- `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
+  declare a pull request it opened, by `provider`, `host`, `repository`
+  (`owner` and `name`) and `ref`: the identity shape the conversation link
+  routes take. It records the same declared output Station's own engine records
+  with `declare_output`, in the caller's own Session and the turn it is running.
+  A declaration is held, with no time limit, for as long as that turn runs, and
+  the record lands when the turn completes. It is dropped if the turn aborts,
+  is interrupted or ends in an error (a Codex retry of a transient error keeps
+  the turn, and the declaration, alive), and it is dropped if Station restarts before the turn completes:
+  declarations wait in memory until their turn's terminal event is stored, as
+  native ones do, so declare again in a later turn.
+  The tool answers `declared`, `already-declared` or `no-active-turn`. It reads
+  the pull request from the Session's own repository, so a pull request in
+  another repository (`owner/repo-2` is not `owner/repo`) is refused. It does not
+  link or keep anything: a person keeps a declared pull request onto a Task.
+  A Task a person opted in (`closeOnMerge`) moves to `done` only when every kept
+  pull request is `MERGED` at its provider, matched by declaration and pull
+  request (a stack from one turn is told apart), and only from a status
+  `canTransitionTaskStatus` lets reach `done`: a Task in todo, ready, triage or
+  blocked never closes by itself. Un-keeping a pull request that has not merged
+  lets the remaining merged ones close the Task. Nothing polls: the check runs
+  when a viewer holding the operate tier (the tier that may change a Task's
+  status) refreshes the Conversation's pull-request links, so nothing reconciles
+  without such a viewer. No agent tool sets the opt-in, and an older Station
+  build refuses a Task store that carries it, so clear it before a rollback.
 - `send_to_session`, `interrupt_session`, and `wait_session` to message,
   interrupt, and wait on another Session in the caller's Project
   ([Session control](#session-control))
@@ -135,6 +160,10 @@ not inherit the record, and neither does a child Session that continues the
 conversation in a different folder than the previous Session recorded: it
 starts with no record.
 
+`declare_pull_request` answers the same scope rule for the calling Session
+itself: a caller that is not bound does not declare in a Session that runs
+unconfined (`host`) or whose Project Station cannot confirm, so a Codex Session
+reached by its URL token cannot declare from a full-access Session.
 Interrupting a delegated task follows the same scope as a follow-up to it.
 The same applies to the Session commands that act on another Session: steer
 and steer-input inspection, adopt, interrupt, stop and draft discard.

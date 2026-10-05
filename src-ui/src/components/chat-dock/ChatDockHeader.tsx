@@ -10,6 +10,7 @@ import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
@@ -40,7 +41,7 @@ interface Session {
 /**
  * Session/identity content only Chat has. `undefined` for every non-Chat
  * occupant (Home, Activity) — those simply don't render this cluster
- * (gear, "Start a chat", activity dropdown, unread badge),
+ * (gear, the collapsed New chat action, activity dropdown, unread badge),
  * rather than a second component carrying a curated subset of it.
  */
 export interface ChatDockHeaderChatControls {
@@ -131,8 +132,8 @@ interface ChatDockHeaderProps {
   /** The active session's compact context meter, rendered beside identity. */
   contextMeter?: React.ReactNode;
   /**
-   * Whether the region is showing: a collapsed bar offers "Start a chat" in
-   * place of the open pane's own CTA (#800).
+   * Whether the region is showing: a collapsed bar offers the icon-only New
+   * chat action in place of the open pane's own CTA (#800).
    */
   regionVisible: boolean;
   /**
@@ -392,25 +393,26 @@ export function ChatDockHeader({
           </div>
         </div>
       )}
-      {/* #800: the COLLAPSED bar's one affordance, a real action. An open
-          pane has "New" in this bar and the inbox enumerating its chats, so
-          it carries neither an inert "Start a chat" nor a session count
-          (design round 2026-10, B1/V13). */}
+      {/* #800: the COLLAPSED bar's one affordance, a real action: the same
+          New chat action every other chrome uses, icon-only and named, so
+          the bar no longer offers a second worded way to start ("Start a
+          chat" beside "New chat"). It opens the dock's start composer. */}
       {chatControls &&
         !slots?.namesPane &&
         !isDockOpen &&
         !chatIdentity &&
         chatControls.sessions.length === 0 && (
-          <button
-            type="button"
-            className="chat-dock__counter chat-dock__counter-action"
+          <NewChatAction
+            iconOnly
+            className="chat-dock__collapsed-new"
+            title={withShortcutHint('New chat', 'dock.newChat', () =>
+              shortcutDisplay('dock.newChat'),
+            )}
             onClick={(event) => {
               event.stopPropagation();
               chatControls.onNewChat();
             }}
-          >
-            Start a chat
-          </button>
+          />
         )}
       {chatControls && chatControls.unreadCount > 0 && (
         <span className="chat-dock__badge">{chatControls.unreadCount}</span>

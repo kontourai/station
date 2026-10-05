@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"examples/custom-branding/README.md","note":"ProjectSidebar only switched its project accent map to the shared useProjectAccents hook; branding manifest, theme tokens and the sidebar's consumption of the app name are unchanged. README claims remain accurate.","inputs":["examples/custom-branding/README.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

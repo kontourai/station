@@ -158,6 +158,12 @@ const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 // the reader landing pixel-exact on a stale write minutes later.
 const PROGRAMMATIC_SCROLL_ECHO_MS = 500;
 const PROGRAMMATIC_SCROLL_ECHO_PX = 1;
+// A scroll this close to the top loads earlier history (#2706).
+const OLDER_AUTO_LOAD_BAND_PX = 96;
+// Scroll-driven history loads stay suppressed after an "Earlier messages"
+// request until the transcript's scrollTop and scrollHeight have held for this
+// many consecutive frames.
+const OLDER_RESTORE_STABLE_FRAMES = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
@@ -251,6 +257,12 @@ function ChatMessageListComponent({
     () => new Set(),
   );
   const loadingOlderRef = useRef(false);
+  const olderCommitPendingRef = useRef(false);
+  const olderRestoringRef = useRef(false);
+  const olderRequestHeightRef = useRef(0);
+  const olderGenerationRef = useRef(0);
+  const olderRestoreFrameRef = useRef<number | undefined>(undefined);
+  const [olderCommitEpoch, setOlderCommitEpoch] = useState(0);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
   // Every programmatic scrollTop write goes through these so the scroll
@@ -569,10 +581,35 @@ function ChatMessageListComponent({
     return () => observer.disconnect();
   }, [noteProgrammaticScroll, writeProgrammaticScroll]);
 
+  // Ends the scroll-load suppression a press's restoration holds. Genuine
+  // reader input, a session switch and the settle loop all end it the same way.
+  const endOlderRestoreSuppression = useCallback(() => {
+    if (olderRestoreFrameRef.current !== undefined)
+      cancelAnimationFrame(olderRestoreFrameRef.current);
+    olderRestoreFrameRef.current = undefined;
+    olderRestoringRef.current = false;
+  }, []);
+  // ChatDockBody keeps this component mounted across chats, so one chat's
+  // request state must not outlive the chat: a request still in flight for the
+  // previous session finds a newer generation when it settles and stands down.
+  useEffect(() => {
+    void activeSession.id;
+    olderGenerationRef.current += 1;
+    olderCommitPendingRef.current = false;
+    loadingOlderRef.current = false;
+    endOlderRestoreSuppression();
+  }, [activeSession.id, endOlderRestoreSuppression]);
+
   const loadOlder = async () => {
     if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
     loadingOlderRef.current = true;
+    const generation = olderGenerationRef.current;
+    // A press during an earlier request's restoration starts a new one; the
+    // old frame loop must not clear the new request's scroll suppression.
+    endOlderRestoreSuppression();
+    olderRestoringRef.current = true;
     const element = messagesContainerRef.current;
+    olderRequestHeightRef.current = element?.scrollHeight ?? 0;
     if (element) {
       visibleAnchorRef.current = captureChatScrollAnchor(element);
       isUserScrolledUpRef.current = true;
@@ -581,10 +618,66 @@ function ChatMessageListComponent({
     }
     try {
       await onLoadOlder();
-    } finally {
-      loadingOlderRef.current = false;
+    } catch (error) {
+      if (generation === olderGenerationRef.current) {
+        loadingOlderRef.current = false;
+        olderRestoringRef.current = false;
+      }
+      throw error;
     }
+    if (generation !== olderGenerationRef.current) return;
+    // The request is not over when its promise settles, and the stretch after
+    // it has two parts (#3288). Until the merged page commits, the DOM still
+    // shows the old top with the button enabled, so a press there is a press
+    // on a view that is already being replaced: the shared in-flight flag
+    // holds until that commit. After the commit the view is current, so a
+    // press is a new request; but the virtualizer then walks the reader's row
+    // back over several frames, through positions inside the auto-load band
+    // that nothing marks as ours, and those scroll events are the press's own
+    // restoration, not the reader: scroll-driven loads stay suppressed until
+    // the layout stops moving (the frame loop below) or the reader provides
+    // input. The state write guarantees a commit even when the load changed
+    // nothing, and batches with the hook's own writes so that commit carries
+    // the page.
+    olderCommitPendingRef.current = true;
+    setOlderCommitEpoch((epoch) => epoch + 1);
   };
+  useLayoutEffect(() => {
+    void olderCommitEpoch;
+    if (!olderCommitPendingRef.current) return;
+    olderCommitPendingRef.current = false;
+    loadingOlderRef.current = false;
+    const requestHeight = olderRequestHeightRef.current;
+    let stableFrames = 0;
+    let frames = 0;
+    let lastTop: number | undefined;
+    let lastHeight: number | undefined;
+    const step = () => {
+      olderRestoreFrameRef.current = undefined;
+      const element = messagesContainerRef.current;
+      frames += 1;
+      if (!element) return endOlderRestoreSuppression();
+      // Settled means the layout has stopped moving. The row to restore is not
+      // tracked by key: under virtualization its node is recycled out and may
+      // not return for a long time. A page that grew the content while the
+      // reader sits inside the band has not been restored yet, however still
+      // it is.
+      const moved =
+        element.scrollTop !== lastTop || element.scrollHeight !== lastHeight;
+      const unrestored =
+        element.scrollTop <= OLDER_AUTO_LOAD_BAND_PX &&
+        element.scrollHeight > requestHeight;
+      lastTop = element.scrollTop;
+      lastHeight = element.scrollHeight;
+      stableFrames = moved || unrestored ? 0 : stableFrames + 1;
+      // The cap only bounds a layout that never stops moving.
+      if (stableFrames >= OLDER_RESTORE_STABLE_FRAMES || frames >= 120)
+        return endOlderRestoreSuppression();
+      olderRestoreFrameRef.current = requestAnimationFrame(step);
+    };
+    olderRestoreFrameRef.current = requestAnimationFrame(step);
+  }, [olderCommitEpoch, endOlderRestoreSuppression]);
+  useEffect(() => endOlderRestoreSuppression, [endOlderRestoreSuppression]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -630,7 +723,12 @@ function ChatMessageListComponent({
       return;
     }
     setReaderRestoreRequest(null);
-    if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
+    if (
+      hasOlderMessages &&
+      target.scrollTop <= OLDER_AUTO_LOAD_BAND_PX &&
+      !olderRestoringRef.current
+    )
+      void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
     // Resize animations can emit a scroll event between two ResizeObserver
     // frames. Treat a small transient gap as still pinned so a dock/keyboard
@@ -865,6 +963,10 @@ function ChatMessageListComponent({
         aria-live="polite"
         style={{ fontSize: `${fontSize}px` }}
         onScroll={handleScroll}
+        onWheel={endOlderRestoreSuppression}
+        onTouchStart={endOlderRestoreSuppression}
+        onPointerDown={endOlderRestoreSuppression}
+        onKeyDown={endOlderRestoreSuppression}
       >
         {hasOlderMessages && (
           <div className="session-history-controls">

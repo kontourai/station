@@ -130,6 +130,12 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  declare_pull_request: {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'o', name: 'r' },
+    ref: '1',
+  },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },
   update_skill: { name: 's', description: 'd' },

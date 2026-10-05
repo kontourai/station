@@ -817,6 +817,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ],
   },
 
+  // ── declared outputs ───────────────────────────────────────────────────
+  // #3161: records a pull request on the caller's OWN session and the turn it
+  // is running, in the event store at that turn's completion. The route reads
+  // the session from the verified caller, never the body, and holds it to the
+  // one scope rule (`refuseOutOfScopeDispatch`). A candidate only: a person
+  // keeps it onto a Task. Not a bounded write: it reads the forge and writes
+  // a durable session record, so it keeps the mutating approval.
+  declare_pull_request: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/declare-pull-request')],
+  },
+
   // ── notify ─────────────────────────────────────────────────────────────
   notify_user: {
     assurance: 'any',
