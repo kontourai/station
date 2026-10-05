@@ -77,6 +77,12 @@ async function mockTaskFirstHome(
     historyCount?: number;
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
+    /**
+     * The project's own default Model, a second model the Codex runtime
+     * catalog also lists. Absent, the project names none and the agent
+     * default (`gpt-5.3-codex`) applies.
+     */
+    projectDefaultModel?: string;
   } = {},
 ) {
   const taskSession = {
@@ -234,7 +240,13 @@ async function mockTaskFirstHome(
       return;
     }
     if (path === '/api/projects/station') {
-      await route.fulfill(json(project));
+      await route.fulfill(
+        json(
+          options.projectDefaultModel
+            ? { ...project, defaultModel: options.projectDefaultModel }
+            : project,
+        ),
+      );
       return;
     }
     // The project-scoped launcher reads the portable identity. This fixture's
@@ -552,6 +564,15 @@ async function mockTaskFirstHome(
                   name: 'gpt-5.3-codex',
                   originalId: 'gpt-5.3-codex',
                 },
+                ...(options.projectDefaultModel
+                  ? [
+                      {
+                        id: options.projectDefaultModel,
+                        name: options.projectDefaultModel,
+                        originalId: options.projectDefaultModel,
+                      },
+                    ]
+                  : []),
               ],
               builtInModels: [],
             },
@@ -865,6 +886,40 @@ async function mockStationModelProviders(page: Page) {
   );
 }
 
+/**
+ * The chat Start opened, in the dock, runs on `agent` and `model`: its own
+ * Agent and Model controls name them. The composer qualifies each ("Agent:
+ * Codex. Wait for…", "Model: Codex Runtime — gpt-5.4 (project default)"), so
+ * each is matched as a whole name segment, not a substring, and only inside
+ * the dock holding the started chat's transcript.
+ */
+async function expectStartedChatRuns(
+  page: Page,
+  prompt: string,
+  agent: string | undefined,
+  model: string | undefined,
+) {
+  const literal = (text = '') => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const chat = page
+    .getByRole('region', { name: 'Chat dock', exact: true })
+    .filter({
+      has: page.getByRole('log', { name: 'Conversation transcript' }),
+    });
+  await expect(
+    chat.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText(prompt);
+  await expect(
+    chat.getByRole('button', {
+      name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
+    }),
+  ).toBeVisible();
+  await expect(
+    chat.getByRole('button', {
+      name: new RegExp(`^Model: (?:.+ — )?${literal(model)}(?: \\(|$)`),
+    }),
+  ).toBeVisible();
+}
+
 test.describe('Task-first Home (#332, mocked)', () => {
   test('starts a written goal with working defaults and no configuration choices', async ({
     page,
@@ -905,29 +960,64 @@ test.describe('Task-first Home (#332, mocked)', () => {
     });
     await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
     // The started chat's own Agent and Model controls name the advertised
-    // ones. The composer qualifies them ("Agent: Codex. Wait for…", "Model:
-    // Codex Runtime — gpt-5.3-codex (agent default)"), so each is matched as
-    // a whole name segment, not a substring.
-    const literal = (text = '') => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const transcript = page.getByRole('log', {
-      name: 'Conversation transcript',
+    // ones.
+    await expectStartedChatRuns(page, prompt, advertisedAgent, advertisedModel);
+    // No project is bound to the dock, so the chat names no workspace: the
+    // global context the advertised identity was resolved in.
+    expect(
+      (sent?.input as { target?: { workspace?: unknown } }).target?.workspace,
+    ).toBeUndefined();
+  });
+
+  // #3312 review HIGH: once the user has opened a project, the dock is bound
+  // to it and Start runs in that project's context, so its default Model
+  // applies. Home must name that Model, not the global default it would
+  // name for an unbound dock (`gpt-5.3-codex`, the agent default).
+  test('names the project default Start runs on when the dock is bound to a project', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: { chatDockProjectSlug: 'station' },
+        }),
+      );
     });
-    await expect(transcript).toContainText(prompt);
-    await expect(
-      page.getByRole('button', {
-        name: new RegExp(`^Agent: ${literal(advertisedAgent)}(?:\\.|$)`),
-      }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', {
-        name: new RegExp(
-          `^Model: (?:.+ — )?${literal(advertisedModel)}(?: \\(|$)`,
-        ),
-      }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Workspace: No workspace' }),
-    ).toHaveCount(0);
+    await page.goto('/');
+    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const form = page.locator('.home-view__goal--compact');
+    const start = form.getByRole('button', {
+      name: 'Start a chat',
+      exact: true,
+    });
+    const advertised = form.locator('.home-view__goal-identity');
+    await expect(advertised).toHaveText('Codex · gpt-5.4');
+    await expect(start).toHaveAccessibleDescription('Codex · gpt-5.4');
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await start.click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: {
+        agent: 'codex-agent',
+        model: { override: 'gpt-5.4' },
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+    });
+    await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.4');
   });
 
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
