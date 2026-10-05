@@ -193,8 +193,20 @@ describe('#2316 inline approval card → Claude adapter', () => {
     void permission.then(() => {
       settled = true;
     });
-    expect(opened.payload?.questionnaire).toMatchObject({
-      questions: [{ id: '0', multiple: true, allowCustom: true }],
+    expect(opened.payload?.inputRequest).toMatchObject({
+      schema: 'station.input-request/v1',
+      source: 'harness:claude',
+      body: {
+        kind: 'form',
+        fields: [
+          {
+            name: '0',
+            kind: 'multi-choice',
+            allowCustom: true,
+            minItems: 1,
+          },
+        ],
+      },
     });
     expect(settled).toBe(false);
     const command = {
@@ -205,22 +217,22 @@ describe('#2316 inline approval card → Claude adapter', () => {
       decision: 'accept' as const,
     };
     await expect(service.dispatch(command)).rejects.toThrow(
-      'Answer every question',
+      'Fill in the form before sending it.',
     );
     await expect(
       service.dispatch({ ...command, decision: 'acceptForSession' }),
-    ).rejects.toThrow('Inspect the current question');
+    ).rejects.toThrow('Inspect the current request');
     await expect(
       service.dispatch({
         ...command,
-        answers: { '0': { optionIds: ['unknown'] } },
+        content: { '0': ['unknown'] },
       }),
-    ).rejects.toThrow('does not match');
+    ).rejects.toThrow('must use only the offered choices');
     await expect(
       service.dispatch({
         ...command,
         expectedRequestEventId: 'stale-event',
-        answers: { '0': { optionIds: ['0'] } },
+        content: { '0': ['0'] },
       }),
     ).rejects.toThrow();
     expect(settled).toBe(false);
@@ -229,9 +241,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
     ).toMatchObject({ state: 'found', event: { method: 'request.opened' } });
     await service.dispatch({
       ...command,
-      answers: {
-        '0': { optionIds: ['0'], custom: 'A separate test environment' },
-      },
+      content: { '0': ['0', { custom: 'A separate test environment' }] },
     });
     await expect(permission).resolves.toMatchObject({
       behavior: 'allow',

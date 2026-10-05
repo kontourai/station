@@ -1,5 +1,5 @@
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
-import type { McpElicitationContent } from '@kontourai/station-contracts/mcp-elicitation';
+import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 /**
  * Canonical orchestration fetchers (#165/#173 Wave 1, inside the #167 DRY
  * client layer). One HTTP-call implementation per operation, shared by the
@@ -104,9 +104,16 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  /**
+   * #3390: accepted content for a form input request, keyed by field name;
+   * validated server-side against the exact opened event.
+   */
+  content?: InputRequestContent;
+  /**
+   * @deprecated since 0.9.0; removed in 0.10.0. A pre-#3390 harness answer;
+   * send `content` instead.
+   */
   answers?: HarnessQuestionAnswers;
-  /** #3284: accepted content for a tool server's form; validated server-side. */
-  elicitationContent?: McpElicitationContent;
 }
 
 export interface RespondToRequestResult {

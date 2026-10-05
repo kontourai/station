@@ -17,7 +17,7 @@ import {
   type ModelImageOutcome,
 } from '../model-image-attachments.js';
 import { isSessionSourceAffinity } from '../sessions/session-source-affinity.js';
-import { codexQuestionnaire } from './harness-questions.js';
+import { codexInputRequest } from './harness-questions.js';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -220,8 +220,8 @@ export function mapServerRequestToEvent(
   const payload = isRecord(params) ? params : {};
   switch (method) {
     case 'item/tool/requestUserInput': {
-      const questionnaire = codexQuestionnaire(payload);
-      if (!questionnaire) return null;
+      const inputRequest = codexInputRequest(payload);
+      if (!inputRequest) return null;
       return {
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -231,8 +231,8 @@ export function mapServerRequestToEvent(
         method: 'request.opened',
         requestType: 'approval',
         ...(payload.isBlocking === false ? { blocking: false } : {}),
-        title: 'The agent has questions for you',
-        payload: { ...payload, questionnaire },
+        title: inputRequest.message,
+        payload: { ...payload, inputRequest },
       };
     }
     case 'item/permissions/requestApproval':

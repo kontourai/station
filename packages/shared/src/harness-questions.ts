@@ -3,137 +3,146 @@ import type {
   HarnessQuestionAnswers,
   HarnessQuestionnaire,
 } from '@kontourai/station-contracts/harness-questions';
+import type {
+  InputRequestForm,
+  InputRequestValue,
+} from '@kontourai/station-contracts/input-request';
+import { INPUT_REQUEST_SCHEMA } from '@kontourai/station-contracts/input-request';
+import {
+  harnessAnswersToInputContent,
+  harnessQuestionField,
+  inputRequestAnswerTexts,
+  readLegacyHarnessQuestions,
+  validateInputRequestContent,
+} from './input-request.js';
 
-function record(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+/**
+ * @deprecated since 0.9.0 — harness questions are `station.input-request/v1`
+ * forms (#3390); use `@kontourai/station-shared/input-request`. These
+ * adapters keep the pre-#3390 public API working for one release and are
+ * removed in 0.10.0. None of them validates on its own: answers go through
+ * `validateInputRequestContent`, the one validator.
+ */
+
+function questionnaireForm(
+  questionnaire: HarnessQuestionnaire,
+): InputRequestForm {
+  return {
+    schema: INPUT_REQUEST_SCHEMA,
+    source: 'harness:agent',
+    requester: 'Agent',
+    message: '',
+    body: {
+      kind: 'form',
+      fields: questionnaire.questions.map(harnessQuestionField),
+    },
+  };
 }
 
-/** Read the data-only descriptor shared by the harness and human answer card. */
+/**
+ * @deprecated since 0.9.0; removed in 0.10.0. Use
+ * `inputRequestFromRequestEvent`, which also reads this stored shape.
+ */
 export function readHarnessQuestionnaire(
   value: unknown,
 ): HarnessQuestionnaire | null {
-  if (
-    !record(value) ||
-    !Array.isArray(value.questions) ||
-    value.questions.length < 1 ||
-    value.questions.length > 16
-  )
-    return null;
-  const questions: HarnessQuestion[] = [];
-  for (const question of value.questions) {
-    if (
-      !record(question) ||
-      typeof question.id !== 'string' ||
-      !question.id ||
-      question.id.length > 256 ||
-      typeof question.header !== 'string' ||
-      typeof question.prompt !== 'string' ||
-      !question.prompt.trim() ||
-      typeof question.multiple !== 'boolean' ||
-      typeof question.allowCustom !== 'boolean' ||
-      typeof question.secret !== 'boolean' ||
-      !Array.isArray(question.options) ||
-      question.options.length > 32
-    )
-      return null;
-    const options: HarnessQuestion['options'] = [];
-    for (const option of question.options) {
-      if (
-        !record(option) ||
-        typeof option.id !== 'string' ||
-        !option.id ||
-        option.id.length > 256 ||
-        typeof option.label !== 'string' ||
-        !option.label.trim() ||
-        typeof option.description !== 'string' ||
-        options.some((item) => item.id === option.id)
-      )
-        return null;
-      options.push({
-        id: option.id,
-        label: option.label,
-        description: option.description,
-      });
-    }
-    if (
-      questions.some((item) => item.id === question.id) ||
-      (!options.length && !question.allowCustom)
-    )
-      return null;
-    questions.push({
-      id: question.id,
-      header: question.header,
-      prompt: question.prompt,
-      options,
-      multiple: question.multiple,
-      allowCustom: question.allowCustom,
-      secret: question.secret,
-    });
-  }
-  return { questions };
+  const questions = readLegacyHarnessQuestions(value);
+  return questions ? { questions } : null;
 }
 
-/** Refuse malformed or incomplete answers before consuming a pending request. */
+/**
+ * @deprecated since 0.9.0; removed in 0.10.0. Use
+ * `validateInputRequestContent` with `content`.
+ */
 export function validateHarnessQuestionAnswers(
   questionnaire: HarnessQuestionnaire,
   value: unknown,
 ): HarnessQuestionAnswers {
-  if (
-    !record(value) ||
-    Object.keys(value).length !== questionnaire.questions.length
-  )
-    throw new Error('Answer every question before sending.');
-  const entries: Array<[string, HarnessQuestionAnswers[string]]> = [];
-  for (const question of questionnaire.questions) {
-    const answer = value[question.id];
-    if (
-      !record(answer) ||
-      Object.keys(answer).some(
-        (key) => key !== 'optionIds' && key !== 'custom',
-      ) ||
-      !Array.isArray(answer.optionIds) ||
-      answer.optionIds.some(
-        (id) =>
-          typeof id !== 'string' ||
-          !question.options.some((option) => option.id === id),
-      ) ||
-      new Set(answer.optionIds).size !== answer.optionIds.length ||
-      (answer.custom !== undefined && typeof answer.custom !== 'string')
-    )
-      throw new Error('The answer does not match the current question.');
-    const custom = typeof answer.custom === 'string' ? answer.custom : '';
-    const hasCustom = question.secret
-      ? custom.length > 0
-      : custom.trim().length > 0;
-    if ((hasCustom && !question.allowCustom) || custom.length > 12000)
-      throw new Error('This question does not accept that custom answer.');
-    const count = answer.optionIds.length + (hasCustom ? 1 : 0);
-    if (count < 1 || (!question.multiple && count !== 1))
-      throw new Error(
-        question.multiple
-          ? 'Choose at least one answer.'
-          : 'Choose one answer.',
-      );
-    entries.push([
-      question.id,
-      {
-        optionIds: answer.optionIds.map((id) => String(id)),
-        ...(hasCustom ? { custom } : {}),
-      },
-    ]);
-  }
-  return Object.fromEntries(entries);
+  const form = questionnaireForm(questionnaire);
+  validateInputRequestContent(form, harnessAnswersToInputContent(form, value));
+  // Valid: return the canonical answers (a blank custom answer dropped).
+  const answers = value as HarnessQuestionAnswers;
+  return Object.fromEntries(
+    questionnaire.questions.map((question) => {
+      const answer = answers[question.id];
+      const custom =
+        typeof answer.custom === 'string' &&
+        (question.secret
+          ? answer.custom.length > 0
+          : answer.custom.trim().length > 0)
+          ? answer.custom
+          : undefined;
+      return [
+        question.id,
+        {
+          optionIds: [...answer.optionIds],
+          ...(custom !== undefined ? { custom } : {}),
+        },
+      ];
+    }),
+  );
 }
 
+/** @deprecated since 0.9.0; removed in 0.10.0. Use `inputRequestAnswerTexts`. */
 export function harnessAnswerTexts(
   question: HarnessQuestion,
   answers: HarnessQuestionAnswers,
 ): string[] {
-  const answer = answers[question.id];
-  return [
-    ...question.options
-      .filter((option) => answer.optionIds.includes(option.id))
-      .map((option) => option.label),
-    ...(answer.custom ? [answer.custom] : []),
-  ];
+  const field = harnessQuestionField(question);
+  const content = harnessAnswersToInputContent(
+    questionnaireForm({ questions: [question] }),
+    {
+      [question.id]: answers[question.id],
+    },
+  ) as Record<string, InputRequestValue>;
+  return inputRequestAnswerTexts(field, content[question.id]);
+}
+
+/**
+ * @deprecated since 0.9.0; removed in 0.10.0. A harness form in the pre-#3390
+ * questionnaire shape, for a surface whose own published protocol still
+ * speaks it (the skill-experience rich view). Null for a form that shape
+ * cannot express. The question `header` is not part of the form; it reads
+ * as empty.
+ */
+export function harnessQuestionnaireFromInputRequest(
+  form: InputRequestForm,
+): HarnessQuestionnaire | null {
+  const questions: HarnessQuestion[] = [];
+  for (const field of form.body.fields) {
+    if (field.kind === 'string') {
+      if (
+        field.format !== undefined ||
+        field.minLength !== undefined ||
+        field.maxLength !== undefined ||
+        field.default !== undefined
+      )
+        return null;
+      questions.push({
+        id: field.name,
+        header: '',
+        prompt: field.title ?? field.name,
+        options: [],
+        multiple: false,
+        allowCustom: true,
+        secret: field.secret === true,
+      });
+      continue;
+    }
+    if (field.kind !== 'choice' && field.kind !== 'multi-choice') return null;
+    questions.push({
+      id: field.name,
+      header: '',
+      prompt: field.title ?? field.name,
+      options: field.options.map((option) => ({
+        id: option.value,
+        label: option.label,
+        description: option.description ?? '',
+      })),
+      multiple: field.kind === 'multi-choice',
+      allowCustom: field.allowCustom === true,
+      secret: field.secret === true,
+    });
+  }
+  return questions.length > 0 ? { questions } : null;
 }

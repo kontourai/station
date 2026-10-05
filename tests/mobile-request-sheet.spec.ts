@@ -22,7 +22,8 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
  * explicit action answers it. Desktop keeps the inline card.
  *
  * The event windows are fixtures shaped like the relay's `request.opened`
- * (mcpElicitation payload) and the projection's bound tool approval;
+ * (an `inputRequest` form payload, #3390) and the projection's bound tool
+ * approval;
  * `respondToRequest` is captured at the real orchestration commands route.
  */
 
@@ -30,7 +31,6 @@ const PHONE = { width: 390, height: 844 };
 const KEYBOARD_PX = 336;
 
 const LONG_FORM = {
-  serverId: 'fixture',
   message:
     'Who should the quarterly report be addressed to, and how should it be delivered?',
   fields: [
@@ -114,7 +114,15 @@ const ELICITATION_EVENTS = [
     requestType: 'approval',
     title: 'fixture needs your input',
     description: LONG_FORM.message,
-    payload: { mcpElicitation: LONG_FORM },
+    payload: {
+      inputRequest: {
+        schema: 'station.input-request/v1',
+        source: 'mcp:fixture',
+        requester: 'fixture',
+        message: LONG_FORM.message,
+        body: { kind: 'form', fields: LONG_FORM.fields },
+      },
+    },
   },
 ];
 
@@ -581,7 +589,7 @@ test.describe('Mobile request sheet (#3331)', () => {
         requestId: 'elicitation-1',
         expectedRequestEventId: 'evt-elicit-1',
         decision: 'accept',
-        elicitationContent: { name: 'Ada', team: 'Platform' },
+        content: { name: 'Ada', team: 'Platform' },
       },
     ]);
   });

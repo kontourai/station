@@ -89,7 +89,11 @@ export function derivePendingApprovalsForSession(
       ...(typeof event.eventId === 'string'
         ? { requestEventId: event.eventId }
         : {}),
-      ...(payload?.questionnaire !== undefined ? { isQuestion: true } : {}),
+      // #3390: an input-request form, or a pre-#3390 stored questionnaire.
+      ...(payload?.inputRequest !== undefined ||
+      payload?.questionnaire !== undefined
+        ? { isQuestion: true }
+        : {}),
       title: typeof event.title === 'string' ? event.title : '',
       toolName:
         typeof payload?.toolName === 'string' ? payload.toolName : undefined,

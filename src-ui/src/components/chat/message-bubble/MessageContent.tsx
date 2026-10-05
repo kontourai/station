@@ -6,6 +6,7 @@ import {
   translateProjectedRuntimeError,
 } from '../../../utils/chatErrorTranslation';
 import { FilePartPreview } from '../FilePartPreview';
+import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
 import { ChatErrorDetails } from '../SystemEventMessage';
@@ -178,6 +179,14 @@ function MessageContentComponent({
           }
           if (part.type === 'ui-block' && part.uiBlock) {
             return <UIBlockRenderer key={index} block={part.uiBlock} />;
+          }
+          if (part.type === 'input-request' && part.inputRequestRecord) {
+            return (
+              <InputRequestRecordRow
+                key={index}
+                record={part.inputRequestRecord}
+              />
+            );
           }
           return null;
         })}

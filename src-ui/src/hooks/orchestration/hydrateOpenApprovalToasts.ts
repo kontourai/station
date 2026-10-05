@@ -1,6 +1,5 @@
 import { fetchOrchestrationConversationEventWindow } from '@kontourai/station-sdk';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
-import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { raiseRequestOpenedToast } from './approvalHandlers';
@@ -39,11 +38,7 @@ export async function hydrateOpenApprovalToasts(
     if (event.method !== 'request.opened' || !event.eventId) continue;
     const placeholderToastId = placeholders.get(event.requestId);
     if (!placeholderToastId || event.blocking === false) continue;
-    if (
-      readHarnessQuestionnaire(event.payload?.questionnaire) ||
-      readMcpElicitationForm(event.payload?.mcpElicitation)
-    )
-      continue;
+    if (inputRequestFromRequestEvent(event)) continue;
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
     // The placeholder is still this request's toast: an answer, a newer
     // snapshot or a live `request.opened` since the read all replace it.

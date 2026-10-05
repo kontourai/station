@@ -45,26 +45,60 @@ model, grant tools, install a plugin or establish runtime/release qualification.
 Use the [author learning path](../guides/authoring-skill-experiences.md) for
 proposal, preview, evaluation and revision review.
 
-## Harness question helpers
+## Input request helpers
 
-`@kontourai/station-shared/harness-questions` owns the browser-safe
-`readHarnessQuestionnaire`, `validateHarnessQuestionAnswers` and
-`harnessAnswerTexts` helpers. They parse bounded descriptors, validate a
-complete answer batch and translate selected IDs to display labels/custom
-text. They do not authorize a reply or prove engine delivery. Stable types
-come from `@kontourai/station-contracts/harness-questions`.
+`@kontourai/station-shared/input-request` is the one reader and validator for
+`station.input-request/v1` (#3390), the contract every "something asks the
+person a structured question" source maps into. Types come from
+`@kontourai/station-contracts/input-request`.
 
-## MCP elicitation helpers
+- `readInputRequestForm` reads a stored form request strictly: an unknown key
+  anywhere, a bound exceeded, a duplicate field or option, or any `decision`
+  body is a refusal (null), never dropped.
+- `inputRequestFromRequestEvent` reads a `request.opened` event's
+  `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire`,
+  adapted to a form.
+- `validateInputRequestContent` validates accepted content against the form
+  that was opened and throws the first problem, worded for the person;
+  `inputRequestContentProblems` returns every problem by field. Nothing is
+  coerced or truncated. The browser renderer and the server's answer path run
+  the same function; the server runs it whatever the client did.
+- `approvalDecisionBody` derives an approval's `decision` body (allow once,
+  an optional session allow, deny) from what a session answer would grant;
+  `decisionOptionResponse` maps an option to the respond decision.
+- `inputRequestOutcome` maps a `request.resolved` status to the transcript
+  record's outcome.
 
-`@kontourai/station-shared/mcp-elicitation` owns the browser-safe
-`mcpElicitationFormFromRequest`, `readMcpElicitationForm`,
-`validateMcpElicitationContent` and `readMcpElicitationResult` helpers. They
-normalize a form-mode `elicitation/create` request into the field subset
-Station renders, refuse anything outside it or over a bound, and validate
-accepted content against the form with a reason, never coercing or
-truncating. The server's answer path and the browser card run the same
-validator. Stable types come from
-`@kontourai/station-contracts/mcp-elicitation`.
+A form carries MCP elicitation's field vocabulary (string with length/format
+bounds, number, integer, boolean, choice, multi-choice, each with an
+optional `default`) plus three Station extensions: an option `description`,
+`allowCustom` on choice fields, and `secret`. A custom answer stands in an
+option's place as `{ "custom": "…" }`, so a field without `allowCustom` —
+every MCP field — keeps plain MCP content. A `decision` is never read from a
+payload, and a form can carry no effect: answering a decision is a grant and
+keeps the approval's own authority path, while a form answer is data returned
+to its source.
+
+| Source | Maps to | Adapter | Can express |
+| --- | --- | --- | --- |
+| Claude `AskUserQuestion` | `form` | `src-server/providers/adapters/harness-questions.ts` | ≤4 choice/multi-choice fields, custom answer always |
+| Codex `item/tool/requestUserInput` | `form` | `src-server/providers/adapters/harness-questions.ts` | choice, or free text with no options; `isOther` custom; `isSecret` |
+| MCP `elicitation/create` (form mode) | `form` | `@kontourai/station-shared/mcp-elicitation` | the MCP restricted schema; no custom answer, no secret |
+| Tool approvals (every engine) | `decision` | `approvalDecisionBody`, derived at read time | allow once, allow for the session where a grant is offered, deny |
+
+ACP permission requests are approvals and use the `decision` row. No other
+source is implemented.
+
+`@kontourai/station-shared/mcp-elicitation` holds only the MCP edge:
+`inputRequestFromMcpElicitation` maps a form-mode request into a form,
+refusing URL mode and anything outside the schema or over a bound.
+
+`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and is
+removed in 0.10.0. `readHarnessQuestionnaire`,
+`validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
+`harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
+translating to and from a form; answers are validated only by
+`validateInputRequestContent`.
 
 ## Request settlement
 

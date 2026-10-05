@@ -21,11 +21,10 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
  * touch-size targets at desktop and 390px in both themes, and sends the
  * typed content through the real `respondToRequest` client call.
  *
- * The form is the payload Station's relay publishes (`mcpElicitation`, the
+ * The form is the payload Station's relay publishes (`inputRequest`, the
  * normalized fixture-server request); the event window is a fixture.
  */
 const FORM = {
-  serverId: 'fixture',
   message: 'Who should the report be addressed to?',
   fields: [
     {
@@ -114,7 +113,15 @@ test.describe('MCP elicitation form (#3284)', () => {
           requestType: 'approval',
           title: 'fixture needs your input',
           description: FORM.message,
-          payload: { mcpElicitation: FORM },
+          payload: {
+            inputRequest: {
+              schema: 'station.input-request/v1',
+              source: 'mcp:fixture',
+              requester: 'fixture',
+              message: FORM.message,
+              body: { kind: 'form', fields: FORM.fields },
+            },
+          },
         },
       ],
     });
@@ -236,7 +243,10 @@ test.describe('MCP elicitation form (#3284)', () => {
 
     const send = sheet.getByRole('button', { name: 'Send' });
     await send.click();
-    await expect(form.getByRole('alert')).toHaveText('Name is required.');
+    // #3390: the refusal is marked on the field itself.
+    await expect(name).toHaveAttribute('aria-invalid', 'true');
+    await expect(form.getByText('Name is required.')).toBeVisible();
+    await expect(name).toBeFocused();
     expect(posted).toEqual([]);
     await name.fill('Ada');
     await form.getByRole('spinbutton', { name: /Age/ }).fill('36');
@@ -253,7 +263,7 @@ test.describe('MCP elicitation form (#3284)', () => {
         requestId: 'elicitation-1',
         expectedRequestEventId: 'evt-elicit-1',
         decision: 'accept',
-        elicitationContent: { name: 'Ada', age: 36, color: 'blue' },
+        content: { name: 'Ada', age: 36, color: 'blue' },
       },
     ]);
     browserHealth.assertHealthy();

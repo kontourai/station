@@ -1,0 +1,222 @@
+.input-request-card {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+  font-size: var(--k-text-sm);
+  padding: var(--k-space-4);
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+.input-request-card__heading,
+.input-request-card__actions {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+.input-request-card fieldset {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.input-request-card legend {
+  margin-bottom: var(--k-space-3);
+  font-size: var(--k-text-md);
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.input-request-card__options,
+.input-request-card__custom {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.input-request-card__option {
+  display: flex;
+  min-height: 44px;
+  gap: var(--k-space-3);
+  align-items: center;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  cursor: pointer;
+}
+.input-request-card__option:has(input:checked) {
+  border-color: var(--k-action);
+  background: var(--k-panel);
+}
+.input-request-card__option > span {
+  display: grid;
+  gap: var(--k-space-1);
+  overflow-wrap: anywhere;
+}
+.input-request-card__option span span,
+.input-request-card__draft {
+  color: var(--k-text-muted);
+}
+.input-request-card__custom {
+  margin-top: var(--k-space-4);
+}
+.input-request-card textarea,
+.input-request-card input[type="password"] {
+  width: 100%;
+  min-height: 44px;
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-3);
+  font: inherit;
+}
+.input-request-card :is(input, textarea, button):focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.input-request-card button {
+  min-height: 44px;
+}
+
+.input-request-card__heading > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.input-request-card input {
+  accent-color: var(--k-action);
+}
+
+.input-request-card__heading {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+.input-request-card__heading strong {
+  font-weight: 500;
+  color: var(--k-text);
+}
+.input-request-card__hint {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  padding-bottom: var(--k-space-2);
+}
+.input-request-card__option strong {
+  font-weight: 500;
+}
+.input-request-card__option span span {
+  font-size: var(--k-text-xs);
+  line-height: 1.4;
+}
+.input-request-card__draft {
+  margin-right: auto;
+  font-size: var(--k-text-xs);
+}
+.input-request-card__actions {
+  justify-content: flex-end;
+}
+.input-request-card__actions .button {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.input-request-card__message {
+  font-size: var(--k-text-md);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.input-request-card__provenance,
+.input-request-card__description,
+.input-request-card__required {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  line-height: 1.4;
+}
+.input-request-card__fields,
+.input-request-card__group {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.input-request-card__group > legend {
+  margin-bottom: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  font-weight: 500;
+}
+.input-request-card__field > span:first-child {
+  font-weight: 500;
+}
+.input-request-card
+  input:is(
+    [type="text"],
+    [type="email"],
+    [type="url"],
+    [type="date"],
+    [type="number"]
+  ) {
+  width: 100%;
+  min-height: 44px;
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-3);
+  font: inherit;
+}
+.input-request-card__field {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.input-request-card__field > label {
+  font-weight: 500;
+}
+.input-request-card__field-error {
+  color: var(--error-text);
+  font-size: var(--k-text-xs);
+  line-height: 1.4;
+}
+.input-request-card :is(input, textarea)[aria-invalid="true"] {
+  border-color: var(--k-negative);
+}
+.input-request-card__group[aria-invalid="true"] .input-request-card__option {
+  border-color: var(--k-negative);
+}
+.input-request-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-3);
+}
+
+/* #3390: a request's transcript record — one line, no answer content. */
+.input-request-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin: var(--k-space-2) 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border-left: 2px solid var(--k-line-strong);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  line-height: 1.4;
+}
+.input-request-record__asker {
+  color: var(--k-text);
+  font-weight: 500;
+}
+.input-request-record__message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.input-request-record__outcome {
+  margin-left: auto;
+  color: var(--k-text);
+}
+.input-request-record[data-outcome="pending"] {
+  border-left-color: var(--k-action);
+}

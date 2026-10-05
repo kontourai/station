@@ -1,6 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
-import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
@@ -109,16 +108,13 @@ export function unansweredApprovalRequests(
   }
   const unanswered = open.filter(
     (request) =>
-      readHarnessQuestionnaire(request.payload?.questionnaire) !== null ||
-      readMcpElicitationForm(request.payload?.mcpElicitation) !== null ||
+      inputRequestFromRequestEvent(request) !== null ||
       !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
-    const mcpElicitation = readMcpElicitationForm(
-      request.payload?.mcpElicitation,
-    );
+    const inputRequest = inputRequestFromRequestEvent(request);
     const toolCallId = request.payload?.toolCallId;
     return {
       type: 'tool-invocation',
@@ -137,14 +133,7 @@ export function unansweredApprovalRequests(
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
-      ...(readHarnessQuestionnaire(request.payload?.questionnaire)
-        ? {
-            questionnaire: readHarnessQuestionnaire(
-              request.payload?.questionnaire,
-            )!,
-          }
-        : {}),
-      ...(mcpElicitation ? { mcpElicitation } : {}),
+      ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),

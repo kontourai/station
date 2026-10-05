@@ -373,6 +373,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
+    'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -1446,6 +1447,15 @@ export const e2eManifest = [
     tierTarget: 'full',
     rationale:
       '#3331 shared mobile request sheet at 390x844 for a long MCP elicitation form and a short tool approval: card-to-sheet, pinned actions, content-fit height, dismissal (backdrop, swipe, Escape, close) leaving the request pending, Send with an emulated keyboard, resolution elsewhere closing the sheet, focus trap/return, reduced motion, and inline desktop at 1280.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/input-request.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3390 one station.input-request/v1 renderer at 1280 and 390x844: Claude single/multi/custom questions with a required-field error marked and focused on its field, a Codex secret answer, MCP defaults pre-selected, an approval decision, transcript records for resolved requests including one resolved on another device, and a pre-#3390 stored harness question that still renders and answers.',
     exceptions: [],
   },
   {

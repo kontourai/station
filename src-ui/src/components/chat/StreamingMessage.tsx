@@ -14,6 +14,7 @@ import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
+import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
@@ -235,6 +236,11 @@ export function StreamingMessageView({
           }
           if (part.type === 'ui-block' && part.uiBlock) {
             return <UIBlockRenderer key={i} block={part.uiBlock} />;
+          }
+          if (part.type === 'input-request' && part.inputRequestRecord) {
+            return (
+              <InputRequestRecordRow key={i} record={part.inputRequestRecord} />
+            );
           }
           if (part.type === 'file') {
             // An image a tool returned mid-turn (a screenshot the agent took)

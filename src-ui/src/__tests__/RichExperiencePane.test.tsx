@@ -330,11 +330,15 @@ describe('rich view bound to the canonical conversation', () => {
     );
     const result = JSON.parse((await host().read()).viewJson);
     expect(result.current).toEqual(invocation);
+    // #3390: the view's protocol keeps the questionnaire shape, read from
+    // the input-request form. A form has no short `header`; it reads empty.
     expect(result.pendingQuestions).toEqual([
       {
         requestId: question.requestId,
         requestEventId: question.eventId,
-        questionnaire,
+        questionnaire: {
+          questions: [{ ...questionnaire.questions[0], header: '' }],
+        },
       },
     ]);
     expect(JSON.stringify(result)).not.toMatch(
@@ -367,7 +371,8 @@ describe('rich view bound to the canonical conversation', () => {
         expectedRequestEventId: 'question-event-1',
         expectedSkillExperience: { identity, eventId: invocation.eventId },
         decision: 'accept',
-        answers: { audience: { optionIds: ['team'] } },
+        // #3390: translated to content and checked by the one validator.
+        content: { audience: 'team' },
       },
       { requestScope: scope },
     );

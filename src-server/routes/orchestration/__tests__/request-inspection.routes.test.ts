@@ -638,10 +638,12 @@ test('the command route retains structured question answers and refuses a bare a
     const refused = await post({ ...unbound, decision });
     expect(refused.status).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(await refused.json())).toContain(
-      'Inspect the current question before answering it.',
+      'Inspect the current request before answering it.',
     );
   }
   expect(f.respond).not.toHaveBeenCalled();
+  // #3390: a pre-#3390 client's `answers`, on a pre-#3390 stored question,
+  // reach the adapter as validated content.
   const answers = { choice: { optionIds: ['a'] } };
   expect((await post({ ...command, answers })).status).toBe(200);
   expect(f.respond).toHaveBeenCalledWith(
@@ -649,8 +651,90 @@ test('the command route retains structured question answers and refuses a bare a
     'request-a',
     'accept',
     expect.objectContaining({
-      answers,
+      inputContent: { choice: 'a' },
       expectedRequestEventId: 'question-event',
+    }),
+  );
+});
+
+test('#3390: the server refuses content that fails the opened form even when the client check is bypassed', async () => {
+  const f = await fixture();
+  f.store.appendEvent({
+    ...opened('form-event'),
+    requestType: 'approval',
+    payload: {
+      inputRequest: {
+        schema: 'station.input-request/v1',
+        source: 'mcp:fixture',
+        requester: 'fixture',
+        message: 'Who should the report go to?',
+        body: {
+          kind: 'form',
+          fields: [
+            { name: 'name', title: 'Name', required: true, kind: 'string' },
+            {
+              name: 'color',
+              title: 'Color',
+              required: false,
+              kind: 'choice',
+              options: [{ value: 'red', label: 'Red' }],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const post = (body: unknown) =>
+    f.app.request('/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const accept = {
+    type: 'respondToRequest',
+    threadId: 'session-a',
+    requestId: 'request-a',
+    expectedRequestEventId: 'form-event',
+    decision: 'accept',
+  };
+  // Shapes the route admits, each wrong for this form: posted straight to
+  // the command route, with no browser in front of it.
+  for (const [content, reason] of [
+    [{ color: 'red' }, 'Name is required.'],
+    [{ name: 'Ada', color: 'green' }, 'Color must be one of the offered'],
+    [{ name: 'Ada', color: { custom: 'green' } }, 'Color must be one of the'],
+    [{ name: 'Ada', extra: 'x' }, 'The form has no field named extra.'],
+    [{ name: '   ' }, 'Name is required.'],
+  ] as const) {
+    const refused = await post({ ...accept, content });
+    expect(refused.status, JSON.stringify(content)).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(await refused.json())).toContain(reason);
+  }
+  // A decline cannot smuggle content, and a form never takes a session grant.
+  expect(
+    (await post({ ...accept, decision: 'decline', content: { name: 'x' } }))
+      .status,
+  ).toBeGreaterThanOrEqual(400);
+  expect(
+    (
+      await post({
+        ...accept,
+        decision: 'acceptForSession',
+        content: { name: 'Ada' },
+      })
+    ).status,
+  ).toBeGreaterThanOrEqual(400);
+  expect(f.respond).not.toHaveBeenCalled();
+  expect((await post({ ...accept, content: { name: 'Ada' } })).status).toBe(
+    200,
+  );
+  expect(f.respond).toHaveBeenCalledExactlyOnceWith(
+    'session-a',
+    'request-a',
+    'accept',
+    expect.objectContaining({
+      inputContent: { name: 'Ada' },
+      expectedRequestEventId: 'form-event',
     }),
   );
 });

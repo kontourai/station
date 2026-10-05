@@ -1,6 +1,5 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
-import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   toolRequestFromPayload,
@@ -20,21 +19,21 @@ export function presentOpenRequest(request: RequestOpenedEvent): {
   body?: string;
 } {
   const rawTitle = request.title?.trim() || undefined;
-  const questionnaire = readHarnessQuestionnaire(
-    request.payload?.questionnaire,
-  );
-  if (questionnaire)
+  const inputRequest = inputRequestFromRequestEvent(request);
+  if (inputRequest?.source.startsWith('harness:'))
     return presentAskRequest(
       'The agent asked questions',
       rawTitle,
-      questionnaire.questions[0].prompt,
+      inputRequest.body.fields[0]
+        ? (inputRequest.body.fields[0].title ??
+            inputRequest.body.fields[0].name)
+        : inputRequest.message,
     );
-  const elicitation = readMcpElicitationForm(request.payload?.mcpElicitation);
-  if (elicitation)
+  if (inputRequest)
     return presentAskRequest(
       'A tool server needs your input',
       rawTitle,
-      elicitation.message,
+      inputRequest.message,
     );
 
   switch (request.requestType) {

@@ -4,7 +4,7 @@ import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
-import type { McpElicitationContent } from './mcp-elicitation.js';
+import type { InputRequestContent } from './input-request.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -113,9 +113,18 @@ export type OrchestrationCommand =
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      /**
+       * #3390: accepted content for a form input request (a harness question
+       * or a tool server's elicitation), keyed by field name. Only with
+       * `accept`; the server validates it against the exact opened event.
+       */
+      content?: InputRequestContent;
+      /**
+       * @deprecated since 0.9.0; removed in 0.10.0. A pre-#3390 harness
+       * answer, translated to `content` and validated the same way. Send
+       * `content` instead; never both.
+       */
       answers?: HarnessQuestionAnswers;
-      /** #3284: accepted content for a tool server's form elicitation. */
-      elicitationContent?: McpElicitationContent;
     }
   | { type: 'stopSession'; threadId: string }
   | {

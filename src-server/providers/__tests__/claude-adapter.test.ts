@@ -3322,7 +3322,7 @@ describe('ClaudeAdapter', () => {
         if (question.kind !== 'prompted') throw new Error('expected a prompt');
         expect(question.event).toMatchObject({
           title: 'The agent has questions for you',
-          payload: { questionnaire: expect.anything() },
+          payload: { inputRequest: expect.anything() },
         });
         expect(logger.info).toHaveBeenCalledWith(
           NOT_APPLIED,
