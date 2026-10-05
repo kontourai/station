@@ -3,7 +3,7 @@ import { Button } from '../../components/Button';
 import { GitBadge } from '../../components/badges/GitBadge';
 import { splitWorkingDirectoryPath } from '../../components/chat-dock/chat-dock-utils';
 import { EditGlyph, SettingsGlyph } from '../../components/icons/Glyph';
-import { LayoutIcon } from '../../components/icons/LayoutIcon';
+import { ProjectIcon } from '../../components/icons/ProjectIcon';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
@@ -76,7 +76,9 @@ export function ProjectPageHeader({
     <>
       <div className="project-page__header">
         <div className="project-page__identity">
-          <LayoutIcon layout={project} size={48} />
+          {/* Initials at 48px are legible, unlike in a row; the name is the
+              heading beside it, so the mark is decorative. */}
+          <ProjectIcon project={project} size={48} fallback="initials" />
           <div className="project-page__identity-info">
             <h2 className="project-page__name">{project.name}</h2>
             {!editingDir && (
@@ -223,7 +225,7 @@ export function MemberProjectHeader({
   return (
     <div className="project-page__header">
       <div className="project-page__identity">
-        <LayoutIcon layout={project} size={48} />
+        <ProjectIcon project={project} size={48} fallback="initials" />
         <div className="project-page__identity-info">
           <p>Shared Project</p>
           <h2 className="project-page__name">{project.name}</h2>

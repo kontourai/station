@@ -80,6 +80,7 @@
     "./enriched-agent": "./src/enriched-agent.ts",
     "./environment-security": "./src/environment-security.ts",
     "./external-monitor": "./src/external-monitor.ts",
+    "./execution-preparation": "./src/execution-preparation.ts",
     "./execution-target": "./src/execution-target.ts",
     "./fleet-contribution": "./src/fleet-contribution.ts",
     "./fleet-inference": "./src/fleet-inference.ts",

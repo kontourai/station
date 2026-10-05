@@ -7,11 +7,10 @@ import { continueWorkDetail } from '../HomeActionSection';
 describe('continueWorkDetail', () => {
   const now = 1_700_000_000_000;
 
-  it('omits Model not reported and includes time', () => {
+  it('omits Model not reported, names no kind, and uses the compact time', () => {
     expect(
       continueWorkDetail(
         {
-          kindLabel: 'Direct chat',
           agentLabel: 'Station',
           modelLabel: 'Model not reported',
           lifecycleLabel: 'Current',
@@ -19,14 +18,13 @@ describe('continueWorkDetail', () => {
         },
         now,
       ),
-    ).toBe('Direct chat · Station · 12m ago');
+    ).toBe('Station · 12m');
   });
 
   it('names a Failed turn', () => {
     expect(
       continueWorkDetail(
         {
-          kindLabel: 'Direct chat',
           agentLabel: 'Claude Code',
           modelLabel: 'Opus 5',
           lifecycleLabel: 'Failed',
@@ -34,6 +32,6 @@ describe('continueWorkDetail', () => {
         },
         now,
       ),
-    ).toBe('Direct chat · Claude Code · Opus 5 · Failed · just now');
+    ).toBe('Claude Code · Opus 5 · Failed · now');
   });
 });
