@@ -100,6 +100,8 @@ async function main() {
         '--repo',
         process.env.GITHUB_REPOSITORY,
         '--auto',
+        '--match-head-commit',
+        pr.head.sha,
       ],
       {
         stdio: 'inherit',

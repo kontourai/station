@@ -210,9 +210,22 @@ describe('qualification repair lifecycle', () => {
         join(bin, 'gh'),
         `#!/bin/sh
 if [ "$1" = api ]; then
-  node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.EXPECTED_HEAD,isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:armed && process.env.QUEUE_RESULT === "armed" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
+  node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.QUERY_HEAD || process.env.EXPECTED_HEAD,isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:(armed && process.env.QUEUE_RESULT === "armed") || process.env.PRE_ARMED === "1" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
 else
-  printf "%s\n" "$*" >> "$ARM_MARKER"
+  arguments="$*"
+  expected=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = --match-head-commit ]; then
+      shift
+      expected="$1"
+    fi
+    shift
+  done
+  if [ "$expected" != "$MUTATION_HEAD" ]; then
+    echo 'head changed before arm mutation' >&2
+    exit 1
+  fi
+  printf "%s\n" "$arguments" >> "$ARM_MARKER"
 fi
 `,
       );
@@ -223,6 +236,7 @@ fi
         PATH: `${bin}:${process.env.PATH}`,
         ARM_MARKER: marker,
         EXPECTED_HEAD: run.head_sha,
+        MUTATION_HEAD: run.head_sha,
         QUEUE_RESULT: 'queued',
         GITHUB_EVENT_PATH: event,
         GITHUB_REPOSITORY: 'owner/repo',
@@ -243,7 +257,7 @@ fi
           windowsHide: true,
         });
         expect(readFileSync(marker, 'utf8')).toBe(
-          'pr merge 7 --repo owner/repo --auto\n',
+          `pr merge 7 --repo owner/repo --auto --match-head-commit ${run.head_sha}\n`,
         );
         // Already queued is a no-op, not another arming attempt.
         await exec(process.execPath, [landing], {
@@ -252,8 +266,47 @@ fi
           windowsHide: true,
         });
         expect(readFileSync(marker, 'utf8')).toBe(
-          'pr merge 7 --repo owner/repo --auto\n',
+          `pr merge 7 --repo owner/repo --auto --match-head-commit ${run.head_sha}\n`,
         );
+        // The actual stall starts armed, not queued. Fresh arming must still
+        // run once with the reviewed head when an old request already exists.
+        const stalledMarker = join(root, 'stalled-arm');
+        const repaired = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, ARM_MARKER: stalledMarker, PRE_ARMED: '1' },
+          windowsHide: true,
+        });
+        expect(repaired.stdout).toContain('queued');
+        expect(
+          readFileSync(stalledMarker, 'utf8').trim().split('\n'),
+        ).toHaveLength(1);
+        const refusedMarker = join(root, 'refused-arm');
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              QUERY_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('changed head');
+        expect(() => readFileSync(refusedMarker)).toThrow();
+        // A push between a good precheck and mutation cannot arm the new head.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              MUTATION_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('head changed before arm mutation');
+        expect(() => readFileSync(refusedMarker)).toThrow();
+
         // A green CLI exit alone must not claim successful admission.
         await expect(
           exec(process.execPath, [landing], {
