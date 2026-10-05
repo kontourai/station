@@ -2,16 +2,16 @@
 import { spawn } from 'node:child_process';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
-  isNoteArchiveFile,
-  REVIEW_LEDGER_DIR,
-  REVIEW_NOTES_DIR,
-} from './lib/review-ledger-paths.mjs';
-import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import {
+  isNoteArchiveFile,
+  REVIEW_LEDGER_DIR,
+  REVIEW_NOTES_DIR,
+} from './lib/review-ledger-paths.mjs';
 
 const minute = 60_000;
 const time = (value) => Date.parse(value);

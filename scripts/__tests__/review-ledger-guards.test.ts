@@ -12,6 +12,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { appendOnlyNoteProblems } from '../lib/documentation-freshness.mjs';
 import {
   compileReviewState,
   noteArchiveFile,
@@ -26,7 +27,6 @@ import {
   serializeRecordFile,
   writeReviewFiles,
 } from '../lib/review-ledger-store.mjs';
-import { appendOnlyNoteProblems } from '../lib/documentation-freshness.mjs';
 import { pinnedFreshnessEnv } from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
