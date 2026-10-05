@@ -122,7 +122,9 @@ first; the two chips under the text box show what **Start** will use:
   list the Agents this project offers, each with its readiness and its setup
   action. An Agent's Model control opens the Model picker, including runtime
   options such as reasoning effort. Choosing a Model for an Agent also chooses
-  that Agent.
+  that Agent and closes the picker; changing the effort leaves it open. Once
+  you have chosen a Model, the picker's reset button names the default it
+  returns to, such as **Use project default**.
 - The **project** chip shows the project's colour and name, or **No
   project**. Open it to choose a project. The list shows each project's
   folder, and the folder this chat will run in. A project with no folder
