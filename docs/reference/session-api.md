@@ -483,21 +483,27 @@ a mid-turn interjection is a steer. Where Grok records what the user typed
 separately (`displayText`, for interjections and locally expanded slash
 skills), Station shows that rather than the model-facing text. A new prompt
 after a turn that never recorded its completion ends that turn as aborted and
-its open tools as unresolved. A user chunk without a prompt index, after prompts
-have carried one, is Grok's synthetic mid-turn input and is not imported. A
+its open tools as unresolved. User text Grok writes without a prompt index while
+a turn is open (interjections, echoed host turns and direct `!command` runs) is
+imported as a steer on that turn and never starts or aborts one. A
 rewind appends a marker rather than removing turns; Station keeps the rewound
 turns, because a live follower has already published them and the event log
 has no retraction. The marker is recorded as an extension notification but is
 not shown in the transcript yet. A log
 or summary in an unrecognized shape is skipped with one logged warning per
-file kind, never guessed at. Discovery re-reads a working directory's folder
-list only when it changed, reads at most 131,072 entries, stats at most 16,384
-folders and inspects at most 1,024 new or changed sessions per poll; followed,
-unvisited and recently changed folders come first and a rotating sweep covers
-the rest, so a large backlog of probe sessions delays a new session by a few
-polls without hiding it. The index holds at most 131,072 folders and makes room
-by forgetting inspected prompt-less ones; a single working directory with more
-session folders than that is only partly listed.
+file kind, never guessed at. Discovery skips every working directory that is one of
+Station's own ACP workspaces, for this or another Station home (the layout
+`runtime/acp-workspaces/<session|probe>/<digest>` that
+[`managed-acp-workspace.ts`](../../src-server/services/acp/managed-acp-workspace.ts)
+creates), before reading it. Of the rest, it re-reads a working directory's
+folder list only when it changed, newest first, and per poll reads at most
+131,072 entries, stats at most 16,384 folders and inspects at most 1,024. New
+folders in a changed working directory and folders with new activity come
+first, so a new session is found on the poll it appears. The index holds at
+most 131,072 folders; past that it slides over the tree no faster than it can
+inspect, so an untouched old session in such a tree can take a few minutes to
+appear. A single working directory with more session folders than that is
+only partly listed.
 
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
