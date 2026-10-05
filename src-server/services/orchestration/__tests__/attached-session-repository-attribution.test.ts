@@ -108,20 +108,20 @@ describe('attribution by repository (#3386)', () => {
   test('a worktree outside the project folder belongs to the project on its repository', async () => {
     const main = repository(join(dir, 'station'));
     // The two real-world shapes: a sibling worktree folder, and another
-    // tool's worktree root (T3 Code's `~/.t3/worktrees/<repo>/<name>`).
+    // tool's worktree root under a hidden folder in the home directory.
     const sibling = worktree(
       main,
       join(dir, 'station-worktrees', 'lane'),
       'lane',
     );
-    const t3 = worktree(
+    const toolWorktree = worktree(
       main,
-      join(dir, '.t3', 'worktrees', 'station', 'x'),
+      join(dir, '.agent-tool', 'worktrees', 'station', 'x'),
       'x',
     );
     const projects = [{ slug: 'station', workingDirectory: main }];
 
-    for (const cwd of [sibling, join(t3, 'packages', 'app')]) {
+    for (const cwd of [sibling, join(toolWorktree, 'packages', 'app')]) {
       expect(await attribute(cwd, projects)).toEqual({
         state: 'attributed',
         slug: 'station',
