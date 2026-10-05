@@ -4,15 +4,15 @@
  * contracts rule (`projectIconProblem`), the service persists or clears, and
  * the assertions read the record back from the file store the writer wrote.
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   PROJECT_ICON_MAX_IMAGE_BYTES,
   PROJECT_ICON_PROBLEM_MESSAGES,
 } from '@kontourai/station-contracts/project';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -27,17 +27,10 @@ function pngDataUrl(byteLength: number): string {
   return `data:image/png;base64,${bytes.toString('base64')}`;
 }
 
-const tempDirs: string[] = [];
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'station-project-icon-'));
-  tempDirs.push(dir);
-  return dir;
+  return makeTempDir('station-project-icon-');
 }
 
 async function harness(storedIcon?: string) {
