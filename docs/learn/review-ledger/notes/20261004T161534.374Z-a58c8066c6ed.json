@@ -1,0 +1,17 @@
+{
+  "revision": "1951cddbc21cd0dec97c2fdf1ef84edb7df0d2c3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDock.tsx now computes the inbox's Needs-you count for every host (not only a host that folds the inbox) and hands it to the header as workspaceControls.inboxNeedsYouCount, so the inbox toggle reads 'Show inbox, N need you' while the inbox is hidden (inbox-toggle-label.ts). Re-read the header claim at line 67 (Hide inbox / Show inbox as a pressed icon button, one labelled action New, Open chat… in the ⋯ menu): still true; the name now may carry the count while hidden.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock.tsx now computes the inbox's Needs-you count for every host (not only a host that folds the inbox) and hands it to the header as workspaceControls.inboxNeedsYouCount, so the inbox toggle reads 'Show inbox, N need you' while the inbox is hidden (inbox-toggle-label.ts). The folded-edge paragraph now says the edge is pointer-only (aria-hidden, tabIndex -1) and the bar toggle is the one keyboard/screen-reader control with the count in its name and tooltip; checked against CodingWorkbench.tsx, ChatDockHeader.tsx, CodingWorkbench.test.tsx and coding-stack-navigation.spec.ts (one accessible Show inbox control while folded).","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock.tsx now computes the inbox's Needs-you count for every host (not only a host that folds the inbox) and hands it to the header as workspaceControls.inboxNeedsYouCount, so the inbox toggle reads 'Show inbox, N need you' while the inbox is hidden (inbox-toggle-label.ts). Re-read the dock and surface claims: none name the inbox toggle's wording; still accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx now computes the inbox's Needs-you count for every host (not only a host that folds the inbox) and hands it to the header as workspaceControls.inboxNeedsYouCount, so the inbox toggle reads 'Show inbox, N need you' while the inbox is hidden (inbox-toggle-label.ts). Re-read the dock-related API claims: unaffected (UI-only change).","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock.tsx now computes the inbox's Needs-you count for every host (not only a host that folds the inbox) and hands it to the header as workspaceControls.inboxNeedsYouCount, so the inbox toggle reads 'Show inbox, N need you' while the inbox is hidden (inbox-toggle-label.ts). Re-read the dock-related config claims: unaffected (UI-only change).","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock.tsx now computes the inbox's Needs-you count for every host (not only a host that folds the inbox) and hands it to the header as workspaceControls.inboxNeedsYouCount, so the inbox toggle reads 'Show inbox, N need you' while the inbox is hidden (inbox-toggle-label.ts). Re-read the guide: no claim quotes the inbox toggle's name; still accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

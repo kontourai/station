@@ -126,6 +126,17 @@
   color: var(--text-secondary);
 }
 
+/* #3157: a normal wait on a provider usage limit, not an error. It shares the
+   failure row's layout but reads as a quiet note. */
+.queued-messages__hold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--k-text-muted, var(--text-secondary));
+}
+
 .queued-messages__failure-text {
   flex: 1;
   min-width: 0;

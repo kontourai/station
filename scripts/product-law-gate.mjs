@@ -10,14 +10,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   evaluateProductLawManifest,
   formatProductLawReport,
   loadProductLawManifest,
-  MAX_PRODUCT_LAW_RUNTIME_MS,
   PRODUCT_LAW_TIMEOUT_EXIT_CODE,
-  productLawObservationTimeoutMs,
+  productLawEffectiveObservationTimeoutMs,
+  productLawRuntimeBudgetMs,
   renderProductLawSection,
   validateProductLawManifest,
 } from './lib/product-laws.mjs';
@@ -203,14 +204,15 @@ export async function runProductLawGate({
   if (errors.length > 0) return { errors, report: null, projection };
 
   const startedAt = now();
-  const observationTimeoutMs = productLawObservationTimeoutMs(env);
+  const observationTimeoutMs = productLawEffectiveObservationTimeoutMs(env);
+  const runtimeBudgetMs = productLawRuntimeBudgetMs(env);
   const report = await evaluateProductLawManifest(manifest, {
     observeLawTest: (observation) => {
-      const remaining = MAX_PRODUCT_LAW_RUNTIME_MS - (now() - startedAt);
+      const remaining = runtimeBudgetMs - (now() - startedAt);
       if (remaining <= 0)
         return Promise.resolve({
           status: 'NOT_VERIFIED',
-          reason: `product-law verification exceeded ${MAX_PRODUCT_LAW_RUNTIME_MS}ms`,
+          reason: `product-law verification exceeded ${runtimeBudgetMs}ms`,
         });
       return observe({
         ...observation,
@@ -225,6 +227,7 @@ export async function runProductLawGate({
 
 async function main() {
   try {
+    await ensureLivenessScale();
     const result = await runProductLawGate({
       write: process.argv.includes('--write'),
     });

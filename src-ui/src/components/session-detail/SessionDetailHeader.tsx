@@ -1,11 +1,10 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { StatusBadge } from '@kontourai/ui/react';
 import { Fragment, useEffect, useRef } from 'react';
-import {
-  orchestrationLifecycleLabel,
-  sessionStatusWord,
-} from '../../utils/session-state';
+import { useAgents } from '../../contexts/AgentsContext';
+import { orchestrationLifecycleLabel } from '../../utils/session-state';
 import { sessionKindLabel } from '../../utils/sessionDisplay';
+import { sessionWorkStatus } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { sessionStateTone } from '../kontour/station-tones';
 import {
@@ -61,6 +60,9 @@ export function SessionDetailHeader({
   menuActions: readonly SessionDetailMenuAction[];
 }) {
   const state = orchestrationLifecycleLabel(session);
+  // The badge's word is the status ladder's (the same one the Activity row
+  // and the inbox row for this session print); its tone follows the fold.
+  const statusWord = sessionWorkStatus(session, useAgents(), Date.now()).word;
   const headerRef = useRef<HTMLElement | null>(null);
   const openInChatRef = useRef<HTMLButtonElement | null>(null);
   // Stop… leaves once the turn has actually stopped — usually after its
@@ -122,7 +124,7 @@ export function SessionDetailHeader({
         <h2>{title}</h2>
         <div className="sessions-detail__status-line">
           <StatusBadge
-            status={sessionStatusWord(session)}
+            status={statusWord}
             tone={sessionStateTone(state)}
             className="sessions-detail__status"
           />

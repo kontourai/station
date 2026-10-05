@@ -1,0 +1,7 @@
+{
+  "revision": "a426a376a249ae632c24370beab3d76cbcebb398",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home still owns Home continuation; it now asserts the desktop continuation lands in the project's Coding layout and the compact goal form, matching the row's 'Continuation' claim.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

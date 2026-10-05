@@ -633,6 +633,9 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // #3157: read when a usage-limit resume is armed and when it is due.
+    resolveUsageLimitAutoResume: async () =>
+      (await configLoader.loadAppConfig()).usageLimitAutoResume,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched

@@ -553,6 +553,19 @@ export const devicePairingRequests = meter.createCounter(
 );
 
 /**
+ * #2894 S1: raw operator-credential uses on the device-admin routes, by route
+ * and host position (`host-direct`, `host-ui-proxy`, `off-host`). Observed
+ * before off-host uses are refused (owner decision D2).
+ */
+export const operatorCredentialDeviceAdminUses = meter.createCounter(
+  'station.device_pairing.operator_credential_uses',
+  {
+    description:
+      'Raw operator-credential uses on device-admin routes by route and host position; never includes device or network identity',
+  },
+);
+
+/**
  * Compatibility contract advertised to an unauthenticated client. Attributes
  * are the two contract integers only — constants for a given build, so this
  * carries no per-device cardinality and no network identity, while still
@@ -2534,6 +2547,13 @@ export const consentDecisionOps = meter.createCounter(
   {
     description:
       'Consent-listener decision outcomes by result (approved|denied|refused) and refusal reason',
+  },
+);
+export const operatorPasskeyEnrollmentOps = meter.createCounter(
+  'station.operator_passkey.enrollment_ops',
+  {
+    description:
+      'Operator passkey enrollment outcomes by step (requested|confirmed|denied|enrolled|revoked|refused) and refusal reason; never a credential, challenge or code',
   },
 );
 export const consentListenerState = meter.createCounter(

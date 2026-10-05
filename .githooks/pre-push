@@ -48,6 +48,16 @@ if [[ "$has_updates" -eq 0 ]]; then
   exit 0
 fi
 
+# #3302: fixed liveness bounds (vitest timeouts, fallow watchdog, product-law
+# and transfer-capture bounds) fail honest runs on a CPU-saturated host. Resolve
+# one bounded scale factor from measured host pressure here, once, and export it
+# so every step below reads it instead of sampling again. CI never runs this
+# hook and pins the factor to 1. An invalid STATION_LIVENESS_SCALE fails the
+# push before any check runs; a scaled run prints one line saying so.
+liveness_scale="$(node scripts/lib/liveness-scale-resolve.mjs)"
+export STATION_LIVENESS_SCALE="$liveness_scale"
+export STATION_LIVENESS_SCALE_RESOLVED=1
+
 # Only seconds-scale checks belong here. `ci:fast` stays the bounded feedback
 # lane and `full:regression` stays the sole completion receipt; what runs here
 # is the subset that is cheap enough to run on every push and whose failure

@@ -1,0 +1,7 @@
+{
+  "revision": "a9f4e5245bdd2a9ff154ccd7f68f3e73cd15f9f5",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3312 review fix: the earlier note claimed Home read the same selection the start path opens on; it read the route context (global on /) while Start opens in the ambient dock's remembered project. Traced HomeChatStartForm -> useHomeViewModel.startIdentity -> useNewChatSelectionModel(selectedContext: useNewChatStartContext) and ChatDock -> resolveNewChatModalDefaultProjectSlug -> NewChatModal resolveNewChatInitialContext; both now resolve the same context. Added that a chat started from Home opens in the chat dock's current project, so its default Agent and Model apply. The selection model's remembered-Model read is now live (useLastChosenModelMap); no other claim in this guide changed.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx","src-ui/src/components/home/HomeChatStartForm.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/index.css","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/NewChatAction.tsx"]}
+  ]
+}

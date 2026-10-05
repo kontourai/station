@@ -6,6 +6,8 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import type {
   ApprovalAttentionItem,
   AttentionItem,
+  NeedsInputAttentionItem,
+  ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
@@ -188,4 +190,58 @@ export function sessionFailedIdentity(
     item.agent ?? null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * A waiting item whose task runs on a PAIRED Station. The server derives
+ * `environmentKind` from the session's own delegation record — the same
+ * field `isPeerDelegationRecord` reads in the Activity detail — so the inbox
+ * and the detail apply one rule. Its thread id names this Station's lifecycle
+ * record only, so no surface may offer a local reply for it.
+ */
+export function isPeerHostedAttentionItem(item: AttentionItem): item is (
+  | NeedsInputAttentionItem
+  | ReviewPendingAttentionItem
+) & {
+  environmentKind: 'peer';
+} {
+  return (
+    (item.kind === 'needs_input' || item.kind === 'review_pending') &&
+    item.environmentKind === 'peer'
+  );
+}
+
+/** Where a peer-hosted item is answered. Shared by the inbox, bell and detail. */
+export function peerAttentionElsewhereText(environmentName?: string): string {
+  return environmentName
+    ? `Answer this on ${environmentName}, the paired Station that runs the task.`
+    : 'Answer this on the paired Station that runs the task.';
+}
+
+/**
+ * Whether the inbox may offer Allow/Deny for a paired-Station item: the
+ * paired Station reported an open approval or permission request, and this
+ * Station's own checks on the respond route pass for the caller
+ * (`viewerCanRespond`, absent = unknown = no). The paired Station still
+ * authorizes on its side; its refusal is shown when it comes back.
+ */
+export function peerRequestDecision(
+  item: NeedsInputAttentionItem | ReviewPendingAttentionItem,
+):
+  | { kind: 'decide'; reference: NonNullable<typeof item.peerRequestReference> }
+  | { kind: 'note'; reason?: string } {
+  const reference = item.peerRequestReference;
+  const decidable =
+    reference?.requestType === 'approval' ||
+    reference?.requestType === 'permission';
+  if (reference && decidable) {
+    return item.viewerCanRespond === true
+      ? { kind: 'decide', reference }
+      : {
+          kind: 'note',
+          reason:
+            "Your access to this Station doesn't allow deciding paired-Station requests from here.",
+        };
+  }
+  return { kind: 'note' };
 }

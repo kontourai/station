@@ -1,4 +1,4 @@
-name: CI Extended
+name: "Tool: CI extended"
 
 on:
   # Dispatch only. #518 (2026-08-30) made this weekly; every scheduled run

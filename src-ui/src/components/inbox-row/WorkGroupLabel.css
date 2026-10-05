@@ -1,0 +1,15 @@
+/*
+ * One face for every work group heading (Home, the chat dock inbox,
+ * Activity): the app's body face in sentence case. Set on the label itself,
+ * not inherited, so a host heading's own type rules (a monospace section
+ * header, an uppercase eyebrow) cannot restyle it.
+ */
+.work-group-label {
+  font-family: var(--font-sans);
+  /* A host may scale it (the phone picker reads at body size). */
+  font-size: var(--work-group-label-size, var(--text-sm));
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--k-text-muted);
+}

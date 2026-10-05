@@ -2,7 +2,12 @@ interface GlyphProps {
   className?: string;
 }
 
-function glyph(path: string) {
+/**
+ * One 16px stroke glyph from a path. Exported so a lazily loaded surface can
+ * keep its own glyphs in its own chunk (the Diff pane's toolbar) rather than
+ * adding them to this eagerly loaded module.
+ */
+export function glyph(path: string) {
   return function Glyph({ className }: GlyphProps) {
     return (
       <svg

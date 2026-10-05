@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -693,6 +694,63 @@ describe('tsc-slot runner', () => {
       '--noEmit',
       '--listFiles',
     ]);
+  });
+
+  test('the scripts coverage gate reads a --listFiles listing larger than 1 MiB (#2787)', () => {
+    // The real spawn, against a stand-in runner that prints the listing a
+    // larger program (or a deeper checkout root) would: one absolute path per
+    // line, past Node's default 1 MiB capture limit.
+    const root = realpathSync(tempDir('station-listfiles-'));
+    const count = 6000;
+    const stem = 'p'.repeat(200);
+    mkdirSync(join(root, 'scripts'));
+    writeFileSync(
+      join(root, 'scripts', 'tsc-slot.mjs'),
+      [
+        "const root = process.cwd().split('\\\\').join('/');",
+        "let out = '';",
+        `for (let i = 0; i < ${count}; i++)`,
+        `  out += root + '/scripts/generated/${stem}-' + i + '.ts\\n';`,
+        'process.stdout.write(out);',
+        '',
+      ].join('\n'),
+    );
+    // The fixture is only a proof if it is past the old limit.
+    expect(
+      count * (stem.length + '/scripts/generated/'.length),
+    ).toBeGreaterThan(1_048_576);
+
+    const { status, compiled, diagnostics } = compileProject(root);
+    expect(diagnostics).toEqual([]);
+    expect(status).toBe(0);
+    expect(compiled).toHaveLength(count);
+    expect(compiled).toContain(`scripts/generated/${stem}-${count - 1}.ts`);
+  });
+
+  test('a listing past the capture bound fails naming the cause, not a bare spawn error (#2787)', () => {
+    let requested: unknown;
+    expect(() =>
+      compileProject(REPO_ROOT, {
+        run: (
+          _command: string,
+          _args: string[],
+          options: { maxBuffer?: number },
+        ) => {
+          requested = options.maxBuffer;
+          return {
+            status: null,
+            stdout: `${REPO_ROOT}/scripts/truncated.ts\n`,
+            stderr: '',
+            error: Object.assign(new Error('spawnSync node ENOBUFS'), {
+              code: 'ENOBUFS',
+            }),
+          };
+        },
+      } as never),
+    ).toThrow(
+      /tsc-slot\.mjs -p tsconfig\.scripts\.json --noEmit --listFiles wrote more than 67108864 bytes/,
+    );
+    expect(requested).toBe(67_108_864);
   });
 
   test('the typecheck aggregate never runs more lanes at once than there are slots', () => {

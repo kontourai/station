@@ -6,21 +6,35 @@ name: Nightly
 # publication.
 on:
   schedule:
-    # Daily qualified dogfood delivery. Main qualification runs every six hours.
+    # Daily qualified dogfood delivery. Main: Qualification runs every six hours.
     - cron: '43 6 * * *'
   workflow_dispatch:
     inputs:
       source_sha: { description: Optional current workflow event SHA; older revisions are rejected, required: false }
       rebuild_index: { description: Optional native rebuild index, required: false }
+  # Main qualification calls this from inside the run that qualified its event
+  # SHA. In a called workflow the github context is the caller's, so
+  # github.sha is that qualified commit and every exact-SHA guard below keeps
+  # its meaning. caller_qualification is the caller's qualification job result;
+  # 'success' stands in for this workflow's own full-regression call, which
+  # could not reuse a receipt from the still-running caller.
+  workflow_call:
+    inputs:
+      source_sha: { description: The caller's just-qualified event SHA, required: true, type: string }
+      caller_qualification: { description: The caller's qualification job result, required: true, type: string }
 
 permissions: { contents: write, actions: read, id-token: write, attestations: write }
+# One group for both entry points: a called Nightly evaluates its own
+# workflow-level concurrency, so a scheduled and a qualification-started
+# Nightly queue rather than overlap. The caller's group (main-qualification)
+# differs, so the nesting cannot deadlock.
 concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
   fleet-staging:
     name: 3 · Stage portable fleet evidence
     needs: [test-gate, full-regression]
-    if: ${{ github.ref == 'refs/heads/main' && needs.test-gate.outputs.source_sha == github.sha && needs.full-regression.result == 'success' }}
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && needs.test-gate.result == 'success' && needs.test-gate.outputs.source_sha == github.sha && (needs.full-regression.result == 'success' || inputs.caller_qualification == 'success') }}
     permissions: { contents: read, attestations: write, id-token: write }
     uses: ./.github/workflows/nightly-fleet-staging.yml
     with:
@@ -110,7 +124,7 @@ jobs:
   full-regression:
     name: 2 · Full regression gate
     needs: [test-gate]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && inputs.caller_qualification != 'success' }}
     uses: ./.github/workflows/full-regression.yml
     with:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
@@ -134,7 +148,7 @@ jobs:
   native-cohort:
     name: 3 · Publish native cohort
     needs: [test-gate, full-regression, native-stage]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['native-stage'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && (needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success') && needs['native-stage'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
     # Reusable workflows can only reduce the caller's token. The cohort writes
     # recovery locks and promotion fences and attests the final receipt.
     permissions: { contents: write, id-token: write, attestations: write }
@@ -155,7 +169,7 @@ jobs:
   portable-nightly:
     name: 3 · Portable server Nightly (dry run unless enabled)
     needs: [test-gate, full-regression, native-stage]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha && needs['native-stage'].outputs.build == 'true' && needs['native-stage'].outputs.bundle_version != '' }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && (needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success') && needs['test-gate'].outputs.source_sha == github.sha && needs['native-stage'].outputs.build == 'true' && needs['native-stage'].outputs.bundle_version != '' }}
     # Reusable workflows can only reduce the caller's token. Only the callee's
     # owner-gated publish job uses the write scope.
     permissions: { contents: write }
@@ -174,7 +188,7 @@ jobs:
   nightly-cli:
     name: 3 · Publish CLI to npm nightly
     needs: [test-gate, full-regression]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && (needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success') }}
     runs-on: ubuntu-22.04
     permissions: { contents: write, id-token: write, actions: read }
     steps:

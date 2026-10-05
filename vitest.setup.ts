@@ -21,6 +21,13 @@ import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sql
 preserveJobEventEnvironment(process.env);
 scrubEventScopedEnvironment(process.env);
 
+// The host-pressure liveness factor (#3302) scaled the timeouts this worker
+// was started with; it must not also change what a test observes. Tests that
+// assert a default bound would otherwise pass on an idle host and fail on a
+// busy one. A test that needs a factor sets it explicitly.
+delete process.env.STATION_LIVENESS_SCALE;
+delete process.env.STATION_LIVENESS_SCALE_RESOLVED;
+
 installNodeHttpCompatibility();
 
 /**

@@ -45,7 +45,7 @@ import type {
   NewChatModelChoice,
   SelectableModel,
 } from '../utils/modelCapabilities';
-import { getLastChosenModelMap } from './lastChosenModel';
+import { useLastChosenModelMap } from './lastChosenModel';
 
 const EMPTY_CONNECTIONS: never[] = [];
 
@@ -69,7 +69,7 @@ export function resolveProviderManagedAgentConnectionId(
   return managedRuntimeId ? engineConnectionId(managedRuntimeId) : undefined;
 }
 
-import { getContextAgent, getRecentAgentSlugs } from './useRecentAgents';
+import { getRecentAgentSlugs, useContextAgent } from './useRecentAgents';
 
 export interface ACPSelectionConnection {
   id: string;
@@ -337,10 +337,14 @@ export function useNewChatSelectionModel({
     [modalAgents, providerManagedExecution],
   );
 
-  // Read once per modal mount, matching the "lost on remount" fix for
-  // recent agents — pure resolver/view-model functions stay localStorage-free.
-  const lastChosenModelByBinding = useMemo(() => getLastChosenModelMap(), []);
+  // Read live: a surface that stays mounted (Home) must see a model chosen
+  // in a docked chat meanwhile. The pure resolver/view-model functions stay
+  // localStorage-free.
+  const lastChosenModelByBinding = useLastChosenModelMap();
   const activeChatsSnapshot = activeChatsStore.getSnapshot();
+  // Live, like the Model memory above: a choice remembered on one surface
+  // re-derives the other surface's default Agent.
+  const rememberedAgentSlug = useContextAgent(namespace, selectedContext);
   const viewModel = useMemo(
     () =>
       buildNewChatModalViewModel({
@@ -383,7 +387,7 @@ export function useNewChatSelectionModel({
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
     preferredAgentSlug:
-      getContextAgent(namespace, selectedContext) ??
+      rememberedAgentSlug ??
       getRecentAgentSlugsForContext(
         activeChatsSnapshot,
         selectedContext,
@@ -558,6 +562,14 @@ export function useNewChatSelectionModel({
     setupFetching,
     projectCatalogResolved:
       projectCatalog.isSuccess && !projectCatalog.isFetching,
+    /**
+     * True once `defaultSelection` reflects `selectedContext`: always for the
+     * global context, and for a project only after its detail (default
+     * Model, default Agent, Agents filter) has loaded. Until then the default
+     * selection is the global one, which a project chat would not use.
+     */
+    selectedContextResolved:
+      !selectedProjectSlug || selectedProjectQuery.isSuccess,
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in

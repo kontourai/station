@@ -71,8 +71,8 @@ function useNewApprovalAnnouncement(
       id: previous.id + 1,
       text:
         fresh.length === 1
-          ? `Approval needed: ${names[0]}`
-          : `${fresh.length} approvals needed: ${names.join(', ')}`,
+          ? `Needs approval: ${names[0]}`
+          : `Needs approval (${fresh.length}): ${names.join(', ')}`,
     }));
   }, [keys, settled]);
   return announcement;

@@ -32,8 +32,8 @@ import {
   BrowserSessionError,
   type BrowserSessionRegistry,
   browserProfileFor,
+  browserViewportProblem,
   isValidBrowserProjectId,
-  isValidBrowserViewport,
 } from '../services/browser/browser-session-registry.js';
 import { CdpProtocolError } from '../services/browser/cdp-pipe-transport.js';
 import {
@@ -372,11 +372,16 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       !isValidBrowserProjectId(body.projectSlug) ||
       typeof body.url !== 'string' ||
       (body.threadId !== undefined &&
-        (typeof body.threadId !== 'string' ||
-          !THREAD_ID.test(body.threadId))) ||
-      (body.viewport !== undefined && !isValidBrowserViewport(body.viewport))
+        (typeof body.threadId !== 'string' || !THREAD_ID.test(body.threadId)))
     )
       return c.json(invalid, 400);
+    // A viewport refusal names the field; the other fields keep the bare code.
+    const viewportProblem =
+      body.viewport === undefined
+        ? undefined
+        : browserViewportProblem(body.viewport);
+    if (viewportProblem)
+      return c.json({ ...invalid, error: viewportProblem }, 400);
     const project = deps.resolveProject(body.projectSlug);
     const actor = project
       ? await deps.authorizeProject(c.req.raw, project.id, 'drive')
@@ -554,8 +559,10 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   app.post('/sessions/:browserSessionId/viewport', async (c) => {
     const body = await readJsonObject(c.req.raw, ['viewport', 'generation']);
     const generation = body ? generationOf(body) : null;
-    if (!body || !isValidBrowserViewport(body.viewport) || generation === null)
-      return c.json(invalid, 400);
+    if (!body || generation === null) return c.json(invalid, 400);
+    const viewportProblem = browserViewportProblem(body.viewport);
+    if (viewportProblem)
+      return c.json({ ...invalid, error: viewportProblem }, 400);
     const found = await sessionFor(
       c.req.raw,
       c.req.param('browserSessionId'),

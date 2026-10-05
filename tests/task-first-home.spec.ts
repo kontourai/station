@@ -1,12 +1,17 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
+import type {
+  WorkspaceFileChanges,
+  WorkspaceFilePreview,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
-import { devices, expect, type Page } from '@playwright/test';
+import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
@@ -20,6 +25,11 @@ import {
   installJourneyProfile,
   profileJourney,
 } from './helpers/journey-profile';
+import {
+  emitMockOrchestrationEvent,
+  installMockOrchestrationSse,
+  waitForMockOrchestrationSse,
+} from './helpers/orchestration';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
@@ -43,6 +53,15 @@ const APP_CONFIG = {
   firstRun: { status: 'skipped' },
 };
 
+/** A body that is already a complete API envelope. */
+function rawJson(body: unknown) {
+  return {
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  };
+}
+
 function json(data: unknown) {
   return {
     status: 200,
@@ -58,6 +77,12 @@ async function mockTaskFirstHome(
     historyCount?: number;
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
+    /**
+     * The project's own default Model, a second model the Codex runtime
+     * catalog also lists. Absent, the project names none and the agent
+     * default (`gpt-5.3-codex`) applies.
+     */
+    projectDefaultModel?: string;
   } = {},
 ) {
   const taskSession = {
@@ -215,7 +240,13 @@ async function mockTaskFirstHome(
       return;
     }
     if (path === '/api/projects/station') {
-      await route.fulfill(json(project));
+      await route.fulfill(
+        json(
+          options.projectDefaultModel
+            ? { ...project, defaultModel: options.projectDefaultModel }
+            : project,
+        ),
+      );
       return;
     }
     // The project-scoped launcher reads the portable identity. This fixture's
@@ -235,6 +266,54 @@ async function mockTaskFirstHome(
           code: PROJECT_IDENTITY_NOT_PREPARED_CODE,
         }),
       });
+      return;
+    }
+    // The New chat draft reads the skill-experience inventory (#3201). This
+    // fixture installs none, which the route answers with an empty inventory.
+    if (
+      path === '/api/skills/experiences' &&
+      route.request().method() === 'GET'
+    ) {
+      const inventory: SkillExperienceInventoryV1 = {
+        experiences: [],
+        diagnostics: [],
+      };
+      await route.fulfill(json(inventory));
+      return;
+    }
+    // Opening a changed file from the active-work panel mounts the project
+    // file-preview pane, which reads the bounded preview route.
+    if (
+      path === '/api/projects/station/file-preview' &&
+      route.request().method() === 'POST'
+    ) {
+      const preview: WorkspaceFilePreview = {
+        path: 'src-ui/src/App.tsx',
+        status: 'ready',
+        renderKind: 'text',
+        content: 'export function App() {}\n',
+      };
+      await route.fulfill(json(preview));
+      return;
+    }
+    // The pane then reads that file's changes against HEAD (#3365): the file
+    // came from the active-work changed-files list, so it has a patch.
+    if (
+      path === '/api/projects/station/file-preview/changes' &&
+      route.request().method() === 'POST'
+    ) {
+      const changes: WorkspaceFileChanges = {
+        state: 'changed',
+        base: 'HEAD',
+        patch:
+          'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx\n' +
+          'index e69de29..8b7a6f1 100644\n' +
+          '--- a/src-ui/src/App.tsx\n' +
+          '+++ b/src-ui/src/App.tsx\n' +
+          '@@ -0,0 +1 @@\n' +
+          '+export function App() {}\n',
+      };
+      await route.fulfill(json(changes));
       return;
     }
     if (path === '/api/projects/station/layouts') {
@@ -403,10 +482,14 @@ async function mockTaskFirstHome(
     ) {
       const input = route.request().postDataJSON() as Record<string, unknown>;
       options.commands?.push({ type: 'sendExecutionMessage', input });
+      // The receipt envelope is already `{success,data}`: wrapping it in
+      // `json()` again hides `providerTurnId` and sends every Send down the
+      // "may have started" indeterminate branch.
       await route.fulfill(
-        json(
+        rawJson(
           foregroundMessageReceiptEnvelope({
             conversationId: 'task-first-home',
+            providerTurnId: 'task-first-home-start',
             agent:
               typeof (input.target as { agent?: unknown } | undefined)
                 ?.agent === 'string'
@@ -428,7 +511,7 @@ async function mockTaskFirstHome(
         input,
       });
       await route.fulfill(
-        json(
+        rawJson(
           foregroundMessageReceiptEnvelope({
             conversationId: decodeURIComponent(continueMatch[1]),
             agent: 'codex-agent',
@@ -486,6 +569,15 @@ async function mockTaskFirstHome(
                   name: 'gpt-5.3-codex',
                   originalId: 'gpt-5.3-codex',
                 },
+                ...(options.projectDefaultModel
+                  ? [
+                      {
+                        id: options.projectDefaultModel,
+                        name: options.projectDefaultModel,
+                        originalId: options.projectDefaultModel,
+                      },
+                    ]
+                  : []),
               ],
               builtInModels: [],
             },
@@ -608,30 +700,129 @@ async function mockTaskFirstHome(
   });
 }
 
-async function startProjectTask(page: Page) {
+/**
+ * Opens the dock's start composer through the dock's own New chat action
+ * (the collapsed bar's icon, the open dock's New, or a phone header's): the
+ * same composer Home renders inline. It opens on the remembered Agent and
+ * project; choosing an Agent, Model or project never starts an engine, only
+ * Start does.
+ */
+async function openNewChatDraft(page: Page) {
   await page
-    .locator('.home-view__actions')
-    .getByRole('button', { name: /Chat options/i })
+    .locator(
+      '.chat-dock__header, .chat-dock__tab-actions, .chat-dock__no-chat, .chat-dock__mobile-header',
+    )
+    .getByRole('button', { name: 'New chat', exact: true })
+    .first()
     .click();
-  const dialog = page.getByRole('dialog', { name: 'New Chat' });
-  await dialog.getByRole('button', { name: 'Workspace: No workspace' }).click();
-  await dialog.locator('[data-context-value="station"]').click();
+  const dialog = page.getByRole('dialog', { name: 'New chat', exact: true });
+  await expect(dialog).toBeVisible();
+  return {
+    dialog,
+    draft: dialog.getByRole('form', { name: 'Start work' }),
+  };
+}
+
+/** Chooses a project through a composer's project chip. */
+async function chooseProject(page: Page, composer: Locator, slug: string) {
+  await composer.getByRole('button', { name: /^Project: / }).click();
+  const menu = page.getByRole('dialog', { name: 'Choose project' });
+  await expect(menu).toBeVisible();
+  await menu.locator(`[data-context-value="${slug}"]`).click();
+  await expect(menu).toHaveCount(0);
+}
+
+/** Opens the draft and scopes it to the Station project (not yet sent). */
+async function openProjectDraft(page: Page) {
+  const opened = await openNewChatDraft(page);
   await expect(
-    dialog.getByRole('button', { name: 'Workspace: Station' }),
+    opened.draft.getByRole('button', { name: 'Project: No project' }),
   ).toBeVisible();
-  await page.locator('.new-chat-modal__agent--selected').click();
+  await chooseProject(page, opened.draft, 'station');
+  await expect(
+    opened.draft.getByRole('button', { name: 'Project: Station' }),
+  ).toBeVisible();
+  return opened;
+}
+
+/** Starts the draft's message; the dialog closes into the dock's chat. */
+async function sendDraft(
+  { dialog, draft }: Awaited<ReturnType<typeof openNewChatDraft>>,
+  message: string,
+) {
+  await draft
+    .getByRole('textbox', { name: 'What would you like done?', exact: true })
+    .fill(message);
+  await draft.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+/**
+ * Opens the Model picker the way a person reaches it in a start composer:
+ * the Agent chip's list, then that Agent row's Model control.
+ */
+async function openComposerModelPicker(page: Page, composer: Locator) {
+  await composer.getByRole('button', { name: /^Agent: / }).click();
+  const agents = page.getByRole('dialog', { name: 'Choose agent' });
+  await expect(agents).toBeVisible();
+  await agents
+    .getByRole('button', { name: /^Model: / })
+    .first()
+    .click();
+  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  await expect(picker).toBeVisible();
+  return picker;
+}
+
+/**
+ * Completes the turn Send started so the dock's chat is idle. A started turn
+ * keeps the chat "sending" (no command launcher, queued follow-ups) until the
+ * engine reports it finished; the fixture's engine does that here. Needs
+ * `installMockOrchestrationSse(page)` before the page loads.
+ */
+async function completeStartedTurn(page: Page, prompt: string) {
+  await waitForMockOrchestrationSse(page);
+  const event = (suffix: string, method: string, extra = {}) =>
+    emitMockOrchestrationEvent(page, 'orchestration:event', {
+      event: {
+        eventId: `task-first-home-start-${suffix}`,
+        provider: 'codex',
+        threadId: 'task-first-home',
+        turnId: 'task-first-home-start',
+        createdAt: '2026-07-13T00:00:02Z',
+        method,
+        ...extra,
+      },
+    });
+  await event('started', 'turn.started', { prompt });
+  await event('completed', 'turn.completed', {
+    outputText: 'Ready.',
+    finishReason: 'stop',
+  });
+  await expect(page.locator('.chat-dock textarea')).toHaveAttribute(
+    'placeholder',
+    /^Type a message/,
+  );
+}
+
+async function startProjectTask(
+  page: Page,
+  options: { settle?: boolean } = {},
+) {
+  const prompt = 'Start the project task.';
+  const sent = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/orchestration/chat') &&
+      response.request().method() === 'POST',
+  );
+  await sendDraft(await openProjectDraft(page), prompt);
+  await sent;
   // Desktop keeps the standalone project-context row; a phone folds the project
   // into the one-row header's eyebrow above the chat title.
   const projectContext = page.locator('.chat-dock__project-context');
   const mobileEyebrow = page.locator('.chat-dock__mobile-eyebrow');
   await expect(projectContext.or(mobileEyebrow).first()).toBeVisible();
-}
-
-async function selectNoWorkspace(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'New Chat' });
-  await expect(
-    dialog.getByRole('button', { name: 'Workspace: No workspace' }),
-  ).toBeVisible();
+  if (options.settle) await completeStartedTurn(page, prompt);
 }
 
 async function mockStationModelProviders(page: Page) {
@@ -731,6 +922,40 @@ async function mockStationModelProviders(page: Page) {
   );
 }
 
+/**
+ * The chat Start opened, in the dock, runs on `agent` and `model`: its own
+ * Agent and Model controls name them. The composer qualifies each ("Agent:
+ * Codex. Wait for…", "Model: Codex Runtime — gpt-5.4 (project default)"), so
+ * each is matched as a whole name segment, not a substring, and only inside
+ * the dock holding the started chat's transcript.
+ */
+async function expectStartedChatRuns(
+  page: Page,
+  prompt: string,
+  agent: string | undefined,
+  model: string | undefined,
+) {
+  const literal = (text = '') => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const chat = page
+    .getByRole('region', { name: 'Chat dock', exact: true })
+    .filter({
+      has: page.getByRole('log', { name: 'Conversation transcript' }),
+    });
+  await expect(
+    chat.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText(prompt);
+  await expect(
+    chat.getByRole('button', {
+      name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
+    }),
+  ).toBeVisible();
+  await expect(
+    chat.getByRole('button', {
+      name: new RegExp(`^Model: (?:.+ — )?${literal(model)}(?: \\(|$)`),
+    }),
+  ).toBeVisible();
+}
+
 test.describe('Task-first Home (#332, mocked)', () => {
   test('starts a written goal with working defaults and no configuration choices', async ({
     page,
@@ -739,13 +964,30 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await mockTaskFirstHome(page, { commands });
     await page.goto('/');
     const prompt = 'Reply exactly GOAL READY. Use no tools.';
+    // With work on the page Home's start composer is the compact one, and
+    // its Agent chip names the Agent and Model Start will run on. What it
+    // advertises is what the started chat runs on, read back below.
+    const form = page.getByRole('form', { name: 'Start work' });
+    await expect(form).toHaveClass(/start-composer--compact/);
+    const start = form.getByRole('button', { name: 'Start', exact: true });
+    const advertised = form.getByRole('button', {
+      name: 'Agent: Codex · gpt-5.3-codex',
+      exact: true,
+    });
+    await expect(advertised).toBeVisible();
+    // The composer is Home's only start: no second "New chat" beside it.
+    await expect(
+      form.getByRole('button', { name: 'New chat', exact: true }),
+    ).toHaveCount(0);
+    const [advertisedAgent, advertisedModel] = (
+      (await advertised.getAttribute('aria-label')) ?? ''
+    )
+      .replace(/^Agent: /, '')
+      .split(' · ');
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
-    await page
-      .locator('.home-view__goal')
-      .getByRole('button', { name: 'Start a chat', exact: true })
-      .click();
+    await start.click();
     await expect
       .poll(() =>
         commands.some((command) => command.type === 'sendExecutionMessage'),
@@ -754,11 +996,77 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const sent = commands.find(
       (command) => command.type === 'sendExecutionMessage',
     );
-    expect(sent?.input).toMatchObject({ message: prompt });
-    await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: { agent: 'codex-agent' },
+    });
     await expect(
-      page.getByRole('button', { name: 'Workspace: No workspace' }),
+      page.getByRole('dialog', { name: 'New chat', exact: true }),
     ).toHaveCount(0);
+    // The started chat's own Agent and Model controls name the advertised
+    // ones.
+    await expectStartedChatRuns(page, prompt, advertisedAgent, advertisedModel);
+    // No project is bound to the dock, so the chat names no workspace: the
+    // global context the advertised identity was resolved in.
+    expect(
+      (sent?.input as { target?: { workspace?: unknown } } | undefined)?.target
+        ?.workspace,
+    ).toBeUndefined();
+  });
+
+  // #3312 review HIGH: once the user has opened a project, the dock is bound
+  // to it and Start runs in that project's context, so its default Model
+  // applies. Home must name that Model, not the global default it would
+  // name for an unbound dock (`gpt-5.3-codex`, the agent default).
+  test('names the project default Start runs on when the dock is bound to a project', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: { chatDockProjectSlug: 'station' },
+        }),
+      );
+    });
+    await page.goto('/');
+    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const form = page.getByRole('form', { name: 'Start work' });
+    const start = form.getByRole('button', { name: 'Start', exact: true });
+    // Both chips name what Start uses: the bound project and its default.
+    await expect(
+      form.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
+    await expect(
+      form.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.4',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await start.click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: {
+        agent: 'codex-agent',
+        model: { override: 'gpt-5.4' },
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+    });
+    await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.4');
   });
 
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
@@ -790,24 +1098,19 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // `station:open-project-chats` dispatch) — ChatDock's listener for that
     // event stays wired, and the project page's "New here?" CTA is now its
     // caller (`requestProjectChat`), but nothing on THIS route dispatches
-    // it. Reroute through the still-existing "Start
-    // direct chat" home action, which reaches the same New Chat dialog in its
-    // intentionally task-free "No workspace" state, then drive
+    // it. Reroute through the dock's "New chat" action, which opens the
+    // start composer in its intentionally task-free "No project" state, then drive
     // the dock's own Maximize control explicitly — proving the maximize
     // transition through its real affordance instead of as a residual side
     // effect of the removed dispatch. Every downstream assertion below is
     // unchanged; only the entry step and the order of the first maximize
     // assertion (now after an explicit click, not implicit) moved.
-    await page
-      .locator('.home-view__actions')
-      .getByRole('button', { name: /Chat options/i })
-      .click();
-    const newChat = page.getByRole('dialog', { name: 'New Chat' });
-    await expect(newChat).toBeVisible();
+    const { dialog: newChat } = await openNewChatDraft(page);
     await expect(
-      newChat.getByRole('button', { name: 'Workspace: No workspace' }),
+      newChat.getByRole('button', { name: 'Project: No project' }),
     ).toBeVisible();
     await newChat.press('Escape');
+    await expect(newChat).toHaveCount(0);
 
     // "Maximize chat dock" / "Restore chat dock" left the UI in 6ff89e600
     // (#928 step 2, PR #992) — `git log -S` puts that well before this lane, and
@@ -847,13 +1150,122 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(new URL(page.url()).searchParams.get('chat')).toBeTruthy();
   });
 
+  test('carries a provider/model chosen in the draft through Send', async ({
+    page,
+  }) => {
+    const commands: Array<Record<string, unknown>> = [];
+    await mockTaskFirstHome(page, { commands });
+    await mockStationModelProviders(page);
+    await page.goto('/');
+    // Choosing a Model in the New chat draft never starts an engine (#3201):
+    // the choice rides along with Send.
+    const opened = await openProjectDraft(page);
+    const { draft } = opened;
+
+    // The draft's Agent chip names the Agent and Model; the provider is read
+    // in the picker's selection and, after Start, on the dock's qualified
+    // chip. The picker is the Agent list's Model control for that Agent.
+    const agentChip = draft.getByRole('button', {
+      name: 'Agent: Station Agent · Shared model',
+      exact: true,
+    });
+    await expect(agentChip).toBeVisible();
+    const openPicker = async () => {
+      const picker = await openComposerModelPicker(page, draft);
+      // The provider filter persists across openings; press it only once.
+      const filter = picker.getByRole('button', {
+        name: 'Bedrock · Prod',
+        exact: true,
+      });
+      if ((await filter.getAttribute('aria-pressed')) !== 'true')
+        await filter.click();
+      return picker;
+    };
+    // Choosing or resetting a Model closes the draft's picker, as the dock's
+    // in-chat picker does, and focus returns to the Agent chip (the Agent
+    // list closed for the picker; the first opening also loads the picker
+    // chunk behind a loading frame, which must not take the return target
+    // with it).
+    const expectPickerClosed = async (picker: Locator) => {
+      await expect(picker).toHaveCount(0);
+      await expect(
+        draft.getByRole('button', { name: /^Agent: / }),
+      ).toBeFocused();
+    };
+    const bedrockOption = (picker: Locator) =>
+      picker.getByRole('option', { name: /Bedrock · Prod · shared-model/ });
+
+    const picker = await openPicker();
+    // The draft offers only providers this Agent can use; the provider the
+    // dock's in-chat picker lists as disabled is not offered at all.
+    await expect(
+      picker.getByRole('button', { name: 'LiteLLM · Local' }),
+    ).toHaveCount(0);
+    await expect(bedrockOption(picker)).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    await bedrockOption(picker).click();
+    await expectPickerClosed(picker);
+    expect(commands).toEqual([]);
+
+    const chosen = await openPicker();
+    await expect(bedrockOption(chosen)).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // The reset names the default it restores, never the choice it clears
+    // ("Use session override"): here, the Agent's default.
+    await chosen
+      .getByRole('button', { name: 'Use agent default', exact: true })
+      .click();
+    await expectPickerClosed(chosen);
+
+    const cleared = await openPicker();
+    await expect(bedrockOption(cleared)).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    await bedrockOption(cleared).click();
+    await expectPickerClosed(cleared);
+
+    // A Model chosen on the chip is remembered (owner decision): the chip
+    // still names it after the picker closed.
+    await expect(agentChip).toBeVisible();
+    // Start: the chosen provider/model is what the engine is asked to use,
+    // and the dock's chat carries it under its provider-qualified name.
+    await sendDraft(opened, 'Send with the chosen model.');
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    expect(
+      commands.find((command) => command.type === 'sendExecutionMessage')
+        ?.input,
+    ).toMatchObject({
+      message: 'Send with the chosen model.',
+      target: {
+        agent: 'codex-agent',
+        model: { override: 'shared-model' },
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+    });
+    await expect(
+      page.getByRole('button', {
+        name: /Model: Bedrock · Prod — Shared model/,
+      }),
+    ).toBeVisible();
+  });
+
   test('switches an exact provider/model from the composer and restores focus', async ({
     page,
   }) => {
+    await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await mockStationModelProviders(page);
     await page.goto('/');
-    await startProjectTask(page);
+    await startProjectTask(page, { settle: true });
 
     const modelButton = page.getByRole('button', {
       name: /Model: Codex · Work — Shared model/,
@@ -897,68 +1309,103 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/');
 
     await expect(page).toHaveURL(/\/$/);
+    // With work on the page Home leads with the start form and the work; the
+    // "What's next?" heading is an empty Station's (design round 2026-10, V1).
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
-    const continuation = page.getByRole('button', {
-      name: /Continue most recent work/i,
+    ).toHaveCount(0);
+    // The card is labelled exactly "Continue", and it is the work row itself,
+    // reading like the inbox's: the work's agent and project (owner, 2026-10).
+    const continueCard = page.getByRole('region', {
+      name: 'Continue',
+      exact: true,
     });
-    await expect(continuation).toContainText('Codex · gpt-5.3-codex');
+    const continuation = continueCard.getByRole('button', {
+      name: 'Worker task · task first home, station',
+      exact: true,
+    });
+    await expect(continuation).toBeVisible();
+    await expect(continueCard).toContainText('Codex · station');
+    // With work on the page the start composer is the compact one: no
+    // "Using …" caption (design round 2026-10, V1); the Agent chip names
+    // what Start will use. It is the one the dock's draft opens with,
+    // asserted below. Home has no second "New chat" start.
+    const homeComposer = page.getByRole('form', { name: 'Start work' });
+    await expect(homeComposer).toHaveClass(/start-composer--compact/);
+    const advertised = homeComposer.getByRole('button', {
+      name: 'Agent: Codex · gpt-5.3-codex',
+      exact: true,
+    });
+    await expect(advertised).toBeVisible();
+    await expect(page.getByText(/^Using /)).toHaveCount(0);
     await expect(
       page
-        .locator('.home-view__actions')
-        .getByRole('button', { name: /Chat options/i }),
-    ).toContainText('Codex · gpt-5.3-codex');
+        .locator('.home-view')
+        .getByRole('button', { name: 'New chat', exact: true }),
+    ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: /Open local project/i }),
     ).toBeVisible();
     await expect(page.getByText('Default Model')).toHaveCount(0);
 
+    // A desktop continuation of project work opens the chat where it lives,
+    // the project's Coding layout, with that chat active (design round
+    // 2026-10, U1); only project-less work stays in the dock.
     await continuation.click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/projects/station/layouts/coding');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBe('task-first-home');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
+    // And the Coding layout's Chat shows that chat: its inbox row is the
+    // current one, not merely named in the URL.
+    const codingChat = page.getByRole('region', { name: 'Chat', exact: true });
     await expect(
-      page.locator('.chat-dock__active-identity').getByText('New chat'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Hide Chat', exact: true }),
-    ).toBeVisible();
-    await page.locator('.chat-dock__header').hover();
-    await page.getByRole('button', { name: 'Close chat' }).click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+      codingChat.getByRole('button', {
+        name: 'Worker task · task first home, station',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'true');
+
+    // Back on Home with the dock open and no chat in it.
+    await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
     await expect(page.getByText('No chat open')).toBeVisible();
 
-    const advertisedIdentity = await page
-      .locator('.home-view__actions')
-      .getByRole('button', { name: /Chat options/i })
-      .locator('small')
-      .textContent();
-    await page
-      .locator('.home-view__actions')
-      .getByRole('button', { name: /Chat options/i })
-      .click();
-    const selectedAgent = page.locator('.new-chat-modal__agent--selected');
-    await expect(selectedAgent).toContainText('Codex');
-    await expect(selectedAgent).not.toContainText('gpt-5.3-codex');
-    expect(advertisedIdentity).toBe('Codex · gpt-5.3-codex');
-    await page.getByRole('dialog', { name: 'New Chat' }).press('Escape');
+    // The selection Home's chips name is the one the dock's draft opens
+    // with: the same chips, the same words. Opening the project's work bound
+    // the dock to it, so both now open on Station.
+    await expect(advertised).toBeVisible();
+    await expect(
+      homeComposer.getByRole('button', {
+        name: 'Project: Station',
+        exact: true,
+      }),
+    ).toBeVisible();
+    const { dialog, draft } = await openNewChatDraft(page);
+    await expect(
+      draft.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.3-codex',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      draft.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
+    await dialog.press('Escape');
+    await expect(dialog).toHaveCount(0);
 
     await page.getByRole('button', { name: /Open local project/i }).click();
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page
+      .getByRole('button', { name: 'Close new project', exact: true })
+      .click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1011,12 +1458,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.getByRole('button', { name: 'Task context' }),
     ).toHaveCount(0);
 
-    await page
-      .locator('.home-view__actions')
-      .getByRole('button', { name: /Chat options/i })
-      .click();
-    await selectNoWorkspace(page);
-    await page.locator('.new-chat-modal__agent--selected').click();
+    const opened = await openNewChatDraft(page);
+    await expect(
+      opened.draft.getByRole('button', { name: 'Project: No project' }),
+    ).toBeVisible();
+    await sendDraft(opened, 'Start a direct chat.');
     await expect(page.locator('.chat-dock')).toBeVisible();
     await expect(page.getByRole('button', { name: /^Files/ })).toHaveCount(0);
     await expect(
@@ -1037,6 +1483,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // launcher — which hand-rolls its own overlay — suppresses global chords
     // like every other modal.
     const sentIntents: string[] = [];
+    await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await page.route('**/api/agents', (route) =>
       route.fulfill(
@@ -1087,6 +1534,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
         body: JSON.stringify(
           foregroundMessageReceiptEnvelope({
             conversationId: 'task-first-home',
+            providerTurnId: 'task-first-home-start',
             agent: 'codex-agent',
           }),
         ),
@@ -1105,11 +1553,6 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // (`createAttachmentStagingRoutes`) answers them raw, and the client
     // (`packages/sdk/src/client/attachment-staging.ts`) reads the body
     // directly with no envelope-unwrapping.
-    const rawJson = (data: unknown) => ({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(data),
-    });
     const stageId = 'stage_task-first-home-launcher-context';
     let prepared: Record<string, unknown> | undefined;
     await page.route(
@@ -1150,7 +1593,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       },
     );
     await page.goto('/');
-    await startProjectTask(page);
+    await startProjectTask(page, { settle: true });
 
     await page.locator('.chat-input .attachment-input').setInputFiles({
       name: 'launcher-context.md',
@@ -1204,7 +1647,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await launcher.getByRole('button', { name: 'Cancel' }).click();
     await expect(launcher).toHaveCount(0);
     await expect(trigger).toBeFocused();
-    await expect(page.locator('textarea')).toHaveValue('');
+    await expect(page.locator('.chat-dock textarea')).toHaveValue('');
     expect(sentIntents).toHaveLength(0);
     await page.keyboard.press(dockShortcut);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
@@ -1256,9 +1699,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
   test('desktop active work reveals real files and task context beside usable chat', async ({
     page,
   }) => {
+    await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await page.goto('/');
-    await startProjectTask(page);
+    await startProjectTask(page, { settle: true });
 
     // Delegate/Commands/Files/Task-context collapse into one grouped "+"
     // menu next to attach + mic (docs/design/chat-composer.md §3.2) — open
@@ -1279,27 +1723,17 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('complementary', { name: 'Active work files' }),
     ).toBeVisible();
-    await expect(page.locator('textarea')).toBeVisible();
-    await page
-      .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
-      .click();
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toBe('/projects/station/layouts/coding');
-    expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
-      'src-ui/src/App.tsx',
-    );
+    await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
+    // Task context replaces the files panel beside the same usable chat.
     await actionsMenuTrigger.click();
     await expect(menu).toBeVisible();
-    const contextTrigger = menu.getByRole('menuitemcheckbox', {
-      name: 'Task context',
-    });
-    await contextTrigger.click();
+    await menu.getByRole('menuitemcheckbox', { name: 'Task context' }).click();
     const context = page.getByRole('complementary', { name: 'Task context' });
     await expect(context).toContainText('feat/contextual-active-work');
     await expect(context).toContainText('Checks');
     await expect(context).toContainText('Unavailable');
+    await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
     const geometry = await page
       .locator('.chat-dock__workspace')
@@ -1313,6 +1747,38 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(geometry.scrollHeight).toBeLessThanOrEqual(
       geometry.clientHeight + 1,
     );
+
+    // A changed file opens in the editor route, where the same chat's
+    // composer is still the usable surface.
+    await actionsMenuTrigger.click();
+    await expect(menu).toBeVisible();
+    await filesTrigger.click();
+    // The opened file's pane reads its changes against HEAD (#3365). Wait
+    // for that read so the test, not teardown timing, decides it ran.
+    const changesRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          '/api/projects/station/file-preview/changes' &&
+        response.request().method() === 'POST',
+    );
+    await page
+      .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/projects/station/layouts/coding');
+    expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
+      'src-ui/src/App.tsx',
+    );
+    const changes = await changesRead;
+    expect(changes.status()).toBe(200);
+    // The pane asked for the file it opened.
+    expect(changes.request().postDataJSON()).toMatchObject({
+      path: 'src-ui/src/App.tsx',
+    });
+    await expect(
+      page.getByRole('textbox', { name: /^Type a message/ }),
+    ).toBeVisible();
   });
 
   // #1180: the Activity surface is one of the places where `SplitPaneLayout`'s
@@ -1381,34 +1847,56 @@ test.describe('Task-first Home (#332, mocked)', () => {
     test('keeps provider/model selection contained and touch-friendly', async ({
       page,
     }) => {
+      const expectContainedAndTouchFriendly = async (picker: Locator) => {
+        await expect(
+          picker.getByRole('button', { name: 'Close model picker' }),
+        ).toBeFocused();
+        for (const name of ['★ Favorites', 'All', 'Bedrock · Prod']) {
+          const bounds = await picker
+            .getByRole('button', { name })
+            .boundingBox();
+          expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(
+            MIN_TOUCH_TARGET_PX,
+          );
+        }
+        const geometry = await picker.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            left: rect.left,
+            right: rect.right,
+            viewportWidth: window.innerWidth,
+          };
+        });
+        expect(geometry.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+      };
+
+      await installMockOrchestrationSse(page);
       await mockTaskFirstHome(page);
       await mockStationModelProviders(page);
       await page.goto('/');
-      await startProjectTask(page);
 
+      // The picker is first reached from the draft's Agent list, that
+      // Agent's Model control.
+      const opened = await openProjectDraft(page);
+      const draftPicker = await openComposerModelPicker(page, opened.draft);
+      await expectContainedAndTouchFriendly(draftPicker);
+      await draftPicker
+        .getByRole('button', { name: 'Close model picker' })
+        .click();
+      await expect(draftPicker).toHaveCount(0);
+
+      // After Send it is reached from the dock composer's Model control, and
+      // closing it returns focus there.
+      await sendDraft(opened, 'Start the project task.');
+      await completeStartedTurn(page, 'Start the project task.');
       const modelButton = page.getByRole('button', {
         name: /Model: Codex · Work — Shared model/,
       });
       await modelButton.click();
       const picker = page.getByRole('dialog', { name: 'Choose model' });
       await expect(picker).toBeVisible();
-      await expect(
-        picker.getByRole('button', { name: 'Close model picker' }),
-      ).toBeFocused();
-      for (const name of ['★ Favorites', 'All', 'Bedrock · Prod']) {
-        const bounds = await picker.getByRole('button', { name }).boundingBox();
-        expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-      }
-      const geometry = await picker.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        return {
-          left: rect.left,
-          right: rect.right,
-          viewportWidth: window.innerWidth,
-        };
-      });
-      expect(geometry.left).toBeGreaterThanOrEqual(0);
-      expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+      await expectContainedAndTouchFriendly(picker);
       await picker.getByRole('button', { name: 'Close model picker' }).click();
       await expect(modelButton).toBeFocused();
     });
@@ -1515,19 +2003,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
       ).toBeVisible();
       await page.getByRole('button', { name: 'Home', exact: true }).click();
 
-      await page
-        .locator('.home-view__actions')
-        .getByRole('button', { name: /Chat options/i })
-        .click();
-      await page.locator('.new-chat-modal__agent--selected').click();
+      await sendDraft(await openNewChatDraft(page), 'Start from a phone.');
       await expect(page.locator('.chat-dock')).toBeVisible();
       await page.getByRole('button', { name: 'Chat actions' }).click();
       await page
         .getByRole('menu', { name: 'Chat actions' })
-        .getByRole('menuitem', { name: /^Expand chat/ })
+        .getByRole('menuitem', { name: 'Full screen', exact: true })
         .click();
       await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-      await expect(page.locator('textarea')).toBeVisible();
+      await expect(page.locator('.chat-dock textarea')).toBeVisible();
       await page.evaluate(() =>
         (window as any).__setTaskFirstViewport(520, 260),
       );
@@ -1535,7 +2019,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await page.getByRole('button', { name: 'Chat actions' }).click();
       await page
         .getByRole('menu', { name: 'Chat actions' })
-        .getByRole('menuitem', { name: /^Restore chat/ })
+        .getByRole('menuitem', { name: 'Exit full screen', exact: true })
         .click();
       await expect(page.locator('.chat-dock')).not.toHaveClass(/is-maximized/);
 
@@ -1805,9 +2289,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     test('contains focus and dismisses active-work sheets for navigation across dock states', async ({
       page,
     }) => {
+      await installMockOrchestrationSse(page);
       await mockTaskFirstHome(page);
       await page.goto('/');
-      await startProjectTask(page);
+      await startProjectTask(page, { settle: true });
 
       await page.evaluate(() =>
         (window as any).__setTaskFirstViewport(520, 260),
@@ -1965,12 +2450,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await page.getByRole('button', { name: 'Close task context' }).click();
       await expect(dialog).toHaveCount(0);
       await expect(launcherTrigger).toBeFocused();
-      await expect(page.locator('textarea')).toBeVisible();
+      await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
       await page.getByRole('button', { name: 'Chat actions' }).click();
       await page
         .getByRole('menu', { name: 'Chat actions' })
-        .getByRole('menuitem', { name: /^Expand chat/ })
+        .getByRole('menuitem', { name: 'Full screen', exact: true })
         .click();
       await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
       await openActionsMenu();
@@ -1981,34 +2466,36 @@ test.describe('Task-first Home (#332, mocked)', () => {
         .poll(() => new URL(page.url()).pathname)
         .toBe('/projects/station');
       const projectUrl = new URL(page.url());
-      expect(projectUrl.searchParams.get('dock')).toBe('open');
       // archive#869/#939: a maximized dock is opaque and full-height, so navigating
       // used to change the view *underneath* it and nothing moved. A real
       // pathname change now returns the dock to its docked size, which drops
-      // `maximize` from the URL — this spec asserted the pre-archive#939 behaviour of
-      // carrying `maximize=true` across the navigation, and the dock control
-      // it clicked next ('Restore chat dock') only exists while maximized.
-      // Assert the restore itself instead: the destination is reached with the
-      // dock still open, no longer maximized, and the class agrees with the URL
-      // (the `dockSnap` reconcile in `snapAfterNavigationRestore` is what stops
-      // the mobile snap-sync effect re-expanding it right back).
+      // `maximize` from the URL. On a phone, leaving Chat for another route
+      // then collapses the dock entirely (`shouldCollapseDockOnMobileNavigation`:
+      // a half-open sheet over the next route is the desktop overlay leaking
+      // onto a destination), so the destination is reached with the dock
+      // collapsed rather than open — this spec asserted `dock=open` here.
       expect(projectUrl.searchParams.get('maximize')).toBeNull();
       await expect(page.locator('.chat-dock')).not.toHaveClass(/is-maximized/);
-      // Mobile has no permanent Maximize/Collapse buttons — dock height is the
-      // drag gesture, with named entries in the header overflow.
+      await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
+      // Collapse and expand live on the header's toggle (the actions sheet
+      // keeps only the named, reversible Full screen entry).
+      await page.getByRole('button', { name: 'Expand chat' }).click();
+      await expect(page.locator('.chat-dock')).not.toHaveClass(/is-collapsed/);
       await page.getByRole('button', { name: 'Chat actions' }).click();
       const dockMenu = page.getByRole('menu', { name: 'Chat actions' });
       await expect(
-        dockMenu.getByRole('menuitem', { name: /^Expand chat/ }),
+        dockMenu.getByRole('menuitem', { name: 'Full screen', exact: true }),
       ).toBeVisible();
-      await dockMenu.getByRole('menuitem', { name: 'Collapse chat' }).click();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Collapse chat' }).click();
       await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
       await page.getByRole('button', { name: 'Chat actions' }).click();
       await page
         .getByRole('menu', { name: 'Chat actions' })
-        .getByRole('menuitem', { name: /^Expand chat/ })
+        .getByRole('menuitem', { name: 'Full screen', exact: true })
         .click();
       await expect(page.locator('.chat-dock')).not.toHaveClass(/is-collapsed/);
+      await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
       await openActionsMenu();
       await mobileFilesTrigger.click();
       const filesDialog = page.getByRole('dialog', {
@@ -2049,7 +2536,7 @@ test('profiles Home with substantial session history', async ({
       await page.goto('/');
       expect((await (await response).json()).data).toHaveLength(1000);
       await expect(
-        page.getByRole('heading', { name: "What's next?" }),
+        page.getByRole('form', { name: 'Start work' }),
       ).toBeVisible();
       await expect(
         page.getByText('History session 0', { exact: true }).first(),

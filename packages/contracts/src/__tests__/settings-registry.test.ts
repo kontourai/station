@@ -297,6 +297,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'runtime',
         'surfaceTrustFromVeritasEvidence',
         'telemetryEnabled',
+        // #3157: confirmed against `autoResumeAllowed` (the coordinator) and
+        // the `=== true` wiring in orchestration-service.ts — absent is off.
+        'usageLimitAutoResume',
         'workspaceCheckpoints',
       ].sort(),
     );

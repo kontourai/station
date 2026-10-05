@@ -6,10 +6,10 @@
 //
 //   node scripts/pr-duplicate-sweep.mjs --pr 2629            # report to stdout
 //   node scripts/pr-duplicate-sweep.mjs --pr 2629 --apply    # comment once on the merged PR
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const COMMENT_MARKER = '<!-- pr-duplicate-sweep -->';
@@ -17,7 +17,7 @@ const CLOSING_RE = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
 
 function runGh(args, { allowFailure = false } = {}) {
   try {
-    return execFileSync('gh', args, {
+    return execFileSyncBounded('gh', args, {
       encoding: 'utf8',
       windowsHide: true,
     }).trim();

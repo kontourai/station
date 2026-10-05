@@ -17,6 +17,7 @@ import {
   beforeEach,
   describe,
   expect,
+  onTestFinished,
   test,
   vi,
 } from 'vitest';
@@ -213,6 +214,83 @@ afterAll(() => {
 });
 
 describe('a turn ending settles the pending requests that name it (#3071)', () => {
+  test('a reloaded client learns the turn from the event window, so a live turn.aborted settles like a live client', async () => {
+    initChat('live');
+    initChat('reloaded');
+    const trace = abortedTurnTrace('live', { method: 'turn.aborted' });
+    foldLive(trace);
+
+    // The reload: the snapshot lists the request, and the chat has no turn
+    // binding for it until the event window is read.
+    const fetchWindow = vi.fn(async () =>
+      Response.json({
+        success: true,
+        data: {
+          protocolVersion: 1,
+          events: [
+            {
+              sequence: 1,
+              event: {
+                provider: 'claude',
+                threadId: 'reloaded',
+                createdAt,
+                eventId: 'reloaded-named',
+                method: 'request.opened',
+                turnId: 'turn-1',
+                requestId: 'named-request',
+                requestType: 'approval',
+                title: 'Allow Read',
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', fetchWindow);
+    onTestFinished(() => {
+      vi.stubGlobal('fetch', realFetch);
+    });
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'reloaded',
+            status: 'ready',
+            hasActiveTurn: true,
+            lastEventMethod: 'request.opened',
+            openRequestIds: ['named-request'],
+            blockingOpenRequestIds: ['named-request'],
+          },
+        ],
+      },
+      { apiBase },
+    );
+    await vi.waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot().reloaded?.pendingApprovalTurnIds,
+      ).toEqual({ 'named-request': 'turn-1' }),
+    );
+    // The hydration wrote the binding and nothing about the request's state.
+    expect(activeChatsStore.getSnapshot().reloaded?.pendingApprovals).toEqual([
+      'named-request',
+    ]);
+
+    handleTurnAbortedEvent({
+      ...(trace.at(-1) as Record<string, unknown>),
+      threadId: 'reloaded',
+      eventId: 'reloaded-terminal',
+    } as never);
+    expect(activeChatsStore.getSnapshot().reloaded?.pendingApprovals).toEqual(
+      [],
+    );
+    // A live client that heard the same events agrees on the named request.
+    expect(activeChatsStore.getSnapshot().live?.pendingApprovals).not.toContain(
+      'named-request',
+    );
+  });
+
   test('turn.aborted: live and snapshot clients agree — the named request is settled, the unnamed one stays', () => {
     initChat('live');
     initChat('snapshot');

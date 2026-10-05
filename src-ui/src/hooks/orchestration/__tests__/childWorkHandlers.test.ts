@@ -38,6 +38,47 @@ const announcements = () =>
   (chat()?.ephemeralMessages ?? []).map((message) => message.content);
 
 describe('child-work client path (legacy Claude tuples → contract reducer)', () => {
+  test('#3308 a reconnect between the two Claude terminals still takes the final usage', () => {
+    const key = JSON.stringify(['engine-subagent', threadId, 'bg']);
+    handlers.applySnapshotChildWork(threadId, {
+      observability: 'reported',
+      running: [],
+      observedAt: '2026-09-24T00:00:00.000Z',
+      settled: [
+        {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'bg',
+          status: 'completed',
+          title: 'Background task test',
+          usage: { totalTokens: 40141 },
+          usageProvisional: true,
+        },
+      ],
+    });
+    expect(handlers.childWorkRegistrySnapshot().items[key]).toMatchObject({
+      usage: { totalTokens: 40141 },
+      usageProvisional: true,
+    });
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-24T00:00:01.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        childId: 'bg',
+        status: 'completed',
+        usage: { totalTokens: 41833 },
+      },
+    });
+    expect(handlers.childWorkRegistrySnapshot().items[key]?.usage).toEqual({
+      totalTokens: 41833,
+    });
+  });
+
   test('a reported snapshot restores a child that settled during the gap once', () => {
     const view = {
       observability: 'reported' as const,

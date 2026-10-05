@@ -1,0 +1,9 @@
+{
+  "revision": "e7c64a6f32c4f852ee9ccf05006d2578769cb3e1",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"release-channel-ports.md only adds a Windows output-handle note in its Windows section; this guide's macOS/Linux install and archive anchor claims are unchanged.","inputs":["docs/user/getting-started.md","docs/guides/release-channel-ports.md"]},
+
+    {"path":"README.md","note":"release-channel-ports.md only adds a Windows output-handle note in its Windows section; the README's install claims are unchanged.","inputs":["README.md","docs/guides/release-channel-ports.md"]}
+  ]
+}

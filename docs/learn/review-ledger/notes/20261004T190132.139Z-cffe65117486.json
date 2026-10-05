@@ -1,0 +1,7 @@
+{
+  "revision": "1274059ae6e8caecc3a2c34d95af78a63c782cd9",
+
+  "notes": [
+    {"path":"docs/guides/store-listing.md","note":"nightly.yml gained a workflow_call entry from main-qualification.yml. store-listing.md holds listing copy and no workflow claim. No prose change.","inputs":["docs/guides/store-listing.md",".github/workflows/nightly.yml"]}
+  ]
+}

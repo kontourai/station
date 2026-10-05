@@ -99,6 +99,60 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+### Running a second Station in development mode
+
+To edit Station's own code while a browser workspace shows the change live, run
+a second Station from the checkout with `--watch`. It extends `start` (and so
+`just dev`), because it needs the same instance record, home registry entry,
+readiness waits and `stop`; it is not a separate launcher.
+
+```bash
+just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
+./station stop --instance=hot --home=<the home start printed>
+```
+
+- **Server.** Runs from source under `tsx watch`, so a server edit restarts it.
+  Nothing is built, and `--build` is refused. The reported build SHA is the
+  checkout `HEAD` at launch and does not follow later edits.
+- **UI.** The instance's UI port is the Vite dev server (hot module
+  replacement). It proxies `/api`, `/.well-known`, and the other server mounts
+  the production UI listener forwards (`/agents`, `/events`, `/config`, and so
+  on, one shared list) to that instance's server port, with the same internal
+  attestation, so the UI is same-origin with its API and passes the session
+  gate. The server's allowed origins are not widened: the UI port is already one.
+  The sign-in link printed at start works as for any instance.
+- **File access.** The dev server serves only the UI's import roots
+  (`src-ui`, `src-shared`, the workspace packages' `src`, and `node_modules`)
+  and turns Vite's CORS off, so a page on another localhost port cannot read
+  repo files such as `CLAUDE.md` through `/@fs/`. The UI is same-origin with
+  this server, including in the Tauri shell.
+- **Process identity.** The registered server PID is the `tsx watch` parent,
+  not the node child it restarts; `stop` signals the parent's process tree. A
+  legacy unmanaged record with no captured fingerprint is still trusted by PID
+  alone (the residual accepted in #3253).
+- **Loopback only.** `--watch` binds `127.0.0.1` and refuses another `--host`,
+  as for the root Vite server below. `station open --print` links to the
+  address the instance bound (`127.0.0.1` here), not `localhost`; the two are
+  different origins, so a sign-in link only signs in the origin it names.
+- **Cold start.** The first load after `start --watch` waits on a cold Vite
+  server compiling and optimizing the UI dependency graph, which can take tens
+  of seconds before Home renders. The page is blank or loading until
+  then; later loads and hot updates are fast. Station does not warm the server
+  up, so open the instance's `station open --print` link once and wait.
+- **Distinct home.** A dev instance must use its own Station home
+  (`--temp-home` or `--home`). The browser workspace refuses to load a page
+  served by a listener of the *same* home as a Station listener, so a dev
+  instance on the viewer's home cannot be shown in it.
+- **Port band.** An instance occupies its server port, the next three (terminal,
+  voice, consent) and its UI port. Choose a `--port`/`--ui-port` whose whole
+  band is clear of every other running Station on the host, the normal one
+  included (never 3141 or 3000 for a test).
+- **Polling.** Some hosts (certain bind mounts, network and virtualized
+  filesystems) deliver no native file events, so nothing hot-updates. Set
+  `STATION_DEV_WATCH_POLL=1` to poll instead: Vite uses `usePolling`, and the
+  server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
+  Polling costs some CPU; leave it off where native watching works.
+
 The root Vite development command is local-only by default:
 
 ```bash
@@ -443,11 +497,12 @@ to the hosted qualification authority.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source through every canonical phase and the Android viewport suite.
-Main qualification runs every six hours; Nightly delivery runs daily. Nightly
+`Main: Qualification` runs every six hours and starts a Nightly for the commit it
+qualified at most about once a day; the scheduled Nightly also runs daily. Nightly
 and tagged Preview/Stable require that qualification, with bounded reuse of
 exact-source evidence. See [the release process](releasing.md) for receipt
 admission, failure repair and promotion.
-A manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
 

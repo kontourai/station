@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
@@ -119,7 +119,7 @@ function readJson(path) {
 }
 
 function checkCommand(id, command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const result = spawnSyncBounded(command, args, {
     cwd: options.cwd,
     encoding: 'utf8',
     timeout: options.timeout ?? 10_000,

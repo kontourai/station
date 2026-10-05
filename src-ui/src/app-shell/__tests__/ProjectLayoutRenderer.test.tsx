@@ -395,6 +395,7 @@ vi.mock('../../components/coding-layout/PullRequestsPanel', () => ({
   PullRequestsPanel: ({ projectSlug }: { projectSlug: string }) => (
     <div>Pull requests pane {projectSlug}</div>
   ),
+  CurrentBranchPullRequestLine: () => null,
 }));
 vi.mock('../../components/TasksLayout', () => ({
   TasksLayout: () => <div>Tasks rendered</div>,

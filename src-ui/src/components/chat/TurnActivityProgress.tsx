@@ -1,16 +1,8 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
-import { useEffect, useState } from 'react';
+import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { formatToolName } from '../../utils/chat-progress';
-
-/** "42s", "4m 10s", "1h 5m": a duration read at a glance. */
-function formatActivityDuration(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
+import { formatDuration } from '../../utils/relativeTime';
 
 const OUTCOME_WORDS: Record<
   NonNullable<ConversationTurnActivity['lastTool']>['outcome'],
@@ -37,11 +29,11 @@ function epochMs(value: string | undefined): number | undefined {
 type ToolLine = { lead: string; name: string; tail: string };
 
 type TurnActivityProgressParts = {
-  /** "Running bash · 4m 10s", with "(+1 more)" for parallel calls. */
+  /** "Running bash · 4m", with "(+1 more)" for parallel calls. */
   running?: ToolLine;
   /** "Last: bash · failed", only between tools of the open turn. */
   lastTool?: ToolLine;
-  /** "No output for 12m 3s", only while the watchdog holds an observation. */
+  /** "No progress from Codex for 12m", only while the watchdog holds an observation. */
   silence?: string;
 };
 
@@ -71,9 +63,7 @@ function describeTurnActivity(
       lead: 'Running ',
       name: formatToolName(current.name),
       tail: `${
-        startedAt === undefined
-          ? ''
-          : ` · ${formatActivityDuration(now - startedAt)}`
+        startedAt === undefined ? '' : ` · ${formatDuration(now - startedAt)}`
       }${others > 0 ? ` (+${others} more)` : ''}`,
     };
   } else if (activity.lastTool) {
@@ -95,21 +85,10 @@ function describeTurnActivity(
   }
   const silentSince = epochMs(activity.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined) {
-    parts.silence = `No response from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the engine'} for ${formatActivityDuration(now - silentSince)}. Still waiting.`;
+    // The status ladder's word ("No progress"), naming who went quiet.
+    parts.silence = `No progress from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the agent'} for ${formatDuration(now - silentSince)}`;
   }
   return parts;
-}
-
-/** Re-renders once a second while mounted, for the elapsed readings. */
-function useSecondClock(enabled: boolean): number {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!enabled) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [enabled]);
-  return now;
 }
 
 /**
@@ -134,7 +113,7 @@ export function TurnActivityProgress({
   );
   // Tick only while an elapsed time is on screen; "Last: bash · done" is
   // static and needs no clock.
-  const now = useSecondClock(running || silence);
+  const now = useElapsedClock(running || silence);
   if (!activity?.openTurn) return null;
   const parts = describeTurnActivity(activity, now);
   if (!showSilence) parts.silence = undefined;

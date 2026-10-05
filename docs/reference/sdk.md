@@ -28,7 +28,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -891,6 +891,15 @@ Fetches app configuration.
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined.
+
+### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
+
+Fetches the conversation's usage with its children (`getConversationUsageTree`,
+[`GET /api/orchestration/conversations/:conversationId/usage-tree`](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)).
+Enabled by default; disabled for an empty id or `config.enabled: false`. It
+polls only when `config.refetchInterval` is set. A 404 (no conversation you
+can read) and a 422 (a tree past its bound) reject with `StationHttpError`,
+are not retried, and stop the poll.
 
 ### `useUsageQuery(config?)`
 
@@ -2315,8 +2324,9 @@ manifest's field name (`skills`).
 `fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
 from `@kontourai/station-sdk/client`. Both validate the returned inventory or
 session projection before exposing it and preserve HTTP failure details. The
-canonical reader loads after a successful feature response; a reader failure
-remains an error.
+canonical reader is a static import of the client entry, so it adds the shared
+validator to that bundle, and it runs only after a successful feature response;
+a reader failure remains an error.
 `useSkillExperienceInventoryQuery(config?)` and
 `useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
 the SDK root. The session hook remains disabled until a canonical thread exists.
@@ -2327,6 +2337,11 @@ An inventory entry is a preview. Starting requires `executionContract: '1.0'`
 and an exact current source identity. `sendExecutionMessage` accepts the optional
 `skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
 field and refetches the installed inventory before its foreground POST.
+`sendExecutionMessageWithInventory(apiBase, input, readInventory, options?)`
+performs the same preflight with a caller-supplied inventory reader;
+`sendExecutionMessage` passes `fetchSkillExperienceInventory`. The two live in
+separate modules, so a bundle that imports only the rest of the execution
+client does not also carry the validator.
 `inputs` holds scalar text/choice values; attachment role arrays contain indices
 into the canonical chat attachments, after supervised staging. Native role choices use
 composer client IDs until the sender maps them against the actual outgoing
@@ -3982,6 +3997,9 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
+A refresh that observes a pull request merged also lets Station reconcile the
+Tasks a person opted in to closing on merge when the caller holds the operate tier;
+it changes nothing in what the read returns (see the [API reference](api.md#keep-a-declared-output)).
 
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)

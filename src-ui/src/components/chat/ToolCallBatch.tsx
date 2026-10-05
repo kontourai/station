@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { attentionWord } from '../../views/home/work-status';
 import { PlugGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ToolCallBatchSheetProps } from './ToolCallBatchSheet';
@@ -124,8 +125,8 @@ export function ToolCallBatch<P extends ToolCallLike>({
         {group.awaitingApprovalCount > 0 && (
           <span className="tool-call-batch__awaiting">
             {group.awaitingApprovalCount === 1
-              ? 'Awaiting approval'
-              : `${group.awaitingApprovalCount} awaiting approval`}
+              ? attentionWord('approval')
+              : `${group.awaitingApprovalCount} need approval`}
           </span>
         )}
         {group.deniedCount > 0 && (

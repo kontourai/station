@@ -1181,6 +1181,61 @@ describe('orchestration fetchers keep the guard’s typed refusal', () => {
   });
 });
 
+describe('the usage-limit banner routes (#3157): a person acts, an agent cannot', () => {
+  const ROUTES = [
+    ['GET', '/api/orchestration/sessions/op-limited/usage-limit'],
+    ['POST', '/api/orchestration/sessions/op-limited/usage-limit/resume'],
+    ['POST', '/api/orchestration/sessions/op-limited/usage-limit/cancel'],
+  ] as const;
+
+  test.each([
+    ['the raw internal token', () => internalHeaders()],
+    [
+      'a bound operator caller',
+      () =>
+        internalHeaders({
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: mintStationControlMcpToken(
+            'op-limited',
+            'sdk-in-process',
+          ).token,
+        }),
+    ],
+    [
+      'a bearer-exposed operator caller',
+      () =>
+        internalHeaders({
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: mintStationControlMcpToken(
+            'op-limited',
+            'url-token',
+          ).token,
+        }),
+    ],
+  ])('%s is refused before any handler runs', async (_label, headers) => {
+    for (const [method, path] of ROUTES)
+      expect(
+        await rest(method, path, headers(), method === 'GET' ? undefined : {}),
+      ).toEqual({ status: 403, code: 'station_control_route_unmapped' });
+    expect(hits).toEqual([]);
+  });
+
+  test('the operator UI, a credential and never kind:internal, is not the guard’s to refuse', async () => {
+    for (const [method, path] of ROUTES) {
+      const response = await rest(
+        method,
+        path,
+        {
+          'content-type': 'application/json',
+          authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        },
+        method === 'GET' ? undefined : {},
+      );
+      // The harness serves no such route, so it is a plain 404: the guard let
+      // the credential through to routing instead of refusing it.
+      expect(response.code).toBeUndefined();
+    }
+  });
+});
+
 describe('the Station agent relay (M2): server code, not a carve-out', () => {
   test('a bare internal token on the relay path is refused', async () => {
     expect(

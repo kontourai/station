@@ -1,0 +1,7 @@
+{
+  "revision": "29b1aebb7cdbdcdf6b10221f05eb33e544996070",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Restored main's child-work model row and Usage observation provenance section, which the merge had dropped. The silence paragraph now quotes the shipped string from TurnActivityProgress (No progress from <engine> for 4m), which I checked against the code.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

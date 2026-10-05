@@ -1,0 +1,7 @@
+{
+  "revision": "8202d56be09874cfb95fe36855eb3b837c537723",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"No change to what this capture shows: src-server/services/orchestration/orchestration-service.ts changed only to make the module-private title bound helper non-exported (code-health gate); behaviour is identical.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

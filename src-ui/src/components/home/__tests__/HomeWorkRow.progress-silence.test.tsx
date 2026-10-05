@@ -53,6 +53,7 @@ function renderSession(
           workFacts: buildWorkFacts({ items, sessions }),
           detailsFor: null,
           setDetailsFor: () => {},
+          chrome: 'touch',
         },
       })}
     </ul>,
@@ -82,7 +83,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
     });
-    expect(visibleStatus()).toBe('1 sub-agent running');
+    expect(visibleStatus()).toBe('1 sub-agent');
   });
 
   test('a stopped parent with a running child still reads as running, never Stopped', () => {
@@ -98,11 +99,11 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
     });
     expect(screen.getByTestId('inbox-row').dataset.lane).toBe('running');
     expect(screen.queryByText('Active')).toBeNull();
-    expect(screen.getByText('1 sub-agent running')).toBeTruthy();
+    expect(screen.getByText('1 sub-agent')).toBeTruthy();
     expect(screen.queryByText('Stopped')).toBeNull();
   });
 
-  test('child work reported with no count keeps the background wording', () => {
+  test('child work reported with no count reads Running', () => {
     renderSession({
       lifecycleState: 'completed',
       hasActiveTurn: false,
@@ -117,7 +118,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
         },
       },
     });
-    expect(visibleStatus()).toBe('Background work running');
+    expect(visibleStatus()).toBe('Running');
   });
 
   test('renders the exact watchdog silence marker on the status line', () => {
@@ -136,7 +137,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
       },
     });
 
-    expect(visibleStatus()).toBe('No progress for 4m');
+    expect(visibleStatus()).toBe('No progress · 4m');
   });
 
   test('renders no quiet wording when the watchdog holds no marker', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "55de54e7ac08e24abf8067ab729804ff9f720207",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the mobile-chat-composer row (mobile geometry and composer reachability, mocked responses): tests/mobile-chat-composer.spec.ts in this lane only changes how the long-transcript test presses Earlier messages (keyboard activation on a button focused without scrolling, request count held across 12 frames) and drops no coverage, so the row stays accurate. The other spec deltas since the last review are other lanes' work and were not reviewed here.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

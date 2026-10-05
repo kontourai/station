@@ -104,6 +104,46 @@ export type WindowsArchive = {
 };
 
 /**
+ * The fixture archive's CLI, which bin/station.mjs (the real one) imports.
+ * It records each run (its arguments, working directory and the install
+ * identity it was given) in STATION_TEST_CLI_LOG, and exits 1 for the verb
+ * STATION_TEST_CLI_FAIL names as `<verb>@<version>` for its own version, so
+ * a test can make one release's `start` fail. Otherwise it exits 0. With
+ * STATION_TEST_CLI_LINGER_MS, `start` leaves a detached process holding its
+ * output open, as a started Station does.
+ */
+const FIXTURE_STATION_CLI = `import { appendFileSync, readFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+const version = JSON.parse(
+  readFileSync(new URL('../.station-release.json', import.meta.url), 'utf8'),
+).ref.replace(/^v/, '');
+if (process.env.STATION_TEST_CLI_LOG)
+  appendFileSync(
+    process.env.STATION_TEST_CLI_LOG,
+    JSON.stringify({
+      version,
+      args,
+      cwd: process.cwd(),
+      channel: process.env.STATION_CHANNEL,
+      root: process.env.STATION_ROOT,
+      home: process.env.STATION_HOME,
+      installRoot: process.env.STATION_INSTALL_ROOT,
+    }) + '\\n',
+  );
+// As a real \`start\` does, leave a detached process behind; this one keeps
+// the CLI's stdout and stderr open for STATION_TEST_CLI_LINGER_MS.
+if (args[0] === 'start' && process.env.STATION_TEST_CLI_LINGER_MS) {
+  const { spawn } = await import('node:child_process');
+  spawn(
+    process.execPath,
+    ['-e', \`setTimeout(() => {}, \${Number(process.env.STATION_TEST_CLI_LINGER_MS)})\`],
+    { detached: true, stdio: 'inherit', windowsHide: true },
+  ).unref();
+}
+process.exit(process.env.STATION_TEST_CLI_FAIL === \`\${args[0]}@\${version}\` ? 1 : 0);
+`;
+
+/**
  * A prebuilt Windows server archive in the layout
  * scripts/lib/portable-server-archive.mjs writes (one `station/` root with the
  * marker, the provenance, the real bin/station.mjs, install.ps1 and
@@ -165,7 +205,7 @@ export function buildWindowsArchive(
     { name: 'station/lib/' },
     {
       name: 'station/lib/station-cli.mjs',
-      data: 'process.exit(0);\n',
+      data: FIXTURE_STATION_CLI,
     },
     { name: 'station/runtime/' },
     {

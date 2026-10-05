@@ -1738,6 +1738,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
         expect(notice?.action?.label).toBe('Discard');
+        // The composer repeats this notice's Discard while a short dock hides
+        // the transcript; it finds the notice by this flag, which a send
+        // failure (the composer's other repeated line) must not carry.
+        expect(notice?.queuedRetry).toBe(true);
+        expect(notice?.sendFailure).toBeUndefined();
       } finally {
         delete (window.navigator as { onLine?: unknown }).onLine;
       }

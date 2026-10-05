@@ -40,6 +40,28 @@ export function nextRepairState(previous, run, { retry = false } = {}) {
   if (claim) state.repairState = 'claimed';
   return { state, action: claim ? 'claim' : 'update' };
 }
+/**
+ * The job that decides qualification inside a Main qualification run: the
+ * `qualification` caller job's full-regression aggregate.
+ */
+export const QUALIFICATION_GATE_JOB =
+  'qualification / Full source qualification';
+
+/**
+ * The run's conclusion as far as source qualification is concerned. A Main
+ * qualification run also publishes the Nightly from the commit it qualified;
+ * when that publication fails or is cancelled the run is red, but the source
+ * passed, so it is not a repair episode. Only a successful gate job overrides
+ * the run conclusion; a missing, skipped or failed gate keeps it.
+ */
+export function qualificationConclusion(run, jobs) {
+  if (run.conclusion === 'success') return run.conclusion;
+  const gates = jobs.filter((job) => job.name === QUALIFICATION_GATE_JOB);
+  return gates.length === 1 && gates[0].conclusion === 'success'
+    ? 'success'
+    : run.conclusion;
+}
+
 export function validateRepairRun(run, repository) {
   if (
     run.path !== '.github/workflows/main-qualification.yml' ||
@@ -116,9 +138,12 @@ async function prepare() {
   const previous = issue?.state === 'open' ? repairState(issue.body) : null;
   if (issue?.state === 'open' && !previous)
     throw new Error('Open repair issue has no valid episode');
-  const decision = nextRepairState(previous, run, {
-    retry: process.env.RETRY === 'true',
-  });
+  const jobs = await listGithub(`actions/runs/${id}/jobs`, 'jobs');
+  const decision = nextRepairState(
+    previous,
+    { ...run, conclusion: qualificationConclusion(run, jobs) },
+    { retry: process.env.RETRY === 'true' },
+  );
   output('claim', 'false');
   if (['ignore', 'stale'].includes(decision.action)) return;
   if (decision.action === 'close') {
@@ -129,7 +154,6 @@ async function prepare() {
       });
     return;
   }
-  const jobs = await listGithub(`actions/runs/${id}/jobs`, 'jobs');
   const body = issueBody(decision.state, run, jobs);
   const saved = await github(issue ? `issues/${issue.number}` : 'issues', {
     method: issue ? 'PATCH' : 'POST',

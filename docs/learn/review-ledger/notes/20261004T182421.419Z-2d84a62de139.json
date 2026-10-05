@@ -1,0 +1,7 @@
+{
+  "revision": "982e16499465dbe3a6560c1b0019114e91aad43d",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDockBody.tsx changed only by ephemeralAfterQueueDiscard: the queue panel's discard now drops only queued-retry notices, and only when no queued turn remains. I searched this document for ephemeral notices, queued retry and discard; it states no configuration that this behaviour reads, so no claim changes.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped to scripts/run-verification.mjs: its change is one ensureLivenessScale() call before the CLI runs. No module boundary, ownership or contract described in the map changes.","inputs":["docs/architecture/module-map.md","scripts/run-verification.mjs"]}
+  ]
+}

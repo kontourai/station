@@ -43,7 +43,13 @@ interface OrchestrationUsageSource {
   listUsageReceipts?(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: UsageReceipt[];
     nextCursor?: string;
@@ -377,7 +383,13 @@ export class UsageAggregator {
   readUsageReceipts(
     stationId: string,
     authority: SessionReadAuthority,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ):
     | {
         receipts: UsageReceipt[];

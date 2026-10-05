@@ -1,7 +1,0 @@
-{
-  "revision": "0ed893868b2be12651928150004d23a11f94837f",
-
-  "notes": [
-    {"path":"docs/learn/README.md","note":"Reviewed the Knowledge branch after adding StationKnowledgeMcpServer to the authored learning tree. Navigation, Markdown source authority, private custody limits, and distinction between source inspection and runtime/release evidence remain unchanged; the generated module entry routes to the new five-tool data server and its owner/access evidence."}
-  ]
-}

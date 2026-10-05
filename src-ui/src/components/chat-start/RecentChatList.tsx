@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useRowProjectMarks } from '../../hooks/useRowProjectMarks';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { Button } from '../Button';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { ErrorState, SkeletonList } from '../state';
 
 export function RecentChatList({
   items,
@@ -29,6 +30,7 @@ export function RecentChatList({
   onViewAll: () => void;
 }) {
   const now = useCoarseNow();
+  const projectMarks = useRowProjectMarks();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const recent = items
     .filter((item) =>
@@ -39,6 +41,9 @@ export function RecentChatList({
     .filter((item) => item.chatSessionId || item.orchestrationThreadId)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 5);
+  // Nothing to continue is not a section: an empty draft shows the
+  // composer alone, not a heading over a placeholder.
+  if (!pending && !error && recent.length === 0) return null;
   return (
     <section className="chat-start__recent" aria-label="Continue working">
       <div className="chat-start__recent-heading">
@@ -61,13 +66,6 @@ export function RecentChatList({
           }
         />
       )}
-      {!pending && !error && recent.length === 0 && (
-        <Empty
-          variant="compact"
-          label="Start something new"
-          description="Write a message above to begin."
-        />
-      )}
       <ul>
         {recent.map((item) => (
           <li key={item.id}>
@@ -80,6 +78,7 @@ export function RecentChatList({
               agents={agents}
               facts={workFacts?.get(item.id)}
               chrome="touch"
+              {...projectMarks(item)}
               onActivate={onOpen}
               detailsOpen={detailsFor === item.id}
               onDetailsOpenChange={(open) =>

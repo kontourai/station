@@ -241,6 +241,10 @@
       "type": "boolean",
       "description": "Capture git snapshots of the session project's working directory at turn boundaries, stored as hidden refs pinned for 90 days. Default off; applies after a restart."
     },
+    "usageLimitAutoResume": {
+      "type": "boolean",
+      "description": "Send a Claude Code or Codex turn that stopped on a usage limit again once the provider-reported reset passes. Default off."
+    },
     "agentConnections": {
       "type": "object",
       "description": "Per-agent connection overrides keyed by agent slug.",

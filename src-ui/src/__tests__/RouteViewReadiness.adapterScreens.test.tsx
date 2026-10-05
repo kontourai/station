@@ -768,7 +768,7 @@ describe.skipIf(!chromiumAvailable)(
         '<div>no trigger state here</div>',
       );
       try {
-        // The Switch task trigger has no `aria-expanded` and no `aria-haspopup`,
+        // The Switch chat trigger has no `aria-expanded` and no `aria-haspopup`,
         // so this sentence is the honest one for it.
         await expect(
           waitForLazySurface(

@@ -11,10 +11,10 @@
 // The build refuses a --sha other than HEAD, and a dirty working tree.
 // --allow-unverified-source lifts that for tests and local experiments only;
 // such an archive's provenance is not the source of its bytes.
-import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   assertBuildSourceIsCheckout,
   buildPortableServerArchive,
@@ -36,7 +36,7 @@ const { values } = parseArgs({
 });
 
 function git(args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: projectRoot,
     encoding: 'utf8',
     windowsHide: true,

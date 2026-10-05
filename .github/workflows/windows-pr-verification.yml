@@ -1,4 +1,4 @@
-name: Windows PR Verification
+name: "PR: Windows"
 
 # Base-controlled routing keeps candidate YAML off the execution boundary.
 # Candidate code runs only on an ephemeral GitHub-hosted Windows runner with

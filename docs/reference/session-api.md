@@ -88,6 +88,11 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+An Agent that messages, interrupts, or waits on an existing Session uses
+station-control's [Session control](../guides/self-configuring-agent.md#session-control)
+tools, which call their own agent-only routes under
+`/api/orchestration/session-control` rather than the routes above.
+
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
@@ -193,9 +198,11 @@ not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
 blocking interpretation. A snapshot carries ids only, so after a reload a
 client reads the conversation's newest turn to rebuild each open approval's
-tool, preview and grant label. It keeps a generic placeholder when the host
-cannot supply it, including a request opened in a turn older than the newest
-(the read covers the newest turn only). Request inspection sets `requiresAnswers` so clients
+tool, preview and grant label. When a request is not in that turn, the client
+follows the event window's `nextCursor` to older turns, at most three further
+pages of five turns, and stops as soon as every open request is found. It keeps
+a generic placeholder when the host cannot supply the request, including one
+older than that bound. Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
 
 A tool server's form elicitation during a Station-agent turn (#3284) carries a
@@ -619,6 +626,84 @@ not proof of completion or failure. Poll with a deadline for the returned
 requests. Accepted/coalesced publication is owned by the orchestration service;
 a timeout or missing terminal event must remain unverified, not inferred success.
 
+### Conversation usage tree (`GET /conversations/:conversationId/usage-tree`)
+
+One conversation's usage with its children, as a
+[`ThreadUsageTree`](../../packages/contracts/src/thread-usage-tree.ts). The
+root holds the conversation's own turns (every session in its lineage). Its
+children are the engine subagents those sessions reported and the sessions
+launched from the conversation, nested recursively and read one depth level
+at a time. Each child carries its own figures and a `relation` for tokens and
+for cost: `added` (in the total), `included-in-parent` (the parent's figure
+already contains it) or `not-reported` (not in the total, which is then
+partial). `total` lists why it is partial in `partialReasons`.
+
+A session is a child of the conversation when its launch names any session of
+the conversation's lineage as its parent:
+
+- by its delegation context (`metadata.delegation.parentConversationId`).
+  When a Claude Code or Codex session calls `delegate_task` through its
+  session-bound station-control (Claude Code's in-process server, Codex's
+  per-session HTTP server), Station derives it from the calling session's own
+  record. For Station's own agent, the runtime attests it from the
+  conversation it ran the tool call in. Neither comes from the request. On a
+  direct request it is the requester's own claim. A paired-Station dispatch
+  record keeps the same value as `metadata.parentConversationId`;
+- otherwise by `metadata.parentTaskId`, which a request may set itself. A
+  delegation context naming another conversation always wins over it.
+
+A task launched through a caller-less station-control process (a stdio child
+with no per-session credential, as a Strands-runtime agent uses) carries no
+delegation context. Unless its
+request named `parentTaskId`, it is not found as a child and the total doesn't
+show it as missing.
+
+Tokens: `totalTokens` is input + output as each engine reported them; cache
+reads and writes are listed separately and are not added. `total.tokens`
+says what the summed input means in `cacheInclusion`: `excluded` (every engine
+reports uncached input), `mixed` (two declared conventions that differ were
+summed), or `not-established` (any other case, including an engine whose
+convention is unverified or undeclared; unknown is never called different). A subagent's own figure goes where its
+engine's meaning puts it: tokens used become `totalTokens`, a Claude Code
+subagent's last-request size is `lastRequestTokens`, and an undeclared
+engine's figure is `unverifiedTokens`. Only `totalTokens` is ever added.
+
+Cost stays in buckets: reported cost by currency, Station estimates by
+currency and price snapshot. Buckets are never summed together, and reported
+cost is never mixed with estimates.
+
+The read is authorized like the conversation transcript: every session in a
+conversation's lineage must be readable. A session you can't read is never
+read, named or figured. What happens to it depends on how its launch came to
+name your conversation, which the dispatch route records at launch in the
+reserved start metadata key `stationDelegationProvenance` (a request can't
+set it; Station strips any value a caller supplies):
+
+- `caller-derived` (from the calling session's own record) or
+  `runtime-attested` (Station's own runtime vouched for it): the session is
+  real work of your conversation that runs under another owner. In hosted
+  mode that happens when Station can't attribute the dispatch to a bound
+  caller (for example a Codex session calling through its URL token), so the
+  delegate is the Station operator's. It is counted as not visible: no node,
+  and the total is partial with one line saying how many such tasks there are.
+  The stamp counts only on the session's start record, beside the parent it
+  names.
+- `direct-claim` (passed through from a request outside this Station's
+  process, such as an operator, device, hosted-user or peer Station
+  credential), or no stamp (a launch from before it existed, or a
+  `parentTaskId`-only link): the link is only a claim, so the session is
+  ignored, neither shown nor counted as missing. Counting it would let anyone
+  mark someone else's total partial.
+
+A delegate that ran on a
+paired Station is shown from this Station's own record, with `not-reported`
+usage, and no peer is contacted. Responses are `Cache-Control: private,
+no-store`. `404` means no conversation you can read. `422` means the tree is
+past a bound (200 nodes, delegates nested 8 deep, 5,000 usage observations,
+or more than 1,000 session records naming one level's parents) and is refused rather
+than cut. Each level's parent lookup scans session start records; there is no
+index on the JSON fields it matches.
+
 ### Reading assistant turn content programmatically
 
 For ACP-connected and other streaming-capable providers, assistant text arrives as a
@@ -660,6 +745,76 @@ tool/text boundaries. Match assistant messages by `metadata.turnId` to the
 handle's `providerTurnId` when proving one turn, so an earlier answer cannot
 satisfy a later check. The shared projection assembles streamed text and handles
 aggregate `turn.completed.outputText` where appropriate.
+
+### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
+
+When a Claude Code or Codex turn stops on a provider usage limit, Station
+records a recovery intent for the Session (see `ConnectionRecoveryProjection`
+in [contracts](contracts.md)). Three routes serve the chat banner:
+
+- `GET /sessions/:threadId/usage-limit` answers `{ recovery }`: the Session's
+  latest recovery projection when it came from a usage limit, with `autoResume`
+  (the current `usageLimitAutoResume` setting) while the stop waits, or `null`.
+  It carries no event list and sits at the Session read tier.
+- `POST /sessions/:threadId/usage-limit/resume` ("Resume now") starts sending
+  the stopped turn again at once, whatever the setting and before the reset. It
+  runs the same pre-dispatch checks as the timer: a newer turn, an open request
+  or a closed Session retires the stop with that `outcomeReason` instead. If
+  the provider refuses the replay with the same limit, the replay arms its own
+  wait for the reset, so an early click does not end the wait. That re-arm
+  needs a reset at least a minute away; a past or sooner reset ends the stop as
+  `failed` instead, and so does a fourth refusal in a row for the same
+  conversation (a user turn resets the count), so a refusing provider cannot
+  loop the resume.
+- `POST /sessions/:threadId/usage-limit/cancel` ("Cancel auto-resume") retires
+  a waiting stop unsent with `outcomeReason: "user-canceled"`. That retires the
+  whole stop, so Resume now is no longer offered for it either; the user sends
+  a message to continue.
+
+Both POSTs answer `{ result, recovery }`: `result.kind` is `resumed` (the
+dispatch started; whether the provider accepts it shows later in `recovery`,
+which can still read `failed` if the dispatch is rejected), `failed` (it could
+not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
+(with `reason`) or `not-waiting` (nothing was left to act on), and `recovery`
+is the projection afterward.
+
+They need the operate scope and the Session's own person, which is the same
+check as sending the next turn: in a personal home, any of that person's own
+devices holding the operate scope may act (a shared personal-home Session
+admits them); in a hosted deployment the strict owner and tenant check applies.
+No station-control tool maps these routes, so an agent's internal token is
+refused.
+
+### Subagent transcript (`GET /sessions/:threadId/child-work/:childId/transcript`)
+
+An engine subagent's own conversation, read-only. `threadId` is the session
+that reported the subagent and `childId` is its child-work id. The server
+finds the transcript from that session's persisted child-work facts (the
+`transcript` reference on the `ChildWorkItem`), so the request carries no
+file path, and the read works the same after a server restart. Reads are
+authorized like the session's other reads and are never cached
+(`Cache-Control: private, no-store`).
+
+Query: `offset` (message index, default `0`) and `limit` (messages per page,
+`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
+`entries` (prompt and reply text, tool calls, tool results; inline image data
+replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`404` means no transcript for a session you can read; `503` means the engine
+no longer has it.
+
+Only Claude subagents have a transcript today. Claude Code keeps it under the
+config home the session's engine was spawned with (its app-home or credential
+profile, a connection's config home, or the global one); the adapter records
+that config home with the reference, so a profile session's transcript is
+read from its own profile. Symbolic links below that config home are refused
+by checks made immediately before the file is opened; the checks are not
+atomic against a concurrent swap by a process running as the same user.
+Codex child threads have no transcript reference.
+
+The transcript is shown in file order, so it can include what Claude Code's
+own reader hides: a branch abandoned by a retry or an edit, and a compaction
+summary. A single record of any type larger than 4 MiB is skipped and shown
+as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
 
@@ -819,6 +974,48 @@ approval or a project-less session. Per-project counts are derived from
 `items` by counting that field under the same pending predicate as
 `pendingCount` (`attentionCountForProject`, `@kontourai/station-contracts/attention`);
 the server publishes no per-project number for a client to trust.
+
+`needs_input` and `review_pending` items carry `environmentKind: 'peer'`, plus
+the saved `environmentName` when recorded, when the session is this Station's
+lifecycle record of a delegated task that runs on a paired Station. The value
+is read from the session's own `delegation.environmentKind`, the same field the
+Activity detail uses to withhold local controls. The item's thread names only
+that record, and the server refuses a local turn on it. Such an item therefore
+links to the Activity detail instead of the chat dock. Clients show where to
+answer it instead of offering a local reply. The field is absent for work this
+Station runs. A server that predates the field omits it; a reply sent to a peer
+record through that server is still refused, not delivered elsewhere.
+
+The paired Station's own open request reaches this Station through its
+delegated-task status read (`GET /api/orchestration/delegations/:taskId`,
+field `pendingRequest`). Each status refresh records it on the peer record as
+`delegation.peerPendingRequest` (id, type, title, `observedAt`). The record is
+cleared when the paired Station reports no open request, or answers `respond`
+for that request id. The attention item then carries `peerRequestReference`:
+`environmentId`, `taskId`, `requestId` and `requestType`. These ids name the
+request on the paired Station. It never carries `requestReference` or
+`inputReference`, so local request inspection and `respondToRequest` cannot use it.
+
+`viewerCanRespond` models two gates this Station applies before the
+`POST /api/orchestration/delegations/:taskId/respond` handler: the credential
+and pairing-scope gate for that path, then the station-control dispatch scope
+with the `approve` action. The handler can still refuse, for example an inbound
+delegation peer, hosted mode, or an environment that is not the task's
+recorded host. Absent means unknown, and clients offer nothing. For an
+`approval` or `permission` request with `viewerCanRespond: true`, clients post
+`{ requestId, decision, environmentId }` to that route; the paired Station
+re-checks the request is open and decides it there. When the paired Station
+answers 403, the route reports "The paired Station refused this decision" in
+this Station's words; the paired Station's own diagnostics are not relayed.
+`input` and `confirmation` requests keep the note, because `respond` carries a
+decision, not an answer.
+
+The route forwards a decision only to the environment this Station recorded as
+hosting the task. A body naming another environment is refused before any
+outbound request. The recorded host is read with the caller's own read
+authority, so a task record the caller cannot read names no host. A request id
+longer than 512 Unicode code points is not stored, so the item shows the note.
+A title longer than 512 code points is cut with a trailing ellipsis.
 
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and

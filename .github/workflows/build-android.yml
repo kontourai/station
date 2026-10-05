@@ -1,4 +1,4 @@
-name: Build Android verification artifact
+name: "Main: Android build"
 
 # This is the only CI signal for Android-breaking changes: android/ios-device
 # in .github/workflows/release.yml only run on a `v*` tag push, so without
@@ -20,6 +20,7 @@ on:
       - 'scripts/reclaim-android-runner-disk.sh'
       - 'scripts/resolve-android-build-run.mjs'
       - 'scripts/write-android-build-manifest.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/android-build-manifest.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
       - 'package.json'
@@ -152,7 +153,7 @@ jobs:
           node scripts/read-android-build-provenance.mjs "$apk"
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"
           "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
-      # Name matches what android-test.yml's `Android Tests` workflow_run
+      # Name matches what android-test.yml's `Main: Android tests` workflow_run
       # chain downloads (two `download-artifact` steps, name:
       # station-android-debug) — this workflow's completion is what triggers
       # that chain. The two names had drifted apart (this job previously

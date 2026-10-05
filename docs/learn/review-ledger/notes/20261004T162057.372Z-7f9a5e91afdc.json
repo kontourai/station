@@ -1,0 +1,7 @@
+{
+  "revision": "6c93f742ee06f2d58b4d51b0ab7ba3d2c2c38893",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Diff's head paragraph re-checked against DiffPanel.tsx at 6c93f742ee. The counts sit in the leading slot. Four icon tools (Collapse all, Expand all, and Split view and Wrap lines as aria-pressed toggles) sit in the trailing slot and come from the same fragment as the pane's own bar. There is no overflow, so the host keeps its own ⋯ (CodingWorkbench takeHostActions path). Tools are 32px and become 44px boxes under (hover: none) (DiffPanel.css, pinned by CodingWorkbenchSeparators.chrome.geometry.test). PullRequestReviewPanel fences its embedded diff with PaneHeadSlotsContext null. The removed claim about view and wrap as overflow rows no longer holds.","inputs":["docs/design/placement.md"]}
+  ]
+}
