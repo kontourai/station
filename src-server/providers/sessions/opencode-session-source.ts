@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -68,6 +74,7 @@ const REQUIRED_SESSION_COLUMNS = [
   'time_created',
   'time_updated',
   'time_archived',
+  'version',
 ] as const;
 const EXACT_MESSAGE_COLUMNS = [
   'id',
@@ -162,8 +169,11 @@ interface OpenCodeSessionSourceOptions {
  *
  * Current OpenCode keeps sessions in `$XDG_DATA_HOME/opencode/
  * opencode[-<channel>].db`, WAL mode. This source opens that file with
- * `readOnly` for each discovery or read and closes it immediately: it never
- * copies, writes or checkpoints it, and a WAL reader never blocks the writer.
+ * `readOnly`, one connection per database per poll, and runs every statement
+ * to completion: it never copies, writes or checkpoints it, and holds no read
+ * snapshot between statements, so it never blocks OpenCode's checkpoints.
+ * While neither the database nor its WAL changes, polls reuse the last
+ * discovery and answer drained reads without opening the store.
  * (SQLite gives any WAL reader the `-wal`/`-shm` files it needs, so an empty
  * pair can appear beside a store OpenCode last closed cleanly.)
  * Only `session`, `message` and `part` are queried — the same file holds
@@ -172,10 +182,9 @@ interface OpenCodeSessionSourceOptions {
  * The pre-SQLite JSON layout (`storage/session/**.json`) is not read: current
  * OpenCode migrates it into the database on first start.
  *
- * Messages are imported once they are settled — an assistant message once it
- * has `time.completed` or an error, a user message once a later message
- * exists — so an in-flight message is re-read until it stops changing and
- * the cursor only ever moves forward past whole messages.
+ * Messages are imported once they are settled (see `isSettled`), so an
+ * in-flight message is re-read until it stops changing and the cursor only
+ * ever moves forward past whole messages.
  */
 export class OpenCodeSessionSource implements AttachedSessionSource {
   readonly provider = 'opencode';
@@ -195,6 +204,35 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private readonly yieldFn: () => Promise<void>;
   private readonly warned = new Set<string>();
   private readonly handles = new Map<string, SourceRegistration>();
+  /**
+   * Connections opened during the current poll, one per database. A poll
+   * starts with `discover()`, which closes the previous poll's set. Each
+   * statement runs to completion (`all`/`get`), so an idle connection holds
+   * no read snapshot across an await and never blocks OpenCode's checkpoint.
+   */
+  private readonly connections = new Map<
+    string,
+    { db: DatabaseSync; fileIdentity: string; active: number }
+  >();
+  /** Schema verdict per database, keyed by file identity and schema_version. */
+  private readonly schemaChecks = new Map<
+    string,
+    { key: string; mismatch: string | null }
+  >();
+  /** The last discovery, reused while no database or its WAL has changed. */
+  private lastDiscovery?: {
+    key: string;
+    result: AttachedSessionDiscoveryResult;
+  };
+  /**
+   * Per thread: the store signature and cursor of the last read that reached
+   * the end of what was settled. Rereading that cursor from an unchanged
+   * store returns nothing new, so it is answered without opening the store.
+   */
+  private readonly drainedReads = new Map<
+    string,
+    { signature: string; cursor: string; outcome: AttachedSessionSourceOutcome }
+  >();
 
   constructor(options: OpenCodeSessionSourceOptions = {}) {
     this.dataDir =
@@ -264,7 +302,39 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     );
     if (!sourceHome) return { outcome: 'missing_root', sessions: [] };
     const listed = this.listDatabases(sourceHome.canonicalRoot);
+    const key = JSON.stringify([
+      sourceHome.affinity.ref,
+      listed.outcome,
+      listed.databases.map((database) => [
+        database.fileName,
+        database.fileIdentity,
+        storeSignature(database.path),
+      ]),
+    ]);
+    // The previous poll's connections end here, whether or not this poll
+    // needs the store at all.
+    this.closeConnections();
+    if (this.lastDiscovery?.key === key) {
+      const cached = this.lastDiscovery.result;
+      return { outcome: cached.outcome, sessions: [...cached.sessions] };
+    }
+    this.lastDiscovery = undefined;
     this.handles.clear();
+    const result = await this.discoverDatabases(sourceHome, listed);
+    this.lastDiscovery = {
+      key,
+      result: { outcome: result.outcome, sessions: [...result.sessions] },
+    };
+    return result;
+  }
+
+  private async discoverDatabases(
+    sourceHome: NonNullable<ReturnType<typeof deriveConfigHomeAffinity>>,
+    listed: {
+      outcome: AttachedSessionSourceOutcome;
+      databases: DatabaseRegistration[];
+    },
+  ): Promise<AttachedSessionDiscoveryResult> {
     if (listed.databases.length === 0) {
       return {
         outcome: listed.outcome === 'ok' ? 'missing_root' : listed.outcome,
@@ -366,10 +436,18 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const cursor = decodeCursor(previousCursor);
     if (!cursor) return rejected();
 
+    const signature = storeSignature(current.path);
+    const cursorKey = JSON.stringify(previousCursor);
+    const drained = this.drainedReads.get(session.threadId);
+    if (drained?.signature === signature && drained.cursor === cursorKey) {
+      return { outcome: drained.outcome, events: [], cursor: previousCursor };
+    }
+    this.drainedReads.delete(session.threadId);
+
     const result = await this.withDatabase(current, async (db) => {
       const row = db
         .prepare(
-          'SELECT id, directory, time_created, time_updated FROM session WHERE id = ?',
+          'SELECT id, directory, time_created, time_updated, version FROM session WHERE id = ?',
         )
         .get(session.sessionId);
       const refreshed = row
@@ -381,17 +459,36 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       ) {
         return null;
       }
-      return this.readMessages(db, session, cursor);
+      return this.readMessages(
+        db,
+        session,
+        cursor,
+        isLegacyUsageVersion(row?.version),
+      );
     });
     if (!result.ok || !result.value) return rejected();
-    return result.value;
+    const { read, drained: reachedEnd } = result.value;
+    if (reachedEnd) {
+      this.drainedReads.set(session.threadId, {
+        signature,
+        cursor: JSON.stringify(read.cursor),
+        outcome: read.outcome,
+      });
+      // Bounded by the discovered set: forget threads no longer discovered.
+      if (this.drainedReads.size > this.maxCandidates * 2) {
+        const oldest = this.drainedReads.keys().next().value;
+        if (oldest !== undefined) this.drainedReads.delete(oldest);
+      }
+    }
+    return read;
   }
 
   private async readMessages(
     db: DatabaseSync,
     session: AttachedSessionDescriptor,
     cursor: DecodedCursor,
-  ): Promise<AttachedSessionReadResult> {
+    legacyVersion: boolean,
+  ): Promise<{ read: AttachedSessionReadResult; drained: boolean }> {
     const after = cursor.state.after;
     // Only the fields this source maps are projected out of the writer's
     // JSON, inside SQLite: a user message's file diffs or a tool's metadata
@@ -456,6 +553,8 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     let state = cloneState(cursor.state);
     let offset = cursor.offset;
     let bytesUsed = 0;
+    // Reached the end of what is settled: no page bound stopped the read.
+    let drained = messageRows.length <= this.maxMessages;
     const window = messageRows.slice(0, this.maxMessages);
     for (const [index, message] of window.entries()) {
       // A full page is a few hundred parts parsed on the main thread; yield
@@ -466,9 +565,12 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (!message) {
         // A row whose identity columns are not the writer's types.
         return {
-          outcome: 'malformed_record',
-          events,
-          cursor: encodeCursor(offset, state),
+          read: {
+            outcome: 'malformed_record',
+            events,
+            cursor: encodeCursor(offset, state),
+          },
+          drained: false,
         };
       }
       const parts = partQuery
@@ -483,18 +585,25 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       const messageBytes = message.bytes + planned.bytes;
       if (bytesUsed > 0 && bytesUsed + messageBytes > this.maxBytes) {
         outcome = mergeOutcome(outcome, 'byte_limit');
+        drained = false;
         break;
       }
-      const hasLater = index + 1 < messageRows.length;
       const mapped = mapMessage(
         message,
         planned,
-        hasLater,
+        {
+          any: index + 1 < messageRows.length,
+          assistant: messageRows
+            .slice(index + 1)
+            .some((later) => later?.info?.role === 'assistant'),
+        },
         session,
         cloneState(state),
+        legacyVersion,
       );
       if (mapped.kind === 'unsettled') {
         outcome = mergeOutcome(outcome, 'incomplete_tail');
+        drained = true;
         break;
       }
       if (mapped.kind === 'oversized') {
@@ -506,9 +615,12 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       const alreadyEmitted = index === 0 ? cursor.eventIndex : 0;
       if (alreadyEmitted > mapped.events.length) {
         return {
-          outcome: 'rejected_candidate',
-          events: [],
-          cursor: cursor.raw,
+          read: {
+            outcome: 'rejected_candidate',
+            events: [],
+            cursor: cursor.raw,
+          },
+          drained: false,
         };
       }
       const remaining = mapped.events.slice(alreadyEmitted);
@@ -516,9 +628,12 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (remaining.length > capacity) {
         events.push(...remaining.slice(0, capacity));
         return {
-          outcome,
-          events,
-          cursor: encodeCursor(offset, state, alreadyEmitted + capacity),
+          read: {
+            outcome,
+            events,
+            cursor: encodeCursor(offset, state, alreadyEmitted + capacity),
+          },
+          drained: false,
         };
       }
       events.push(...remaining);
@@ -530,7 +645,10 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         outcome = mergeOutcome(outcome, 'byte_limit');
       }
     }
-    return { outcome, events, cursor: encodeCursor(offset, state) };
+    return {
+      read: { outcome, events, cursor: encodeCursor(offset, state) },
+      drained,
+    };
   }
 
   private registrationFor(
@@ -616,9 +734,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   }
 
   /**
-   * Open read-only, verify the schema, run `body`, close. An open failure or
-   * schema mismatch fails closed for that database and is logged once per
-   * database and reason, never per poll.
+   * Run `body` on this poll's read-only connection to `database`, after the
+   * schema check. An open failure or schema mismatch fails closed for that
+   * database and is logged once per database and reason, never per poll.
    */
   private async withDatabase<T>(
     database: DatabaseRegistration,
@@ -627,13 +745,13 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     | { ok: true; value: T }
     | { ok: false; outcome: AttachedSessionSourceOutcome }
   > {
-    let db: DatabaseSync | undefined;
+    let connection:
+      | { db: DatabaseSync; fileIdentity: string; active: number }
+      | undefined;
     try {
-      db = new DatabaseSync(database.path, {
-        readOnly: true,
-        timeout: BUSY_TIMEOUT_MS,
-      });
-      const mismatch = schemaMismatch(db);
+      connection = this.connectionFor(database);
+      connection.active += 1;
+      const mismatch = this.checkedSchema(database, connection.db);
       if (mismatch) {
         this.warnOnce(database, `schema:${mismatch}`, {
           reason: 'unsupported_schema',
@@ -641,20 +759,71 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         });
         return { ok: false, outcome: 'rejected_candidate' };
       }
-      return { ok: true, value: await body(db) };
+      return { ok: true, value: await body(connection.db) };
     } catch (error) {
       this.warnOnce(database, `error:${errorCode(error)}`, {
         reason: 'database_unreadable',
         code: errorCode(error),
       });
+      if (connection) this.dropConnection(database.path, connection);
       return { ok: false, outcome: 'rejected_candidate' };
     } finally {
-      try {
-        db?.close();
-      } catch {
-        // Closing a read-only handle has nothing to flush.
-      }
+      if (connection) connection.active -= 1;
     }
+  }
+
+  private connectionFor(database: DatabaseRegistration): {
+    db: DatabaseSync;
+    fileIdentity: string;
+    active: number;
+  } {
+    const cached = this.connections.get(database.path);
+    if (cached?.fileIdentity === database.fileIdentity) return cached;
+    if (cached) this.dropConnection(database.path, cached);
+    const connection = {
+      db: new DatabaseSync(database.path, {
+        readOnly: true,
+        timeout: BUSY_TIMEOUT_MS,
+      }),
+      fileIdentity: database.fileIdentity,
+      active: 0,
+    };
+    this.connections.set(database.path, connection);
+    return connection;
+  }
+
+  private dropConnection(
+    path: string,
+    connection: { db: DatabaseSync; active: number },
+  ): void {
+    if (this.connections.get(path) === connection)
+      this.connections.delete(path);
+    if (connection.active > 0) return;
+    try {
+      connection.db.close();
+    } catch {
+      // Closing a read-only handle has nothing to flush.
+    }
+  }
+
+  private closeConnections(): void {
+    for (const [path, connection] of [...this.connections]) {
+      this.dropConnection(path, connection);
+    }
+  }
+
+  /** `pragma_table_info` runs again only when the schema version changes. */
+  private checkedSchema(
+    database: DatabaseRegistration,
+    db: DatabaseSync,
+  ): string | null {
+    const version = db.prepare('PRAGMA schema_version').get()?.schema_version;
+    const key = `${database.fileIdentity}:${String(version)}`;
+    const cached = this.schemaChecks.get(database.path);
+    if (cached?.key === key) return cached.mismatch;
+    const mismatch = schemaMismatch(db);
+    this.schemaChecks.set(database.path, { key, mismatch });
+    return mismatch;
   }
 
   private warnOnce(
@@ -671,6 +840,23 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       ...meta,
     });
   }
+}
+
+/**
+ * Size and modification time of the database and its WAL. Every commit
+ * appends to the WAL and every checkpoint writes the database, so an
+ * unchanged signature means no transaction committed since it was taken.
+ */
+function storeSignature(path: string): string {
+  const describe = (file: string): string => {
+    try {
+      const stat = statSync(file);
+      return `${stat.size}:${stat.mtimeMs}`;
+    } catch {
+      return '-';
+    }
+  };
+  return `${describe(path)}|${describe(`${path}-wal`)}`;
 }
 
 function schemaMismatch(db: DatabaseSync): string | null {
@@ -840,12 +1026,13 @@ class MessageEmitter {
 function mapMessage(
   message: MessageRow,
   planned: PlannedParts,
-  hasLater: boolean,
+  following: FollowingMessages,
   session: AttachedSessionDescriptor,
   previous: OpenCodeCursorState,
+  legacyVersion: boolean,
 ): MappedMessage {
   const info = message.info;
-  if (!hasLater && !isSettled(info)) return { kind: 'unsettled' };
+  if (!isSettled(info, following)) return { kind: 'unsettled' };
   const state = cloneState(previous);
   if (message.oversized) return { kind: 'oversized', events: [], state };
   if (!info) return { kind: 'malformed', events: [], state };
@@ -859,7 +1046,14 @@ function mapMessage(
   if (info.role === 'user') {
     mapUserMessage(emitter, message.id, parts, planned.omitted);
   } else {
-    mapAssistantMessage(emitter, message.id, info, parts, planned.omitted);
+    mapAssistantMessage(
+      emitter,
+      message.id,
+      info,
+      parts,
+      planned.omitted,
+      legacyVersion,
+    );
   }
   return { kind: 'ok', events: emitter.events, state: emitter.state };
 }
@@ -869,18 +1063,33 @@ interface ParsedPart {
   data: Record<string, unknown>;
 }
 
+/** What follows a message in the session, within the read's look-ahead. */
+interface FollowingMessages {
+  any: boolean;
+  assistant: boolean;
+}
+
 /**
- * Settled: an assistant message once completed or failed. Any message also
- * settles once the session has moved on to a later one (checked by the
- * caller): a crashed or interrupted write never completes, and must not hold
- * the cursor forever. A trailing user message waits, because its parts are
- * written after its row.
+ * Settled: an assistant message once completed or failed — OpenCode writes
+ * `time.completed` in the processor's cleanup even on abort or interrupt —
+ * or once a LATER ASSISTANT message exists, which covers a process killed
+ * mid-write. A later user message does not settle it: OpenCode writes a
+ * queued prompt immediately, while the running reply keeps streaming. A user
+ * message settles once anything follows it, because its parts are written
+ * after its row.
  */
-function isSettled(info: MessageInfo | null): boolean {
-  return (
-    info?.role === 'assistant' &&
-    (info.hasError || Number.isSafeInteger(info.completed))
-  );
+function isSettled(
+  info: MessageInfo | null,
+  following: FollowingMessages,
+): boolean {
+  if (info?.role === 'assistant') {
+    return (
+      info.hasError ||
+      Number.isSafeInteger(info.completed) ||
+      following.assistant
+    );
+  }
+  return following.any;
 }
 
 function mapUserMessage(
@@ -933,6 +1142,7 @@ function mapAssistantMessage(
   info: MessageInfo,
   parts: ParsedPart[],
   omitted: number,
+  legacyVersion: boolean,
 ): void {
   // A compaction summary restates the conversation for the model; the
   // compaction notification already marks the boundary.
@@ -951,7 +1161,7 @@ function mapAssistantMessage(
     } else if (type === 'tool') {
       if (mapToolPart(emitter, turnId, part.data)) openToolCalls = true;
     } else if (type === 'step-finish') {
-      const step = decodeUsage(part.data.tokens);
+      const step = decodeUsage(part.data.tokens, legacyVersion);
       if (step) emitter.state.usage = addUsage(emitter.state.usage, step);
     }
   }
@@ -1114,19 +1324,49 @@ function usageEvent(
   };
 }
 
-function decodeUsage(raw: unknown): OpenCodeUsage | null {
+/**
+ * Current OpenCode stores output with reasoning subtracted, and its step
+ * `total` is `input + output + reasoning + cache.read + cache.write`.
+ * OpenCode 1.3 and earlier stored output with reasoning included, and
+ * `total` as `input + output + cache.read + cache.write`. The row's own
+ * `total` identity decides; the session's OpenCode version decides only when
+ * the identity is absent or matches neither shape.
+ */
+function decodeUsage(
+  raw: unknown,
+  legacyVersion: boolean,
+): OpenCodeUsage | null {
   const tokens = asRecord(raw);
   const cache = asRecord(tokens?.cache);
   const input = tokenCount(tokens?.input);
   const output = tokenCount(tokens?.output);
   const reasoning = tokenCount(tokens?.reasoning) ?? 0;
   if (input === undefined || output === undefined) return null;
+  const cacheRead = tokenCount(cache?.read) ?? 0;
+  const cacheWrite = tokenCount(cache?.write) ?? 0;
+  const total = tokenCount(tokens?.total);
+  const withoutReasoning = input + output + cacheRead + cacheWrite;
+  const reasoningSeparate =
+    total === withoutReasoning + reasoning
+      ? true
+      : total === withoutReasoning
+        ? false
+        : !legacyVersion;
   return {
     prompt: input,
-    completion: output + reasoning,
-    cacheRead: tokenCount(cache?.read) ?? 0,
-    cacheWrite: tokenCount(cache?.write) ?? 0,
+    completion: reasoningSeparate ? output + reasoning : output,
+    cacheRead,
+    cacheWrite,
   };
+}
+
+/** OpenCode 1.3.x and earlier wrote output tokens with reasoning included. */
+function isLegacyUsageVersion(version: unknown): boolean {
+  const match =
+    typeof version === 'string' ? /^(\d+)\.(\d+)\./u.exec(version) : null;
+  if (!match) return false;
+  const major = Number(match[1]);
+  return major < 1 || (major === 1 && Number(match[2]) <= 3);
 }
 
 function addUsage(

@@ -144,19 +144,20 @@ export class OpenCodeFixtureWriter {
   session(
     id: string,
     directory: string,
-    options: { parentId?: string; archived?: boolean } = {},
+    options: { parentId?: string; archived?: boolean; version?: string } = {},
   ): string {
     const now = this.tick();
     this.db
       .prepare(
         `INSERT INTO session (id, project_id, parent_id, slug, directory, title, version,
            time_created, time_updated, time_archived, agent, model)
-         VALUES (?, 'prj_fixture', ?, 'fixture-slug', ?, 'Fixture session', '1.18.18', ?, ?, ?, 'build', ?)`,
+         VALUES (?, 'prj_fixture', ?, 'fixture-slug', ?, 'Fixture session', ?, ?, ?, ?, 'build', ?)`,
       )
       .run(
         id,
         options.parentId ?? null,
         directory,
+        options.version ?? '1.18.18',
         now,
         now,
         options.archived ? now : null,
@@ -294,19 +295,28 @@ export class OpenCodeFixtureWriter {
       read: number;
       write: number;
     },
+    /**
+     * `current` (default): total = input + output + reasoning + cache, output
+     * without reasoning. `legacy` (OpenCode <= 1.3): output already includes
+     * reasoning and total = input + output + cache. `absent`: no total.
+     */
+    shape: 'current' | 'legacy' | 'absent' = 'current',
   ): string {
+    const withoutReasoning =
+      tokens.input + tokens.output + tokens.read + tokens.write;
+    const total =
+      shape === 'current'
+        ? withoutReasoning + tokens.reasoning
+        : shape === 'legacy'
+          ? withoutReasoning
+          : undefined;
     return this.part(sessionId, messageId, {
       type: 'step-finish',
       reason: 'stop',
       snapshot: 'snapshot-fixture',
       cost: 0.01,
       tokens: {
-        total:
-          tokens.input +
-          tokens.output +
-          tokens.reasoning +
-          tokens.read +
-          tokens.write,
+        ...(total === undefined ? {} : { total }),
         input: tokens.input,
         output: tokens.output,
         reasoning: tokens.reasoning,

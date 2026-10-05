@@ -271,6 +271,144 @@ describe('OpenCodeSessionSource', () => {
     ]);
   });
 
+  test('a prompt queued during a reply does not settle the reply early', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const first = store.user('ses_main', ['First']);
+    const running = store.assistant('ses_main', first, { completed: false });
+    store.text('ses_main', running, 'Partial answer.');
+    // OpenCode writes a queued prompt at once, before the reply finishes.
+    const queued = store.user('ses_main', ['Queued']);
+
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+    expect(before.events.map((event) => event.method)).toEqual([
+      'turn.started',
+    ]);
+
+    store.text('ses_main', running, 'REST-OF-ANSWER');
+    store.stepFinish('ses_main', running, {
+      input: 7,
+      output: 3,
+      reasoning: 0,
+      read: 0,
+      write: 0,
+    });
+    store.completeAssistant('ses_main', running, first, 'stop');
+    const reply = store.assistant('ses_main', queued, { finish: 'stop' });
+    store.text('ses_main', reply, 'Second answer.');
+    const after = await drain(source, session, before.cursor);
+    expect(
+      after.events.map((event) => [
+        event.method,
+        'turnId' in event ? event.turnId : undefined,
+        event.method === 'content.text-delta' ? event.delta : undefined,
+      ]),
+    ).toEqual([
+      ['content.text-delta', first, 'Partial answer.'],
+      ['content.text-delta', first, '\n\nREST-OF-ANSWER'],
+      ['token-usage.updated', first, undefined],
+      ['turn.completed', first, undefined],
+      ['turn.started', queued, undefined],
+      ['content.text-delta', queued, 'Second answer.'],
+      ['turn.completed', queued, undefined],
+    ]);
+  });
+
+  test('a later assistant message settles a reply whose writer died mid-write', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const first = store.user('ses_main', ['First']);
+    const dead = store.assistant('ses_main', first, { completed: false });
+    store.text('ses_main', dead, 'Cut off');
+    const second = store.user('ses_main', ['Again']);
+    const reply = store.assistant('ses_main', second, { finish: 'stop' });
+    store.text('ses_main', reply, 'Done.');
+
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const { events, outcomes } = await drain(source, session);
+    expect(outcomes).not.toContain('incomplete_tail');
+    expect(
+      events
+        .filter((event) => event.method === 'content.text-delta')
+        .map((event) =>
+          event.method === 'content.text-delta' ? event.delta : '',
+        ),
+    ).toEqual(['Cut off', 'Done.']);
+  });
+
+  test('counts reasoning once for current and OpenCode 1.3-era usage rows', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    const tokens = { input: 100, output: 40, reasoning: 15, read: 0, write: 0 };
+    const cases = [
+      // [session version, row shape, expected completion]
+      ['1.18.18', 'current', 55],
+      ['1.18.18', 'legacy', 40],
+      ['1.3.13', 'legacy', 40],
+      ['1.3.13', 'absent', 40],
+      ['1.18.18', 'absent', 55],
+    ] as const;
+    for (const [index, [version, shape]] of cases.entries()) {
+      const id = `ses_${index}`;
+      store.session(id, '/workspace/project', { version });
+      const user = store.user(id, ['Count']);
+      const reply = store.assistant(id, user, { finish: 'stop' });
+      store.stepFinish(id, reply, tokens, shape);
+    }
+    const source = new OpenCodeSessionSource({ dataDir });
+    const sessions = (await source.discover()).sessions;
+    for (const [index, [, , completion]] of cases.entries()) {
+      const session = sessions.find(
+        (item) => item.sessionId === `ses_${index}`,
+      )!;
+      const usage = (await source.read(session)).events.find(
+        (event) => event.method === 'token-usage.updated',
+      );
+      expect(usage).toMatchObject({
+        promptTokens: 100,
+        completionTokens: completion,
+      });
+    }
+  });
+
+  test('holds no read snapshot across its yields, so OpenCode can truncate its WAL mid-read', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    writeTurn(store, 'ses_main', 'One');
+    writeTurn(store, 'ses_main', 'Two');
+    const checkpoints: Array<Record<string, unknown>> = [];
+    const source = new OpenCodeSessionSource({
+      dataDir,
+      readYieldEveryMessages: 1,
+      yieldFn: async () => {
+        // The read is suspended mid-page: OpenCode commits and checkpoints.
+        store.touch('ses_main');
+        checkpoints.push(
+          store.db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get() as Record<
+            string,
+            unknown
+          >,
+        );
+      },
+    });
+    const session = (await source.discover()).sessions[0]!;
+    const result = await source.read(session);
+    expect(
+      result.events.filter((event) => event.method === 'turn.completed'),
+    ).toHaveLength(2);
+    expect(checkpoints.length).toBeGreaterThan(0);
+    for (const checkpoint of checkpoints) {
+      expect(checkpoint).toMatchObject({ busy: 0 });
+    }
+  });
+
   test('holds a trailing user message until OpenCode answers it', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);
@@ -387,6 +525,22 @@ describe('OpenCodeSessionSource', () => {
       detail: 'part:columns',
     });
     expect(JSON.stringify(warn.mock.calls)).not.toContain(dataDir);
+  });
+
+  test('rechecks the schema when OpenCode migrates a store it already read', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    writeTurn(store, 'ses_main', 'Hello');
+    const warn = vi.fn();
+    const source = new OpenCodeSessionSource({ dataDir, warn });
+    expect((await source.discover()).sessions).toHaveLength(1);
+    store.db.exec('ALTER TABLE part ADD COLUMN extra text');
+    expect(await source.discover()).toEqual({
+      outcome: 'rejected_candidate',
+      sessions: [],
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   test('fails closed when a required session column is missing', async () => {
@@ -522,6 +676,8 @@ describe('OpenCodeSessionSource', () => {
       ),
     ).toBe(true);
 
+    // The next poll's discovery releases the previous poll's connection.
+    await live.discover();
     store.close();
     expect(existsSync(`${store.path}-wal`)).toBe(false);
     const digest = () =>
