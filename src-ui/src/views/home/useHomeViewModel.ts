@@ -23,8 +23,6 @@ import {
   dockFoldsToOneRegion,
   useDockSlotDevice,
 } from '../../hooks/useIsMobile';
-import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import { useWorkFacts } from './useWorkFacts';
@@ -48,15 +46,6 @@ interface HomeWorkData {
    * fetching its own would be a second read that can disagree.
    */
   agents: ReturnType<typeof useAgents>;
-  defaultSelection: ReturnType<
-    typeof useNewChatSelectionModel
-  >['defaultSelection'];
-  /**
-   * False while the start context's project detail is still loading (or
-   * failed): `defaultSelection` is then the global one, which Start would
-   * not use, so Home names no identity rather than a guess.
-   */
-  startSelectionResolved: boolean;
   actionsLoading: boolean;
   workItems: HomeWorkItem[];
   /**
@@ -98,20 +87,6 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data ?? [],
     resolveModelLabel,
   );
-  // Start runs in the context the ambient dock's New Chat opens on (the
-  // dock's remembered project, once the user has opened one), not the
-  // route's: on `/` there is no route project. Resolve it the same way, and
-  // with the same selection-model inputs `NewChatModal` passes for a
-  // `startWithDefault` request, so the identity Home names is the one Start
-  // runs.
-  const startContext = useNewChatStartContext(projects);
-  const { defaultSelection, selectedContextResolved } =
-    useNewChatSelectionModel({
-      agents,
-      projects,
-      selectedContext: startContext,
-      revalidateSelection: true,
-    });
   const remoteEnvironments = remoteSessionsResult?.environments ?? [];
   const inventoryById = useMemo(
     () =>
@@ -174,8 +149,6 @@ function useHomeWorkData(): HomeWorkData {
   return {
     projects,
     agents,
-    defaultSelection,
-    startSelectionResolved: selectedContextResolved,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
@@ -279,29 +252,8 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       return null;
     }
   };
-  const { agent, effectiveModel } = data.defaultSelection;
-  const startIdentity = !data.startSelectionResolved
-    ? undefined
-    : agent
-      ? [
-          agent.name,
-          effectiveModel.label === 'Model not reported'
-            ? undefined
-            : effectiveModel.label,
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : 'No agent is ready yet';
   return {
     ...data,
-    /**
-     * Whether the card can honestly recommend anything. False on a home where
-     * no Agent is runnable — a fresh install, or one whose engines all need
-     * setting up — and the card becomes a set-up CTA rather than naming an
-     * Agent the New Chat picker would refuse one click later.
-     */
-    startReady: data.defaultSelection.agent !== undefined,
-    startIdentity,
     // #2310 review M3: the "Continue" card must name work. A Draft
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(

@@ -1525,7 +1525,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689 — proves the New Chat workspace picker renders as a contained bottom sheet (not the clipped anchored dropdown) at 390x844, and covers open, scroll, filter, pick, outside-tap, and Escape dismissal.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
     exceptions: [],
   },
   {
