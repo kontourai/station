@@ -1,0 +1,7 @@
+{
+  "revision": "7a5a869d200a9a2474867bef389f63d4f089890a",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-checked after the glossary gained one sentence on the future-relative time form (relativeTimeUntil) and the usage-limit banner's reset wording. CONTEXT-MAP.md only links the glossary; no context relationship changes.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7a5a869d200a9a2474867bef389f63d4f089890a",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked the glossary's Live lanes entry against the repair: it gained one sentence naming relativeTimeUntil (src-ui/src/utils/relativeTime.ts) as the future-relative sibling of relativeTime ('in 41m', 'in 2d', short date past a week) and the usage-limit banner's 'Resets in 41m' / 'Reset 3m' wording, verified against UsageLimitBanner.tsx and its tests. The existing compact-form, tooltip and no-ago claims are unchanged and still true.","inputs":["docs/glossary.md"]}
+  ]
+}
