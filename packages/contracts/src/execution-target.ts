@@ -1,4 +1,8 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
+import type {
+  ExecutionPreparationReceipt,
+  ExecutionPreparationRequirement,
+} from './execution-preparation.js';
 import type { EngineId, ModelLaunchPlan } from './provider.js';
 import type { WorkspaceIsolationConfig } from './workspace-isolation.js';
 
@@ -61,6 +65,21 @@ export type WorkspaceTarget =
       kind: 'project-portable';
       portableProjectId: string;
       resourceId: string;
+    }
+  | {
+      /**
+       * #2875 slice 1: the `project-portable` intent plus a version the
+       * receiver must find its admitted checkout at before execution
+       * starts. Another NEW union member, for the same reason as
+       * `project-portable`: an older receiver refuses the whole workspace
+       * object instead of stripping the requirement and executing
+       * unchecked. Senders gate it on the `executionPreparation` handshake
+       * capability.
+       */
+      kind: 'project-portable-prepared';
+      portableProjectId: string;
+      resourceId: string;
+      preparation: ExecutionPreparationRequirement;
     };
 
 /** Caller-owned model request. Resolution remains adapter- and server-owned. */
@@ -117,4 +136,6 @@ export interface ExecutionResolutionReceipt {
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
   workspace?: ResolvedWorkspaceTarget;
+  /** Present only for a `project-portable-prepared` intent that matched. */
+  preparation?: ExecutionPreparationReceipt;
 }

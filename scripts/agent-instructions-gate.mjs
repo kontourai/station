@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import {
   dirname,
@@ -21,6 +20,7 @@ import {
   SCOPES,
   scopeForPath,
 } from './agent-instructions-manifest.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -447,7 +447,7 @@ export function instructionGateErrors({
   const tracked =
     trackedFiles ??
     String(
-      execFileSync('git', ['ls-files', '-z'], {
+      execFileSyncBounded('git', ['ls-files', '-z'], {
         cwd: root,
         encoding: 'utf8',
         windowsHide: true,

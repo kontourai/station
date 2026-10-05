@@ -37,6 +37,13 @@ import {
   takeToolPurpose,
   toolPurposeForCall,
 } from '../../runtime/frameworks/tool-purpose.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  beginNativeKnowledgeTurn,
+  finishNativeKnowledgeTurn,
+  startNativeKnowledgeSession,
+  stopNativeKnowledgeSession,
+} from '../../runtime/mcp/station-knowledge-native-tools.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -863,6 +870,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       createdAt: now,
       updatedAt: now,
     };
+    startNativeKnowledgeSession(input.threadId);
     this.sessions.set(input.threadId, {
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
@@ -954,6 +962,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const controller = new AbortController();
     record.activeTurnId = turnId;
     record.activeController = controller;
+    beginNativeKnowledgeTurn(input.threadId, turnId, controller.signal);
     record.abortPublished = false;
     // archive#796: a Station agent's session is started without a model — the UI
     // resolves one only when a turn is sent — so the model settles here.
@@ -1266,11 +1275,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    const knowledgeCleanup = stopNativeKnowledgeSession(threadId);
+    revokeStationControlMcpToken(threadId);
     const record = this.sessions.get(threadId);
-    if (!record) return;
+    if (!record) {
+      await knowledgeCleanup;
+      return;
+    }
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
+    await knowledgeCleanup;
     // station#1569 (item 4): the abort above tears down the SSE stream
     // without publishing anything for the calls it was mid-way through —
     // `consumeChatStream`'s aborted branch returns silently by design. So
@@ -1447,6 +1462,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         record.activeTurnId === turnId &&
         record.activeController === controller
       ) {
+        finishNativeKnowledgeTurn(record.session.threadId, turnId);
         record.activeTurnId = undefined;
         record.activeController = undefined;
       }
@@ -1491,6 +1507,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       this.updateSession(record, 'error');
       this.publishState(record, 'running', 'errored');
     }
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
   }
@@ -1522,6 +1539,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     });
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
   }

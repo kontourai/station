@@ -137,7 +137,7 @@ Current command availability, with background in the [CLI product design](../des
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
-| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
+| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
 
@@ -218,7 +218,9 @@ What it does, in order:
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
 2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
-   browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+   browser at `http://<host>:<ui-port>#station-ui-bootstrap=<token>`, where
+   `<host>` is the host the instance recorded at start, or `localhost` for a
+   wildcard bind or an entry with no recorded host.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
    [local-bootstrap-token.md](../design/local-bootstrap-token.md). The token
@@ -290,7 +292,11 @@ platform-v2 archives on macOS/Linux. Those install under
 build. Verification can download a pinned Node.js when neither the host nor
 an installed archive supplies one. See the
 [archive install contract](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
-for prerequisites, retention and service limits.
+for prerequisites, retention and service limits. On Windows, `install.ps1`
+installs the `station-server-win32-x64.zip` archive from a signed public
+manifest the same way, with a `current` junction and a `station.cmd`
+launcher; see
+[Windows archive installs](../guides/release-channel-ports.md#windows-archive-installs).
 
 ```bash
 # Pin a release; rerun the ordinary command later to upgrade.
@@ -352,7 +358,7 @@ parent directories or infer a target from repository contents.
 
 The default Station applies to every command that talks to a Station API,
 including `environment` verbs. Host-side verbs that must run against the local
-Station (`environment access list|approve|deny`) still require a loopback
+Station (`environment access list|approve|deny`, `environment operator passkeys`) still require a loopback
 target — pass the selected channel's loopback `--api-base` explicitly when a
 remote Station is your default. `--station=<name>` also works for these
 verbs, but only for a saved Station whose endpoint is loopback AND that
@@ -604,6 +610,12 @@ browser this command cannot open, such as a simulator or another profile. Each
 link is single use, and minting one replaces any earlier unspent link, including
 the one `station start` printed (#2612). Without `--print`, the command never
 prints the token.
+
+The link names the host the instance's UI listener bound, as recorded in the
+registry at start (`127.0.0.1` for `start --watch`, which is loopback-only). A
+wildcard bind (`0.0.0.0`, `::`) or an entry that recorded no host keeps
+`localhost`. The host matters because the sign-in a link completes belongs to
+that origin: `localhost` and `127.0.0.1` do not share it.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
@@ -2039,7 +2051,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2051,6 +2063,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
 | `--build` | — | Force rebuild before starting (even if dist exists) |
+| `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory |
@@ -2137,7 +2150,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -2145,6 +2158,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--port-offset=<n>` | derived | Force an exact offset (`0`-`500`), overriding the derivation. `--port-offset=0` is valid and yields the base ports `39140`/`40140` (just below the derived `39141`-`39640` band). |
 | `--host=<address>` | `0.0.0.0` | Bind address; the default is a wildcard so a phone or LAN/tailnet client can reach the stable URL |
 | `--build` | — | Force a rebuild before starting |
+| `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
 | `--features=<flags>` | — | Comma-separated feature flags |
@@ -2202,6 +2216,10 @@ station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
 station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
@@ -2361,7 +2379,10 @@ the installer without a Git checkout or pre-stop action. Installed plugins are p
 From a prebuilt server archive (`station-server-<os>-<arch>`) that `install.sh`
 installed (the version `<install root>/current` names), `upgrade` validates the
 install state, provenance, ownership marker and active link, then re-runs that
-version's installer with the recorded release manifest. Public-manifest
+version's installer with the recorded release manifest. On Windows the
+installer is the version's `install.ps1`, run through the system Windows
+PowerShell, and the install root's ACL (current user only) is checked in place
+of POSIX mode bits; a Windows service is not switched yet (#2675 W3). Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
 the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`
@@ -3142,7 +3163,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 

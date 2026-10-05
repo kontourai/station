@@ -12,8 +12,10 @@
  */
 .inbox-row {
   /* Sized for a rail by default; a wider host (Home) raises these. */
-  --inbox-row-title-size: var(--text-sm);
-  --inbox-row-text-size: var(--text-xs);
+  /* 12px title and an 11px floor on the metadata (C7): the kit's smallest
+     readable size, never the 10px the rail used to set. */
+  --inbox-row-title-size: var(--text-base);
+  --inbox-row-text-size: var(--text-sm);
   --inbox-row-line: 18px;
   --inbox-row-pad-block: var(--space-3);
   --inbox-row-pad-inline: var(--space-4);
@@ -72,6 +74,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The project's mark before its name (decorative; the name is the identity):
+   its icon, else its colour as a dot. ProjectIcon sets the size inline (a
+   12px icon, a 6px dot), below the meta line's 18px, so it never sets the
+   height. */
+.inbox-row__project-accent {
+  display: inline-block;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+.inbox-row__project-accent.brand-icon {
+  display: inline-flex;
+  /* Optical centre on the 11-12px meta text. */
+  vertical-align: -2px;
 }
 
 .inbox-row__time {
@@ -159,12 +176,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Three coloured meanings (`WorkStatusTone`): act-now, in-motion, broken.
- * Everything else stays neutral. */
+/* Four coloured meanings (`WorkStatusTone`), each its own colour (C6):
+ * act-now is the accent (it is the thing to click), a quiet run is the
+ * caution amber, in-motion is the positive green, broken is the error red.
+ * Everything else stays neutral. Attention and caution used to share the
+ * amber, so "needs you" and "might be stuck" read as one. */
 .inbox-row__status[data-tone="attention"] .inbox-row__word,
 .inbox-row__status[data-tone="attention"] .inbox-row__status-glyph,
 .inbox-row__slim-status[data-tone="attention"] {
-  color: var(--warning-text);
+  color: var(--accent-primary);
 }
 
 .inbox-row__status[data-tone="caution"] .inbox-row__word,
@@ -176,7 +196,7 @@
 .inbox-row__status[data-tone="active"] .inbox-row__word,
 .inbox-row__status[data-tone="active"] .inbox-row__status-glyph,
 .inbox-row__slim-status[data-tone="active"] {
-  color: var(--accent-primary);
+  color: var(--success-text);
 }
 
 .inbox-row__status[data-tone="broken"] .inbox-row__word,

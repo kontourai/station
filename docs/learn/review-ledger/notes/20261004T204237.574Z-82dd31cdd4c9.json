@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"No prose change: reviewed its attention/session.configured mentions, none concern paired-Station requests, the delegated respond route or request-route access; the attention route only rewords the viewer predicate comment; orchestration-service only refuses an over-long paired Station request id, marks a cut title with an ellipsis, and lists the recorded hosting environments of a peer task.","inputs":["docs/learn/walkthroughs.md","src-server/routes/orchestration/attention.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

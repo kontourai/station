@@ -1,0 +1,8 @@
+{
+  "agentType": "general-purpose",
+  "description": "Nested task execution test",
+  "toolUseId": "toolu_01TtJ9VQ6Fkkzq2coWgS4w3K",
+  "spawnDepth": 1,
+  "requestShape": "foreground",
+  "requestNonInteractive": true
+}

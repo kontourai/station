@@ -58,10 +58,11 @@ import {
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 
 interface SessionAgentResolverOptions {
   /** Load an agent's spec by slug; `null` for an unknown/not-on-disk agent. */
@@ -389,9 +390,11 @@ export function createSessionAgentResolver(
               const names =
                 id === 'station-control'
                   ? stationControlToolCatalog().map((tool) => tool.name)
-                  : (toolDef.probe?.toolNames ?? []).map((name) =>
-                      originalMcpToolName(id, name),
-                    );
+                  : id === 'station-knowledge'
+                    ? stationKnowledgeToolCatalog().map((tool) => tool.name)
+                    : (toolDef.probe?.toolNames ?? []).map((name) =>
+                        originalMcpToolName(id, name),
+                      );
               const selected =
                 spec.tools?.available === undefined
                   ? undefined
@@ -417,7 +420,7 @@ export function createSessionAgentResolver(
               if (toolDef.env && Object.keys(toolDef.env).length > 0) {
                 const exemptBuiltinStationControl =
                   builtinStationControlDelivery !== undefined &&
-                  isBuiltinStationControl(id, toolDef);
+                  builtinStationApiServerId(id, toolDef) !== undefined;
                 if (!exemptBuiltinStationControl) {
                   return { ok: false, reason: 'secret-boundary-env' };
                 }

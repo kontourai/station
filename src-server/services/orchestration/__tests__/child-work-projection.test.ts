@@ -240,6 +240,49 @@ describe('ChildWorkProjection', () => {
     });
   });
 
+  describe('#3308 a historical seed keeps a running usage figure provisional', () => {
+    const { events } = replayClaudeTaskCapture('task-subagents', {
+      threadId: THREAD,
+    });
+    const finalIndex = events.findIndex(
+      (candidate) =>
+        candidate.method === 'child-work.updated' &&
+        candidate.delta.kind === 'settle' &&
+        candidate.delta.usage?.totalTokens === 41833,
+    );
+    const before = events.slice(0, finalIndex);
+    const after = events.slice(finalIndex);
+    const backgroundUsage = (projection: ChildWorkProjection) => {
+      const view = projection.read(THREAD, 'claude');
+      return view?.observability === 'reported'
+        ? view.settled?.find(
+            (item) => item.title === '[haiku] Background task test',
+          )?.usage
+        : undefined;
+    };
+
+    test('premise: the final figure arrives after a settle without usage', () => {
+      expect(finalIndex).toBeGreaterThan(0);
+    });
+
+    test('a seed over the live provisional item', () => {
+      const projection = new ChildWorkProjection();
+      for (const published of before) projection.observe(published);
+      expect(backgroundUsage(projection)?.totalTokens).toBe(40141);
+      projection.seedHistoricalSettled(THREAD, before);
+      for (const published of after) projection.observe(published);
+      expect(backgroundUsage(projection)?.totalTokens).toBe(41833);
+    });
+
+    test('a cold seed after a restart', () => {
+      const projection = new ChildWorkProjection();
+      projection.seedHistoricalSettled(THREAD, before);
+      expect(backgroundUsage(projection)?.totalTokens).toBe(40141);
+      for (const published of after) projection.observe(published);
+      expect(backgroundUsage(projection)?.totalTokens).toBe(41833);
+    });
+  });
+
   test('#2457 D1: a late settle after session.exited recreates nothing; a restarted thread is live again', () => {
     const settled: string[] = [];
     const projection = new ChildWorkProjection({

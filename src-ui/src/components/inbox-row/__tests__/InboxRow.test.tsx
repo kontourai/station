@@ -32,6 +32,11 @@ import {
 } from '../../../views/home/home-view-model';
 import { buildWorkFacts, type WorkFacts } from '../../../views/home/work-facts';
 import { workStatus } from '../../../views/home/work-status';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+  publishReferenceableConversations,
+} from '../../chat/conversationReferenceDrag';
 import { InboxGroupList, InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { inboxRowChips } from '../inbox-row-chips';
 
@@ -258,7 +263,7 @@ describe('the row says exactly what the ladder says', () => {
     healthy.unmount();
 
     renderRow(rowFor({ turnProgress: SILENCE }));
-    expect(statusText()).toBe('No progress for 6m · Bash · 1m 12s');
+    expect(statusText()).toBe('No progress · Bash · 6m');
     expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
     expect(glyphPath()).toBeTruthy();
     expect(glyphPath()).not.toBe(healthyGlyph);
@@ -270,7 +275,7 @@ describe('the row says exactly what the ladder says', () => {
 describe('what a screen reader and a ticking clock each get', () => {
   it('describes the row by its status, with a coarse duration instead of the ticking one', () => {
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m 12s');
+    expect(statusText()).toBe('Running · Bash · 1m');
     // The per-second number is hidden from the description; a duration that
     // only moves with the host's clock stands in for it.
     expect(describedText()).toBe('Running · Bash, for about 1 minute');
@@ -280,11 +285,12 @@ describe('what a screen reader and a ticking clock each get', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m 12s');
+    expect(statusText()).toBe('Running · Bash · 1m');
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(48_000);
     });
-    expect(statusText()).toBe('Running · Bash · 1m 15s');
+    // 72s + 48s: the shared clock moved the duration to the next minute.
+    expect(statusText()).toBe('Running · Bash · 2m');
   });
 
   it('shows the real elapsed time even when the list clock is 30s stale', () => {
@@ -293,11 +299,11 @@ describe('what a screen reader and a ticking clock each get', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor(), { now: NOW - 30_000 });
-    expect(statusText()).toBe('Running · Bash · 1m 12s');
+    expect(statusText()).toBe('Running · Bash · 1m');
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(48_000);
     });
-    expect(statusText()).toBe('Running · Bash · 1m 14s');
+    expect(statusText()).toBe('Running · Bash · 2m');
   });
 
   it('a host re-rendering with a fresh now does not restart the ticker', () => {
@@ -308,7 +314,7 @@ describe('what a screen reader and a ticking clock each get', () => {
     const view = renderRow(row);
     const started = setIntervalSpy.mock.calls.length;
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(48_000);
     });
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
@@ -318,14 +324,14 @@ describe('what a screen reader and a ticking clock each get', () => {
           isCurrent={false}
           isSnoozed={false}
           isOpenChat={false}
-          now={NOW + 2000}
+          now={NOW + 48_000}
           onActivate={vi.fn()}
           hoverCard={false}
         />
       </QueryClientProvider>,
     );
     expect(setIntervalSpy.mock.calls.length).toBe(started);
-    expect(statusText()).toBe('Running · Bash · 1m 14s');
+    expect(statusText()).toBe('Running · Bash · 2m');
     setIntervalSpy.mockRestore();
   });
 
@@ -369,7 +375,9 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.getByTestId('inbox-row-answerability').textContent).toBe(
       row.item.unanswerableNotice,
     );
-    expect(screen.getByTestId('inbox-row-status').className).toContain(
+    // Off the visible line (the word is "Elsewhere"; the basis is the
+    // hover card's), still the row's description.
+    expect(screen.getByTestId('inbox-row-status').className).not.toContain(
       'inbox-row__status--reason',
     );
     expect(describedText()).toContain(row.item.unanswerableNotice);
@@ -408,10 +416,9 @@ describe('a reason is readable in full on every surface', () => {
       { timeout: 8000 },
     );
     expect(details.getAttribute('aria-expanded')).toBe('true');
-    // The whole reason, the model, the kind and the folder.
+    // The whole reason, the model and the folder.
     expect(sheet.textContent).toContain(FAILED.terminalAttribution.detail);
     expect(sheet.textContent).toContain(row.item.modelLabel);
-    expect(sheet.textContent).toContain('Session');
     expect(sheet.textContent).toContain('…/kontourai/station');
     expect(sheet.textContent).toContain('Failed');
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
@@ -504,7 +511,9 @@ describe('two sizes and two chromes', () => {
     const snooze = screen.getByRole('button', {
       name: 'Snooze Migrate sessions table',
     });
-    expect(snooze.getAttribute('title')).toBe('Snooze for 30 minutes');
+    expect(snooze.getAttribute('title')).toBe('Snooze');
+    // One control that opens the duration choice; never a one-tap default.
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     // The row itself opens; a second control would be a redundant tab stop.
     expect(screen.queryByRole('button', { name: /^Open / })).toBeNull();
   });
@@ -524,7 +533,6 @@ describe('two sizes and two chromes', () => {
         chrome: 'touch',
         hoverCard: true,
         isOpenChat: true,
-        snoozeMenuOnly: true,
         onSnoozeWake,
         onCloseChat,
       },
@@ -620,7 +628,6 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
           openChatIds={new Set()}
           now={NOW}
           chrome="touch"
-          snoozeMenuOnly
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
         />
@@ -645,6 +652,60 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
   });
 });
 
+describe('an unsent composer draft on touch chrome (U11)', () => {
+  it('its Details sheet offers Discard unsent draft, which clears the composer and the store', async () => {
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    const row: Row = {
+      facts: undefined,
+      item: { ...base.item, chatSessionId: 'tab-draft' },
+    };
+    chatDraftsStore.set('tab-draft', 'Draft on the phone: check the README');
+    try {
+      renderRow(row, { chrome: 'touch', hoverCard: true, isOpenChat: true });
+      expect(screen.getByText('Unsent draft')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+      await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+      const discard = screen.getByRole('button', {
+        name: 'Discard unsent draft for Migrate sessions table',
+      });
+      expect(discard.classList.contains('action-overflow__row--danger')).toBe(
+        true,
+      );
+      fireEvent.click(discard);
+      expect(chatDraftsStore.hasDraft('tab-draft')).toBe(false);
+      // The chip reads the same store, so it goes with the text.
+      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+    } finally {
+      chatDraftsStore.clear('tab-draft');
+    }
+  });
+
+  it('a row with no unsent draft offers no such row', async () => {
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    renderRow(
+      { facts: undefined, item: { ...base.item, chatSessionId: 'tab-clean' } },
+      {
+        chrome: 'touch',
+        hoverCard: true,
+        isOpenChat: true,
+        onCloseChat: vi.fn(),
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+    expect(
+      screen.queryByRole('button', { name: /^Discard unsent draft/ }),
+    ).toBeNull();
+  });
+});
+
 describe('a Draft row on touch chrome', () => {
   const draftRow = (): Row => {
     const base = rowFor({
@@ -665,7 +726,6 @@ describe('a Draft row on touch chrome', () => {
     renderRow(row, {
       chrome: 'touch',
       hoverCard: true,
-      snoozeMenuOnly: true,
       onSnoozeWake: vi.fn(),
       onDraftDiscarded,
     });
@@ -819,7 +879,7 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
         ),
       ),
     ).toEqual([
-      ['30 min', '3 hours', 'Until 9 AM'],
+      ['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am'],
       ['Close chat'],
       ['Discard draft'],
     ]);
@@ -909,5 +969,188 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
     } finally {
       document.documentElement.style.removeProperty('--layer-surface-popover');
     }
+  });
+});
+
+describe('#3159: a row whose conversation may be referenced is a drag source', () => {
+  const scope = { apiBase: 'http://station.test' };
+  afterEach(() => publishReferenceableConversations(null));
+
+  it('drags its conversation, from its Station, onto a composer', () => {
+    const row = rowFor();
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set([row.item.id]),
+    });
+    renderRow(row);
+    const button = screen.getByRole('button', {
+      name: new RegExp(row.item.title),
+    });
+    expect(button.getAttribute('draggable')).toBe('true');
+    const values = new Map<string, string>();
+    fireEvent.dragStart(button, {
+      dataTransfer: {
+        setData: (type: string, value: string) => values.set(type, value),
+        effectAllowed: 'all',
+      },
+    });
+    expect(values.get(CONVERSATION_REFERENCE_DRAG_TYPE)).toBe(row.item.id);
+    expect(draggedConversationReference(row.item.id, scope)).toMatchObject({
+      id: row.item.id,
+      title: row.item.title,
+    });
+    fireEvent.dragEnd(button);
+    expect(draggedConversationReference(row.item.id, scope)).toBeNull();
+  });
+
+  it('is not draggable when the inventory does not mark it referenceable', () => {
+    const row = rowFor();
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set(['another-conversation']),
+    });
+    renderRow(row);
+    expect(
+      screen
+        .getByRole('button', { name: new RegExp(row.item.title) })
+        .hasAttribute('draggable'),
+    ).toBe(false);
+  });
+});
+
+describe("the project's colour is a swatch, never the name's colour", () => {
+  it('draws a decorative dot before the project name, which stays text in the row’s own colour', () => {
+    renderRow(rowFor(), { projectAccent: 'var(--event-tool-call)' });
+    const row = screen.getByTestId('inbox-row');
+    const swatch = row.querySelector<HTMLElement>('.inbox-row__project-accent');
+    expect(swatch).not.toBeNull();
+    expect(swatch!.getAttribute('aria-hidden')).toBe('true');
+    expect(swatch!.style.backgroundColor).toBe('var(--event-tool-call)');
+    // Before the name, beside it on the meta line.
+    const project = row.querySelector<HTMLElement>('.inbox-row__project')!;
+    expect(swatch!.nextElementSibling).toBe(project);
+    expect(project.textContent).toBe('station');
+    // The accent is never a text colour (accent-foreground ratchet).
+    expect(project.style.color).toBe('');
+    expect(
+      row.querySelector('.inbox-row__meta-text')!.getAttribute('style'),
+    ).toBeNull();
+    // The open button's name still says the project in words.
+    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
+      'station',
+    );
+  });
+
+  it('a row with no accent draws no swatch', () => {
+    renderRow(rowFor());
+    expect(document.querySelector('.inbox-row__project-accent')).toBeNull();
+  });
+
+  it('a list resolves each row’s accent by its project slug', () => {
+    const station = rowFor().item;
+    const other = rowFor({ threadId: 'U', projectSlug: 'other' }).item;
+    const unbound = rowFor({ threadId: 'V', projectSlug: undefined }).item;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'idle', label: 'Idle', items: [station, other, unbound] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+          projectAccentBySlug={
+            new Map([
+              ['station', 'var(--event-agent-start)'],
+              ['other', 'var(--event-reasoning)'],
+            ])
+          }
+        />
+      </QueryClientProvider>,
+    );
+    const colours = screen
+      .getAllByTestId('inbox-row')
+      .map(
+        (row) =>
+          row.querySelector<HTMLElement>('.inbox-row__project-accent')?.style
+            .backgroundColor ?? null,
+      );
+    expect(colours).toEqual([
+      'var(--event-agent-start)',
+      'var(--event-reasoning)',
+      null,
+    ]);
+  });
+});
+
+describe("the project's icon takes the swatch's place when it has one", () => {
+  const IMAGE = 'data:image/png;base64,iVBORw0KGgo=';
+
+  it('draws the icon, decorative, before the name — not the dot', () => {
+    renderRow(rowFor(), {
+      projectAccent: 'var(--event-tool-call)',
+      projectIcon: IMAGE,
+    });
+    const row = screen.getByTestId('inbox-row');
+    const mark = row.querySelector<HTMLElement>('.inbox-row__project-accent');
+    expect(mark?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
+    expect(mark?.getAttribute('aria-hidden')).toBe('true');
+    expect(mark?.classList.contains('project-icon--dot')).toBe(false);
+    expect(mark?.nextElementSibling?.textContent).toBe('station');
+    // The open button's name still says the project in words, once.
+    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
+      'station',
+    );
+  });
+
+  it('the phone sheet’s project line draws it too', () => {
+    renderRow(rowFor(), {
+      projectAccent: 'var(--event-tool-call)',
+      projectIcon: '🧭',
+      actionsInDetails: true,
+    });
+    const context = screen
+      .getByTestId('inbox-row')
+      .querySelector('.inbox-row__project-context');
+    expect(
+      context?.querySelector('.inbox-row__project-accent .brand-icon__glyph')
+        ?.textContent,
+    ).toBe('🧭');
+  });
+
+  it('a list resolves each row’s icon by its project slug', () => {
+    const station = rowFor().item;
+    const other = rowFor({ threadId: 'U', projectSlug: 'other' }).item;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'idle', label: 'Idle', items: [station, other] }]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+          projectAccentBySlug={
+            new Map([
+              ['station', 'var(--event-agent-start)'],
+              ['other', 'var(--event-reasoning)'],
+            ])
+          }
+          projectIconBySlug={new Map([['station', IMAGE]])}
+        />
+      </QueryClientProvider>,
+    );
+    const marks = screen
+      .getAllByTestId('inbox-row')
+      .map((row) =>
+        row.querySelector<HTMLElement>('.inbox-row__project-accent'),
+      );
+    expect(marks[0]?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
+    expect(marks[1]?.querySelector('img')).toBeNull();
+    expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
   });
 });

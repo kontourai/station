@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
@@ -472,7 +473,8 @@ describe('CI verification workflow contracts', () => {
       },
       {
         env: {
-          GITHUB_WORKSPACE: root,
+          // The Linux workflow uses this value only as an import base.
+          GITHUB_WORKSPACE: pathToFileURL(root).href,
           WORKFLOW_NAME: 'Backlog disposition policy',
           RUN_URL: 'https://example.test/run/123',
           HEAD_SHA: 'a'.repeat(40),

@@ -42,30 +42,78 @@ async function expectSettledTouchTargetHeight(locator: Locator) {
     .toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 }
 
+/**
+ * The execution a chat opened from the New chat draft carries, per Agent of the
+ * shared shell. The draft test below reads a real draft Send back out of
+ * `activeChats` and requires exactly these values, so the seed cannot drift
+ * from what the product writes.
+ */
+function draftChatExecution(agentSlug: string) {
+  return agentSlug === 'claude'
+    ? {
+        model: 'model-selected',
+        modelSource: 'agent default',
+        requestedModel: 'model-selected',
+        requestedModelSource: 'agent default',
+        defaultModel: 'model-selected',
+        defaultModelSource: 'agent default',
+        executionMode: 'external' as const,
+        agentConnectionId: 'claude',
+        provider: 'claude',
+        providerOptions: { thinking: true, effort: 'medium' },
+      }
+    : {
+        model: 'test-model',
+        modelSource: 'agent default',
+        requestedModel: 'test-model',
+        requestedModelSource: 'agent default',
+        defaultModel: 'test-model',
+        defaultModelSource: 'agent default',
+        executionMode: 'station' as const,
+        executionScope: 'global' as const,
+        providerId: 'ollama-local',
+        defaultProviderId: 'ollama-local',
+        provider: 'ollama',
+        providerOptions: {},
+      };
+}
+
+/**
+ * An open, empty chat with `agentSlug`, in the shape a client-only draft chat
+ * has before its first send (`<agent>:<timestamp>`, no conversation yet).
+ *
+ * #3201 made the New chat draft the start surface: choosing an Agent there
+ * selects it for the draft and only Send starts the chat. This spec measures
+ * the composer, which needs a chat that has not been sent to, and no Home
+ * journey reaches one any more (a Send starts a turn). The chat is therefore
+ * seeded in the state the old pick-an-agent journey produced; the draft
+ * journey itself is exercised by 'the New chat draft starts the chat with the
+ * chosen Agent only on Send'.
+ */
 async function openComposer(
   page: Page,
   projectScoped = false,
   agentSlug = 'claude',
+  options: {
+    /** Overrides for a spec whose connections differ from the shared shell's. */
+    execution?: Record<string, unknown>;
+  } = {},
 ) {
-  await page.goto('/');
+  const sessionId = `${agentSlug}:1760000000000`;
+  await seedActiveChats(page, [
+    {
+      sessionId,
+      agentSlug,
+      ...draftChatExecution(agentSlug),
+      ...options.execution,
+      ...(projectScoped
+        ? { projectSlug: 'default', projectName: 'Default' }
+        : {}),
+    },
+  ]);
+  await page.goto(`/?dock=open&chat=${encodeURIComponent(sessionId)}`);
   await dismissSetupLauncher(page);
-  await page
-    .locator('.home-view__actions')
-    .getByRole('button', { name: /Chat options/i })
-    .click();
-  const modal = page.getByRole('dialog', { name: 'New Chat' });
-  await expect(modal).toBeVisible({ timeout: 15_000 });
-  const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
-  await expect(runtimeRow).toBeVisible({ timeout: 15_000 });
-  if (projectScoped) {
-    await page.locator('.new-chat-modal__context-button').click();
-    const projectRow = page.locator('[data-context-value="default"]');
-    await expect(projectRow).toBeVisible();
-    await projectRow.click();
-  }
-  await runtimeRow.click();
-  await expect(modal).toBeHidden();
   await expect(textarea).toBeVisible({ timeout: 15_000 });
   if (agentSlug === 'claude') {
     await expect(
@@ -75,14 +123,121 @@ async function openComposer(
       'Selected Test Model',
     );
   }
-  // Home opens the collapsed dock. Geometry assertions begin after its
-  // actual height transition, rather than comparing boxes from different frames.
+  // The dock settles its height before geometry is compared; compare boxes
+  // from one frame, not from a transition.
   await page.locator('.chat-dock').evaluate(async (element) => {
     await Promise.allSettled(
       element.getAnimations().map((animation) => animation.finished),
     );
   });
   return textarea;
+}
+
+// #3201, then one start composer (owner, 2026-10): Home's composer is the
+// draft. Choosing an Agent on its chip selects it; only Start starts the
+// chat, so no chat composer exists until then.
+for (const [slug, name] of [
+  ['claude', 'Claude'],
+  ['station', 'Station'],
+] as const) {
+  test(`Home's start composer starts a ${name} chat only on Start`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installMockOrchestrationSse(page);
+    await mockChatShell(page);
+    const dispatched: Record<string, unknown>[] = [];
+    await page.route(
+      '**/api/orchestration/chat{,/background}',
+      async (route) => {
+        dispatched.push(
+          route.request().postDataJSON() as Record<string, unknown>,
+        );
+        await route.fulfill(
+          json(
+            foregroundMessageReceiptEnvelope({
+              conversationId: 'draft-send-conversation',
+              agent: `agent:${slug}`,
+            }),
+          ),
+        );
+      },
+    );
+    const startedTurns = buildLongSessionTurns({
+      threadId: 'draft-send-conversation',
+      provider: slug,
+      turnCount: 1,
+      replyText: () => 'Started from the draft.',
+    });
+    await mockRuntimeConversation(page, {
+      id: 'draft-send-conversation',
+      agentSlug: slug,
+      title: 'Start from the draft.',
+      provider: slug,
+      model: 'model-selected',
+      canContinue: true,
+      turns: () => startedTurns,
+    });
+    await page.goto('/');
+    await dismissSetupLauncher(page);
+    const draft = page.getByRole('form', { name: 'Start work' });
+    await expect(draft).toBeVisible({ timeout: 15_000 });
+    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    const agents = page.getByRole('dialog', { name: 'Choose agent' });
+    await expect(agents).toBeVisible();
+    await agents
+      .locator(`.new-chat-modal__agent[data-agent-slug="${slug}"]`)
+      .click();
+    await expect(agents).toHaveCount(0);
+    await expect(
+      draft.getByRole('button', {
+        name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
+      }),
+    ).toBeVisible();
+    // Choosing the Agent did not start anything.
+    await expect(
+      page.locator('textarea[placeholder*="Type a message"]'),
+    ).toHaveCount(0);
+    expect(dispatched).toHaveLength(0);
+    await draft
+      .getByRole('textbox', { name: 'What would you like done?', exact: true })
+      .fill('Start from the draft.');
+    expect(dispatched).toHaveLength(0);
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect.poll(() => dispatched.length).toBe(1);
+    const expected = draftChatExecution(slug);
+    // The Agent and model the turn was dispatched with are the chosen ones.
+    expect(dispatched[0]).toMatchObject({
+      target: {
+        agent: slug,
+        model: {
+          override: expected.model,
+          options: expected.providerOptions,
+        },
+      },
+      message: 'Start from the draft.',
+    });
+    // And the chat it opened carries exactly the execution `openComposer`
+    // seeds, so that seed cannot drift from what the product writes.
+    const stored = await page.evaluate(
+      (agentSlug) =>
+        (
+          JSON.parse(sessionStorage.getItem('activeChats') ?? '[]') as Record<
+            string,
+            unknown
+          >[]
+        ).find((chat) => chat.agentSlug === agentSlug),
+      slug,
+    );
+    expect(stored).toMatchObject(expected);
+    // The chat the draft started belongs to the Agent that was chosen.
+    await expect(
+      page.getByRole('button', {
+        name: new RegExp(`^Chats and tasks — ${name}`),
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+  });
 }
 
 test('ChatDock sends scoped file and conversation references while preserving the saved quote across reload', async ({
@@ -695,7 +850,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   await expect(approvalWork).toBeVisible();
   await expect(approvalWork).toContainText('Cancelled');
   await expect(
-    transcript.getByRole('img', { name: 'Awaiting approval' }),
+    transcript.getByRole('img', { name: 'Needs approval' }),
   ).toHaveCount(0);
   // `callLabel` speaks the bare infinitive for an unresolved call
   // (`utils/tool-call-labels.ts:181-199`): "Used" is the resolved past tense.
@@ -711,9 +866,34 @@ test('virtualizes a long real transcript while preserving reader controls on mob
 
   const loadEarlier = page.getByRole('button', { name: 'Earlier messages' });
   await expect(loadEarlier).toBeVisible();
+  // One PRESS is one page. The press is a keyboard activation on a button
+  // focused without scrolling, never `locator.click()`: Playwright scrolls the
+  // target into view first, and reaching the top is itself a history load
+  // (#2706), so a click is a scroll-load plus a press, and Playwright retries
+  // (re-scrolling to the top) once that load moves the button away. Those are
+  // two reader actions, not a press loading two pages (#3288). After every
+  // press the request count must hold across a run of frames, so a second
+  // load raised by the press's own restoration cannot hide behind a poll that
+  // is already satisfied.
+  const pressEarlier = async (expectedRequests: number) => {
+    await loadEarlier.evaluate((button) =>
+      (button as HTMLElement).focus({ preventScroll: true }),
+    );
+    await page.keyboard.press('Enter');
+    await expect.poll(() => requestedWindows.length).toBe(expectedRequests);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          let frames = 0;
+          const tick = () =>
+            ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+          requestAnimationFrame(tick);
+        }),
+    );
+    expect(requestedWindows).toHaveLength(expectedRequests);
+  };
   for (let pageIndex = 1; pageIndex <= 3; pageIndex++) {
-    await loadEarlier.click();
-    await expect.poll(() => requestedWindows.length).toBe(pageIndex + 1);
+    await pressEarlier(pageIndex + 1);
     expect(
       new URL(requestedWindows[pageIndex]).searchParams.get('cursor'),
     ).toBe(`older-turns-${10 + (pageIndex - 1) * 20}`);
@@ -858,13 +1038,30 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   // ...and exactly one page, not two (nothing scrolled it into a second load).
   await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 1);
 
+  // A real reader scroll to the top right after a press still loads exactly
+  // one page: the restoration suppression ends when the layout settles or the
+  // reader acts, so it neither raises a second load for the press nor swallows
+  // this one. A mouse wheel is reader input, with no scrollIntoView involved.
+  await transcript.hover();
+  await page.mouse.wheel(0, -1_000_000);
+  await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 2);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 0;
+        const tick = () =>
+          ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
+      }),
+  );
+  expect(requestedWindows).toHaveLength(windowsBeforeEnter + 2);
+
   for (
-    let requestCount = windowsBeforeEnter + 2;
+    let requestCount = windowsBeforeEnter + 3;
     requestCount <= 11;
     requestCount++
   ) {
-    await loadEarlier.click();
-    await expect.poll(() => requestedWindows.length).toBe(requestCount);
+    await pressEarlier(requestCount);
   }
   expect(requestedWindows).toHaveLength(11);
   const jumpToTail = page.getByRole('button', { name: 'Scroll to bottom' });
@@ -1444,10 +1641,26 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
   await expect(textarea).toHaveValue('return to this draft');
-  // Primary project context stays directly reachable beside conversation switching.
+  // Primary project context stays directly reachable beside conversation
+  // switching. Since #3144 it names where NEW chats start ("New chats"), and
+  // opening a chat that belongs to Default does not move that default: the
+  // chat's own project is on its inbox row ("Station Chat, Default") instead.
   await expect(
     page.getByRole('button', { name: /^Switch project/ }),
-  ).toContainText('Default');
+  ).toContainText('New chats');
+  await expect(
+    page.getByRole('button', { name: /^Switch project/ }),
+  ).toContainText('No project');
+  // The positive half of that comment: the chat keeps its own project, which
+  // the switcher's row for it names.
+  await switcher.click();
+  await expect(
+    menu
+      .getByRole('button', { name: 'Station Chat, Default' })
+      .filter({ hasText: 'Waiting on you' }),
+  ).toBeVisible();
+  await menu.getByRole('button', { name: 'Close task switcher' }).click();
+  await expect(menu).toBeHidden();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'Model Selected',
   );
@@ -1740,7 +1953,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Full screen']) {
+  for (const name of ['New chat', 'Exit full screen']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -2062,7 +2275,7 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Full screen']) {
+  for (const name of ['New chat', 'Exit full screen']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -2453,7 +2666,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Chats', 'Chat settings']) {
+    for (const name of ['New chat', 'Inbox', 'Chat settings']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -2694,19 +2907,34 @@ for (const viewport of [
         return hit === button || button.contains(hit);
       }),
     ).toBe(true);
-    // The outage is the pane's floating status pill: it floats over the
-    // transcript, clear of the composer, and moves nothing in the layout.
+    // The outage is the pane's status pill. On a phone (#3126) it is the first
+    // row of the composer's own rail, above the Agent, Model and Approval
+    // controls, so it covers neither them nor the draft and moves nothing.
     const reconnectStatus = page.locator(
       '[data-chat-status-pill="reconnecting"]',
     );
-    await expect(reconnectStatus).toContainText('Reconnecting live updates');
+    // #3126 shortened the label; the paused-updates sentence is now the
+    // pill's disclosed detail rather than its text.
+    await expect(reconnectStatus).toContainText('Reconnecting');
+    // Compare boxes once the pill has finished entering; its entrance scales it.
+    await reconnectStatus.evaluate(async (pill) => {
+      await Promise.allSettled(
+        pill.getAnimations().map((animation) => animation.finished),
+      );
+    });
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
+    const railControlBox = await page
+      .locator('.chat-input__agent-btn')
+      .boundingBox();
     expect(reconnectBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
+    expect(railControlBox).not.toBeNull();
+    expect(reconnectBox!.y).toBeGreaterThanOrEqual(composerBox!.y);
     expect(reconnectBox!.y + reconnectBox!.height).toBeLessThanOrEqual(
-      composerBox!.y,
+      railControlBox!.y,
     );
+    expect(reconnectBox!.x).toBeGreaterThanOrEqual(0);
     expect(reconnectBox!.x + reconnectBox!.width).toBeLessThanOrEqual(
       viewport.width,
     );
@@ -3332,7 +3560,18 @@ for (const theme of ['dark', 'light'] as const) {
         }),
       ),
     );
-    await openComposer(page, true, 'station');
+    // The only model connection here is Bedrock, so that is the provider a
+    // Station chat opened from the draft would be bound to.
+    await openComposer(page, true, 'station', {
+      execution: {
+        model: 'sonnet',
+        requestedModel: 'sonnet',
+        defaultModel: 'sonnet',
+        providerId: 'bedrock-prod',
+        defaultProviderId: 'bedrock-prod',
+        provider: 'bedrock',
+      },
+    });
     await page.evaluate((value) => {
       document.documentElement.setAttribute('data-theme', value);
     }, theme);
@@ -3570,7 +3809,9 @@ test('keeps primary context controls draggable and navigation actions tap-only (
       expect(
         name,
         'navigation and action buttons keep a gesture-free tap path',
-      ).toMatch(/^(Expand chat|Collapse chat|Toggle menu|Chat actions)$/);
+      ).toMatch(
+        /^(Expand chat|Collapse chat|Toggle menu|Chat actions|New chat)$/,
+      );
       continue;
     }
     await expect(
@@ -3710,16 +3951,31 @@ for (const width of [320, 390, 1280]) {
         );
         expect(await contrastRatio(control)).toBeGreaterThanOrEqual(4.5);
       }
+      // #3127 made Clear an icon action named "Clear message"; it no longer
+      // carries a visible "Clear" word.
       const clear = page.getByRole('button', {
-        name: 'Clear input',
+        name: 'Clear message',
         exact: true,
       });
-      await expect(clear).toHaveText('Clear');
+      await expect(clear).toBeVisible();
+      await expect(clear).toHaveText('');
       const clearBox = (await clear.boundingBox())!;
       expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
-      expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(
-        (await send.boundingBox())!.x,
-      );
+      const sendBox = (await send.boundingBox())!;
+      if (width === 320) {
+        // Only at 320px do the actions wrap (Send then sits on the row below);
+        // there they must not collide.
+        expect(
+          clearBox.x + clearBox.width <= sendBox.x ||
+            sendBox.x + sendBox.width <= clearBox.x ||
+            clearBox.y + clearBox.height <= sendBox.y ||
+            sendBox.y + sendBox.height <= clearBox.y,
+          `Clear ${JSON.stringify(clearBox)} overlaps Send ${JSON.stringify(sendBox)}`,
+        ).toBe(true);
+      } else {
+        // Where the row does not wrap, Clear stays on Send's row, to its left.
+        expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(sendBox.x);
+      }
       await expect(textarea).toHaveCSS('outline-style', 'none');
       const capsule = page.locator('.chat-input__capsule');
       await expect(capsule).toHaveCSS('outline-style', 'solid');
@@ -3790,17 +4046,7 @@ for (const width of [320, 431]) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockChatShell(page);
-    await page.goto('/?dock=open');
-    await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Start a chat', exact: true })
-      .last()
-      .click();
-    const modal = page.getByRole('dialog', { name: 'New Chat' });
-    await expect(modal).toBeVisible();
-    await modal.locator('[data-agent-slug="claude"]').first().click();
-    const input = page.locator('textarea[placeholder*="Type a message"]');
-    await expect(input).toBeVisible();
+    const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
     const outer = (await header.boundingBox())!;
     const identity = (await header
@@ -3906,62 +4152,86 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('refused-half-dock.png') });
 
-  const geometry = await textarea.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    const line =
-      Number.parseFloat(style.lineHeight) ||
-      Number.parseFloat(style.fontSize) * 1.2;
-    const chrome =
-      Number.parseFloat(style.paddingTop) +
-      Number.parseFloat(style.paddingBottom);
-    const others = [
-      ...document.querySelectorAll(
-        '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
-      ),
-    ].map((other) => {
-      const rect = other.getBoundingClientRect();
+  // The send's "Working" pill leaves over a moment, and while it does its 44px
+  // row is part of the composer. Judge the layout once that has settled.
+  const sampleGeometry = () =>
+    textarea.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const line =
+        Number.parseFloat(style.lineHeight) ||
+        Number.parseFloat(style.fontSize) * 1.2;
+      const chrome =
+        Number.parseFloat(style.paddingTop) +
+        Number.parseFloat(style.paddingBottom);
+      const others = [
+        ...document.querySelectorAll(
+          '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+        ),
+      ].map((other) => {
+        const rect = other.getBoundingClientRect();
+        return {
+          name: other.className || other.getAttribute('data-testid'),
+          overlaps:
+            rect.height > 0 &&
+            rect.top < box.bottom - 0.5 &&
+            rect.bottom > box.top + 0.5 &&
+            rect.left < box.right &&
+            rect.right > box.left,
+        };
+      });
+      const root = element.closest('.chat-input') as HTMLElement;
+      const body = root?.parentElement as HTMLElement;
+      const debug = {
+        ta: [
+          box.top,
+          box.bottom,
+          element.style.height,
+          element.style.minHeight,
+        ],
+        root: [
+          root.getBoundingClientRect().top,
+          root.getBoundingClientRect().bottom,
+          root.style.minHeight,
+          root.scrollHeight,
+          getComputedStyle(root).maxHeight,
+        ],
+        body: [
+          body.className,
+          body.getBoundingClientRect().top,
+          body.getBoundingClientRect().bottom,
+        ],
+        kids: [...body.children].map(
+          (k) =>
+            `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
+        ),
+      };
       return {
-        name: other.className || other.getAttribute('data-testid'),
-        overlaps:
-          rect.height > 0 &&
-          rect.top < box.bottom - 0.5 &&
-          rect.bottom > box.top + 0.5 &&
-          rect.left < box.right &&
-          rect.right > box.left,
+        debug,
+        visibleContent: box.height - chrome,
+        twoLines: 2 * line,
+        inViewport: box.top >= 0 && box.bottom <= innerHeight,
+        overlapping: others
+          .filter((other) => other.overlaps)
+          .map((o) => o.name),
       };
     });
-    const root = element.closest('.chat-input') as HTMLElement;
-    const body = root?.parentElement as HTMLElement;
-    const debug = {
-      ta: [box.top, box.bottom, element.style.height, element.style.minHeight],
-      root: [
-        root.getBoundingClientRect().top,
-        root.getBoundingClientRect().bottom,
-        root.style.minHeight,
-        root.scrollHeight,
-        getComputedStyle(root).maxHeight,
-      ],
-      body: [
-        body.className,
-        body.getBoundingClientRect().top,
-        body.getBoundingClientRect().bottom,
-      ],
-      kids: [...body.children].map(
-        (k) => `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
-      ),
-    };
-    return {
-      debug,
-      visibleContent: box.height - chrome,
-      twoLines: 2 * line,
-      inViewport: box.top >= 0 && box.bottom <= innerHeight,
-      overlapping: others.filter((other) => other.overlaps).map((o) => o.name),
-    };
-  });
-  expect(geometry.overlapping, JSON.stringify(geometry.debug)).toEqual([]);
-  expect(geometry.inViewport, JSON.stringify(geometry.debug)).toBe(true);
-  expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+  await expect
+    .poll(async () => {
+      const geometry = await sampleGeometry();
+      const problems: string[] = [];
+      if (geometry.overlapping.length > 0)
+        problems.push(`overlapping ${geometry.overlapping.join(', ')}`);
+      if (!geometry.inViewport) problems.push('draft outside the viewport');
+      if (geometry.visibleContent < geometry.twoLines - 1)
+        problems.push(
+          `visible ${geometry.visibleContent} < two lines ${geometry.twoLines}`,
+        );
+      return problems.length > 0
+        ? `${problems.join('; ')} ${JSON.stringify(geometry.debug)}`
+        : 'clear';
+    })
+    .toBe('clear');
 });
 
 /**
@@ -4237,4 +4507,245 @@ test.describe('on a touch tablet wider than the phone breakpoint', () => {
     // dock header's) have no touch floor at this width yet; this test does
     // not pin their size either way.
   });
+});
+
+// A send whose delivery is not confirmed is queued and retried by itself: that
+// is not a failure, so the composer does not repeat it as one. Its notice and
+// its one action, Discard, sit in the transcript, which a short dock shrinks
+// to nothing. The composer therefore carries the notice and Discard itself.
+async function queueSendForRetry(
+  page: Page,
+  viewport: { width: number; height: number },
+  options: { maximize?: boolean } = {},
+) {
+  await page.setViewportSize(viewport);
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const textarea = await openComposer(page, false, 'station');
+  // Station stops answering: the send and the queue's replays never arrive,
+  // and the connection check fails. A queued send is replayed the moment the
+  // connection reads as healthy, so the state under test (queued, waiting)
+  // exists only once the app has noticed the outage.
+  await page.route('**/api/orchestration/chat{,/background}', (route) =>
+    route.abort(),
+  );
+  for (const health of [
+    '**/api/system/status',
+    '**/api/system/identity',
+    '**/.well-known/station/v1',
+  ])
+    await page.route(health, (route) => route.abort());
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(
+    page.getByRole('button', { name: /^Choose Station — Connected/ }),
+  ).toHaveCount(0, { timeout: 30_000 });
+  if (options.maximize) await expandMobileDock(page);
+  await textarea.fill('Message that has to be retried');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // The transcript keeps the notice whether or not a short dock shows it.
+  await expect(
+    page
+      .locator('.chat-messages')
+      .getByText("Send wasn't confirmed — queued to retry automatically"),
+  ).toHaveCount(1);
+  // Measure the settled state: the queue has listed the waiting message and
+  // the send's "Working" pill has left.
+  await expect(page.getByText(/waiting to send/i)).toBeVisible();
+  await expect(page.locator('.chat-status-pill')).toHaveCount(0);
+  return { textarea };
+}
+
+/**
+ * Every Discard button the page has, with where it sits. The transcript's copy
+ * stays in the DOM when a short dock shrinks the transcript to nothing, so a
+ * button merely existing says nothing; one counts when it is wholly on screen,
+ * at least 44px each way and the topmost element at its own centre.
+ */
+async function discardButtonReport(page: Page) {
+  return page
+    .getByRole('button', { name: 'Discard', exact: true })
+    .evaluateAll((buttons) =>
+      buttons.map((button, index) => {
+        const rect = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+        );
+        const onScreen =
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.left >= 0 &&
+          rect.top >= 0 &&
+          rect.right <= innerWidth &&
+          rect.bottom <= innerHeight;
+        return {
+          index,
+          inComposer: button.closest('.chat-input') !== null,
+          box: [rect.left, rect.top, rect.width, rect.height].map(Math.round),
+          viewport: [innerWidth, innerHeight],
+          onScreen,
+          touchTarget: rect.width >= 43.99 && rect.height >= 43.99,
+          topmost: Boolean(hit && button.contains(hit)),
+          coveredBy:
+            hit && !button.contains(hit)
+              ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}`
+              : null,
+        };
+      }),
+    );
+}
+
+for (const [name, viewport, maximize] of [
+  ['a 375x667 half dock', { width: 375, height: 667 }, false],
+  ['a maximized 375x667 dock', { width: 375, height: 667 }, true],
+  ['a maximized 390x844 dock', { width: 390, height: 844 }, true],
+] as const) {
+  test(`a message queued for retry keeps a 44px Discard on screen and uncovered in ${name}`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    const { textarea } = await queueSendForRetry(page, viewport, { maximize });
+    await expect
+      .poll(async () => {
+        const reports = await discardButtonReport(page);
+        return reports.some(
+          (report) => report.onScreen && report.touchTarget && report.topmost,
+        )
+          ? 'reachable'
+          : JSON.stringify(reports);
+      })
+      .toBe('reachable');
+    await page.screenshot({
+      path: testInfo.outputPath('queued-retry.png'),
+      animations: 'disabled',
+    });
+    const priority =
+      (await page.locator('.chat-dock__body[data-composer-priority]').count()) >
+      0;
+    // The half dock is the case the composer's priority exists for.
+    if (!maximize)
+      expect(priority, 'a 375x667 half dock engages composer priority').toBe(
+        true,
+      );
+    if (priority) {
+      // The composer carries Discard. It takes no room of its own: it sits in
+      // the controls row, which stays one touch row, so the composer needs no
+      // more height than before and the draft's reservation is unchanged.
+      const controlsRow = await page
+        .locator('.chat-controls-row')
+        .boundingBox();
+      expect(controlsRow!.height).toBeLessThanOrEqual(44.5);
+      // Send is concealed from the accessibility tree while the draft is
+      // empty, so it is found by its group rather than by role.
+      const send = await page
+        .locator('.chat-input__submit-controls')
+        .boundingBox();
+      const carried = (await discardButtonReport(page)).find(
+        (report) => report.inComposer,
+      );
+      expect(carried, 'the composer carries a Discard').toBeDefined();
+      expect(
+        carried!.box[0] + carried!.box[2],
+        'Discard stays clear of Send',
+      ).toBeLessThanOrEqual(send!.x + 0.5);
+      // Under load the transcript can report a scroll while it is still
+      // collapsing, which portals its Scroll to bottom button into the
+      // composer's activity row. That state is forced here rather than
+      // waited for: the button and an otherwise empty row must take no
+      // height, so the composer's Discard stays inside the viewport.
+      await page.evaluate(() => {
+        const row = document.querySelector('.chat-input__activity');
+        const button = document.createElement('button');
+        button.className = 'chat-scroll-to-bottom';
+        button.setAttribute('aria-label', 'Scroll to bottom');
+        button.textContent = '↓';
+        row?.appendChild(button);
+      });
+      // The product may already have rendered its own button here, so every
+      // Scroll to bottom button and activity row in the composer is checked.
+      const phantomHeights = await page
+        .locator(
+          '.chat-input__activity, .chat-input__activity .chat-scroll-to-bottom',
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().height),
+        );
+      expect(phantomHeights.length).toBeGreaterThan(1);
+      expect(phantomHeights.every((height) => height === 0)).toBe(true);
+      const withPhantom = (await discardButtonReport(page)).find(
+        (report) => report.inComposer,
+      );
+      expect(
+        withPhantom,
+        `the composer Discard stays on screen: ${JSON.stringify(withPhantom)}`,
+      ).toMatchObject({ onScreen: true, topmost: true });
+    } else {
+      // Not short enough to engage the composer's priority: the transcript's
+      // own Discard serves (the composer does not repeat it), and the draft
+      // keeps its full two-line floor.
+      const repeated = (await discardButtonReport(page)).filter(
+        (report) => report.inComposer && report.box[2] > 0,
+      );
+      expect(
+        repeated,
+        'the composer repeats Discard only in a short dock',
+      ).toEqual([]);
+      const geometry = await textarea.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const line =
+          Number.parseFloat(style.lineHeight) ||
+          Number.parseFloat(style.fontSize) * 1.2;
+        const chrome =
+          Number.parseFloat(style.paddingTop) +
+          Number.parseFloat(style.paddingBottom);
+        return {
+          visibleContent: box.height - chrome,
+          twoLines: 2 * line,
+          inViewport: box.top >= 0 && box.bottom <= innerHeight,
+        };
+      });
+      expect(geometry.inViewport, JSON.stringify(geometry)).toBe(true);
+      expect(
+        geometry.visibleContent,
+        JSON.stringify(geometry),
+      ).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+    }
+    // Reachable without a pointer, and it does what the transcript's does.
+    const reachable = (await discardButtonReport(page)).find(
+      (report) => report.onScreen && report.touchTarget && report.topmost,
+    );
+    const discard = page
+      .getByRole('button', { name: 'Discard', exact: true })
+      .nth(reachable!.index);
+    await discard.focus();
+    await expect(discard).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(
+      page.getByRole('button', { name: 'Discard', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Send wasn't confirmed — queued to retry automatically"),
+    ).toHaveCount(0);
+  });
+}
+
+// The queue panel's "x" ("Delete message") discards the same queued turn as the
+// notice's Discard. It must leave the same state: no stale "queued to retry"
+// notice, and no Discard for a turn that is gone.
+test('deleting the queued message from the queue panel clears its queued-retry notice', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await queueSendForRetry(page, { width: 375, height: 667 });
+  const notice = page
+    .locator('.chat-messages')
+    .getByText("Send wasn't confirmed — queued to retry automatically");
+  await expect(notice).toHaveCount(1);
+  await page.getByRole('button', { name: 'Delete message' }).click();
+  await expect(page.getByText(/waiting to send/i)).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Discard', exact: true }),
+  ).toHaveCount(0);
 });

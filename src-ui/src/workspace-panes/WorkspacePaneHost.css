@@ -126,32 +126,9 @@
   margin: 4px;
 }
 
-.workspace-coding-diff-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
-.workspace-coding-diff-pane > :last-child,
-.workspace-coding-review-panels > :last-child {
-  flex: 1;
-  min-height: 0;
-}
-
-.workspace-coding-review-panels {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
 @media (max-width: 760px) {
   .workspace-pane-host__tabs button,
   .workspace-pane-host__compact-back {
     min-height: 44px;
-  }
-
-  .workspace-coding-review-panels {
-    flex-direction: column;
-    overflow: auto;
   }
 }

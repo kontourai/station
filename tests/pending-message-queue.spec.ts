@@ -165,7 +165,16 @@ async function seedRuntimeRoutes(
   ]);
 }
 
-async function openRuntimeSession(page: import('@playwright/test').Page) {
+/**
+ * Starts the Claude runtime chat the one way a chat starts: the dock's start
+ * composer, its Agent chip choosing the runtime, and Start sending the
+ * opening turn (#3201 removed opening an empty chat from an Agent row;
+ * #3362).
+ */
+async function openRuntimeSession(
+  page: import('@playwright/test').Page,
+  firstMessage: string,
+) {
   await page.addInitScript(() => {
     localStorage.setItem('lastProject', 'default');
     localStorage.removeItem('recentAgents');
@@ -174,20 +183,25 @@ async function openRuntimeSession(page: import('@playwright/test').Page) {
   await dismissSetupLauncher(page);
   const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
   await expect(add).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
-  const modal = page.getByRole('dialog', { name: 'New Chat' });
+  await add.click();
+  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 10_000 });
-  const runtimeRow = modal.locator('[data-agent-slug="claude"]').first();
+  const composer = modal.getByRole('form', { name: 'Start work' });
+  await composer.getByRole('button', { name: /^Agent:/ }).click();
+  const agents = page.getByRole('dialog', { name: 'Choose agent' });
+  const runtimeRow = agents.locator('[data-agent-slug="claude"]').first();
   await expect(runtimeRow).toBeVisible({ timeout: 10_000 });
   await runtimeRow.click();
+  await composer
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .fill(firstMessage);
+  await composer.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(modal).toBeHidden();
   await page.getByRole('button', { name: 'Earlier' }).click();
   await expect(
     page
       .getByRole('complementary', { name: 'Inbox chats' })
-      .getByRole('button', { name: 'New chat, No project' })
+      .getByRole('button', { name: /, No project$/ })
       .and(page.locator('[aria-current="true"]')),
   ).toBeVisible();
 }
@@ -200,7 +214,11 @@ test.describe('Pending message queue (#613)', () => {
 
     await installMockOrchestrationSse(page);
     await seedRuntimeRoutes(page, executionRequests);
-    await openRuntimeSession(page);
+    // Start a turn through the start composer — the mock server acks
+    // foreground execution immediately, but never emits turn.completed until
+    // we tell it to, so the session stays mid-turn ("streaming") for the
+    // enqueue steps below.
+    await openRuntimeSession(page, 'start the task');
     await waitForMockOrchestrationSse(page);
 
     // Placeholder-independent: the composer's placeholder becomes "Queue a
@@ -210,34 +228,34 @@ test.describe('Pending message queue (#613)', () => {
     const textarea = page
       .getByRole('group', { name: 'Message composer', exact: true })
       .getByRole('textbox');
-    // Send exists only while the composer is idle: mid-turn
-    // `ChatInputArea.tsx:597-625` swaps it for "Stop the current turn", and a
-    // follow-up is committed with Enter (`:637-651`). So the opening turn goes
-    // through the button and every enqueue below goes through the key — which
-    // is also what a person does.
-    const sendButton = page.getByRole('button', { name: 'Send', exact: true });
-
-    // Start a turn — the mock server acks foreground execution immediately,
-    // but never emits turn.completed until we tell it to, so the session
-    // stays mid-turn ("streaming") for the enqueue steps below.
-    await textarea.fill('start the task');
-    await sendButton.click();
+    // Mid-turn the composer's Send is "Stop the current turn"
+    // (`ChatInputArea.tsx`), so every follow-up below is committed with Enter,
+    // which is also what a person does.
     await expect.poll(() => executionRequests.length).toBe(1);
+    expect(executionRequests[0]).toMatchObject({ message: 'start the task' });
     const threadId = executionRequests[0].conversationId as string;
 
     // Enqueue two follow-ups mid-stream. Each only adds to the pending
     // queue — neither should fire another foreground execution request.
     await textarea.fill('queued alpha');
     await textarea.press('Enter');
-    await expect(page.locator('.queued-messages')).toContainText(
-      '1 message queued',
-    );
+    // The queue says how many are pending, in its own words (#3362 updated
+    // this from the retired "N message queued").
+    await expect(
+      page.locator('.queued-messages').getByLabel('1 pending message', {
+        exact: true,
+      }),
+    ).toBeVisible();
 
     await textarea.fill('queued beta');
     await textarea.press('Enter');
-    await expect(page.locator('.queued-messages')).toContainText(
-      '2 messages queued',
-    );
+    // The queue says how many are pending, in its own words (#3362 updated
+    // this from the retired "N messages queued").
+    await expect(
+      page.locator('.queued-messages').getByLabel('2 pending messages', {
+        exact: true,
+      }),
+    ).toBeVisible();
 
     expect(executionRequests).toHaveLength(1);
 
@@ -247,6 +265,14 @@ test.describe('Pending message queue (#613)', () => {
     const betaRow = page.locator('.queued-message', {
       hasText: 'queued beta',
     });
+
+    // The queue opens from its count (#3362: it is collapsed by default
+    // now), and only then are its row controls reachable.
+    const queueToggle = page
+      .locator('.queued-messages')
+      .getByRole('button', { name: '2 pending messages', exact: true });
+    await queueToggle.click();
+    await expect(queueToggle).toHaveAttribute('aria-expanded', 'true');
 
     // Initial queue order: alpha queued first (order 1, next to send),
     // beta second (order 2).
@@ -291,9 +317,13 @@ test.describe('Pending message queue (#613)', () => {
     expect(executionRequests[1].message).toBe('queued beta');
     expect(executionRequests[1].conversationId).toBe(threadId);
 
-    await expect(page.locator('.queued-messages')).toContainText(
-      '1 message queued',
-    );
+    // The queue says how many are pending, in its own words (#3362 updated
+    // this from the retired "N message queued").
+    await expect(
+      page.locator('.queued-messages').getByLabel('1 pending message', {
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(
       page.locator('.queued-message', { hasText: 'queued alpha edited' }),
     ).toBeVisible();
