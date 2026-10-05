@@ -38,8 +38,11 @@ describe('native mobile credential authority ratchet', () => {
     expect(apiBase).toMatch(
       /const credential\s*=\s*profile\.isTauri\s*\?\s*undefined\s*:\s*evidence\?\.credential\s*;/,
     );
+    // #3114 put the native broker route first: it rides the relay
+    // credential's own transport and fails closed without one. Every other
+    // desktop connection still uses host-owned native transport.
     expect(apiBase).toMatch(
-      /profile\.isTauri\s*\?\s*\{[\s\S]*transport: nativeBinding\s*\? nativeTransportForBinding\(nativeBinding\.bindingId\)\s*:\s*lazyNativeAuthenticatedTransport/,
+      /profile\.isTauri\s*\?\s*\{\s*transport: evidence\?\.nativeBrokerRoute\s*\?\s*\(relayCredential\?\.transport \?\?\s*\(async \(\) => \{\s*throw new Error\('native_relay_binding_required'\);\s*\}\)\)\s*:\s*nativeBinding\s*\? nativeTransportForBinding\(nativeBinding\.bindingId\)\s*:\s*lazyNativeAuthenticatedTransport/,
     );
     expect(apiBase).toContain(
       'profile.isTauri ? lazyNativePairingExchangeTransport : undefined',
