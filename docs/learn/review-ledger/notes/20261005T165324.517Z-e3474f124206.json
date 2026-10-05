@@ -1,0 +1,7 @@
+{
+  "revision": "9c4481a36af92c37b5bb6a676964f97b135e671f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed bounded corpus failure reporting: test pass/fail and cancellation semantics stay intact while up to32 named failure headings are retained independently of long stdout/stderr tails. The maintained runner and hosted qualification still own their phase outcomes; no new retries, thresholds, exclusions or receipt authority are introduced.","inputs":["docs/guides/testing.md","scripts/run-vitest-corpus.mjs","scripts/__tests__/run-vitest-corpus.test.ts"]}
+  ]
+}
