@@ -76,6 +76,21 @@
   white-space: nowrap;
 }
 
+/* The project's mark before its name (decorative; the name is the identity):
+   its icon, else its colour as a dot. ProjectIcon sets the size inline (a
+   12px icon, a 6px dot), below the meta line's 18px, so it never sets the
+   height. */
+.inbox-row__project-accent {
+  display: inline-block;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+.inbox-row__project-accent.brand-icon {
+  display: inline-flex;
+  /* Optical centre on the 11-12px meta text. */
+  vertical-align: -2px;
+}
+
 .inbox-row__time {
   flex: 0 0 auto;
   color: var(--text-tertiary);
