@@ -2834,6 +2834,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
     },
+    // A conversation's usage tree: read-only, re-checks the Session read ACL
+    // for the conversation and for every session in it, and returns only
+    // usage figures this Station recorded for sessions the caller can already
+    // read through the conversation `stats` leaf and the session reads at
+    // this tier. A delegate on a paired Station appears only as this
+    // Station's own record of it; no peer is contacted. Read tier, no
+    // override.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/usage-tree',
+    },
     // Context-boundary reservations operate only on the current Station's
     // conversation authority. They neither resolve a peer environment nor
     // expose another Station's data: POST/DELETE mutate the local reservation;

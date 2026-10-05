@@ -73,8 +73,8 @@ describe('pane-host composition guardrail', () => {
       'project host delegation',
       'projectLayoutRenderer',
       `const Pane =
-              descriptor &&
-              getBuiltinWorkspacePaneRenderer(`,
+      descriptor &&
+      getBuiltinWorkspacePaneRenderer(`,
       'ProjectLayoutRenderer must delegate builtin renderer selection to the pane registry.',
     ],
   ] as const)(
@@ -93,6 +93,26 @@ describe('pane-host composition guardrail', () => {
       ).toContain(expectedFinding);
     },
   );
+
+  test('accepts the project host delegation at any indentation', () => {
+    // #3229 moved the Pane resolution out of a nested callback, which changed
+    // only its indentation; the delegation is the same code.
+    const delegation =
+      /const Pane =\s+descriptor &&\s+getBuiltinWorkspacePaneRenderer\(/;
+    expect(projectLayoutRenderer).toMatch(delegation);
+    const reindented = projectLayoutRenderer.replace(
+      delegation,
+      'const Pane =\n                  descriptor &&\n                  getBuiltinWorkspacePaneRenderer(',
+    );
+    expect(reindented).not.toBe(projectLayoutRenderer);
+
+    expect(
+      collectPaneHostCompositionFindings({
+        projectLayoutRenderer: reindented,
+        builtinWorkspacePaneRegistry,
+      }),
+    ).toEqual([]);
+  });
 
   test('rejects swapped file-browser and diff registry mappings', () => {
     const fileBrowserMapping =
