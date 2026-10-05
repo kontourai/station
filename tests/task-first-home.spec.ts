@@ -1752,12 +1752,21 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await actionsMenuTrigger.click();
     await expect(menu).toBeVisible();
     await filesTrigger.click();
+    // The opened file's pane reads its changes against HEAD (#3365). Wait
+    // for that read so the test, not teardown timing, decides it ran.
+    const changesRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          '/api/projects/station/file-preview/changes' &&
+        response.request().method() === 'POST',
+    );
     await page
       .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
       .click();
     await expect
       .poll(() => new URL(page.url()).pathname)
       .toBe('/projects/station/layouts/coding');
+    expect((await changesRead).status()).toBe(200);
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
