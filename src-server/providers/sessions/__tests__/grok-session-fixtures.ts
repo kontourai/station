@@ -85,6 +85,19 @@ export class Writer {
     );
   }
 
+  /** A synthetic user message: chunk `_meta` carries only `modelId`. */
+  syntheticUser(text: string) {
+    return this.line(
+      'session/update',
+      {
+        sessionUpdate: 'user_message_chunk',
+        content: { type: 'text', text },
+        _meta: { modelId: 'grok-build' },
+      },
+      {},
+    );
+  }
+
   /** A locally expanded slash skill: expansion in `text`, invocation in `displayText`. */
   expandedPrompt(expansion: string, displayText: string, promptIndex: number) {
     return this.line(

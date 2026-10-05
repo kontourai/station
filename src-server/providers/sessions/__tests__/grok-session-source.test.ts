@@ -1,5 +1,6 @@
 import {
   appendFileSync,
+  chmodSync,
   mkdirSync,
   realpathSync,
   renameSync,
@@ -328,6 +329,33 @@ describe('GrokSessionSource', () => {
     });
   });
 
+  test('a synthetic mid-turn user chunk without promptIndex neither aborts nor starts a turn', async () => {
+    const home = fixtureRoot();
+    const w = new Writer('phantom-session');
+    grokSession(home, {
+      sessionId: 'phantom-session',
+      lines:
+        w.user('Run the build', 0) +
+        w.toolCall('call-1', 'run_terminal_cmd', { command: 'build' }) +
+        // Upstream `persist_synthetic_user_message`: modelId only.
+        w.syntheticUser('Background task finished: build ok') +
+        w.toolResult('call-1', 'completed', 'ok') +
+        w.message('Built.') +
+        w.turnCompleted(),
+    });
+    const source = new GrokSessionSource({ homeDir: home });
+    const { events } = await drain(source, await discoverOne(source));
+    expect(events.map((event) => event.method)).toEqual([
+      'turn.started',
+      'tool.started',
+      'tool.completed',
+      'content.text-delta',
+      'token-usage.updated',
+      'turn.completed',
+    ]);
+    expect(events[2]).toMatchObject({ status: 'success' });
+  });
+
   test('records a rewind marker and keeps the rewound turns', async () => {
     const home = fixtureRoot();
     const w = new Writer('rewind-session');
@@ -560,6 +588,103 @@ describe('GrokSessionSource', () => {
       listed = (await source.discover()).sessions.length === 1;
     }
     expect(listed).toBe(true);
+  });
+
+  test('above the listing cap, sessions added later are still found', async () => {
+    // Reviewer's shape, scaled down: more prompt-less probe directories than
+    // the cap, then prompted sessions created after the cap is reached.
+    const home = fixtureRoot();
+    const probeGroup = join(home, 'sessions', encodeURIComponent('/probe'));
+    mkdirSync(probeGroup, { recursive: true });
+    for (let index = 0; index < 80; index += 1) {
+      mkdirSync(join(probeGroup, `ffffffff-${String(index).padStart(4, '0')}`));
+    }
+    const source = new GrokSessionSource({
+      homeDir: home,
+      maxDirectoryEntries: 50,
+    });
+    for (let poll = 0; poll < 5; poll += 1) await source.discover();
+    const ids = ['00000000-late-a', '00000000-late-b', '00000000-late-c'];
+    for (const id of ids) {
+      grokSession(home, {
+        sessionId: id,
+        cwd: `/work/${id}`,
+        lines: new Writer(id).user('Late question', 0),
+      });
+    }
+    const found = new Set<string>();
+    for (let poll = 0; poll < 12 && found.size < ids.length; poll += 1) {
+      for (const session of (await source.discover()).sessions) {
+        found.add(session.sessionId);
+      }
+    }
+    expect([...found].sort()).toEqual(ids);
+  });
+
+  test('a group past the listing cap does not hide the groups after it', async () => {
+    const home = fixtureRoot();
+    // Sorts first, and alone exceeds the cap.
+    const bigGroup = join(home, 'sessions', encodeURIComponent('/aaa'));
+    mkdirSync(bigGroup, { recursive: true });
+    for (let index = 0; index < 60; index += 1) {
+      mkdirSync(join(bigGroup, `probe-${index}`));
+    }
+    grokSession(home, { sessionId: 'zzz-session', cwd: '/zzz' });
+    const source = new GrokSessionSource({
+      homeDir: home,
+      maxDirectoryEntries: 50,
+    });
+    let found = false;
+    for (let poll = 0; poll < 4 && !found; poll += 1) {
+      found = (await source.discover()).sessions.some(
+        (session) => session.sessionId === 'zzz-session',
+      );
+    }
+    expect(found).toBe(true);
+  });
+
+  test('folders a poll could not stat keep their priority on later polls', async () => {
+    const home = fixtureRoot();
+    const group = join(home, 'sessions', encodeURIComponent('/work/project'));
+    mkdirSync(group, { recursive: true });
+    for (let index = 0; index < 40; index += 1) {
+      mkdirSync(join(group, `ffffffff-${String(index).padStart(4, '0')}`));
+    }
+    // Sorts last among never-statted names, so early polls reach it last.
+    grokSession(home, { sessionId: '00000000-real' });
+    const source = new GrokSessionSource({
+      homeDir: home,
+      maxStats: 6,
+      maxSweepStats: 1,
+    });
+    let found = false;
+    // 41 folders at 5 priority stats a poll: 9 polls. The 1-stat sweep alone
+    // would need about 36.
+    for (let poll = 0; poll < 12 && !found; poll += 1) {
+      found = (await source.discover()).sessions.length === 1;
+    }
+    expect(found).toBe(true);
+  });
+
+  test('a group that cannot be read keeps its sessions', async () => {
+    const home = fixtureRoot();
+    const { dir } = grokSession(home, { sessionId: 'kept-session' });
+    const group = join(dir, '..');
+    const source = new GrokSessionSource({ homeDir: home });
+    expect((await source.discover()).sessions).toHaveLength(1);
+    // A new folder changes the group, so the next poll must read it; without
+    // read permission that read fails while its folders stay reachable.
+    mkdirSync(join(group, 'new-session'));
+    chmodSync(group, 0o300);
+    try {
+      const after = await source.discover();
+      expect(after.outcome).toBe('rejected_candidate');
+      expect(after.sessions.map((session) => session.sessionId)).toEqual([
+        'kept-session',
+      ]);
+    } finally {
+      chmodSync(group, 0o700);
+    }
   });
 
   test('warns once per unrecognized file kind', async () => {
