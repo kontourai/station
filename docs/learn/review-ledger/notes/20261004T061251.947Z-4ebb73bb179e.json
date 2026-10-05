@@ -1,0 +1,7 @@
+{
+  "revision": "993e82a8138ac12257bdf84cc0f7cf39ade8408e",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"#3036: added the version 3 qualifier to the missing-merge-base bullet; matches documentation-freshness.mjs, where older layouts report appendOnly not-applicable and add no blocker.","inputs":["docs/guides/documentation.md"]}
+  ]
+}

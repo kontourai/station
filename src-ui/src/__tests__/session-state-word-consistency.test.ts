@@ -464,9 +464,6 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
 const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   // The banner's one sentence form of the ladder's "No progress · Nm".
   ['components/home/ProgressSilenceObservation.tsx', 'No progress for'],
-  // A sentence about a refused decision reply ("The engine is still waiting
-  // for an answer."), not the retired "Still waiting" status label.
-  ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
   ['components/chat-start/StartComposer.tsx', 'Model not reported'],
