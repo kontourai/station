@@ -129,3 +129,55 @@ test('an OpenCode session in a project appears in the read model and resumes aft
     writer.close();
   }
 });
+
+test("Station's own OpenCode session, run through ACP, is not imported a second time", async () => {
+  const directory = realpathSync(tempDir('station-opencode-owned-'));
+  const dataDir = join(directory, 'opencode');
+  const project = join(directory, 'project');
+  mkdirSync(project);
+  const writer = new OpenCodeFixtureWriter(dataDir);
+  writer.session('ses_station_owned', project);
+  turn(writer, 'ses_station_owned', 'Station prompt', 'Station answer');
+  writer.session('ses_terminal', project);
+  turn(writer, 'ses_terminal', 'Terminal prompt', 'Terminal answer');
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  try {
+    store.upsertSession({
+      provider: 'acp',
+      threadId: 'station-opencode-thread',
+      status: 'ready',
+      cwd: project,
+      resumeCursor: {
+        acpSessionId: 'ses_station_owned',
+        connectionId: 'opencode',
+      },
+      controlMode: 'station-owned',
+      createdAt: '2026-10-01T12:00:00.000Z',
+      updatedAt: '2026-10-01T12:00:00.000Z',
+    });
+    const follow = new AttachedSessionFollowService({
+      sources: [new OpenCodeSessionSource({ dataDir })],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [{ slug: 'fixture', workingDirectory: project }],
+    });
+    for (let poll = 0; poll < 3; poll += 1) await follow.pollNow();
+    expect(
+      store
+        .readSessions()
+        .map((session) => [
+          session.provider,
+          session.attachedSource?.externalSessionId,
+        ]),
+    ).toEqual(
+      expect.arrayContaining([
+        ['acp', undefined],
+        ['opencode', 'ses_terminal'],
+      ]),
+    );
+    expect(store.readSessions()).toHaveLength(2);
+  } finally {
+    store.close();
+    writer.close();
+  }
+});

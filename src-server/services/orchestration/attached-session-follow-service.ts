@@ -497,7 +497,7 @@ export class AttachedSessionFollowService {
     // check and the alias lookup. Every scan is synchronous sqlite + JSON
     // parsing on the main thread, so the snapshot is passed into followState
     // (and, #3386 F2, shared by every session of the poll).
-    if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
+    if (this.isStationOwnedProviderCursor(source, descriptor, snapshot)) {
       const alias = snapshot.get(descriptor.threadId);
       if (alias?.controlMode === 'read-only-attached') {
         this.deleteAttachedAlias(descriptor.threadId);
@@ -666,7 +666,7 @@ export class AttachedSessionFollowService {
   ): FollowState {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
-      if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
+      if (this.isStationOwnedProviderCursor(source, descriptor, snapshot)) {
         const alias = snapshot.get(descriptor.threadId);
         if (alias?.controlMode === 'read-only-attached') {
           this.deleteAttachedAlias(descriptor.threadId);
@@ -680,6 +680,7 @@ export class AttachedSessionFollowService {
 
     const persisted = snapshot.get(descriptor.threadId);
     const isStationOwnedProviderCursor = this.isStationOwnedProviderCursor(
+      source,
       descriptor,
       snapshot,
     );
@@ -736,6 +737,7 @@ export class AttachedSessionFollowService {
   }
 
   private isStationOwnedProviderCursor(
+    source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     snapshot: PollSessionSnapshot,
   ): boolean {
@@ -753,7 +755,9 @@ export class AttachedSessionFollowService {
           (reservation) =>
             reservation.provider === descriptor.provider &&
             matchesDescriptor(reservation.providerResumeCursor),
-        ) || snapshot.ownsNativeSession(descriptor, adapter)
+        ) ||
+      snapshot.ownsNativeSession(descriptor, adapter) ||
+      snapshot.ownedThroughSource(source, descriptor)
     );
   }
 

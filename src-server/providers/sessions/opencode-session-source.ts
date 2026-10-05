@@ -242,6 +242,21 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     this.warn = options.warn ?? ((message, meta) => logger.warn(message, meta));
   }
 
+  /**
+   * Station runs OpenCode itself as an ACP connection (provider `acp`), and
+   * those runs land in this same store under the ACP session id. Naming that
+   * id keeps the follower from importing Station's own session a second time.
+   */
+  ownedNativeSessionId(session: {
+    provider: string;
+    resumeCursor?: unknown;
+  }): string | undefined {
+    if (session.provider !== 'acp' || !isRecord(session.resumeCursor)) {
+      return undefined;
+    }
+    return boundedId(session.resumeCursor.acpSessionId);
+  }
+
   async discover(): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
       SOURCE_HOME_NAMESPACE,
