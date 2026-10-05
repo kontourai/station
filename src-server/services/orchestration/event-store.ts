@@ -520,6 +520,35 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                   ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
 `;
 
+/** How much of a turn's prompt the digest read keeps (the first line is clipped from it). */
+export const TURN_DIGEST_PROMPT_PREFIX_CHARS = 1024;
+const TURN_DIGEST_FILES_READ = 50;
+const TURN_DIGEST_PULL_REQUESTS_READ = 50;
+
+type TurnDigestTerminalMethod =
+  | 'turn.completed'
+  | 'turn.aborted'
+  | 'runtime.error';
+
+/** The recorded facts of one turn; see `EventStore.readTurnDigestFacts`. */
+export interface TurnDigestFacts {
+  threadId: string;
+  turnId: string;
+  startedAt: string;
+  /** The `turn.started` event's global sequence: the paging position. */
+  startSequence: number;
+  promptPrefix?: string;
+  /** The engine opened this turn on its own (`PROVIDER_TURN_TRIGGER`). */
+  providerTriggered?: true;
+  terminal?: { method: TurnDigestTerminalMethod; finishReason?: string };
+  toolCalls: Array<{ toolName: string; calls: number }>;
+  /** Distinct recorded file paths (all of them), and the first few. */
+  filesTotal: number;
+  files: string[];
+  /** Declared `pull-request` descriptors, unparsed beyond JSON. */
+  declaredPullRequests: unknown[];
+}
+
 /** A session that names a parent conversation; see `listSessionsNamingParents`. */
 export interface SessionNamingParent {
   threadId: string;
@@ -4614,6 +4643,201 @@ export class EventStore {
       ...(typeof value.label === 'string' ? { label: value.label } : {}),
       descriptor,
       sequence: Number(value.sequence),
+    };
+  }
+
+  /**
+   * station#3413 (`get_session_digest`): the recorded facts of a window of a
+   * conversation's turns, newest first, selected and aggregated in SQLite so
+   * the digest never replays a transcript or reads a tool's (unbounded)
+   * output. Every fact is a column of an event Station already wrote:
+   *
+   * - the turn: its `turn.started` (a steer's `inputKind` is not a turn),
+   *   with the first {@link TURN_DIGEST_PROMPT_PREFIX_CHARS} characters of its
+   *   prompt;
+   * - its outcome: its LAST terminal event (`turn.completed`, `turn.aborted`
+   *   or `runtime.error`), `finishReason` included;
+   * - tool use: a count of `tool.started` per tool name;
+   * - files: the path argument of a call whose own `tool.completed` reported
+   *   an `edit`, `delete` or `move` kind and succeeded. A path nothing
+   *   reported is not guessed from a tool's name;
+   * - pull requests: the `pull-request` rows in `orchestration_declared_outputs`
+   *   for the turn.
+   *
+   * `beforeGlobalSequence` pages older: it is the `startSequence` of the oldest
+   * turn of the previous page. One turn past `turnLimit` is read to say
+   * whether older turns remain.
+   */
+  readTurnDigestFacts(
+    threadIds: readonly string[],
+    options: { beforeGlobalSequence?: number; turnLimit: number },
+  ): {
+    turns: TurnDigestFacts[];
+    hasMore: boolean;
+    totalTurns: number;
+    /** When the first turn newer than the newest returned began, if any. */
+    newerTurnStartedAt?: string;
+  } {
+    const ids = [...new Set(threadIds)];
+    if (ids.length === 0 || ids.length > EVENT_STORE_BATCH_CHUNK_SIZE)
+      throw new Error('Turn digest lineage is invalid');
+    if (
+      !Number.isInteger(options.turnLimit) ||
+      options.turnLimit < 1 ||
+      options.turnLimit > 100
+    )
+      throw new Error('Turn digest limit must be between 1 and 100');
+    const placeholders = ids.map(() => '?').join(', ');
+    const isTurnStart = `thread_id IN (${placeholders}) AND method = 'turn.started'
+      AND turn_id IS NOT NULL AND json_valid(payload)
+      AND json_extract(payload, '$.inputKind') IS NULL`;
+    const totalTurns = Number(
+      (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${isTurnStart}`,
+          )
+          .get(...ids) as { total: number }
+      ).total,
+    );
+    const starts = this.db
+      .prepare(
+        `SELECT thread_id, turn_id, created_at, global_sequence,
+                substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+           FROM orchestration_events
+          WHERE ${isTurnStart} AND global_sequence < ?
+          ORDER BY global_sequence DESC LIMIT ?`,
+      )
+      .all(
+        ...ids,
+        options.beforeGlobalSequence ?? Number.MAX_SAFE_INTEGER,
+        options.turnLimit + 1,
+      ) as Array<{
+      thread_id: string;
+      turn_id: string;
+      created_at: string;
+      global_sequence: number;
+      prompt: unknown;
+      turn_trigger: unknown;
+    }>;
+    const selected = starts.slice(0, options.turnLimit);
+    const terminal = this.db.prepare(
+      `SELECT method, json_extract(payload, '$.finishReason') AS finish_reason
+         FROM orchestration_events
+        WHERE thread_id = ? AND turn_id = ? AND json_valid(payload)
+          AND method IN ('turn.completed', 'turn.aborted', 'runtime.error')
+        ORDER BY sequence DESC LIMIT 1`,
+    );
+    const tools = this.db.prepare(
+      `SELECT json_extract(payload, '$.toolName') AS tool_name, COUNT(*) AS calls
+         FROM orchestration_events
+        WHERE thread_id = ? AND turn_id = ? AND method = 'tool.started'
+          AND json_valid(payload)
+        GROUP BY tool_name ORDER BY calls DESC, tool_name ASC`,
+    );
+    const fileRows = `FROM orchestration_events done
+         JOIN orchestration_events call
+           ON call.thread_id = done.thread_id AND call.turn_id = done.turn_id
+          AND call.method = 'tool.started' AND json_valid(call.payload)
+          AND json_extract(call.payload, '$.toolCallId') = json_extract(done.payload, '$.toolCallId')
+        WHERE done.thread_id = ? AND done.turn_id = ? AND done.method = 'tool.completed'
+          AND json_valid(done.payload)
+          AND json_extract(done.payload, '$.status') = 'success'
+          AND json_extract(done.payload, '$.toolKind') IN ('edit', 'delete', 'move')`;
+    const filePath = `COALESCE(json_extract(call.payload, '$.arguments.path'),
+          json_extract(call.payload, '$.arguments.file_path'),
+          json_extract(call.payload, '$.arguments.filePath'))`;
+    const fileCount = this.db.prepare(
+      `SELECT COUNT(DISTINCT ${filePath}) AS total ${fileRows} AND typeof(${filePath}) = 'text'`,
+    );
+    const fileList = this.db.prepare(
+      `SELECT ${filePath} AS path ${fileRows} AND typeof(${filePath}) = 'text'
+        GROUP BY path ORDER BY MIN(done.sequence) ASC LIMIT ${TURN_DIGEST_FILES_READ}`,
+    );
+    const pullRequests = this.db.prepare(
+      `SELECT descriptor FROM orchestration_declared_outputs
+        WHERE thread_id = ? AND turn_id = ? AND json_valid(descriptor)
+          AND json_extract(descriptor, '$.kind') = 'pull-request'
+        ORDER BY declared_at ASC, declaration_id ASC LIMIT ${TURN_DIGEST_PULL_REQUESTS_READ}`,
+    );
+    const turns = selected.map((start): TurnDigestFacts => {
+      const end = terminal.get(start.thread_id, start.turn_id) as
+        | { method: string; finish_reason: unknown }
+        | undefined;
+      const files = fileCount.get(start.thread_id, start.turn_id) as {
+        total: number;
+      };
+      const declared: unknown[] = [];
+      for (const row of pullRequests.all(
+        start.thread_id,
+        start.turn_id,
+      ) as Array<{
+        descriptor: string;
+      }>) {
+        try {
+          declared.push(JSON.parse(row.descriptor));
+        } catch {
+          // json_valid held in SQL; a row that still fails to parse is skipped.
+        }
+      }
+      return {
+        threadId: start.thread_id,
+        turnId: start.turn_id,
+        startedAt: start.created_at,
+        startSequence: Number(start.global_sequence),
+        ...(typeof start.prompt === 'string'
+          ? { promptPrefix: start.prompt }
+          : {}),
+        ...(start.turn_trigger === PROVIDER_TURN_TRIGGER
+          ? { providerTriggered: true as const }
+          : {}),
+        ...(end
+          ? {
+              terminal: {
+                method: end.method as TurnDigestTerminalMethod,
+                ...(typeof end.finish_reason === 'string'
+                  ? { finishReason: end.finish_reason }
+                  : {}),
+              },
+            }
+          : {}),
+        toolCalls: (
+          tools.all(start.thread_id, start.turn_id) as Array<{
+            tool_name: unknown;
+            calls: number;
+          }>
+        ).map((row) => ({
+          toolName:
+            typeof row.tool_name === 'string' ? row.tool_name : '(unnamed)',
+          calls: Number(row.calls),
+        })),
+        filesTotal: Number(files.total),
+        files: (
+          fileList.all(start.thread_id, start.turn_id) as Array<{
+            path: string;
+          }>
+        ).map((row) => row.path),
+        declaredPullRequests: declared,
+      };
+    });
+    // The newest returned turn ran until the next one began (a child started
+    // meanwhile belongs to it).
+    const newer = selected[0]
+      ? (this.db
+          .prepare(
+            `SELECT created_at FROM orchestration_events WHERE ${isTurnStart}
+                AND global_sequence > ? ORDER BY global_sequence ASC LIMIT 1`,
+          )
+          .get(...ids, selected[0].global_sequence) as
+          | { created_at: string }
+          | undefined)
+      : undefined;
+    return {
+      turns,
+      hasMore: starts.length > options.turnLimit,
+      totalTurns,
+      ...(newer ? { newerTurnStartedAt: newer.created_at } : {}),
     };
   }
 
