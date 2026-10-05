@@ -99,8 +99,17 @@ npm run docs:review:record -- --advance-baseline
 
 The command checks strict coverage before moving the baseline to HEAD. Run it
 after a catch-up audit, and periodically (for example weekly) when strict is
-green, to bound history cost. It refuses dirty trees and unavailable history;
-it cannot erase outstanding gaps. HEAD must be reachable from `origin/main`;
+green, to bound history cost. Nothing runs it automatically: the Nightly
+freshness sweep reports gaps but never edits the ledger. It refuses dirty trees
+and unavailable history; it cannot erase outstanding gaps.
+
+The same run compacts landed notes (#3394). Every loose note that was already
+in the tree at the previous baseline moves into one archive,
+`notes/archive/<previous-baseline>.json`, which keeps each note's file name and
+exact bytes; the loose files are deleted in the same batch write. Notes added
+since the previous baseline stay loose, so freshness, which reads only notes in
+a change's range or after the baseline, never depends on an archived note.
+Commit `docs/learn/review-ledger` with the index. HEAD must be reachable from `origin/main`;
 fetch remote main before retrying if that ref is missing or stale. PR-only
 commits cannot become the baseline because a squash merge does not retain them.
 
@@ -214,6 +223,7 @@ GitHub uses Git's default text merge; this layout needs no local merge driver.
 | `records/<document>.json` | Path, kind, state, summary, limits, source path list and retained historical checks |
 | `captures/<capture>.json` | Source path list and retained historical review notes; image identity stays in `media.json` |
 | `notes/<time>-<hash>.json` | Context revision and reviews: document/capture path, note text and covered inputs |
+| `notes/archive/<baseline>.json` | Immutable: notes landed at or before that coverage baseline, by file name, with their exact bytes |
 
 Each source path occupies its own line, separated from the next by a blank
 line. Ordinary source reviews leave all record and capture files untouched.
@@ -222,14 +232,25 @@ files; neither rewrites shared derived data. Real concurrent edits to the same
 human decision or additions at the same place in a dependency list can still
 conflict and need a human resolution. The loader requires canonical bytes and
 rejects edited notes or unexpected files. The name hash detects accidental
-changes; it is not protection against forgery.
+changes; it is not protection against forgery. Every reader (compiled checks,
+impact and catch-up, the learning reader) loads archived and loose notes as one
+store in file-name order, so compaction changes no compiled output; a note
+stored both loose and archived is refused with `duplicate-note`, and an archive
+whose bytes are not the serializer's with `not-canonical`.
 
-Four guards sit on top of the layout (#3036):
+Five guards sit on top of the layout (#3036, #3394):
 
 - **Notes are append-only.** Scoped freshness compares the note files at the
   merge base with the working tree and blocks with `note-removed` for each one
   that is gone, whether deleted outright or rewritten under a new hash name.
-  Re-record with `docs:review:record` instead; that adds a note.
+  Re-record with `docs:review:record` instead; that adds a note. The one
+  exception is compaction: a removed note passes only when an archive this
+  change adds holds its exact merge-base bytes. An added archive that holds
+  anything else (a note the merge base did not have, or other bytes) blocks
+  with `archive-unbacked`.
+- **Archives are immutable.** An archive at the merge base must keep its exact
+  bytes in HEAD and the working tree; a modified or removed archive blocks with
+  `archive-changed`.
 - **A missing merge base never skips that check.** In a pull request context
   (a `pull_request` event or `STATION_CI_FAST_BASE`) an unresolvable base
   blocks with `append-only-unverified` (the version 3 layout only; older layouts
@@ -253,8 +274,11 @@ request context `docs:freshness:check` then prints `Append-only notes: not
 checked (<mode>)`. The path budget applies to the working tree and to what the
 record command writes, not to merge-base or history reads, so a pull request
 can still delete an over-budget record that reached `main`. Notes are never
-pruned: the notes of a removed document stay in `notes/` forever, because
-deleting them would fail `note-removed`. The gate proves that a covering
+discarded: the notes of a removed document stay in the store, loose until a
+baseline advance archives them, because deleting them would fail
+`note-removed`. A branch cut before a compaction merges `main` cleanly: it
+never modifies landed notes, so `main`'s deletions and added archive apply
+without conflict. The gate proves that a covering
 note exists for each touched input, not that its prose is accurate. All consumers
 use
 [`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including
