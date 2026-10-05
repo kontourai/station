@@ -461,7 +461,9 @@ promising more than it does:
   stored approval notification and an input request's title and description
   are covered too, and OS notifications (web push, the desktop feed, APNs,
   FCM) carry the same display form. The details view shows the raw
-  arguments, left to right with each right-to-left word isolated, except that
+  arguments, left to right with each right-to-left word isolated (as the
+  row's label and the details' Tool line are, so all three show the same
+  word order), except that
   hidden characters (the ones above, ZWNJ, a ZWJ that is not joining two
   emoji, and controls other than LF and tab) appear as visible `«U+XXXX»`
   tokens under a "contains hidden characters" warning, so they are never
