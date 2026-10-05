@@ -75,6 +75,8 @@ interface ChatDockModalStackProps {
   projectBindable?: boolean;
   projectsLoaded?: boolean;
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The sidebar's project icons, for the start composer's project chip. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
@@ -139,6 +141,7 @@ export function ChatDockModalStack({
   projectBindable,
   projectsLoaded,
   projectAccentBySlug,
+  projectIconBySlug,
   recentChats,
   showChatSettings,
   showSessionPicker,
@@ -192,6 +195,7 @@ export function ChatDockModalStack({
             projectBindable,
             projectsLoaded,
             projectAccentBySlug,
+            projectIconBySlug,
             startSurface: true,
             recentChats,
             activeProjectSlug:

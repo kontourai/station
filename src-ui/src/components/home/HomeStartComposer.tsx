@@ -621,6 +621,8 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               options={viewModel.contextOptions}
               selectedContext={context}
               workspaceHint={workspaceHint}
+              icons={icons}
+              accents={accents}
               folderlessHint={resolveNewChatWorkspaceHint({
                 agent,
                 project: undefined,

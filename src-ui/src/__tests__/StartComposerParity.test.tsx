@@ -29,6 +29,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import type { AgentData } from '../contexts/AgentsContext';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
@@ -252,6 +253,16 @@ function renderBoth() {
           projectAccentBySlug={projectAccents(
             (state.projects as ProjectMetadata[]).map(({ slug }) => slug),
           )}
+          projectIconBySlug={
+            new Map(
+              (state.projects as ProjectMetadata[]).flatMap(
+                ({ slug, icon }) => {
+                  const shown = displayableProjectIcon(icon);
+                  return shown ? [[slug, shown] as const] : [];
+                },
+              ),
+            )
+          }
           onSelect={dockSelect}
           onClose={vi.fn()}
         />

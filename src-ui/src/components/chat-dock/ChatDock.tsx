@@ -2964,6 +2964,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           // bound project to a guessed No project.
           projectsLoaded: projectsConfirmed,
           projectAccentBySlug,
+          projectIconBySlug,
           recentChats: {
             items: taskItems,
             pending: taskItemsPending,

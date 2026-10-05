@@ -564,10 +564,10 @@ folder did not answer within the list read's per-project time limit, or other
 folders were still being checked. It is not a refusal. The start composer shows
 the stored folder as not checked yet and lets the start resolve it. The list reads folders asynchronously and answers
 within that limit even when a drive does not respond, but a read on a drive
-that does not respond still holds one of the server's four file-system threads
-until the drive answers. So Station never has more than three folder checks out
-at once, across every list read, which always leaves a thread for the rest of
-the server. A check of a folder that is already being checked joins it, and
+that does not respond still holds one of the server's file-system threads
+(four by default, `UV_THREADPOOL_SIZE`) until the drive answers. So Station
+never has more than three folder checks out at once, across every list read,
+which with the default pool always leaves a thread for the rest of the server. A check of a folder that is already being checked joins it, and
 further checks wait their turn within their project's limit. A project whose
 folder never got a turn reads `unchecked` with a reason that says so.
 While three folders on drives that do not respond are still being checked, no

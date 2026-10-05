@@ -448,6 +448,83 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     };
   }
 
+  test('more healthy projects than the limit all read their folder: a finished check hands its turn on', async () => {
+    const harness = createHome();
+    const slugs = ['a', 'b', 'c', 'd', 'e'];
+    expect(slugs.length).toBeGreaterThan(MAX_UNSETTLED_FOLDER_CHECKS);
+    const folders = new Map<string, string>();
+    for (const slug of slugs) {
+      const folder = tempDir(`station-run-location-many-${slug}-`);
+      folders.set(slug, folder);
+      await saveProject(harness.adapter, { slug, workingDirectory: folder });
+    }
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(slugs, { timeoutMs: 5_000 });
+
+    expect(Object.fromEntries(locations)).toEqual(
+      Object.fromEntries(
+        slugs.map((slug) => [
+          slug,
+          { kind: 'folder', path: folders.get(slug) },
+        ]),
+      ),
+    );
+    expect(unsettledRunLocationFolderChecks()).toBe(0);
+  });
+
+  test.each([
+    ['rejects', () => Promise.reject(new Error('async boom'))],
+    [
+      'throws synchronously',
+      () => {
+        throw new Error('sync boom');
+      },
+    ],
+  ])(
+    'a check that %s frees its turn for the next project',
+    async (_label, fail) => {
+      const harness = createHome();
+      const slugs = ['x0', 'x1', 'x2', 'x3', 'x4', 'x5'];
+      for (const slug of slugs)
+        await saveProject(harness.adapter, {
+          slug,
+          workingDirectory: `/bad/${slug}`,
+        });
+      const folder = tempDir('station-run-location-after-');
+      await saveProject(harness.adapter, {
+        slug: 'ok',
+        workingDirectory: folder,
+      });
+      const fs = {
+        exists: (path: string) =>
+          path.startsWith('/bad/')
+            ? (fail() as Promise<boolean>)
+            : Promise.resolve(existsSync(path)),
+        realpath: async (path: string) => realpathSync(path),
+        isDirectory: async () => true,
+      };
+      const resolver = makeResolver(harness, noGitOnListReads);
+
+      const failed = await resolver.describeProjectRunLocations(slugs, {
+        timeoutMs: 1_000,
+        fs,
+      });
+      const after = await resolver.describeProjectRunLocations(['ok'], {
+        timeoutMs: 1_000,
+        fs,
+      });
+
+      expect([...failed.values()].map(({ kind }) => kind)).toEqual(
+        slugs.map(() => 'unavailable'),
+      );
+      expect(unsettledRunLocationFolderChecks()).toBe(0);
+      expect(after.get('ok')).toEqual({ kind: 'folder', path: folder });
+    },
+  );
+
   test('one read over many hung folders never has more than the limit of checks out', async () => {
     const harness = createHome();
     const slugs = ['a', 'b', 'c', 'd', 'e', 'f'];

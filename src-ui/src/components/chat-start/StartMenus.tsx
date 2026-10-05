@@ -1,8 +1,6 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
-import { useProjectAccents } from '../../hooks/useProjectAccents';
-import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
   NewChatModelChoice,
@@ -227,6 +225,8 @@ export function StartProjectMenu({
   selectedContext,
   workspaceHint,
   folderlessHint,
+  icons,
+  accents,
   onChoose,
   onClose,
 }: {
@@ -237,17 +237,19 @@ export function StartProjectMenu({
   workspaceHint: NewChatWorkspaceHint;
   /** Where a project with no folder runs with the chosen Agent. */
   folderlessHint: NewChatWorkspaceHint;
+  /** The sidebar's project icons (`useProjectIcons`), from the caller. */
+  icons: ReadonlyMap<string, string>;
+  /** The sidebar's project colours (`useProjectAccents`), from the caller. */
+  accents: ReadonlyMap<string, string>;
   onChoose: (context: string) => void;
   onClose: () => void;
 }) {
   const anchorRef = useRef<HTMLElement | null>(anchor);
   const [search, setSearch] = useState('');
   const query = search.toLowerCase();
-  // The sidebar's icon and colour, from the one project list it shows. Only
-  // `ProjectIcon` draws a project here: it shows an icon the contracts rule
-  // allows and never a raw `project.icon`, which `LayoutIcon` would hotlink.
-  const icons = useProjectIcons();
-  const accents = useProjectAccents();
+  // Only `ProjectIcon` draws a project here: it shows an icon the contracts
+  // rule allows and never a raw `project.icon`, which `LayoutIcon` would
+  // hotlink.
   const filtered = query
     ? options.filter((option) => option.label.toLowerCase().includes(query))
     : options;
