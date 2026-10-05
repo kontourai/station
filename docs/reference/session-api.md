@@ -479,11 +479,19 @@ Grok engine runs through ACP; the follower treats the Grok session named by its
 resume cursor as Station-owned and does not import it again. Prompts, reasoning,
 assistant messages, tool calls and results with their success or failure,
 plans, per-turn token usage, stop reasons and compaction markers are imported;
-a mid-turn interjection is a steer. A rewind appends to the log rather than
-removing turns, so rewound turns stay in Station's copy. A log or summary in an
-unrecognized shape is skipped with one logged warning, never guessed at.
-Discovery inspects at most 1,024 new or changed sessions per poll, so a large
-backlog of probe sessions delays the first listing by a few polls.
+a mid-turn interjection is a steer. Where Grok records what the user typed
+separately (`displayText`, for interjections and locally expanded slash
+skills), Station shows that rather than the model-facing text. A new prompt
+after a turn that never recorded its completion ends that turn as aborted and
+its open tools as unresolved. A rewind appends a marker rather than removing
+turns; Station records the marker and keeps the rewound turns, because a live
+follower has already published them and the event log has no retraction. A log
+or summary in an unrecognized shape is skipped with one logged warning per
+file kind, never guessed at. Discovery lists every session folder name each
+poll but stats at most 16,384 folders and inspects at most 1,024 new or changed
+sessions; followed, unvisited and recently changed folders come first and a
+rotating sweep covers the rest, so a large backlog of probe sessions delays a
+new session by a few polls without hiding it.
 
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
