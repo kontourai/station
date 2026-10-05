@@ -33,6 +33,7 @@ import {
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
+import { PollSessionSnapshot } from './attached-session-poll-snapshot.js';
 import {
   createPollRepositoryLookup,
   isWithinRepositoryPath,
@@ -362,6 +363,12 @@ export class AttachedSessionFollowService {
     const repositories = createPollRepositoryLookup(
       this.options.locateRepository,
     );
+    // #3386 review F2: one persisted-sessions read per poll, not per session.
+    let snapshot: PollSessionSnapshot | undefined;
+    const sessions = () =>
+      (snapshot ??= new PollSessionSnapshot(
+        this.options.eventStore.readSessions(),
+      ));
     for (const source of this.options.sources) {
       const startedAt = performance.now();
       let discovered: AttachedSessionDiscoveryResult;
@@ -425,7 +432,7 @@ export class AttachedSessionFollowService {
         // holds for an unattributed one (#3386), except on a hosted Station.
         if (attribution.state === 'unattributed' && !this.followUnattributed)
           continue;
-        await this.follow(source, session, attribution);
+        await this.follow(source, session, attribution, sessions());
         followedSessions += 1;
         // `follow()` performs synchronous EventStore reads and writes. Its
         // source calls can resolve immediately, which otherwise chains every
@@ -442,11 +449,9 @@ export class AttachedSessionFollowService {
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     attribution: AttachedProjectAttribution,
+    snapshot: PollSessionSnapshot,
   ): Promise<void> {
-    const persistedSessions = this.options.eventStore.readSessions();
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === descriptor.threadId,
-    );
+    const persisted = snapshot.get(descriptor.threadId);
     // A stable Station thread id may outlive the configured source home (Claude
     // derives it from the native session id). Never combine the old attachment
     // with a newly discovered home under that same id. Legacy attachments with
@@ -459,16 +464,15 @@ export class AttachedSessionFollowService {
       });
       return;
     }
-    const state = this.followState(source, descriptor, persistedSessions);
+    const state = this.followState(source, descriptor, snapshot);
     // archive#1997: one persisted-sessions snapshot for both the ownership
     // check and the alias lookup. Every scan is synchronous sqlite + JSON
-    // parsing on the main thread, so the snapshot is passed into followState.
-    if (this.isStationOwnedProviderCursor(descriptor, persistedSessions)) {
-      const alias = persistedSessions.find(
-        (session) => session.threadId === descriptor.threadId,
-      );
+    // parsing on the main thread, so the snapshot is passed into followState
+    // (and, #3386 F2, shared by every session of the poll).
+    if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
+      const alias = snapshot.get(descriptor.threadId);
       if (alias?.controlMode === 'read-only-attached') {
-        this.deleteAttachedAlias(descriptor.threadId);
+        this.deleteAttachedAlias(descriptor.threadId, snapshot);
       }
       state.ownership = 'collision';
     }
@@ -560,7 +564,12 @@ export class AttachedSessionFollowService {
       // In particular, do not grant a legacy attachment a newly discovered
       // affinity until that source has completed one successful bounded read.
       if (!persisted) {
-        this.persistAttachedSession(source, descriptor, reusableCursor);
+        this.persistAttachedSession(
+          source,
+          descriptor,
+          snapshot,
+          reusableCursor,
+        );
       }
       attachedSessionDiscovery.add(1, {
         source: sourceLabel(source),
@@ -571,7 +580,7 @@ export class AttachedSessionFollowService {
     // Persist attachment metadata before importing, but advance neither durable
     // nor in-memory progress until the whole page is stored. An interrupted
     // page then replays through existing event-id deduplication without loss.
-    this.persistAttachedSession(source, descriptor, reusableCursor);
+    this.persistAttachedSession(source, descriptor, snapshot, reusableCursor);
     // Legacy rows and a source whose opaque handle changed still replay one
     // bounded transcript window. Discard durable ids with one indexed read per
     // batch instead of making each duplicate enter appendEventIfAbsent's
@@ -603,7 +612,7 @@ export class AttachedSessionFollowService {
         await yieldEventLoop();
       }
     }
-    this.persistAttachedSession(source, descriptor, read.cursor);
+    this.persistAttachedSession(source, descriptor, snapshot, read.cursor);
     state.cursors.set(sourceCursorKey(source), {
       provider: source.provider,
       sourceKind: source.kind,
@@ -618,16 +627,14 @@ export class AttachedSessionFollowService {
   private followState(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
-    persistedSessions: ProviderSession[],
+    snapshot: PollSessionSnapshot,
   ): FollowState {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
-      if (this.isStationOwnedProviderCursor(descriptor, persistedSessions)) {
-        const alias = persistedSessions.find(
-          (session) => session.threadId === descriptor.threadId,
-        );
+      if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
+        const alias = snapshot.get(descriptor.threadId);
         if (alias?.controlMode === 'read-only-attached') {
-          this.deleteAttachedAlias(descriptor.threadId);
+          this.deleteAttachedAlias(descriptor.threadId, snapshot);
         }
         cached.ownership = 'collision';
       }
@@ -636,18 +643,16 @@ export class AttachedSessionFollowService {
       return cached;
     }
 
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === descriptor.threadId,
-    );
+    const persisted = snapshot.get(descriptor.threadId);
     const isStationOwnedProviderCursor = this.isStationOwnedProviderCursor(
       descriptor,
-      persistedSessions,
+      snapshot,
     );
     if (
       isStationOwnedProviderCursor &&
       persisted?.controlMode === 'read-only-attached'
     ) {
-      this.deleteAttachedAlias(descriptor.threadId);
+      this.deleteAttachedAlias(descriptor.threadId, snapshot);
     }
     // archive#1867 class: never materialize the full thread via listEvents on
     // the cold path — large Claude-import threads (10k–20k events) held the
@@ -697,7 +702,7 @@ export class AttachedSessionFollowService {
 
   private isStationOwnedProviderCursor(
     descriptor: AttachedSessionDescriptor,
-    sessions = this.options.eventStore.readSessions(),
+    snapshot: PollSessionSnapshot,
   ): boolean {
     const adapter = this.options.adapterRegistry?.get(descriptor.provider);
     const matchesDescriptor = (resumeCursor: unknown) =>
@@ -713,19 +718,14 @@ export class AttachedSessionFollowService {
           (reservation) =>
             reservation.provider === descriptor.provider &&
             matchesDescriptor(reservation.providerResumeCursor),
-        ) ||
-      sessions.some(
-        (session) =>
-          session.controlMode !== 'read-only-attached' &&
-          session.provider === descriptor.provider &&
-          matchesDescriptor(session.resumeCursor),
-      )
+        ) || snapshot.ownsNativeSession(descriptor, adapter)
     );
   }
 
   private persistAttachedSession(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
+    snapshot: PollSessionSnapshot,
     cursor?: AttachedSessionCursor,
   ): void {
     const completedBoundary =
@@ -765,11 +765,16 @@ export class AttachedSessionFollowService {
           }),
     } as ProviderSession;
     this.options.eventStore.upsertSession(session);
+    snapshot.set(session);
   }
 
   /** Deleting the alias removes its recorded owner, so the cached one goes too. */
-  private deleteAttachedAlias(threadId: string): void {
+  private deleteAttachedAlias(
+    threadId: string,
+    snapshot: PollSessionSnapshot,
+  ): void {
     this.options.eventStore.deleteThread(threadId);
+    snapshot.delete(threadId);
     this.options.invalidateSessionOwner?.(threadId);
   }
 
