@@ -1059,3 +1059,78 @@ describe('the unknown-tool target (#3364 review)', () => {
     );
   });
 });
+
+describe('file targets beyond a single path (#3364 review round 2)', () => {
+  const settled = (toolName: string, args: unknown) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args })]);
+
+  test('a leading list never outranks a real delete or write verb', () => {
+    for (const toolName of ['list_and_delete', 'ls_rm']) {
+      const group = settled(toolName, { path: '/r/app.tsx' });
+      expect(group.calls[0]!.kind).toBe('delete');
+      expect(group.summary).toBe('Deleted app.tsx');
+    }
+    expect(classifyToolName('list_and_move')).toBe('write');
+    expect(classifyToolName('list_trash')).toBe('read');
+  });
+
+  test("Codex apply_patch's change list is a write naming its files", () => {
+    // The shape `deriveToolArguments` builds for a `fileChange` item
+    // (src-server/providers/adapters/codex-adapter-events.ts).
+    const group = settled('apply_patch', {
+      changes: [{ path: '/r/a.ts' }, { path: '/r/b.ts' }],
+    });
+    expect(group.calls[0]!.kind).toBe('write');
+    expect(group.summary).toBe('Edited a.ts +1 more');
+  });
+
+  test('a raw string argument is a target', () => {
+    const group = settled('delete_file', '/tmp/x.txt');
+    expect(group.calls[0]!.kind).toBe('delete');
+    expect(group.summary).toBe('Deleted /tmp/x.txt');
+  });
+
+  test("OpenCode's patch {patchText} stays a write", () => {
+    expect(settled('patch', { patchText: 'some diff' }).summary).toBe(
+      'Edited patch',
+    );
+    const envelope =
+      '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** Add File: src/b.ts\n+z\n*** End Patch';
+    const group = settled('patch', { patchText: envelope });
+    expect(group.calls[0]!.kind).toBe('write');
+    expect(group.summary).toBe('Edited a.ts +1 more');
+  });
+
+  test('apply_patch with the envelope in input is a write naming its file', () => {
+    const group = settled('apply_patch', {
+      input: '*** Begin Patch\n*** Delete File: old.txt\n*** End Patch',
+    });
+    expect(group.calls[0]!.kind).toBe('write');
+    expect(group.summary).toBe('Edited old.txt');
+  });
+
+  test('an input that is not a patch envelope is not a file target', () => {
+    expect(settled('apply_patch', { input: 'hello' }).summary).toBe(
+      'Used apply patch',
+    );
+  });
+
+  test('source/destination keeps a move a write and names both ends', () => {
+    for (const toolName of ['move_file', 'copy_file']) {
+      const group = settled(toolName, {
+        source: '/r/a.txt',
+        destination: '/r/b.txt',
+      });
+      expect(group.calls[0]!.kind).toBe('write');
+      expect(group.summary).toBe('Edited a.txt → b.txt');
+    }
+  });
+
+  test('read_multiple_files {paths} stays a read naming its files', () => {
+    const group = settled('read_multiple_files', {
+      paths: ['/r/a.ts', '/r/b.ts', '/r/c.ts'],
+    });
+    expect(group.calls[0]!.kind).toBe('read');
+    expect(group.summary).toBe('Read a.ts +2 more');
+  });
+});

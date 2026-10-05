@@ -208,9 +208,12 @@ const NON_DELETION_OBJECTS = new Set([
   'whitespace',
   'duplicates',
 ]);
-/** A leading listing verb keeps the call a read whatever it lists
- * (`list_trash`, `list_deleted_items`). */
+/** A leading listing verb keeps the call a read when what it lists is
+ * only NAMED by a delete word (`list_trash`, `list_deleted_items`) — but
+ * never over a real delete or write verb (`list_and_delete`, `ls_rm`). */
 const LEADING_READ_TOKENS = new Set(['list', 'ls']);
+/** Delete-class words that are also nouns for a place things go. */
+const DELETE_NOUNS = new Set(['trash']);
 
 function tokenize(value: string): string[] {
   return value
@@ -236,7 +239,15 @@ export function classifyToolName(toolName: string | undefined): ToolCallKind {
   // destructive classes first: a name with both a read and a write word
   // shown as a read is the unsafe direction.
   const tokens = tokenize(baseToolName(toolName));
-  if (LEADING_READ_TOKENS.has(tokens[0] ?? '')) return 'read';
+  if (
+    LEADING_READ_TOKENS.has(tokens[0] ?? '') &&
+    !tokens.some(
+      (t) =>
+        (DELETE_TOKENS.has(t) && !DELETE_NOUNS.has(t)) || WRITE_TOKENS.has(t),
+    )
+  ) {
+    return 'read';
+  }
   if (tokens.some((t) => DELETE_TOKENS.has(t))) {
     if (tokens.some((t) => NON_DELETION_OBJECTS.has(t))) return 'other';
     if (!tokens.some((t) => DELETE_NEGATIONS.has(t))) return 'delete';
@@ -287,23 +298,94 @@ function filePathArgument(args: Record<string, unknown>): string | undefined {
   return stringField(args, FILE_PATH_KEYS);
 }
 
+function listTarget(first: string, count: number): string {
+  return count > 1 ? `${basename(first)} +${count - 1} more` : basename(first);
+}
+
+const PATCH_ENVELOPE = '*** Begin Patch';
+const PATCH_FILE_HEADER = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
+
+/** A patch body: OpenCode's `patch {patchText}`, or Codex's `apply_patch`
+ * envelope in `input`/`patch`. */
+function patchBody(a: Record<string, unknown>): string | undefined {
+  if (typeof a.patchText === 'string' && a.patchText.trim()) {
+    return a.patchText;
+  }
+  for (const key of ['input', 'patch']) {
+    const value = a[key];
+    if (
+      typeof value === 'string' &&
+      value.trimStart().startsWith(PATCH_ENVELOPE)
+    ) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 /**
- * Whether the call names what it acts on: a file path, a patch's change
- * list, or a raw string argument (an ACP pass-through, shown as written).
- * Without one, a read/write/delete word in a tool's name says nothing about
- * FILES — `delete_agent {slug}` deletes an agent — so the row must not claim
- * a file and must not repeat the verb in front of the name.
+ * What a file call acts on, for its row: a file path, a patch's change list
+ * (`apply_patch {changes:[{path}]}`, the Codex shape), several `paths`, a
+ * `source`/`destination` pair, or a patch body's file headers.
+ *
+ * `undefined` means the call names no target at all. Then a read/write/
+ * delete word in the tool's name says nothing about FILES — `delete_agent
+ * {slug}` deletes an agent — so the row must not claim a file and must not
+ * repeat the verb in front of the name. `null` means a target exists but has
+ * no short name (a patch body with no file headers); the tool's name is shown.
+ *
+ * A raw STRING argument (an ACP engine's unstringified pass-through, see
+ * archive#3559) counts as a target and is shown as its first line. It is not
+ * known to be a file: `read_url 'https://…'` reads "Read https://…" and is
+ * counted as a file in a batch. That predates #3364 and is left as is.
  */
-function hasCallTarget(args: unknown): boolean {
-  if (typeof args === 'string') return args.trim().length > 0;
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
+function fileCallTarget(args: unknown): string | null | undefined {
+  if (typeof args === 'string') {
+    return args.trim() ? truncate(firstLine(args)) : undefined;
+  }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
   const a = args as Record<string, unknown>;
-  if (filePathArgument(a)) return true;
-  if (!Array.isArray(a.changes) || a.changes.length === 0) return false;
-  const first = a.changes[0];
-  if (!first || typeof first !== 'object') return false;
-  const f = first as Record<string, unknown>;
-  return Boolean(stringField(f, ['path', 'file_path', 'filePath']));
+  const single = filePathArgument(a);
+  if (single) return basename(single);
+  if (Array.isArray(a.changes) && a.changes.length > 0) {
+    const first = a.changes[0];
+    const path =
+      first && typeof first === 'object'
+        ? stringField(first as Record<string, unknown>, [
+            'path',
+            'file_path',
+            'filePath',
+          ])
+        : undefined;
+    if (path) return listTarget(path, a.changes.length);
+  }
+  if (Array.isArray(a.paths)) {
+    const paths = a.paths.filter(
+      (value): value is string => typeof value === 'string' && !!value.trim(),
+    );
+    if (paths.length > 0) return listTarget(paths[0]!, paths.length);
+  }
+  const source = stringField(a, ['source']);
+  if (source) {
+    const destination = stringField(a, ['destination']);
+    return destination
+      ? `${basename(source)} → ${basename(destination)}`
+      : basename(source);
+  }
+  const patch = patchBody(a);
+  if (patch !== undefined) {
+    const files = [...patch.matchAll(PATCH_FILE_HEADER)].map((m) =>
+      m[1]!.trim(),
+    );
+    return files.length > 0 ? listTarget(files[0]!, files.length) : null;
+  }
+  return undefined;
+}
+
+function hasCallTarget(args: unknown): boolean {
+  return fileCallTarget(args) !== undefined;
 }
 
 /**
@@ -463,30 +545,7 @@ function extractTarget(
   const a = args as Record<string, unknown>;
 
   if (kind === 'read' || kind === 'write' || kind === 'delete') {
-    let pathValue =
-      a.file_path ?? a.path ?? a.filePath ?? a.notebook_path ?? a.filename;
-    if (
-      typeof pathValue !== 'string' &&
-      Array.isArray(a.changes) &&
-      a.changes.length > 0
-    ) {
-      const first = a.changes[0];
-      if (first && typeof first === 'object') {
-        const f = first as Record<string, unknown>;
-        pathValue = f.path ?? f.file_path ?? f.filePath;
-      }
-      if (
-        typeof pathValue === 'string' &&
-        pathValue.length > 0 &&
-        a.changes.length > 1
-      ) {
-        return `${basename(pathValue)} +${a.changes.length - 1} more`;
-      }
-    }
-    if (typeof pathValue === 'string' && pathValue.length > 0) {
-      return basename(pathValue);
-    }
-    return null;
+    return fileCallTarget(a) ?? null;
   }
 
   if (kind === 'exec') {
