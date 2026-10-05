@@ -239,6 +239,43 @@ describe('attribution by repository (#3386)', () => {
       ).toMatchObject({ state: 'attributed', slug: 'other' });
     });
 
+    test('a .git directory whose commondir points at another repository is refused', async () => {
+      const other = repository(join(dir, 'other'));
+      const otherWorktree = worktree(other, join(dir, 'other-wt'), 'wt');
+      const evil = join(dir, 'evil');
+      mkdirSync(join(evil, '.git'), { recursive: true });
+      writeFileSync(
+        join(evil, '.git', 'commondir'),
+        `${join(other, '.git')}\n`,
+      );
+
+      expect(
+        await attribute(otherWorktree, [
+          { slug: 'evil', workingDirectory: evil },
+        ]),
+      ).toEqual({ state: 'unattributed' });
+    });
+
+    test('a forged git directory outside the repository is refused even with a matching back-pointer', async () => {
+      const other = repository(join(dir, 'other'));
+      const otherWorktree = worktree(other, join(dir, 'other-wt'), 'wt');
+      const evil = join(dir, 'evil');
+      const forged = join(dir, 'forged-gitdir');
+      mkdirSync(evil);
+      mkdirSync(forged);
+      // Everything git would write for a linked worktree, but not under
+      // `<common>/worktrees/`, where only the repository's owner writes.
+      writeFileSync(join(forged, 'commondir'), `${join(other, '.git')}\n`);
+      writeFileSync(join(forged, 'gitdir'), `${join(evil, '.git')}\n`);
+      writeFileSync(join(evil, '.git'), `gitdir: ${forged}\n`);
+
+      expect(
+        await attribute(otherWorktree, [
+          { slug: 'evil', workingDirectory: evil },
+        ]),
+      ).toEqual({ state: 'unattributed' });
+    });
+
     test('a .git file naming the common directory itself is refused', async () => {
       const other = repository(join(dir, 'other'));
       const evil = join(dir, 'evil');
@@ -642,7 +679,14 @@ describe('a session no project claims is followed under No project (#3386)', () 
     expect(summarize().projectSlug).toBeUndefined();
   });
 
-  test('an unreadable configuration never widens what is followed', async () => {
+  test('absent is on; an unreadable configuration never widens what is followed', async () => {
+    const fresh = new ConfigLoader({ projectHomeDir: join(dir, 'fresh-home') });
+    expect(
+      (await fresh.loadAppConfig()).attachedSessionsOutsideProjects,
+    ).toBeUndefined();
+    await expect(
+      attachedSessionsOutsideProjectsEnabled(() => fresh.loadAppConfig()),
+    ).resolves.toBe(true);
     await expect(
       attachedSessionsOutsideProjectsEnabled(() =>
         Promise.reject(new Error('corrupt app.json')),
