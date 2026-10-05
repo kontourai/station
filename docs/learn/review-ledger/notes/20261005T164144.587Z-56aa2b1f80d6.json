@@ -1,0 +1,9 @@
+{
+  "revision": "d83e796f921b296112de2a9026326ce1576ba441",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the unchanged dated capture and merged media classification against current guided proxy setup. The capture remains a historical example and does not show Connect through or Check connection. Current UI and launch behavior is explained by the Connections guide; no new runtime qualification is claimed.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the unchanged dated capture and merged media classification against current guided proxy setup. The capture remains a historical example and does not show Connect through or Check connection. Current UI and launch behavior is explained by the Connections guide; no new runtime qualification is claimed.","inputs":["docs/learn/media/connections-tour.webm"]}
+  ]
+}
