@@ -145,6 +145,9 @@ export function describeProjectSlugConflict(
  *   portable manifest copies `icon` verbatim and refuses an absolute or
  *   tilde path there (`validateProjectManifest`, §3.2), so a path stored here
  *   would make the project's manifest unreadable.
+ *   It must also have a visible character, and contains no bidirectional
+ *   control or lone surrogate (`glyph-characters`); a ZWJ joining emoji is
+ *   fine.
  * - **An inline image**: a base64 `data:` URL of one of
  *   {@link PROJECT_ICON_IMAGE_MEDIA_TYPES}, whose decoded bytes start with
  *   that format's signature and number at most
@@ -174,6 +177,7 @@ export type ProjectIconProblem =
   | 'empty'
   | 'glyph-too-long'
   | 'glyph-shape'
+  | 'glyph-characters'
   | 'image-type'
   | 'image-encoding'
   | 'image-too-large'
@@ -187,18 +191,33 @@ export const PROJECT_ICON_PROBLEM_MESSAGES: Record<ProjectIconProblem, string> =
     'glyph-too-long': `Use an emoji or a symbol of at most ${PROJECT_ICON_MAX_GLYPH_LENGTH} characters.`,
     'glyph-shape':
       'Use an emoji or a short symbol. Links, file paths and text with /, \\ or : are not icons.',
+    'glyph-characters':
+      'Use an emoji or a symbol you can see. Hidden formatting characters are not icons.',
     'image-type': 'Use a PNG, JPEG, WebP or ICO image.',
     'image-encoding': 'That image could not be read.',
     'image-too-large': `Use an image of at most ${PROJECT_ICON_MAX_IMAGE_BYTES / 1024} KB.`,
     'image-signature': 'That file is not the image type it claims to be.',
   };
 
+// The media type is captured loosely so that any type outside the allowed
+// list, including a differently cased one, reports `image-type`.
 const PROJECT_ICON_DATA_URL_PATTERN =
-  /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/;
+  /^data:([^;,]*);base64,([A-Za-z0-9+/]*={0,2})$/;
 const BASE64_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 // A control character, a separator a path or URL needs, or a leading tilde.
 const GLYPH_FORBIDDEN_PATTERN = /[\p{Cc}/\\:]|^~/u;
+// Bidirectional controls (they reorder the text drawn around the icon, which
+// is how a name can be made to read as something else) and lone surrogates
+// (half an emoji, which renders as a replacement box).
+const GLYPH_HIDDEN_PATTERN =
+  /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]|\p{Cs}/u;
+// A character that draws something. Format characters (ZWJ, ZWSP, the word
+// joiner), separators, combining marks and variation selectors only modify
+// or space the characters around them, and the Hangul fillers draw blank.
+// ZWJ inside an emoji sequence passes because the emoji beside it is visible.
+const GLYPH_VISIBLE_PATTERN =
+  /[^\p{Cf}\p{Z}\p{M}\p{Cc}\p{Cs}\u115F\u1160\u3164\uFFA0]/u;
 const IMAGE_FILE_NAME_PATTERN = /\.(?:png|jpe?g|webp|ico|gif|svg)$/i;
 
 /**
@@ -288,6 +307,9 @@ export function projectIconProblem(
     IMAGE_FILE_NAME_PATTERN.test(value)
   ) {
     return 'glyph-shape';
+  }
+  if (GLYPH_HIDDEN_PATTERN.test(value) || !GLYPH_VISIBLE_PATTERN.test(value)) {
+    return 'glyph-characters';
   }
   if (value.length > PROJECT_ICON_MAX_GLYPH_LENGTH) return 'glyph-too-long';
   return undefined;
