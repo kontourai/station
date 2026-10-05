@@ -2355,6 +2355,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
+    // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
+    // request the runtime boundary did not accept as Station's own internal
+    // principal gets a 404 whatever its scope, and the session it records on
+    // is the verified station-control caller's own. It writes the same
+    // candidate record Station's own engine does; the family's operate tier
+    // is the tier of that mutation.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/declare-pull-request',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -2413,6 +2423,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/tool-result-references' },
     { method: 'GET', path: '/api/tasks/:taskId/gate-evaluation-references' },
     { method: 'POST', path: '/api/tasks/:taskId/outputs' },
+    // #3161 a person's opt-in to close the Task when its kept pull requests
+    // merge. It mutates only that Task's own record, so the task family's
+    // operate tier is the intended scope; no station-control tool reaches it.
+    { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',

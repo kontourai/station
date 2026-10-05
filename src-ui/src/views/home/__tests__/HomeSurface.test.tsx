@@ -190,6 +190,21 @@ describe('HomeSurface composition', () => {
     expect(card.textContent).toContain('retired-project');
   });
 
+  // #3312: a section and the form inside it were both named "Start work",
+  // two landmarks with one name. The form is the one.
+  test.each([[[]], [[item('a', 'Some work', 'Station', 3, 'Running')]]])(
+    'Home has one "Start work" landmark, the form (work: %#)',
+    (workItems) => {
+      renderHome({ workItems });
+      expect(screen.getAllByRole('form', { name: 'Start work' })).toHaveLength(
+        1,
+      );
+      expect(screen.queryAllByRole('region', { name: 'Start work' })).toEqual(
+        [],
+      );
+    },
+  );
+
   test('the start card names the agent it can actually open on', () => {
     renderHome();
     const card = screen.getByRole('button', { name: /Start a chat/ });

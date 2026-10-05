@@ -1,7 +1,8 @@
 # #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 
-Status: W1 implemented (see section 6); W2 and W3 are designed here, not
-built. Base: `origin/main` 8608541b9. Slices A, B1, B2, C, D and E have
+Status: W1 and W2 implemented (see section 6); W3 is designed here, not
+built. W2 kept the profile-only rule for install roots and added ACLs on top
+of it (section 8). Base: `origin/main` 8608541b9. Slices A, B1, B2, C, D and E have
 merged. #2954 (installers must not treat bootstrap ports as explicit) is still
 open.
 
@@ -321,3 +322,44 @@ The options as originally posed:
   `STATION_SERVER_PORT`/`STATION_UI_PORT` as explicit? #2954 strips them in
   the CLI, but a user shell that exports them still hits the same
   service-port refusal.
+
+## 8. W2 as built, and what W3 needs
+
+- **Kept the profile rule.** The design said W2's ACL checks would lift the
+  "install root beneath the user profile" restriction. They do not: between
+  the installer creating a root elsewhere (`C:\station`) and restricting it,
+  another local user could plant a version, so W2 keeps the rule and adds the
+  ACL on top. A new root gets a protected current-user-only DACL
+  (`windows-path-trust.ts`'s `ensure`); an existing root must still have it
+  (`verify`), or it is refused. install.ps1 runs `current\runtime\node.exe`
+  only for a root beneath the profile with that DACL.
+- **The code root.** `bin\station.cmd`'s `cd` leaves the working directory on
+  the `current` junction's path, which made the CLI see `current`, not
+  `versions\<v>`, as its code root. `bin/station.mjs` now moves to the real
+  version directory when the working directory is the same directory through
+  a link. Archives built before W2 lack this and cannot `station upgrade` on
+  Windows (none was installed: W1 was stage-only).
+- **Bin directory.** `%USERPROFILE%\.local\bin`, as install.sh's
+  `~/.local/bin`; it must pass the trust module's `execution-safe` rule.
+- **Rollback starts the previous release only without
+  `STATION_INSTALL_NO_START=1`**, first stops a half-started new release,
+  and starts the previous one on the ports its restored state records
+  (install.sh's `restart_previous_station` uses the new ones).
+- **Launcher text** (review): ASCII through `%USERPROFILE%` (cmd.exe reads
+  batch files in the OEM code page), and no CALL on the hand-over line.
+- **The data home's ACL is not set by the installer** (the server owns its
+  home's trust).
+
+W3 needs, beyond section 4:
+- `stageServiceUpdate` (`service-launcher-link.ts`) still spawns `sh
+  install.sh`; `packagedInstallerCommand` in `prebuilt-archive.ts` is the
+  shared choice to reuse.
+- install.ps1 refuses when a service's manifest names the install root, and
+  when `runtime\service-state.json` exists; W3 replaces both refusals with
+  the stop/flip/start and the launcher handoff.
+- `pointCurrentAt` and `recoverCurrent` (`installer/full-install.ts`) are the
+  Windows switch and recovery rule the launcher should share.
+- During `station upgrade` the launcher's `cmd.exe` keeps its working
+  directory on `current` while the installer replaces the junction. The W2
+  Windows smoke exercises exactly this path without a service; a service
+  wrapper adds its own `cmd.exe`, which W3 must exercise too.

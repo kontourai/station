@@ -139,15 +139,16 @@ export function HomeSurface({
           <h1>What's next?</h1>
         </header>
       )}
-      <section
+      {/* A plain wrapper: the form is the one "Start work" landmark. A
+          section named the same nested a second landmark with one name. */}
+      <div
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
-        aria-label="Start work"
       >
         <HomeChatStartForm
           identity={model.startReady ? model.startIdentity : undefined}
           compact={hasWork}
         />
-      </section>
+      </div>
       {hasWork ? (
         <>
           {recentWork}

@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-shared/tool-request-preview';
 import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { attentionWord } from '../../views/home/work-status';
 import {
   DocumentGlyph,
   EditGlyph,
@@ -249,8 +250,8 @@ function ToolCallDisplayComponent({
         <span
           className="tool-call__awaiting"
           role="img"
-          aria-label="Awaiting approval"
-          title="Awaiting approval"
+          aria-label={attentionWord('approval')}
+          title={attentionWord('approval')}
         >
           <PauseGlyph />
         </span>
