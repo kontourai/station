@@ -170,6 +170,7 @@ describe('detectClaudeAuthState', () => {
       JSON.stringify({ claudeAiOauth: { refreshToken: 'selected-account' } }),
       { mode: 0o600 },
     );
+    await writeFile(join(config, '.credentials.json'), '{}', { mode: 0o600 });
     probe.mockClear();
     await expect(detectClaudeAuthState(env, home, probe)).resolves.toBe(
       'authenticated',
