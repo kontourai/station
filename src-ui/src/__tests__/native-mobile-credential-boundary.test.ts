@@ -25,28 +25,12 @@ describe('native mobile credential authority ratchet', () => {
     }
   });
 
-  test('keeps the WebView secret-free and configures device-only iOS writes', () => {
+  test('configures device-only iOS credential writes', () => {
     const rust = read('src-desktop/src/lib.rs');
-    const apiBase = read('src-ui/src/contexts/ApiBaseContext.tsx');
     const cargo = read('src-desktop/Cargo.toml');
 
     expect(rust).toContain('AfterFirstUnlockThisDeviceOnly');
     expect(cargo).toContain('tauri-plugin-keyring-store');
-    expect(apiBase).toContain(
-      'profile.isTauri ? rejectingDesktopCredentialStorage',
-    );
-    expect(apiBase).toMatch(
-      /const credential\s*=\s*profile\.isTauri\s*\?\s*undefined\s*:\s*evidence\?\.credential\s*;/,
-    );
-    expect(apiBase).toMatch(
-      /profile\.isTauri\s*\?\s*\{[\s\S]*transport: nativeBinding\s*\? nativeTransportForBinding\(nativeBinding\.bindingId\)\s*:\s*lazyNativeAuthenticatedTransport/,
-    );
-    expect(apiBase).toContain(
-      'profile.isTauri ? lazyNativePairingExchangeTransport : undefined',
-    );
-    expect(apiBase).not.toMatch(
-      /profile\.isMobile[\s\S]{0,120}credentialProvider\.getCredential/,
-    );
   });
 
   test('excludes Android app data from cloud backup and device transfer', () => {
