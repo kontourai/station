@@ -64,7 +64,13 @@ or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:i
 when `command`, `args` or `cwd` change; `POST /integrations`, and
 `PUT /integrations/:id`, when `command` or `args` are set or change; `POST
 /api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
-when `terminalShell` changes. A saved Environment's dispatch that names no Project
+when `terminalShell` changes (an agent's station-control call may not change it
+at all). The same code covers a tool server's `env` or `secretEnv` on a
+command-launching server, a URL-transport record changed to launch a stored
+command, `POST /api/plugins/install`, `/:name/recover` and `/:name/update`,
+`POST /api/registry/plugins/install` and `POST /api/registry/integrations/install`;
+entering an API key for a command-launching tool server from a paired device now
+needs the grant. A saved Environment's dispatch that names no Project
 is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.

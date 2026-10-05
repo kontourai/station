@@ -730,22 +730,53 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   confined by `scopeDispatch`. Not a folder choice, so unchanged: the
   Project-confined coding routes and the Task `workspaceBinding` paths (below).
 
-  Choosing a command takes the same authority, decided by the same check
-  (`refusesWorkingDirectoryChoice`), with its own code,
-  `command-not-granted`, and nothing saved or run. It covers exactly:
-  `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`, `args`
-  or `cwd` change (renaming, toggling, listing, removing and reconnecting are
-  unchanged; reconnect re-probes the stored command and cannot change it);
-  `POST /integrations`, and `PUT /integrations/:id`, when `command` or `args`
-  are set or change; `POST /api/projects/:slug/flow/runs/:runId/evidence/command`,
-  which runs the command line the body names; and `PUT /config/app` when
-  `terminalShell` changes. Checked and not a command choice: the ACP registry
-  install (the command comes from the built-in registry), ACP provider settings
-  (a URL and headers), `/api/connections` and `/api/providers` (their `config`
-  names no executable that is read; Claude's executable is the installed copy),
-  scheduler jobs (a prompt for an Agent), Agent definitions (they reference tool
-  servers by id), and Skill `command` (a slash-command word).
-  Task `workspaceBinding` paths are not a folder choice either: Task creation
+  Choosing a command, or code Station will run, takes the same authority,
+  decided by the same check (`refusesWorkingDirectoryChoice`), with its own
+  code, `command-not-granted`, and nothing saved or run. It covers exactly:
+  - `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`,
+    `args` or `cwd` change (an empty `args` or `cwd` is the same as none;
+    renaming, toggling, listing, removing and reconnecting are unchanged;
+    reconnect re-probes the stored command and cannot change it);
+  - `POST /integrations` and `PUT /integrations/:id` when `command` or `args`
+    are set or change, when a record that holds a command but did not launch it
+    (a URL transport) is changed to launch it, and when any value is submitted
+    for `env` or `secretEnv` on a command-launching (stdio) server. The child
+    receives `env` and the resolved secret env as its environment
+    (`mcp-manager.ts` `withResolvedMCPEnvironment`, then the stdio transport),
+    and any variable can steer a launched program (`NODE_OPTIONS`, `PATH`,
+    `BASH_ENV`, `PYTHONPATH`, `LD_PRELOAD`), so there is no key list. Removing a
+    stored key (`removeSecretEnvKeys`) and an empty `env` are not refused, and
+    `env` on a server that launches nothing (a URL transport) is allowed;
+  - `POST /api/plugins/install`, `POST /api/plugins/:name/recover`,
+    `POST /api/plugins/:name/update`, `POST /api/registry/plugins/install` (also
+    reached through `POST /api/registry/agents/install` for a plugin id) and
+    `POST /api/registry/integrations/install` (a marketplace manifest names the
+    command it stores). The existing person-only gate stays; the check is in
+    addition;
+  - `POST /api/projects/:slug/flow/runs/:runId/evidence/command`, which runs the
+    command line the body names;
+  - `PUT /config/app` when `terminalShell` changes. An agent's station-control
+    call (the Station-internal principal, otherwise exempt) may not change it,
+    in the tool (`update_config`) and in the route, as it may not raise the
+    default approval mode to full access.
+
+  The accepted cost: entering an API key for a command-launching tool server
+  from a paired device without `coding:exec` now needs the grant, or the
+  operator on the host (or a secret binding, which is `access:manage`).
+
+  Checked and not run-new-code or a command choice: the ACP registry install
+  (the command comes from the built-in registry or an installed plugin), ACP
+  provider settings (a URL and headers), `/api/connections` and `/api/providers`
+  (their `config` names no executable that is read; Claude's executable is the
+  installed copy), scheduler jobs (a prompt for an Agent), Agent definitions
+  (they reference tool servers by id), Skill `command` (a slash-command word),
+  `/api/secret-bindings` (`access:manage` tier, so an operate device cannot reach
+  it), marketplace source management and `POST /api/plugins/preview` (they list
+  and fetch and read a manifest; nothing is executed until an install, which is
+  guarded), `POST /api/plugins/reload` (reconciles plugins already installed),
+  plugin grants, settings and command effects (they act on already-installed
+  code), and the Agent and skill registry installs (prompts and text). Task
+  `workspaceBinding` paths are not a folder choice either: Task creation
   (including the starter launch's task) derives the binding from the Project and
   refuses a contradicting path (`task-graph-service.ts`, pinned by its test), so
   the folder the Task output reader later reads is always the Project's.
@@ -786,14 +817,12 @@ What this does not close, stated so nobody assumes it does:
   skip there; junctions stand in for links), git other than 2.50.1,
   hard-linked object stores, Git LFS, reftable repositories as linked
   worktrees (refused), a Project that is a submodule's checkout.
-- **Still open at the `orchestration:operate` tier, not closed by the rule
-  above**, each a separate decision: the `env` and secret-environment values of
-  an existing tool server (they shape the environment of the command it
-  spawns; they are also how credentials are entered); installing or updating a
-  plugin (`/api/plugins`, which runs the package's code; refused only for
-  Station's own control callers); and starting or enabling an existing tool
-  server or connection whose command was chosen earlier. `POST` and `PUT`
-  `/acp/connections` were in this list before the command rule above.
+- **Accepted, and the only thing this rule leaves open at the
+  `orchestration:operate` tier**: enabling, reconnecting or starting a tool
+  server or engine connection whose command was chosen earlier (by the operator
+  or by a granted device). A device can start what was already stored, and
+  cannot change the command, its arguments, its folder or its environment. It
+  runs no code that was not chosen under the authority above.
 - `terminal:operate` (in the `standard` preset) already opens an interactive
   shell on this host. A `standard` device therefore runs commands whatever the
   Run commands switch says: the switch narrows only devices without the
