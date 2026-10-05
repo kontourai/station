@@ -1,6 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
+import {
+  isNoteArchiveFile,
+  REVIEW_LEDGER_DIR,
+  REVIEW_NOTES_DIR,
+} from './review-ledger-paths.mjs';
 
 function git(root, args) {
   return execFileSync('git', args, {
@@ -21,13 +26,12 @@ const inputs = (entry) => [
   ...entry.sources.map((source) => source.path),
 ];
 const notes = (entry) => entry?.notes ?? [];
-const NOTES = 'docs/learn/review-ledger/notes/';
 // A note archive (#3394) holds notes added at or before an earlier baseline;
 // adding one moves old notes, it never records a review in this range.
 const addedNote = (status, file) =>
   status === 'A' &&
-  file.startsWith(NOTES) &&
-  !file.startsWith(`${NOTES}archive/`);
+  file.startsWith(REVIEW_NOTES_DIR) &&
+  !isNoteArchiveFile(file);
 
 /** Compare human decisions across layouts, ignoring old derived bindings. */
 export function reviewDecisionChanged(before, after) {
@@ -139,7 +143,7 @@ export function deriveReviewHistory(root, state, committedNotes) {
     (state.media?.captures ?? []).map((entry) => entry.path),
   );
   const recordPath = (entry) =>
-    `docs/learn/review-ledger/${capturePaths.has(entry.path) ? 'captures' : 'records'}/${entry.path}.json`;
+    `${REVIEW_LEDGER_DIR}/${capturePaths.has(entry.path) ? 'captures' : 'records'}/${entry.path}.json`;
   const owned = new Map(current.map((entry) => [recordPath(entry), entry]));
   const pointers = [
     ...new Set(

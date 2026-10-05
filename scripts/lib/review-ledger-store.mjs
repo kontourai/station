@@ -20,7 +20,15 @@ export { readGitObjects } from './review-git.mjs';
 
 import { deriveReviewHistory } from './review-history.mjs';
 
-export const REVIEW_LEDGER_DIR = 'docs/learn/review-ledger';
+import {
+  isNoteArchiveFile,
+  NOTE_ARCHIVES_DIR,
+  noteArchiveFile,
+  REVIEW_LEDGER_DIR,
+  REVIEW_NOTES_DIR,
+} from './review-ledger-paths.mjs';
+
+export { isNoteArchiveFile, noteArchiveFile, REVIEW_LEDGER_DIR };
 export const REVIEW_LEDGER_INDEX = `${REVIEW_LEDGER_DIR}/ledger.json`;
 /** The single-file layout before #2936; read only from history. */
 export const LEGACY_REVIEW_LEDGER = 'docs/learn/review-ledger.json';
@@ -39,14 +47,14 @@ export const REVIEW_LEDGER_PATH_BUDGET = 178;
 
 const RECORDS = `${REVIEW_LEDGER_DIR}/records/`;
 const CAPTURES = `${REVIEW_LEDGER_DIR}/captures/`;
-const NOTES = `${REVIEW_LEDGER_DIR}/notes/`;
+const NOTES = REVIEW_NOTES_DIR;
 const NOTE_NAME = /^(\d{8}T\d{6}\.\d{3}Z)-([a-f0-9]{12})\.json$/;
 /**
  * Immutable archives of landed notes (#3394), one per baseline advance and
  * named for the coverage baseline the notes were added at or before. Each one
  * maps a note's file name to that note's exact bytes, so readers see one store.
  */
-const ARCHIVES = `${NOTES}archive/`;
+const ARCHIVES = NOTE_ARCHIVES_DIR;
 const ARCHIVE_NAME = /^[a-f0-9]{40}\.json$/;
 const RECORD_KEYS = [
   'path',
@@ -77,10 +85,6 @@ export function reviewError(code, message, details = {}) {
 }
 
 export const recordFile = (path) => `${RECORDS}${path}.json`;
-/** @param {string} baseline the coverage baseline the archived notes predate */
-export const noteArchiveFile = (baseline) => `${ARCHIVES}${baseline}.json`;
-/** Whether a repo-relative path is a note archive rather than a loose note. */
-export const isNoteArchiveFile = (file) => file.startsWith(ARCHIVES);
 export const captureReviewFile = (path) => `${CAPTURES}${path}.json`;
 
 /**

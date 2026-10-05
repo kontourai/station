@@ -835,6 +835,114 @@ describe('note archives (#3394)', () => {
     expect(existsSync(join(root, 'ledger/note.json'))).toBe(false);
   });
 
+  // F1: an archive is fully determined by the merge base. Only the archive the
+  // advance writes (named for the merge base's baseline, in a change that moves
+  // the baseline, holding exactly that baseline's still-loose notes) passes.
+  describe('only the advancing baseline archive is accepted', () => {
+    /** Main holds two notes that were in the tree at its coverage baseline. */
+    function landedBaseline() {
+      const f = fixture();
+      reviewEdit(f, 2);
+      reviewEdit(f, 7);
+      const notes = looseNotes(f.root);
+      expect(notes).toHaveLength(2);
+      const first = advance(f.root);
+      expect(first.status, first.stderr).toBe(0);
+      commit(f.root, 'advance 1');
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      const previous = baseline(f.root);
+      git(f.root, ['switch', '-qc', 'pr']);
+      return { ...f, notes, previous };
+    }
+    const handArchive = (
+      f: ReturnType<typeof landedBaseline>,
+      files: string[],
+      name = f.previous,
+    ) => {
+      f.write(
+        noteArchiveFile(name),
+        serializeNoteArchive(
+          new Map(files.map((file) => [file, bytes(f.root, file)])),
+        ),
+      );
+      for (const file of files) git(f.root, ['rm', '-q', file]);
+    };
+
+    it('refuses a partial baseline archive in a change that does not advance (reviewer probe)', () => {
+      const f = landedBaseline();
+      handArchive(f, [f.notes[0]]);
+      commit(f.root, 'hand-made partial archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({
+          rule: 'archive-unbacked',
+          path: noteArchiveFile(f.previous),
+        }),
+        expect.objectContaining({ rule: 'note-removed', path: f.notes[0] }),
+      ]);
+    });
+
+    it('refuses a complete baseline archive in a change that does not advance', () => {
+      const f = landedBaseline();
+      handArchive(f, f.notes);
+      commit(f.root, 'hand-made complete archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(rules(result.blocking)).toEqual([
+        'archive-unbacked',
+        'note-removed',
+        'note-removed',
+      ]);
+    });
+
+    it('refuses the advance output stored under another archive name', () => {
+      const f = landedBaseline();
+      expect(advance(f.root).status).toBe(0);
+      const other = noteArchiveFile('e'.repeat(40));
+      f.write(other, bytes(f.root, noteArchiveFile(f.previous)));
+      rmSync(join(f.root, noteArchiveFile(f.previous)));
+      commit(f.root, 'advance with a renamed archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({ rule: 'archive-unbacked', path: other }),
+        expect.objectContaining({ rule: 'note-removed' }),
+        expect.objectContaining({ rule: 'note-removed' }),
+      ]);
+    });
+
+    it('refuses an advancing archive that leaves one baseline note loose', () => {
+      const f = landedBaseline();
+      const kept = bytes(f.root, f.notes[1]);
+      expect(advance(f.root).status).toBe(0);
+      const archive = noteArchiveFile(f.previous);
+      const partial = parseNoteArchive(archive, bytes(f.root, archive));
+      partial.delete(f.notes[1]);
+      f.write(archive, serializeNoteArchive(partial));
+      f.write(f.notes[1], kept);
+      commit(f.root, 'advance that archives only part of the baseline');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({ rule: 'archive-unbacked', path: archive }),
+      ]);
+    });
+
+    it('accepts the archive the advance writes (negative control)', () => {
+      const f = landedBaseline();
+      const out = advance(f.root);
+      expect(out.status, out.stderr).toBe(0);
+      expect(out.stdout).toContain('archived 2 landed note(s)');
+      commit(f.root, 'advance 2');
+      expect(check(f.root, scoped)).toMatchObject({
+        status: 0,
+        blocking: [],
+        appendOnly: 'verified',
+      });
+    });
+  });
+
   it("tracks archives under the repository's real ignore rules", () => {
     const repo = resolve(scripts, '..');
     const ignored = (path: string) =>
