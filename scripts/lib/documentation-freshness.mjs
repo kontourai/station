@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collectDocumentationChanges } from '../documentation-impact.mjs';
 import {
@@ -17,6 +18,7 @@ import {
 import {
   listReviewNoteFilesAt,
   REVIEW_LEDGER_DIR,
+  REVIEW_LEDGER_INDEX,
   readReviewState,
   readReviewStateAt,
 } from './review-ledger-store.mjs';
@@ -452,6 +454,14 @@ export function resolveDocumentationFreshness({
     mergeBase: selection.mergeBase,
     changedPaths,
     historyEntries,
+    // Judged in checkDocumentationFreshness: the check replays Git history.
+    baselineChange:
+      previous.ledger?.coverageBaseline !== current.ledger?.coverageBaseline
+        ? {
+            from: previous.ledger?.coverageBaseline,
+            to: current.ledger?.coverageBaseline,
+          }
+        : undefined,
     changedEntries: {
       review: changedEntries(...entries.review),
       capture: changedEntries(...entries.capture),
@@ -586,9 +596,18 @@ export async function checkDocumentationFreshness({
         rule: 'stale',
       })),
   ];
+  const baselineProblem =
+    resolved.mode === 'scoped' && resolved.baselineChange
+      ? await baselineAdvanceProblem(
+          root,
+          resolved.baselineChange,
+          resolved.mergeBase,
+        )
+      : undefined;
   const blocking = [
     ...stale.filter((entry) => freshnessBlocks(resolved, entry)),
     ...(resolved.sourceDrops ?? []),
+    ...(baselineProblem ? [baselineProblem] : []),
   ];
   return {
     policy: resolved,
@@ -604,6 +623,60 @@ export async function checkDocumentationFreshness({
         ),
     ),
   };
+}
+
+/**
+ * A PR that changes `coverageBaseline` may only move it to a commit reachable
+ * from its merge base at which strict freshness passes: the same rule
+ * `docs:review:record -- --advance-baseline` enforces, so a hand edit cannot
+ * skip an uncovered main commit. Returns a blocking entry, or undefined.
+ */
+async function baselineAdvanceProblem(root, { from, to }, mergeBase) {
+  const fail = (problem) => ({
+    kind: 'baseline',
+    path: REVIEW_LEDGER_INDEX,
+    rule: 'baseline',
+    problem: `${problem} Move the baseline only with npm run docs:review:record -- --advance-baseline on a clean checkout of main, then commit the index.`,
+  });
+  const label = `coverageBaseline ${String(from)} -> ${String(to)}`;
+  if (!/^[0-9a-f]{40}$/.test(String(to)))
+    return fail(`${label}: not a commit id.`);
+  try {
+    git(root, ['merge-base', '--is-ancestor', to, mergeBase]);
+  } catch {
+    return fail(
+      `${label}: the new baseline is not reachable from this change's merge base.`,
+    );
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'station-baseline-'));
+  try {
+    git(root, ['worktree', 'add', '--detach', '--quiet', dir, to]);
+    assertDocumentationFresh(
+      await checkDocumentationFreshness({
+        root: dir,
+        env: { STATION_DOCS_FRESHNESS: 'strict' },
+      }),
+    );
+  } catch (error) {
+    return fail(
+      `${label}: strict freshness does not pass at the new baseline (${String(
+        error?.message ?? error,
+      )
+        .split('\n')
+        .slice(0, 4)
+        .join('; ')}).`,
+    );
+  } finally {
+    try {
+      git(root, ['worktree', 'remove', '--force', dir]);
+    } catch {
+      rmSync(dir, { recursive: true, force: true });
+      try {
+        git(root, ['worktree', 'prune']);
+      } catch {}
+    }
+  }
+  return undefined;
 }
 
 export function assertDocumentationFresh(result) {

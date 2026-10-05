@@ -8,10 +8,12 @@ import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { ContextPickerOptions } from '../components/modals/NewChatModal';
 import {
+  buildContextOptions,
   GLOBAL_CONTEXT,
   type NewChatModalContextOption,
 } from '../components/modals/new-chat-modal-utils';
 import type { AgentData } from '../contexts/AgentsContext';
+import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
 // NewChatModal's Enable posts to `/agents/materialize-engine` through this
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
@@ -211,5 +213,54 @@ describe('ContextPickerOptions', () => {
     fireEvent.keyDown(filter, { key: 'Escape' });
     expect(onEscape).toHaveBeenCalledOnce();
     expect(onSelectContext).toHaveBeenCalledOnce();
+  });
+
+  test("a project's legacy link or path icon loads no image in the workspace options", () => {
+    const project = (slug: string, icon: string): ProjectMetadata => ({
+      id: slug,
+      slug,
+      name: slug,
+      icon,
+      workingDirectory: `/work/${slug}`,
+    });
+    const legacy = [
+      project('hotlinked', 'https://tracker.example/pixel.png'),
+      project('plain-http', 'http://tracker.example/pixel.png'),
+      project('rooted-path', '/api/files/pixel.png'),
+    ];
+    const picker = (options: NewChatModalContextOption[]) =>
+      render(
+        <ContextPickerOptions
+          contextSearch=""
+          onContextSearchChange={vi.fn()}
+          autoFocusFilter={false}
+          onEscape={vi.fn()}
+          filteredContextOptions={options}
+          selectedContext={GLOBAL_CONTEXT}
+          onSelectContext={vi.fn()}
+        />,
+      );
+
+    // Reachability: the picker does render a URL icon as an <img>, so the
+    // empty result below is the options' doing, not the renderer's.
+    const raw = picker(
+      legacy.map((p) => ({ value: p.slug, label: p.name, icon: p.icon })),
+    );
+    expect(raw.container.querySelectorAll('img').length).toBeGreaterThan(0);
+    raw.unmount();
+
+    const { container } = picker(
+      buildContextOptions([...legacy, project('emoji', '🧪')]),
+    );
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    for (const { slug } of legacy) {
+      expect(
+        screen.getByRole('button', { name: new RegExp(slug) }),
+      ).toBeTruthy();
+    }
+    // An allowed icon still shows.
+    expect(screen.getByRole('button', { name: /emoji/ }).textContent).toContain(
+      '🧪',
+    );
   });
 });
