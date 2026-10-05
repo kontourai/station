@@ -1097,6 +1097,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3043: owns Chromium to measure the shared inbox row's height before
   // and during hover, and its action targets at desktop and phone viewports.
   'src-ui/src/components/inbox-row/__tests__/InboxRow.geometry.test.tsx',
+  // Owns Chromium to measure an agent's and a project's glyph icon font size
+  // against the real BrandIcon cascade at two icon sizes.
+  'src-ui/src/components/icons/__tests__/BrandIcon.glyph.geometry.test.tsx',
+  // Owns Chromium to measure where sidebar project names start when some
+  // projects have icons and some do not.
+  'src-ui/src/__tests__/ProjectSidebarRow.iconSlot.geometry.test.tsx',
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',

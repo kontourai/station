@@ -4,6 +4,7 @@ import {
   type EngineConnectionId,
   engineConnectionId,
   engineId,
+  parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
@@ -212,6 +213,46 @@ interface ModelInventoryRefreshGeneration {
   sourceRevisions: number[];
   controller: AbortController;
   promise: Promise<LaunchableModelInventory>;
+}
+
+/**
+ * The public connection an engine identity is registered under, or
+ * `undefined` when the registry does not list it. The one mapping both the
+ * live inspector and the static engine attribution resolve through.
+ */
+function publicEngineConnection(
+  adapters: readonly ProviderAdapterShape[],
+  registry: AgentRegistry | undefined,
+  engineIdentity: EngineId,
+): { id: EngineConnectionId; engineId: EngineId } | undefined {
+  const adapter = adapters.find(
+    (candidate) => adapterEngineIdOrUndefined(candidate) === engineIdentity,
+  );
+  const publicId = engineConnectionId(
+    adapter ? connectionIdForAdapter(adapter) : engineIdentity,
+  );
+  if (
+    registry &&
+    !registry.engineConnections.some((connection) => connection.id === publicId)
+  ) {
+    return undefined;
+  }
+  return { id: publicId, engineId: engineIdentity };
+}
+
+/**
+ * An Adapter's engine id, or `undefined` when reading it throws (a plugin
+ * Adapter with a broken `metadata` accessor). One such Adapter must not stop
+ * its siblings from resolving their own identities.
+ */
+function adapterEngineIdOrUndefined(
+  adapter: ProviderAdapterShape,
+): EngineId | undefined {
+  try {
+    return engineIdForAdapter(adapter);
+  } catch {
+    return undefined;
+  }
 }
 
 function canonicalize(value: unknown): unknown {
@@ -1184,6 +1225,75 @@ export class ConnectionService {
   }
 
   /**
+   * The engine each configured runtime connection runs, derived from the
+   * connection record and its Adapter alone — no live inspection (#3355).
+   *
+   * An engine id is static (`engineIdForAdapter`; `'acp'` for every ACP
+   * connection, exactly what the inspector projects). Agent attribution used
+   * to read it off `listRuntimeConnections`, a total live inspection, so one
+   * Adapter throwing — or one slow inspection on a time-bounded read — took
+   * every Agent's engine mark with it. This enumerates the same connections
+   * the inspector does, through the same public-identity resolver, so the
+   * two cannot name a different engine for one connection; readiness stays
+   * on the live read.
+   */
+  async listEngineConnectionIdentities(): Promise<
+    Array<{
+      id: EngineConnectionId;
+      engineId: EngineId;
+      type: string;
+    }>
+  > {
+    const acpConnections = await this.getACPConnections();
+    const adapters = this.getProviderAdapters();
+    const registry = this.agentRegistry
+      ? await this.agentRegistry.load()
+      : undefined;
+    const identities: Array<{
+      id: EngineConnectionId;
+      engineId: EngineId;
+      type: string;
+    }> = [];
+    for (const adapter of adapters) {
+      // Per Adapter, never total: an Adapter whose identity cannot be read
+      // loses only its own connection's attribution.
+      try {
+        if (adapter.provider === 'acp') continue;
+        const adapterEngineId = engineIdForAdapter(adapter);
+        const identity = publicEngineConnection(
+          adapters,
+          registry,
+          adapterEngineId,
+        );
+        if (!identity) continue;
+        identities.push({
+          id: identity.id,
+          engineId: adapterEngineId,
+          type: adapterEngineId,
+        });
+      } catch {}
+    }
+    for (const config of acpConnections) {
+      // Parsed, never assumed: a config id that is not a clean identity has
+      // no public connection, and must not abort its siblings' attribution.
+      const configEngineId = parseEngineId(config.id);
+      if (!configEngineId) continue;
+      const identity = publicEngineConnection(
+        adapters,
+        registry,
+        configEngineId,
+      );
+      if (!identity) continue;
+      identities.push({
+        id: identity.id,
+        engineId: engineId('acp'),
+        type: 'acp',
+      });
+    }
+    return identities;
+  }
+
+  /**
    * Canonical engine identity and navigable connection identity used by
    * readiness and other control-plane callers.
    */
@@ -1252,23 +1362,8 @@ export class ConnectionService {
       appConfig: () => appConfig,
       acpConnections: () => acpConnections,
       acpStatus: () => this.getACPStatus(),
-      publicConnection: (engineIdentity) => {
-        const adapter = adapters.find(
-          (candidate) => engineIdForAdapter(candidate) === engineIdentity,
-        );
-        const publicId = engineConnectionId(
-          adapter ? connectionIdForAdapter(adapter) : engineIdentity,
-        );
-        if (
-          registry &&
-          !registry.engineConnections.some(
-            (connection) => connection.id === publicId,
-          )
-        ) {
-          return undefined;
-        }
-        return { id: publicId, engineId: engineIdentity };
-      },
+      publicConnection: (engineIdentity) =>
+        publicEngineConnection(adapters, registry, engineIdentity),
       onInspectionFailure: options.abortOnFailure,
       now: () => Date.now(),
     });

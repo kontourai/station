@@ -10,7 +10,7 @@ import {
 } from '../main-health-comment-policy.mjs';
 
 const RUN = {
-  workflowName: 'Backlog disposition policy',
+  workflowName: 'Repo: Backlog policy',
   runUrl: 'https://github.com/kontourai/station/actions/runs/1',
   headSha: 'a'.repeat(40),
 };

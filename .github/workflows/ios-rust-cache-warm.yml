@@ -1,4 +1,4 @@
-name: Warm iOS Rust build cache
+name: "Nightly: iOS Rust cache"
 
 # The only writer of the `ios-rust-*` cache that build-ios.yml's
 # build-ios-verification job restores. build-ios runs on pull_request_target

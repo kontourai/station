@@ -1,4 +1,4 @@
-name: CI
+name: "PR: CI"
 
 on:
   push:
@@ -757,7 +757,7 @@ jobs:
     # promotion contract. The canonical command already includes the complete
     # Vitest corpus and Veritas repo-governance; this job preserves the focused
     # connected-agent projection and diff-oriented readiness report for an
-    # operator who explicitly dispatched CI.
+    # operator who explicitly dispatched PR: CI.
     needs: [classify, full-regression]
     if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}
     runs-on: ubuntu-22.04

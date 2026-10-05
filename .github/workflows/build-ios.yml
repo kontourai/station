@@ -1,4 +1,4 @@
-name: Build iOS verification artifact
+name: "PR: iOS build"
 
 # Mirrors build-android.yml: a debug/no-sign iOS simulator build exercised
 # outside a tag release, so an iOS-breaking Rust/Xcode change is caught

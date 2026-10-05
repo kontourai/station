@@ -1,11 +1,11 @@
-name: Landing automation
+name: "Repo: Landing automation"
 
 on:
   pull_request_target:
     branches: [main]
     types: [labeled, ready_for_review, reopened, dequeued]
   workflow_run:
-    workflows: [CI]
+    workflows: ["PR: CI"]
     types: [completed]
 
 permissions:

@@ -2081,7 +2081,7 @@ function hasExactPullRequestSecretScanWorkflow(file, document) {
       'concurrency',
       'jobs',
     ]) &&
-    document.name === 'Secret Scan' &&
+    document.name === 'PR: Secret scan' &&
     hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
     hasExactMainBranchTrigger(document.on.push) &&
     hasExactMainBranchTrigger(document.on.pull_request) &&
@@ -2110,7 +2110,7 @@ function hasExactSecurityAnalysisWorkflow(document) {
       'concurrency',
       'jobs',
     ]) &&
-    document?.name === 'Security analysis' &&
+    document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
       'push',
       PULL_REQUEST_TARGET,
@@ -2625,7 +2625,7 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '268057c215cdf221d4eb74f38c6a3b9da93c7caf91730de9bf494f0a12be3ffd';
+  '4002198f5ddce471e10e556cf863fdc8d3283d5cb93b9c22582143fa0fffcdc3';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
