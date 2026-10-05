@@ -911,6 +911,10 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
       conversationId: 'conversation-peer-child',
       userId: (delegateTask.mock.calls[0]![0] as { userId?: string }).userId,
       environment: { id: PEER_ENVIRONMENT_ID, name: 'Peer', kind: 'peer' },
+      // The calling session's own conversation, from the derived context the
+      // route resolved, never the forged claim: the usage tree finds the
+      // peer record by it.
+      parentConversationId: 'conversation-child',
     });
     expect((delegateTask.mock.calls[0]![0] as { userId?: string }).userId).toBe(
       LOCAL_OPERATOR_PRINCIPAL_ID,

@@ -764,7 +764,7 @@ describe('ChatMessageList', () => {
     );
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
-    expect(screen.queryByText('Start a conversation')).toBeNull();
+    expect(screen.queryByText('Start a chat')).toBeNull();
   });
 
   test('the device setting selects the smooth streaming consumer', () => {

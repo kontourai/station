@@ -281,7 +281,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     // The conversation has resolved (its title reaches the breadcrumb), so
     // the header's menu is not rebuilt under the click.
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
-    await page.getByRole('button', { name: 'Collapse chat list' }).click();
+    await page.getByRole('button', { name: 'Hide inbox' }).click();
     await expect(inbox(page)).toHaveCount(0);
 
     await page.reload();
@@ -289,7 +289,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
     await expect(inbox(page)).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
     await expect(inbox(page)).toBeVisible();
   });
 
@@ -669,7 +669,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     // The Diff folded the inbox (the transcript's floor); unfold it by hand
     // to pick another conversation — the reader's choice for this session.
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
     await expect(inbox(page)).toBeVisible();
 
     await inbox(page)
@@ -685,7 +685,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     // This conversation has no choice of its own yet, so Files folded the
     // inbox; unfold it to go back.
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
 
     // The first conversation's row carries the seeded title until the
     // conversation list's own title arrives; either names conv-1.
@@ -749,7 +749,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await seed(page);
   });
 
-  test('one bar above the transcript: the title once, Chat’s verbs as named icons beside the breadcrumb', async ({
+  test('one bar above the transcript: the title once, Chat’s one verb (New) as a named icon beside the breadcrumb', async ({
     page,
   }) => {
     await landOnChat(page);
@@ -760,13 +760,15 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
       centreChat(page).locator('.chat-dock__header-identity'),
     ).toHaveCount(0);
     await expect(bar(page).getByText('Dev Agent Chat')).toHaveCount(1);
-    const open = bar(page).getByRole('button', { name: 'Open conversation' });
     const create = bar(page).getByRole('button', { name: 'New chat' });
-    await expect(open).toBeVisible();
     await expect(create).toBeVisible();
-    // No words: the Open icon may carry its session-count badge, nothing else.
-    await expect(open).toHaveText(/^\d*$/);
+    // No words, and no Open beside it: the inbox sits beside Chat. No
+    // session count either; the inbox enumerates the chats.
     await expect(create).toHaveText('');
+    await expect(
+      bar(page).getByRole('button', { name: /^Open conversation/ }),
+    ).toHaveCount(0);
+    await expect(bar(page)).not.toContainText(/\bsessions?\b/i);
     await expect(
       bar(page).getByRole('button', { name: 'More dock actions' }),
     ).toBeVisible();
@@ -795,7 +797,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     // The reader expands it by hand while the tool is open: their choice.
     await openCodingView(page, 'Files');
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
     await expect(inbox(page)).toBeVisible();
     await openCodingView(page, 'Diff');
     await expect(inbox(page)).toBeVisible();
@@ -948,14 +950,18 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
 
   const sidePanel = (page: Page) =>
     page.locator('.coding-workbench__page--drill-in');
-  const edge = (page: Page) =>
+  // Pointer-only (aria-hidden, out of the tab order): located by its test
+  // id, not by a role a screen reader never meets.
+  const edge = (page: Page) => page.getByTestId('coding-inbox-edge');
+  // The ONE control a keyboard or screen reader meets for the folded inbox.
+  const showInbox = (page: Page) =>
     page.getByRole('button', { name: /^Show inbox/ });
 
   test.beforeEach(async ({ page }) => {
     await seed(page);
   });
 
-  test('a folded inbox leaves a strip that widens on hover and focus, and a click brings the inbox back as the reader’s choice', async ({
+  test('a folded inbox leaves a pointer-only strip that widens on hover, one accessible Show inbox control, and a click brings the inbox back as the reader’s choice', async ({
     page,
   }) => {
     await landOnChat(page);
@@ -968,9 +974,18 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
     expect(rest.height).toBeGreaterThanOrEqual(44);
     const chat = (await chatPage(page).boundingBox())!;
     expect(Math.abs(rest.x - chat.x)).toBeLessThan(2);
+    // One control, one name: the bar's toggle is the only "Show inbox" a
+    // keyboard or screen reader meets; the strip is hidden from both.
+    await expect(showInbox(page)).toHaveCount(1);
+    await expect(
+      page
+        .locator('.coding-workbench__bar')
+        .getByRole('button', { name: 'Show inbox' }),
+    ).toHaveCount(1);
+    await expect(edge(page)).toHaveAttribute('aria-hidden', 'true');
+    await expect(edge(page)).toHaveAttribute('tabindex', '-1');
     // Nothing needs the reader here, so the strip's rule is the neutral
     // border at rest and the accent only under the pointer.
-    await expect(edge(page)).toHaveAccessibleName('Show inbox');
     const ruleColours = () =>
       page.evaluate(() => {
         const strip = document.querySelector<HTMLElement>(
@@ -1013,27 +1028,8 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
         return `${Math.round(box.width)} hover=${hovered}`;
       })
       .toMatch(/^(2\d|3\d) hover=true$/);
-    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
-    // Keyboard focus — a key before the focus is what makes it visible
-    // (`:focus-visible`), as a Tab would.
-    await page.keyboard.press('Shift');
-    await edge(page).focus();
-    await expect
-      .poll(async () =>
-        page.evaluate(
-          () =>
-            `${document.activeElement?.getAttribute('aria-label') ?? ''} visible=${
-              document.querySelector(
-                '.coding-workbench__inbox-edge:focus-visible',
-              ) !== null
-            }`,
-        ),
-      )
-      .toMatch(/^Show inbox.* visible=true$/);
-    await expect
-      .poll(async () => (await edge(page).boundingBox())!.width)
-      .toBeGreaterThanOrEqual(20);
-    await page.keyboard.press('Enter');
+    // The pointer's shortcut: a click on the strip brings the inbox back.
+    await edge(page).click();
     await expect(inbox(page)).toBeVisible();
     await expect(edge(page)).toHaveCount(0);
     // The reader's choice: the tool closing and reopening leaves it.

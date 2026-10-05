@@ -474,6 +474,57 @@ describe('browser routes: validation and typed failures', () => {
     ).toBe(404);
   });
 
+  test('a refused viewport names the field to fix (#3304)', async () => {
+    const h = harness();
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string; generation: number };
+    };
+    const cases: Array<[unknown, string]> = [
+      [{ width: 400, height: 800 }, 'viewport.deviceScaleFactor is required'],
+      [{ height: 800, deviceScaleFactor: 1 }, 'viewport.width is required'],
+      [
+        { width: 1, height: 800, deviceScaleFactor: 1 },
+        'viewport.width must be an integer from 100 to 4096',
+      ],
+      [
+        { width: 400, height: 800, deviceScaleFactor: 9 },
+        'viewport.deviceScaleFactor must be a number from 0.5 to 4',
+      ],
+      [
+        { width: 400, height: 800, deviceScaleFactor: 1, mobile: 'yes' },
+        'viewport.mobile must be a boolean',
+      ],
+      [
+        { width: 400, height: 800, deviceScaleFactor: 1, zoom: 2 },
+        'viewport.zoom is not a viewport field',
+      ],
+    ];
+    for (const [viewport, expected] of cases) {
+      const createResponse = await h.request('POST', '/sessions', 'operator', {
+        projectSlug: 'alpha',
+        url: 'https://a.b',
+        viewport,
+      });
+      expect(createResponse.status).toBe(400);
+      expect(await createResponse.json()).toEqual({
+        success: false,
+        code: 'invalid-request',
+        error: expected,
+      });
+      const resizeResponse = await h.request(
+        'POST',
+        `/sessions/${created.data.browserSessionId}/viewport`,
+        'operator',
+        { viewport, generation: created.data.generation },
+      );
+      expect(resizeResponse.status).toBe(400);
+      expect(await resizeResponse.json()).toMatchObject({
+        code: 'invalid-request',
+        error: expected,
+      });
+    }
+  });
+
   test('a stale generation is a typed 409', async () => {
     const h = harness();
     const created = (await (await h.create('operator')).json()) as {

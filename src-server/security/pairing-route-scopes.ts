@@ -2703,6 +2703,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // expose another Station's data, so the conversations family's normal
     // mutating `orchestration:operate` scope applies.
     { method: 'POST', path: '/api/conversations/:id/acknowledgement' },
+    // `rename_session`'s leaf. It writes one conversation title, so the
+    // family's mutating `orchestration:operate` scope applies. The handler
+    // answers only a station-control tool call with a verified caller (it
+    // stamps `titleSource: 'agent'`), so a paired device that reaches it is
+    // refused there; the scope is the floor, not the gate.
+    { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
@@ -2828,6 +2834,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
     },
+    // A conversation's usage tree: read-only, re-checks the Session read ACL
+    // for the conversation and for every session in it, and returns only
+    // usage figures this Station recorded for sessions the caller can already
+    // read through the conversation `stats` leaf and the session reads at
+    // this tier. A delegate on a paired Station appears only as this
+    // Station's own record of it; no peer is contacted. Read tier, no
+    // override.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/usage-tree',
+    },
     // Context-boundary reservations operate only on the current Station's
     // conversation authority. They neither resolve a peer environment nor
     // expose another Station's data: POST/DELETE mutate the local reservation;
@@ -2916,6 +2933,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
+    // #3157: the usage-limit banner's recovery read and its two person-owned
+    // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
+    // the GET returns only the Session's recovery projection under the same
+    // session-read gate as its siblings; the POSTs resume or retire a stop on a
+    // Session the caller already owns (`canUserMutateSession`), the same
+    // authority as sending the next turn, so they take the operate tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/usage-limit',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate

@@ -83,6 +83,15 @@ import {
  * nothing. There is no controller-side lookup in this slice, so
  * the lookup assertions address the receiver directly; frontend/controller
  * tracking of the projection remains next-slice work.
+ *
+ * #2875 slice 1 rides the same harness: a `project-portable-prepared`
+ * create naming the receiver checkout's real HEAD runs one echo turn in the
+ * execution root with a path-free "matched when checked" receipt; one naming
+ * the controller's different real commit refuses with the typed mismatch
+ * code, no provider effect, and the code recorded on the attempt claim.
+ * Plain portable and plain directory dispatch are the receipt-free controls.
+ * A genuinely older receiver (no `executionPreparation`) is NOT VERIFIED
+ * here for the same reason as above; the sender gate is unit-tested.
  */
 
 const execFileAsync = promisify(execFile);
@@ -873,6 +882,28 @@ function delegationTarget(
   };
 }
 
+/** #2875: the portable target plus a git-commit version requirement. */
+function preparedDelegationTarget(
+  fixture: ProofFixture,
+  commit: string,
+): JsonRecord {
+  return {
+    environment: { kind: 'saved', id: fixture.receiverEnvironmentId },
+    agent: fixture.museAgentSlug,
+    workspace: {
+      kind: 'project-portable-prepared',
+      portableProjectId: fixture.portableProjectId,
+      resourceId: fixture.resourceId,
+      preparation: {
+        protocol: 'station.execution-preparation/v1',
+        mode: 'existing-realization',
+        version: { scheme: 'git-commit', value: commit },
+        guarantees: ['version-matched-when-checked'],
+      },
+    },
+  };
+}
+
 async function delegateFromController(
   fixture: ProofFixture,
   target: JsonRecord,
@@ -1303,6 +1334,198 @@ test.describe
       console.log(
         `[portable-proof] controller convergence samples for ${taskId}: ${JSON.stringify(convergence)}`,
       );
+    });
+
+    // #2875 slice 1: version-matched execution on the receiver's existing
+    // checkout. The requirement rides the real controller → receiver peer
+    // hop as the `project-portable-prepared` variant with an attempt id; the
+    // receiver's real git-commit adapter reads its own checkout.
+    test('#2875 a version-matched prepared turn runs at the requested commit on the receiver', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const receiverHead = (
+        await run('git', ['rev-parse', 'HEAD'], {
+          cwd: current.receiverCheckout,
+        })
+      ).stdout.trim();
+      const turnToken = `prepared-match-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const attemptId = attemptIdFor('prepared-match');
+      const delegated = await delegateAttemptFromController(
+        current,
+        preparedDelegationTarget(current, receiverHead),
+        attemptId,
+        `Return this token unchanged: ${turnToken}`,
+      );
+      expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
+      const handle = (delegated.payload as JsonRecord).data as JsonRecord;
+      const resolution = handle.resolution as JsonRecord;
+      expect(resolution.environmentId).toBe(current.receiverEnvironmentId);
+      expect((resolution.workspace as JsonRecord).cwd).toBe(
+        current.receiverExecutionRoot,
+      );
+      // DECLARED receipt: path-free, "matched when checked", no setup.
+      const preparation = resolution.preparation as JsonRecord;
+      expect(preparation).toMatchObject({
+        protocol: 'station.execution-preparation/v1',
+        mode: 'existing-realization',
+        resourceId: current.resourceId,
+        requested: { scheme: 'git-commit', value: receiverHead },
+        observed: { scheme: 'git-commit', value: receiverHead },
+        guarantee: 'version-matched-when-checked',
+        trackedChanges: 'none',
+        setup: 'not-performed',
+      });
+      expect(typeof preparation.untrackedFiles).toBe('number');
+      expect(JSON.stringify(preparation)).not.toContain(
+        current.receiverCheckout,
+      );
+
+      // ACTUAL launch in the checked checkout's execution root, THIS turn.
+      await poll('the prepared muse exec launch', 120_000, async () =>
+        (await current.museExecLaunches()).some(
+          (entry) =>
+            entry.cwd === current.receiverExecutionRoot &&
+            entry.argv.some((arg) => arg.includes(turnToken)),
+        ),
+      );
+      const turnLaunches = (await current.museExecLaunches()).slice(
+        baseline.launches,
+      );
+      expect(turnLaunches.length).toBe(1);
+      expect(turnLaunches[0]!.cwd).toBe(current.receiverExecutionRoot);
+
+      // PROVIDER output on the receiver's own conversation.
+      const taskId = handle.taskId as string;
+      await poll('the prepared turn to complete', 240_000, async () => {
+        const observed = await api(
+          current.receiver.api,
+          'GET',
+          `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
+          { headers: operatorHeaders(current.delegationCredential) },
+        );
+        const status = ((observed.payload as JsonRecord)?.data as JsonRecord)
+          ?.status;
+        return (
+          observed.status === 200 &&
+          (status === 'completed' || status === 'failed')
+        );
+      });
+      const events = await api(
+        current.receiver.api,
+        'GET',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+        { headers: operatorHeaders(current.delegationCredential) },
+      );
+      expect(events.status).toBe(200);
+      expect(JSON.stringify(events.payload)).toMatch(
+        new RegExp(`echo:[\\s\\S]*${turnToken}`),
+      );
+      // The attempt claim names the one accepted execution.
+      const lookedUp = await lookupAttemptOnReceiver(
+        current,
+        attemptId,
+        current.delegationCredential,
+      );
+      expect(lookedUp.status).toBe(200);
+      expect((lookedUp.payload as JsonRecord).data).toMatchObject({
+        state: 'accepted',
+        taskId,
+      });
+    });
+
+    test('#2875 a mismatched version refuses on the receiver before any provider effect', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      // A real commit the receiver does not have checked out: the
+      // controller's own checkout of the same remote, committed separately.
+      const controllerHead = (
+        await run('git', ['rev-parse', 'HEAD'], {
+          cwd: join(current.root, 'controller', CONTROLLER_SLUG),
+        })
+      ).stdout.trim();
+      const receiverHead = (
+        await run('git', ['rev-parse', 'HEAD'], {
+          cwd: current.receiverCheckout,
+        })
+      ).stdout.trim();
+      expect(controllerHead).toMatch(/^[0-9a-f]{40}$/);
+      expect(controllerHead).not.toBe(receiverHead);
+      const baseline = await captureEffectBaseline(current);
+      const attemptId = attemptIdFor('prepared-mismatch');
+      const refused = await delegateAttemptFromController(
+        current,
+        preparedDelegationTarget(current, controllerHead),
+        attemptId,
+        'This turn must never reach a provider',
+      );
+      expect(refused.status, JSON.stringify(refused.payload)).toBe(403);
+      expect((refused.payload as JsonRecord).code).toBe(
+        'execution_preparation_version_mismatch',
+      );
+      expect((refused.payload as JsonRecord).error).toBe(
+        'The offered Project resource is not at the requested version.',
+      );
+      // Copy is fixed: neither commit nor any path crosses the hop.
+      const wire = JSON.stringify(refused.payload);
+      expect(wire).not.toContain(receiverHead);
+      expect(wire).not.toContain(current.receiverCheckout);
+      await assertNoProviderEffect(current, baseline);
+      // The refusal is recorded on the #485 claim and readable by lookup.
+      const lookedUp = await lookupAttemptOnReceiver(
+        current,
+        attemptId,
+        current.delegationCredential,
+      );
+      expect(lookedUp.status).toBe(200);
+      expect((lookedUp.payload as JsonRecord).data).toMatchObject({
+        state: 'refused',
+        refusalCode: 'execution_preparation_version_mismatch',
+      });
+    });
+
+    test('#2875 controls: plain portable and plain directory dispatch carry no preparation receipt', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const portable = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        `Return this token unchanged: portable-control-${Date.now()}`,
+      );
+      expect(portable.status, JSON.stringify(portable.payload)).toBe(200);
+      const portableResolution = (
+        (portable.payload as JsonRecord).data as JsonRecord
+      ).resolution as JsonRecord;
+      expect(portableResolution.environmentId).toBe(
+        current.receiverEnvironmentId,
+      );
+      expect(portableResolution.preparation).toBeUndefined();
+
+      const directory = await delegateFromController(
+        current,
+        {
+          environment: { kind: 'saved', id: current.receiverEnvironmentId },
+          agent: current.museAgentSlug,
+          workspace: { kind: 'directory', cwd: current.receiverExecutionRoot },
+        },
+        `Return this token unchanged: directory-control-${Date.now()}`,
+      );
+      expect(directory.status, JSON.stringify(directory.payload)).toBe(200);
+      const directoryResolution = (
+        (directory.payload as JsonRecord).data as JsonRecord
+      ).resolution as JsonRecord;
+      expect(directoryResolution.environmentId).toBe(
+        current.receiverEnvironmentId,
+      );
+      expect((directoryResolution.workspace as JsonRecord).cwd).toBe(
+        current.receiverExecutionRoot,
+      );
+      expect(directoryResolution.preparation).toBeUndefined();
     });
 
     test('continues a portable task under a fresh offer admission on the receiver', async () => {
