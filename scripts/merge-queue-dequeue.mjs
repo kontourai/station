@@ -7,17 +7,19 @@
  * the Checks and Actions APIs, and for a conflict runs `git merge-tree` over
  * fetched objects.
  *
- * - failed_checks: one comment naming the merge group's failing checks, their
+ * - failed_checks: a comment naming the merge group's failing checks, their
  *   error annotations (fast-checks shards annotate each failed test) and the
  *   failing runs' artifacts.
- * - merge_conflict with conflicting files against current main: one comment
+ * - merge_conflict with conflicting files against current main: a comment
  *   listing them. That is a real conflict and wakes the owner.
  * - merge_conflict that merges cleanly with current main: the conflict was with
  *   an entry ahead in the queue. A `station-autoland` PR is re-armed once per
- *   head; anything else gets a comment.
+ *   head, pinned to the head merge-tree checked; anything else gets a comment.
  *
- * Every report edits the one marked comment this app already left on the PR,
- * and a dequeue it has already reported is not reported again.
+ * Each new removal posts a new comment, so the owner is notified, and
+ * minimizes this app's earlier reports as outdated. A removal this app has
+ * already reported is not reported again. Only the app's own comments count:
+ * a marker in anyone else's comment is ignored.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -45,7 +47,11 @@ const LIMITS = Object.freeze({
   annotationChars: 800,
   artifacts: 12,
   files: 50,
+  lineChars: 300,
+  // GitHub refuses comment bodies over 65,536 characters.
+  bodyChars: 60_000,
 });
+const TRUNCATED = 'Truncated to fit the comment size limit; read the job log.';
 
 /** The removal's lower-case reason, mapped to what this script explains. */
 function classifyRemoval(reason) {
@@ -153,60 +159,74 @@ function renderFailureReport({ removedAt, group, checks, server, repository }) {
     lines.push(
       'No completed failing check run was recorded on the merge group. A required check may have timed out waiting to start.',
     );
-  for (const check of checks.slice(0, LIMITS.checks)) {
-    const link = trustedLink(check.html_url, server);
-    lines.push(
-      `#### ${inlineLiteral(check.name)} — ${check.conclusion}${link ? ` ([job](${link}))` : ''}`,
-      '',
-    );
-    const annotations = check.annotations.slice(0, LIMITS.annotations);
-    if (annotations.length)
-      lines.push(
-        codeBlock(
-          annotations
-            .map((annotation) =>
-              [
-                annotation.path && annotation.path !== '.github'
-                  ? `${annotation.path}${annotation.title ? ` :: ${annotation.title}` : ''}`
-                  : annotation.title || '',
-                String(annotation.message ?? '').slice(
-                  0,
-                  LIMITS.annotationChars,
-                ),
-              ]
-                .filter(Boolean)
-                .join('\n'),
-            )
-            .join('\n\n'),
-        ),
-      );
-    else
-      lines.push(
-        'No error annotation beyond the exit status; read the job log.',
-      );
-    if (check.annotations.length > annotations.length)
-      lines.push(
-        '',
-        `${check.annotations.length - annotations.length} more annotation(s) omitted.`,
-      );
-    if (check.artifacts.length) {
-      lines.push('', 'Artifacts:');
-      for (const artifact of check.artifacts.slice(0, LIMITS.artifacts))
-        lines.push(
-          `- [${inlineLiteral(artifact.name)}](${server}/${repository}/actions/runs/${artifact.runId}/artifacts/${artifact.id}) (${artifact.size_in_bytes} bytes)`,
-        );
-    }
-    lines.push('');
-  }
+  const shown = checks.slice(0, LIMITS.checks);
+  // Each check gets an equal share of the body, so one noisy check cannot
+  // push the others out or the comment over GitHub's limit.
+  const budget = Math.floor(LIMITS.bodyChars / Math.max(1, shown.length)) - 200;
+  for (const check of shown)
+    lines.push(...checkSection(check, { server, repository, budget }), '');
   if (checks.length > LIMITS.checks)
     lines.push(
       `${checks.length - LIMITS.checks} more failing check(s) omitted.`,
     );
   lines.push(
     '',
-    'Fix the failure and push; the merge queue verifies the next candidate. This comment is edited for each later removal.',
+    'Fix the failure and push; the merge queue verifies the next candidate.',
   );
   return lines.join('\n');
+}
+
+function annotationText(annotations) {
+  return annotations
+    .map((annotation) =>
+      [
+        annotation.path && annotation.path !== '.github'
+          ? `${annotation.path}${annotation.title ? ` :: ${annotation.title}` : ''}`.slice(
+              0,
+              LIMITS.lineChars,
+            )
+          : String(annotation.title || '').slice(0, LIMITS.lineChars),
+        String(annotation.message ?? '').slice(0, LIMITS.annotationChars),
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    )
+    .join('\n\n');
+}
+
+function checkSection(check, { server, repository, budget }) {
+  const link = trustedLink(check.html_url, server);
+  const head = [
+    `#### ${inlineLiteral(check.name)} — ${check.conclusion}${link ? ` ([job](${link}))` : ''}`,
+    '',
+  ];
+  const tail = [];
+  const annotations = check.annotations.slice(0, LIMITS.annotations);
+  if (check.annotations.length > annotations.length)
+    tail.push(
+      '',
+      `${check.annotations.length - annotations.length} more annotation(s) omitted.`,
+    );
+  if (check.artifacts.length) {
+    tail.push('', 'Artifacts:');
+    for (const artifact of check.artifacts.slice(0, LIMITS.artifacts))
+      tail.push(
+        `- [${inlineLiteral(artifact.name)}](${server}/${repository}/actions/runs/${artifact.runId}/artifacts/${artifact.id}) (${artifact.size_in_bytes} bytes)`,
+      );
+  }
+  if (!annotations.length)
+    return [
+      ...head,
+      'No error annotation beyond the exit status; read the job log.',
+      ...tail,
+    ];
+  let text = annotationText(annotations);
+  const fixed = [...head, ...tail].join('\n').length + 40;
+  if (fixed + text.length > budget) {
+    text = text.slice(0, Math.max(0, budget - fixed - TRUNCATED.length));
+    tail.unshift('', TRUNCATED);
+  }
+  return [...head, codeBlock(text), ...tail];
 }
 
 function renderConflictReport({ removedAt, files, headSha, mainSha, outcome }) {
@@ -219,7 +239,12 @@ function renderConflictReport({ removedAt, files, headSha, mainSha, outcome }) {
     lines.push(
       `Head \`${headSha.slice(0, 12)}\` conflicts with main \`${mainSha.slice(0, 12)}\` in ${files.length} file(s):`,
       '',
-      codeBlock(files.slice(0, LIMITS.files).join('\n')),
+      codeBlock(
+        files
+          .slice(0, LIMITS.files)
+          .map((file) => file.slice(0, LIMITS.lineChars))
+          .join('\n'),
+      ),
     );
     if (files.length > LIMITS.files)
       lines.push('', `${files.length - LIMITS.files} more file(s) omitted.`);
@@ -239,14 +264,12 @@ function renderConflictReport({ removedAt, files, headSha, mainSha, outcome }) {
   return lines.join('\n');
 }
 
-/** The comment to edit: only this app's own marked comment. */
-function existingReport(comments, author) {
-  return (
-    comments.find(
-      (comment) =>
-        comment.user?.login === author &&
-        String(comment.body ?? '').startsWith(REPORT_MARKER),
-    ) ?? null
+/** This app's own earlier reports; a marker in anyone else's comment is not one. */
+function ownReports(comments, author) {
+  return comments.filter(
+    (comment) =>
+      comment.user?.login === author &&
+      String(comment.body ?? '').startsWith(REPORT_MARKER),
   );
 }
 
@@ -363,33 +386,48 @@ async function failureChecks(groupSha, env) {
   );
 }
 
-async function upsertReport(number, body, env) {
+const MINIMIZE_MUTATION = `mutation($id: ID!) {
+  minimizeComment(input: { subjectId: $id, classifier: OUTDATED }) {
+    minimizedComment { isMinimized }
+  }
+}`;
+
+/**
+ * Posts a new comment so the owner is notified (an edit is silent), then
+ * minimizes this app's earlier reports. A removal already reported is skipped.
+ */
+async function postReport(number, report, env) {
   const author = env.COMMENT_AUTHOR;
   if (!author) throw new Error('COMMENT_AUTHOR is required');
-  const existing = existingReport(
+  // Backstop: the per-check budget keeps the body far below GitHub's limit.
+  const body =
+    report.length > LIMITS.bodyChars + 4_000
+      ? `${report.slice(0, LIMITS.bodyChars)}\n\n${TRUNCATED}`
+      : report;
+  const earlier = ownReports(
     await listGithub(`issues/${number}/comments`, null, { env }),
     author,
   );
   const key = body.split('\n', 1)[0];
-  if (existing?.body.split('\n', 1)[0] === key) {
+  if (earlier.some((comment) => comment.body.split('\n', 1)[0] === key)) {
     console.log(`#${number}: this removal is already reported`);
     return;
   }
-  if (existing)
-    await github(`issues/comments/${existing.id}`, {
-      method: 'PATCH',
-      body: { body },
-      env,
-    });
-  else
-    await github(`issues/${number}/comments`, {
-      method: 'POST',
-      body: { body },
-      env,
-    });
-  console.log(
-    `#${number}: ${existing ? 'updated' : 'posted'} the removal report`,
-  );
+  await github(`issues/${number}/comments`, {
+    method: 'POST',
+    body: { body },
+    env,
+  });
+  console.log(`#${number}: posted the removal report`);
+  for (const comment of earlier)
+    try {
+      await graphql(MINIMIZE_MUTATION, { id: comment.node_id }, env);
+    } catch (error) {
+      // The new report is already posted; a stale one left visible is cosmetic.
+      console.log(
+        `::warning::#${number}: could not minimize report ${comment.id}: ${error.message}`,
+      );
+    }
 }
 
 async function explainDequeue({
@@ -427,7 +465,7 @@ async function explainDequeue({
     );
     const group = groupRunFor(runs ?? [], number, removedAt);
     const checks = group ? await failureChecks(group.head_sha, env) : [];
-    await upsertReport(
+    await postReport(
       number,
       renderFailureReport({
         removedAt: removal.createdAt,
@@ -457,14 +495,24 @@ async function explainDequeue({
       // checks. Once per head: a second conflict removal stops here.
       execFileSync(
         'gh',
-        ['pr', 'merge', String(number), '--repo', repository, '--auto'],
+        [
+          'pr',
+          'merge',
+          String(number),
+          '--repo',
+          repository,
+          '--auto',
+          // Arm only the head merge-tree checked; a later push is refused.
+          '--match-head-commit',
+          pr.head.sha,
+        ],
         { env, stdio: 'inherit', timeout: 30_000, windowsHide: true },
       );
       console.log(`#${number}: merges cleanly with main; re-armed once`);
       return 'rearmed';
     }
   }
-  await upsertReport(
+  await postReport(
     number,
     renderConflictReport({
       removedAt: removal.createdAt,

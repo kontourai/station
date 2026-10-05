@@ -55,6 +55,10 @@ jobs:
   # checked out or executed, and the app token is minted after that.
   dequeue:
     if: ${{ github.event_name == 'pull_request_target' && github.event.action == 'dequeued' }}
+    # One report at a time per PR, in removal order; none is cancelled.
+    concurrency:
+      group: landing-dequeue-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:

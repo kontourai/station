@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
@@ -13,7 +14,17 @@ const AUTHOR = 'station-automation[bot]';
 const GROUP_SHA = 'c'.repeat(40);
 const OTHER_GROUP_SHA = 'd'.repeat(40);
 
-type Call = { method: string; path: string; body?: { body?: string } };
+type Call = {
+  method: string;
+  path: string;
+  body?: { body?: string; query?: string; variables?: { id?: string } };
+};
+type Comment = {
+  id: number;
+  node_id?: string;
+  user: { login: string };
+  body: string;
+};
 
 /**
  * A loopback GitHub serving exactly the shapes the dequeue script reads:
@@ -24,7 +35,9 @@ async function fakeGitHub(state: {
   removals: Array<{ createdAt: string; reason: string }>;
   head?: { oid: string; committedDate: string };
   pr?: Record<string, unknown>;
-  comments?: Array<{ id: number; user: { login: string }; body: string }>;
+  comments?: Comment[];
+  /** Failing checks with long annotations, to exceed the body limit. */
+  noisyChecks?: number;
 }) {
   const calls: Call[] = [];
   const server = createServer(async (req, res) => {
@@ -34,10 +47,14 @@ async function fakeGitHub(state: {
     calls.push({
       method: req.method ?? 'GET',
       path,
-      ...(bytes && path !== '/graphql' ? { body: JSON.parse(bytes) } : {}),
+      ...(bytes ? { body: JSON.parse(bytes) } : {}),
     });
     res.setHeader('content-type', 'application/json');
     const send = (value: unknown) => res.end(JSON.stringify(value));
+    if (path === '/graphql' && bytes.includes('minimizeComment'))
+      return send({
+        data: { minimizeComment: { minimizedComment: { isMinimized: true } } },
+      });
     if (path === '/graphql')
       return send({
         data: {
@@ -66,6 +83,27 @@ async function fakeGitHub(state: {
           },
         ],
       });
+    if (
+      path.startsWith(`/commits/${GROUP_SHA}/check-runs`) &&
+      state.noisyChecks
+    )
+      return send({
+        check_runs: Array.from({ length: state.noisyChecks }, (_, i) => ({
+          id: 100 + i,
+          name: `noisy check ${i}`,
+          conclusion: 'failure',
+          details_url: 'https://github.com/owner/repo/actions/runs/501/job/1',
+        })),
+      });
+    if (/^\/check-runs\/1[0-9]{2}\/annotations/.test(path))
+      return send(
+        Array.from({ length: 8 }, (_, i) => ({
+          annotation_level: 'failure',
+          path: `src/${'deep/'.repeat(80)}file${i}.test.ts`,
+          title: 'T'.repeat(400),
+          message: 'M'.repeat(2_000),
+        })),
+      );
     if (path.startsWith(`/commits/${GROUP_SHA}/check-runs`))
       return send({
         check_runs: [
@@ -133,6 +171,11 @@ function writes(calls: Call[]) {
   return calls.filter(
     (call) => call.method !== 'GET' && call.path !== '/graphql',
   );
+}
+function minimized(calls: Call[]) {
+  return calls
+    .filter((call) => call.body?.query?.includes('minimizeComment'))
+    .map((call) => call.body?.variables?.id);
 }
 
 /** A base checkout whose origin holds main and a pull-request head. */
@@ -259,35 +302,129 @@ describe.runIf(process.platform !== 'win32')(
       }
     });
 
-    it('edits its own earlier report and skips a removal it already reported', async () => {
+    it('posts a new report for a new removal, minimizes its earlier one, and skips a removal already reported', async () => {
       const cwd = makeTempDir('station-dequeue-update-');
       const removedAt = recent();
-      const old = {
-        id: 44,
-        user: { login: AUTHOR },
-        body: '<!-- station-merge-queue-dequeue failure:2026-01-01T00:00:00Z -->\nold',
-      };
+      const comments: Comment[] = [
+        {
+          id: 44,
+          node_id: 'IC_old',
+          user: { login: AUTHOR },
+          body: '<!-- station-merge-queue-dequeue failure:2026-01-01T00:00:00Z -->\nold',
+        },
+      ];
       const api = await fakeGitHub({
         removals: [{ createdAt: removedAt, reason: 'failed_checks' }],
-        comments: [old],
+        comments,
       });
       try {
         await run(api, { cwd });
-        const edited = writes(api.calls);
-        expect(edited).toEqual([
+        // A new comment notifies the owner; an edit would be silent.
+        const posted = writes(api.calls);
+        expect(posted).toEqual([
           expect.objectContaining({
-            method: 'PATCH',
-            path: '/issues/comments/44',
+            method: 'POST',
+            path: '/issues/7/comments',
           }),
         ]);
-        old.body = edited[0].body?.body ?? '';
+        expect(minimized(api.calls)).toEqual(['IC_old']);
+        comments.push({
+          id: 45,
+          node_id: 'IC_new',
+          user: { login: AUTHOR },
+          body: posted[0].body?.body ?? '',
+        });
         api.calls.length = 0;
         const { stdout } = await run(api, { cwd });
         expect(stdout).toContain('already reported');
         expect(writes(api.calls)).toEqual([]);
+        expect(minimized(api.calls)).toEqual([]);
       } finally {
         await api.close();
       }
+    });
+
+    it("ignores a forged marker in another account's comment, even for this exact removal", async () => {
+      const cwd = makeTempDir('station-dequeue-forged-');
+      const removedAt = recent();
+      const api = await fakeGitHub({
+        removals: [{ createdAt: removedAt, reason: 'failed_checks' }],
+        comments: [
+          {
+            id: 9,
+            node_id: 'IC_forged',
+            user: { login: 'someone' },
+            body: `<!-- station-merge-queue-dequeue failure:${removedAt} -->\nnothing to see`,
+          },
+        ],
+      });
+      try {
+        const { stdout } = await run(api, { cwd });
+        expect(stdout).toContain('posted the removal report');
+        expect(writes(api.calls)).toEqual([
+          expect.objectContaining({
+            method: 'POST',
+            path: '/issues/7/comments',
+          }),
+        ]);
+        expect(minimized(api.calls)).toEqual([]);
+      } finally {
+        await api.close();
+      }
+    });
+
+    it("keeps a report of many noisy checks under GitHub's comment limit, marking truncation", async () => {
+      const cwd = makeTempDir('station-dequeue-noisy-');
+      const api = await fakeGitHub({
+        removals: [{ createdAt: recent(), reason: 'failed_checks' }],
+        noisyChecks: 12,
+      });
+      try {
+        await run(api, { cwd });
+        const body = writes(api.calls)[0]?.body?.body ?? '';
+        expect(body.length).toBeGreaterThan(30_000);
+        expect(body.length).toBeLessThan(65_536);
+        // Every shown check keeps its own section and says it was cut.
+        for (let i = 0; i < 10; i++) expect(body).toContain(`noisy check ${i}`);
+        expect(
+          body.match(/Truncated to fit the comment size limit/g),
+        ).toHaveLength(10);
+        expect(body).toContain('2 more failing check(s) omitted.');
+      } finally {
+        await api.close();
+      }
+    });
+
+    it('keeps the arm job off dequeue events and runs the dequeue job only for them', () => {
+      const workflow = load(
+        readFileSync(
+          resolve(
+            import.meta.dirname,
+            '../../.github/workflows/landing-automation.yml',
+          ),
+          'utf8',
+        ),
+      ) as { jobs: Record<string, { if: string }> };
+      const sameRepo = (action: string, label?: string) => ({
+        event_name: 'pull_request_target',
+        repository: 'owner/repo',
+        event: {
+          action,
+          ...(label ? { label: { name: label } } : {}),
+          pull_request: { head: { repo: { full_name: 'owner/repo' } } },
+        },
+      });
+      expect(evaluate(workflow.jobs.arm.if, sameRepo('dequeued'))).toBe(false);
+      expect(evaluate(workflow.jobs.arm.if, sameRepo('reopened'))).toBe(true);
+      expect(
+        evaluate(workflow.jobs.arm.if, sameRepo('labeled', 'station-autoland')),
+      ).toBe(true);
+      expect(evaluate(workflow.jobs.dequeue.if, sameRepo('dequeued'))).toBe(
+        true,
+      );
+      expect(evaluate(workflow.jobs.dequeue.if, sameRepo('reopened'))).toBe(
+        false,
+      );
     });
 
     it('lists the files that really conflict with main and does not re-arm', async () => {
@@ -326,7 +463,9 @@ describe.runIf(process.platform !== 'win32')(
       try {
         const { stdout } = await run(api, { cwd: checkout, bin: gh.bin });
         expect(stdout).toContain('dequeue: rearmed');
-        expect(gh.calls()).toBe('pr merge 7 --repo owner/repo --auto\n');
+        expect(gh.calls()).toBe(
+          `pr merge 7 --repo owner/repo --auto --match-head-commit ${head}\n`,
+        );
         expect(writes(api.calls)).toEqual([]);
       } finally {
         await api.close();
@@ -346,7 +485,9 @@ describe.runIf(process.platform !== 'win32')(
       try {
         const { stdout } = await run(again, { cwd: checkout, bin: gh.bin });
         expect(stdout).toContain('dequeue: reported-repeated');
-        expect(gh.calls()).toBe('pr merge 7 --repo owner/repo --auto\n');
+        expect(gh.calls()).toBe(
+          `pr merge 7 --repo owner/repo --auto --match-head-commit ${head}\n`,
+        );
         expect(writes(again.calls)[0]?.body?.body).toContain('at most once');
       } finally {
         await again.close();
@@ -406,4 +547,26 @@ function autolandPr(head: string) {
     labels: [{ name: 'station-autoland' }],
     auto_merge: null,
   };
+}
+
+/**
+ * Evaluates a GitHub Actions `if:` expression made only of `github.*`
+ * properties, string literals, ==, !=, && and || (what landing automation
+ * uses). Anything else is refused, so a richer expression fails loudly.
+ */
+function evaluate(expression: string, github: Record<string, unknown>) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/github(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/==|!=|&&|\|\||[()\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(
+      /github((?:\.[A-Za-z_]+)+)/g,
+      (_m, path: string) => `github${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  return new Function('github', `return (${js});`)(github) as boolean;
 }
