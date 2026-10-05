@@ -15,7 +15,6 @@ import {
   type ContentBlock,
   type DisableProviderResponse,
   type ListProvidersResponse,
-  type ListSessionsResponse,
   type McpServer,
   ndJsonStream,
   PROTOCOL_VERSION,
@@ -546,15 +545,6 @@ export class ACPProcess extends EventEmitter {
     })) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
     return result ?? {};
-  }
-
-  /**
-   * One page of the agent's stored sessions for `cwd` (`session/list`, gated
-   * on `sessionCapabilities.list`).
-   */
-  async listSessions(cwd: string): Promise<ListSessionsResponse> {
-    if (!this.connection) throw new Error('ACPProcess not started');
-    return this.connection.listSessions({ cwd });
   }
 
   /** Delete a stored session (`session/delete`, gated on `sessionCapabilities.delete`). */
