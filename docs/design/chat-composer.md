@@ -46,8 +46,10 @@ The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 Home's Recent work rows are the same row: a decorative mark before the Project
 name is the Project's chosen icon, or, without one, a dot in its sidebar colour
-(the name stays plain text); the hover card's Project row repeats that mark, and
-its Git section reads the row's local session folder, as in the dock.
+(the name stays plain text); a row read from another Station draws no mark,
+since its slug names that Station's Project. The hover card's Project row
+repeats that mark, and its Git section reads the row's local session folder, as
+in the dock.
 The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
