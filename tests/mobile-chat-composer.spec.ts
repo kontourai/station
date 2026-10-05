@@ -4620,6 +4620,11 @@ for (const [name, viewport, maximize] of [
     const priority =
       (await page.locator('.chat-dock__body[data-composer-priority]').count()) >
       0;
+    // The half dock is the case the composer's priority exists for.
+    if (!maximize)
+      expect(priority, 'a 375x667 half dock engages composer priority').toBe(
+        true,
+      );
     if (priority) {
       // The composer carries Discard. It takes no room of its own: it sits in
       // the controls row, which stays one touch row, so the composer needs no
@@ -4641,6 +4646,37 @@ for (const [name, viewport, maximize] of [
         carried!.box[0] + carried!.box[2],
         'Discard stays clear of Send',
       ).toBeLessThanOrEqual(send!.x + 0.5);
+      // Under load the transcript can report a scroll while it is still
+      // collapsing, which portals its Scroll to bottom button into the
+      // composer's activity row. That state is forced here rather than
+      // waited for: the button and an otherwise empty row must take no
+      // height, so the composer's Discard stays inside the viewport.
+      await page.evaluate(() => {
+        const row = document.querySelector('.chat-input__activity');
+        const button = document.createElement('button');
+        button.className = 'chat-scroll-to-bottom';
+        button.setAttribute('aria-label', 'Scroll to bottom');
+        button.textContent = '↓';
+        row?.appendChild(button);
+      });
+      // The product may already have rendered its own button here, so every
+      // Scroll to bottom button and activity row in the composer is checked.
+      const phantomHeights = await page
+        .locator(
+          '.chat-input__activity, .chat-input__activity .chat-scroll-to-bottom',
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().height),
+        );
+      expect(phantomHeights.length).toBeGreaterThan(1);
+      expect(phantomHeights.every((height) => height === 0)).toBe(true);
+      const withPhantom = (await discardButtonReport(page)).find(
+        (report) => report.inComposer,
+      );
+      expect(
+        withPhantom,
+        `the composer Discard stays on screen: ${JSON.stringify(withPhantom)}`,
+      ).toMatchObject({ onScreen: true, topmost: true });
     } else {
       // Not short enough to engage the composer's priority: the transcript's
       // own Discard serves (the composer does not repeat it), and the draft
