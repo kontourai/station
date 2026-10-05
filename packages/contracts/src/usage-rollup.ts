@@ -25,6 +25,8 @@ export interface UsageReceipt {
   id: string;
   /** The exact canonical event that Station observed. */
   sourceEventId?: string;
+  /** Durable order within this Station thread; resolves observation-time ties. */
+  sourceSequence?: number;
   stationId: string;
   provider: string;
   model?: string;

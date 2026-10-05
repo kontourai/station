@@ -1,30 +1,66 @@
-.pull-request-stacks,
-.pull-request-stacks ol,
-.pull-request-stacks li {
+.pull-request-stacks {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
-.pull-request-stacks header {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+.pull-request-stacks__label {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 .pull-request-stacks ol {
-  padding: 10px 10px 10px 36px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 .pull-request-stacks li {
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
+  min-width: 0;
 }
-.pull-request-stacks li > span:last-child {
-  grid-column: 2;
+.pull-request-stacks li[role="alert"] {
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+  color: var(--warning-text);
+}
+/* One row is one button: the title over its branches line, padded and
+   pulled into the gutter as a linked pull request row is, so its text sits
+   on the label's left edge and its hover fills the row. */
+.pull-request-stacks__open {
+  display: grid;
+  gap: var(--space-2);
+  width: calc(100% + 2 * var(--space-3));
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  margin: 0 calc(-1 * var(--space-3));
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pull-request-stacks__open:hover {
+  background: var(--bg-hover);
+}
+.pull-request-stacks__title {
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
-.pull-request-stacks button {
-  min-height: 44px;
+.pull-request-stacks__branches {
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.pull-request-stacks__branches code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }

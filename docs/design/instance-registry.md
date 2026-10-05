@@ -45,6 +45,7 @@ The cross-concept topology and authority boundary is defined in
     "<id>": {
       "port": 3141,
       "uiPort": 3000,
+      "host": "127.0.0.1",
       "checkout": "~/dev/station",
       "channel": "stable",
       "buildSha": "abcdef0123456789abcdef0123456789abcdef01",
@@ -64,6 +65,7 @@ The cross-concept topology and authority boundary is defined in
   the home schema, not part of it.
 - `instances` is a map keyed by an arbitrary caller-chosen instance id (not
   necessarily the same id space as `STATION_INSTANCE_ID`).
+- `InstanceConfig.host` is the address the UI listener bound, recorded by `station start`; `station open` links to it. Absent on older entries and on the Desktop sidecar, which read as `localhost`.
 - `InstanceConfig.type` is one of `'service' | 'sidecar' | 'worktree' | 'inline'`.
   `port` and `type` are the only fields required on first insert; every other
   field is optional and set field-by-field as it becomes known — the same

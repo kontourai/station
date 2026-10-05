@@ -12,11 +12,15 @@
   "sources": [
     ".githooks/pre-push",
 
+    "package.json#/scripts/agent-plugin:validators:gate",
+
     "packages/cli/src/commands/build.ts",
 
     "packages/cli/src/commands/install.ts",
 
     "packages/contracts/src/agent-plugin.ts",
+
+    "packages/contracts/src/skill-experience.ts",
 
     "packages/shared/src/agent-plugin-manifest.ts",
 
@@ -24,11 +28,15 @@
 
     "packages/shared/src/build.ts",
 
+    "packages/shared/src/skill-experience-author.ts",
+
     "schemas/agent-plugins/1.0.0/mcp.schema.json",
 
     "schemas/agent-plugins/1.0.0/plugin.schema.json",
 
     "schemas/agent-plugins/io.kontourai.station-1.0.schema.json",
+
+    "schemas/agent-plugins/skill-experience-1.0.schema.json",
 
     "scripts/agent-plugin-validators-gate.mjs",
 
@@ -64,15 +72,7 @@
 
     "src-server/services/plugins/reserved-plugin-identities.ts",
 
-    "src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx",
-
-    "package.json#/scripts/agent-plugin:validators:gate",
-
-    "packages/contracts/src/skill-experience.ts",
-
-    "packages/shared/src/skill-experience-author.ts",
-
-    "schemas/agent-plugins/skill-experience-1.0.schema.json"
+    "src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx"
   ],
 
   "checks": [

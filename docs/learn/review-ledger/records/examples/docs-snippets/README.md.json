@@ -12,11 +12,11 @@
   "sources": [
     "examples/docs-snippets/src/plugins-agents-and-chat.tsx",
 
+    "package.json#/scripts/typecheck:examples",
+
     "scripts/__tests__/docs-snippets.test.ts",
 
-    "scripts/examples-conformance.mjs",
-
-    "package.json#/scripts/typecheck:examples"
+    "scripts/examples-conformance.mjs"
   ],
 
   "checks": [

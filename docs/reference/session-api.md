@@ -193,9 +193,11 @@ not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
 blocking interpretation. A snapshot carries ids only, so after a reload a
 client reads the conversation's newest turn to rebuild each open approval's
-tool, preview and grant label. It keeps a generic placeholder when the host
-cannot supply it, including a request opened in a turn older than the newest
-(the read covers the newest turn only). Request inspection sets `requiresAnswers` so clients
+tool, preview and grant label. When a request is not in that turn, the client
+follows the event window's `nextCursor` to older turns, at most three further
+pages of five turns, and stops as soon as every open request is found. It keeps
+a generic placeholder when the host cannot supply the request, including one
+older than that bound. Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
 
 `acceptForSession` also grants later calls to the same tool in that Session.
@@ -634,6 +636,76 @@ tool/text boundaries. Match assistant messages by `metadata.turnId` to the
 handle's `providerTurnId` when proving one turn, so an earlier answer cannot
 satisfy a later check. The shared projection assembles streamed text and handles
 aggregate `turn.completed.outputText` where appropriate.
+
+### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
+
+When a Claude Code or Codex turn stops on a provider usage limit, Station
+records a recovery intent for the Session (see `ConnectionRecoveryProjection`
+in [contracts](contracts.md)). Three routes serve the chat banner:
+
+- `GET /sessions/:threadId/usage-limit` answers `{ recovery }`: the Session's
+  latest recovery projection when it came from a usage limit, with `autoResume`
+  (the current `usageLimitAutoResume` setting) while the stop waits, or `null`.
+  It carries no event list and sits at the Session read tier.
+- `POST /sessions/:threadId/usage-limit/resume` ("Resume now") starts sending
+  the stopped turn again at once, whatever the setting and before the reset. It
+  runs the same pre-dispatch checks as the timer: a newer turn, an open request
+  or a closed Session retires the stop with that `outcomeReason` instead. If
+  the provider refuses the replay with the same limit, the replay arms its own
+  wait for the reset, so an early click does not end the wait. That re-arm
+  needs a reset at least a minute away; a past or sooner reset ends the stop as
+  `failed` instead, and so does a fourth refusal in a row for the same
+  conversation (a user turn resets the count), so a refusing provider cannot
+  loop the resume.
+- `POST /sessions/:threadId/usage-limit/cancel` ("Cancel auto-resume") retires
+  a waiting stop unsent with `outcomeReason: "user-canceled"`. That retires the
+  whole stop, so Resume now is no longer offered for it either; the user sends
+  a message to continue.
+
+Both POSTs answer `{ result, recovery }`: `result.kind` is `resumed` (the
+dispatch started; whether the provider accepts it shows later in `recovery`,
+which can still read `failed` if the dispatch is rejected), `failed` (it could
+not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
+(with `reason`) or `not-waiting` (nothing was left to act on), and `recovery`
+is the projection afterward.
+
+They need the operate scope and the Session's own person, which is the same
+check as sending the next turn: in a personal home, any of that person's own
+devices holding the operate scope may act (a shared personal-home Session
+admits them); in a hosted deployment the strict owner and tenant check applies.
+No station-control tool maps these routes, so an agent's internal token is
+refused.
+
+### Subagent transcript (`GET /sessions/:threadId/child-work/:childId/transcript`)
+
+An engine subagent's own conversation, read-only. `threadId` is the session
+that reported the subagent and `childId` is its child-work id. The server
+finds the transcript from that session's persisted child-work facts (the
+`transcript` reference on the `ChildWorkItem`), so the request carries no
+file path, and the read works the same after a server restart. Reads are
+authorized like the session's other reads and are never cached
+(`Cache-Control: private, no-store`).
+
+Query: `offset` (message index, default `0`) and `limit` (messages per page,
+`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
+`entries` (prompt and reply text, tool calls, tool results; inline image data
+replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`404` means no transcript for a session you can read; `503` means the engine
+no longer has it.
+
+Only Claude subagents have a transcript today. Claude Code keeps it under the
+config home the session's engine was spawned with (its app-home or credential
+profile, a connection's config home, or the global one); the adapter records
+that config home with the reference, so a profile session's transcript is
+read from its own profile. Symbolic links below that config home are refused
+by checks made immediately before the file is opened; the checks are not
+atomic against a concurrent swap by a process running as the same user.
+Codex child threads have no transcript reference.
+
+The transcript is shown in file order, so it can include what Claude Code's
+own reader hides: a branch abandoned by a retry or an edit, and a compaction
+summary. A single record of any type larger than 4 MiB is skipped and shown
+as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
 

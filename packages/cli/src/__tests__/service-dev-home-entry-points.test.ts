@@ -457,16 +457,17 @@ describe('an existing checkout service in the dev home keeps being the one addre
       { mode: 0o600 },
     );
 
-    await runCli(['service', 'install']);
+    // A home has one host owner (#2961): the other checkout's live service
+    // is not adopted, and no second service is installed beside it.
+    await expect(runCli(['service', 'install'])).rejects.toThrow(
+      `Station home ${dev.devHome} is in use by instance 'default'`,
+    );
 
-    expect(installSystemd).toHaveBeenLastCalledWith(
+    expect(installSystemd).not.toHaveBeenCalledWith(
       dev.devInstanceId,
       expect.anything(),
     );
-    expect(manifests(dev.devHome)).toEqual([
-      'default.json',
-      `${dev.devInstanceId}.json`,
-    ]);
+    expect(manifests(dev.devHome)).toEqual(['default.json']);
     expect(errors).not.toHaveBeenCalled();
   });
 
@@ -490,7 +491,17 @@ describe('an existing checkout service in the dev home keeps being the one addre
 
   test('several services for this checkout in one home refuse and list them', async () => {
     const { dev, runCli } = await withLegacyDefaultService();
-    await runCli(['service', 'install', `--instance=${dev.devInstanceId}`]);
+    // Install now refuses a second owner of the home (#2961), so the second
+    // manifest is the one an install from before that rule left behind.
+    const defaultManifest = join(dev.devHome, 'service', 'default.json');
+    nodeFs.writeFileSync(
+      join(dev.devHome, 'service', `${dev.devInstanceId}.json`),
+      JSON.stringify({
+        ...JSON.parse(nodeFs.readFileSync(defaultManifest, 'utf8')),
+        instanceId: dev.devInstanceId,
+      }),
+      { mode: 0o600 },
+    );
     expect(manifests(dev.devHome)).toEqual([
       'default.json',
       `${dev.devInstanceId}.json`,
