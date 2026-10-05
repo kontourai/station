@@ -93,8 +93,10 @@ export function renderHomeWorkRow({
         gitLocation={context.gitLocationByThreadId?.get(
           task.orchestrationThreadId ?? task.chatSessionId ?? '',
         )}
+        // A remote row's slug names a project on another Station, so it is
+        // not this Station's project and never takes its colour.
         projectAccent={
-          task.projectSlug
+          task.projectSlug && !task.environmentId
             ? context.projectAccentBySlug?.get(task.projectSlug)
             : undefined
         }
