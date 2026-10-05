@@ -58,7 +58,9 @@
 
     "src-ui/src/hooks/orchestration/approvalHandlers.ts",
 
-    "src-ui/src/hooks/orchestration/pendingRequestRows.ts"
+    "src-ui/src/hooks/orchestration/pendingRequestRows.ts",
+
+    "packages/shared/src/display-text.ts"
   ],
 
   "checks": [
