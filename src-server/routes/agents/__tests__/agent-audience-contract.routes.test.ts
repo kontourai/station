@@ -5,26 +5,21 @@
  * `ConfigLoader` writing a real Station home, so the refusal is the one every
  * Agent write and read applies (`validator.validateAgentSpec`), not a helper.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_AUDIENCE_VERSION } from '@kontourai/station-contracts/agent';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { effectiveAgentAudience } from '../../../services/agents/agent-audience.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
 import { createAgentRoutes } from '../agents.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'station-agent-audience-'));
-  roots.push(home);
+  const home = makeTempDir('station-agent-audience-');
   // An Agent may only be owned by a Project that exists (`owningProjectExists`).
   mkdirSync(join(home, 'projects', 'clients'), { recursive: true });
   writeFileSync(
