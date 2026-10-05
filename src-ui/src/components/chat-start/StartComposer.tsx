@@ -189,7 +189,7 @@ export function StartComposer({
           ) : (
             <button
               type="button"
-              className="choice-trigger start-composer__chip"
+              className="choice-trigger start-composer__chip start-composer__chip--project"
               aria-haspopup="dialog"
               aria-label={`Project: ${project.label}`}
               title={project.folder}

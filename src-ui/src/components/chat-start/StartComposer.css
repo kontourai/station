@@ -205,7 +205,9 @@
   max-width: min(40vw, 200px);
 }
 /* When the two chips do not fit, the Agent chip (the longer text) gives up
-   width first, so a short project name ("No project") stays whole. */
-.start-composer__chip--agent {
-  flex-shrink: 4;
+   the width: the project chip keeps its whole name up to half the row, so a
+   short name ("No project") is never cut while a long one still is. */
+.start-composer__chip--project {
+  flex-shrink: 0;
+  max-width: 50%;
 }
