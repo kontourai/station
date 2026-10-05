@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
-import { useProjectAccents } from '../../hooks/useProjectAccents';
-import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useRowProjectMarks } from '../../hooks/useRowProjectMarks';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { Button } from '../Button';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
-import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { Empty, ErrorState, SkeletonList } from '../state';
 
 export function RecentChatList({
@@ -32,8 +30,7 @@ export function RecentChatList({
   onViewAll: () => void;
 }) {
   const now = useCoarseNow();
-  const accentBySlug = useProjectAccents();
-  const iconBySlug = useProjectIcons();
+  const projectMarks = useRowProjectMarks();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const recent = items
     .filter((item) =>
@@ -85,7 +82,7 @@ export function RecentChatList({
               agents={agents}
               facts={workFacts?.get(item.id)}
               chrome="touch"
-              {...rowProjectMarks(item, accentBySlug, iconBySlug)}
+              {...projectMarks(item)}
               onActivate={onOpen}
               detailsOpen={detailsFor === item.id}
               onDetailsOpenChange={(open) =>
