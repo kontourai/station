@@ -45,6 +45,13 @@ async function observe({
   manualRuns = [] as ReturnType<typeof run>[],
   failJobs = false,
   enabled = true,
+}: {
+  runs?: ReturnType<typeof run>[];
+  jobs?: Record<number, ReturnType<typeof gate>[]>;
+  issues?: (typeof issue)[];
+  manualRuns?: ReturnType<typeof run>[];
+  failJobs?: boolean;
+  enabled?: boolean;
 } = {}) {
   const writes: {
     method: string;
@@ -80,9 +87,7 @@ async function observe({
         return;
       }
       const id = Number(path.split('/').at(-2));
-      response.end(
-        JSON.stringify({ jobs: jobs[id as keyof typeof jobs] ?? [] }),
-      );
+      response.end(JSON.stringify({ jobs: jobs[id] ?? [] }));
     } else if (path.endsWith('/issues')) response.end(JSON.stringify(issues));
     else {
       response.writeHead(404);
