@@ -119,8 +119,17 @@ station-browser tool call in that one Session, so a browser check is one
 approval instead of one per tool. It does not carry to another Session, does
 not cover any other tool or MCP server, and ends with the Session. The
 per-tool **Allow … for this session** choice remains, and covers only that
-tool. The choice appears only for a call Station can show is the built-in
-server's own; a look-alike server never gets it. It is offered on the approval
+tool. It covers subagents inside the same Session, as the per-tool choice does.
+The choice appears only for a call Station can show is the built-in
+server's own; a look-alike server never gets it. Besides the name checks, the
+engine's own `init` report must list exactly one server called
+`station-browser`, with source `sdk` (an in-process server only Station can
+register). Agents that author no tool servers keep Claude's MCP discovery
+(`.mcp.json`, user config), and which server wins a shared name is decided in
+the compiled Claude CLI, which could not be read here, so a missing source, a
+second server of that name or a non-`sdk` source means no choice is offered
+or honoured. The check is repeated at every turn's `init`, and Station does not
+turn on strict MCP config to get it. It is offered on the approval
 toast, the inline card and the inbox card, not in the CLI, which has no
 interactive approval prompt.
 

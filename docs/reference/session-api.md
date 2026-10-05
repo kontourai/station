@@ -239,7 +239,10 @@ Session. A Claude Session offers it only on a request whose `request.opened`
 payload carries `stationBrowserServer: true`, which the adapter sets only for an
 authentic call: the engine-generated `mcp__station-browser__<tool>` name, the
 built-in in-process server delivered to that Session, and no authored tool
-server using the id. A server merely named like it, an ACP-reported name or a
+server using the id, and an engine `init` report listing exactly one
+`station-browser` server whose source is `sdk` (fail closed when the source is
+absent or the name is shared; the grant also covers subagents in the Session).
+A server merely named like it, an ACP-reported name or a
 Session without the built-in server never gets the flag. The grant lives with
 the Session record, as the per-tool grant does: it is not shared with another
 Session or server, and a stopped or restarted Session starts with none. It
