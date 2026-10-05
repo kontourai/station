@@ -1,0 +1,7 @@
+{
+  "revision": "45860cd1266dd257ee31e0a030696e72babca452",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"The linked cli.md and release-channel-ports.md changes are Windows-service-only (launcher on Windows, install.ps1 handoff); this document makes no claim about Windows services or install.ps1; checked, unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]}
+  ]
+}
