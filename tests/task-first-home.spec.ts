@@ -1191,10 +1191,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       'aria-selected',
       'true',
     );
-    // The reset names the default it restores, never the choice it clears.
-    const reset = chosen.getByRole('button', { name: /^Use / });
-    await expect(reset).not.toHaveText(/session override/);
-    await reset.click();
+    // The reset names the default it restores, never the choice it clears
+    // ("Use session override"): here, the Agent's default.
+    await chosen
+      .getByRole('button', { name: 'Use agent default', exact: true })
+      .click();
     await expectPickerClosed(chosen);
 
     const cleared = await openPicker();

@@ -172,9 +172,16 @@ function bodyExcerpt(body: string): string {
  */
 function identifierBreakSegments(title: string): string[] {
   // Lookahead only: regex lookbehind needs Safari 16.4, above the iOS floor.
-  return title
-    .replace(/([a-z0-9])(?=[A-Z])|([._/-])(?=[^._/-])/g, '$1$2\u0000')
-    .split('\u0000');
+  // Each match is the character a break follows, so cut just after it.
+  const segments: string[] = [];
+  let start = 0;
+  for (const match of title.matchAll(/[a-z0-9](?=[A-Z])|[._/-](?=[^._/-])/g)) {
+    const end = (match.index ?? 0) + 1;
+    segments.push(title.slice(start, end));
+    start = end;
+  }
+  segments.push(title.slice(start));
+  return segments;
 }
 
 function BreakableTitle({ title }: { title: string }) {

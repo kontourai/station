@@ -3,7 +3,13 @@
  */
 
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { createElement, useLayoutEffect, useRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -383,6 +389,23 @@ describe('Knowledge recall contract', () => {
         (node) => (node.nodeName === 'WBR' ? '|' : node.textContent),
       ).join(''),
     ).toBe('repository.|module_|map/|v2-|API');
+    cleanup();
+
+    // Break opportunities never cost a character, even an unusual one.
+    render(
+      createElement(KnowledgeRecordDetail, {
+        rootId: personalRoot.id,
+        recordId: 'decision',
+        authorityKey: knowledgeRootIncarnationKey(personalRoot),
+        graph: graphA,
+        onSelect: () => undefined,
+        useRecordQuery: titled('nul\u0000BytePath'),
+        testIds: { recordTitle: 'record-title' },
+      }),
+    );
+    expect((await screen.findByTestId('record-title')).textContent).toBe(
+      'nul\u0000BytePath',
+    );
   });
 
   test('clears an uncontrolled selection when the root authority changes', async () => {
