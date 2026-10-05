@@ -473,6 +473,7 @@ import {
   FileStationSurveyReviewSessionStore,
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
+import { connectedAccountOwnerId } from '../../services/identity/connected-account-owner.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
@@ -1657,6 +1658,21 @@ export function configureRuntimeRoutes(
           }
         : {}),
     });
+  // #3279: a connected-account owner is the request's resolved
+  // `PrincipalRef.id`, the same id an authorized Station-agent turn records
+  // as its session owner. Devices without a person, non-human principals and
+  // hosted (tenant-qualified) requests own none; unresolvable is `undefined`.
+  // Person-owned credentials then refuse instead of guessing an owner.
+  const resolveConnectedAccountPrincipalId = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ): string | undefined => {
+    if (tenantExecutionContextForRequest(c.req.raw)) return undefined;
+    try {
+      return connectedAccountOwnerId(resolveOrchestrationRequestPrincipal(c));
+    } catch {
+      return undefined;
+    }
+  };
   const conversationReadAuthorityForContext = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
   ) => {
@@ -2656,6 +2672,7 @@ export function configureRuntimeRoutes(
       context.secretBindingAdministration,
       context.secretBindingIntegrationAdministration,
       context.mcpService,
+      { resolveViewerPrincipalId: resolveConnectedAccountPrincipalId },
     ),
   );
   context.app.route('/api/users', createUserRoutes());
@@ -3553,6 +3570,7 @@ export function configureRuntimeRoutes(
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
+      resolveAccountPrincipalId: resolveConnectedAccountPrincipalId,
       // MCP-UI tool calls with `approvalPolicy: 'require'` block on a real inbox
       // approval before executing (the existing managed-approval registry +
       // inbox surface); the spec-compliant tool result is returned only after.
