@@ -8,6 +8,7 @@ import {
 import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
+import { ActionRow } from '../ActionRow';
 import {
   DiscardGlyph,
   DocumentGlyph,
@@ -397,47 +398,58 @@ function ToolApprovalButtons({
   const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
+  const overflow = [
+    ...(grantLabel
+      ? [
+          {
+            key: 'trust',
+            // #2316: the same words as the toast and the inbox card for the
+            // same grant. It names the REQUEST's tool, never the row's
+            // `toolName`, which can be an ACP title — a whole command line.
+            label: grantLabel,
+            disabled: busy,
+            onSelect: () => decide('trust'),
+          },
+        ]
+      : []),
+    ...(serverGrant === 'server'
+      ? [
+          {
+            key: 'trust-server',
+            label: STATION_BROWSER_SERVER_GRANT_LABEL,
+            disabled: busy,
+            onSelect: () => decide('trust-server'),
+          },
+        ]
+      : []),
+  ];
   return (
     <>
-      <button
-        type="button"
-        onClick={() => decide('once')}
-        disabled={busy}
-        className="tool-call__approve-btn tool-call__approve-btn--primary"
-      >
-        Allow Once
-      </button>
-      {grantLabel && (
-        <button
-          type="button"
-          onClick={() => decide('trust')}
-          disabled={busy}
-          className="tool-call__approve-btn tool-call__approve-btn--secondary"
-        >
-          {/* #2316: the same words as the toast and the inbox card for the
-              same grant. It names the REQUEST's tool, never the row's
-              `toolName`, which can be an ACP title — a whole command line. */}
-          {grantLabel}
-        </button>
-      )}
-      {serverGrant === 'server' && (
-        <button
-          type="button"
-          onClick={() => decide('trust-server')}
-          disabled={busy}
-          className="tool-call__approve-btn tool-call__approve-btn--secondary"
-        >
-          {STATION_BROWSER_SERVER_GRANT_LABEL}
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={() => decide('deny')}
-        disabled={busy}
-        className="tool-call__approve-btn tool-call__approve-btn--danger"
-      >
-        Deny
-      </button>
+      <ActionRow
+        overflowLabel="More ways to allow this request"
+        label="Approval choices"
+        secondary={
+          <button
+            type="button"
+            onClick={() => decide('deny')}
+            disabled={busy}
+            className="tool-call__approve-btn tool-call__approve-btn--danger"
+          >
+            Deny
+          </button>
+        }
+        primary={
+          <button
+            type="button"
+            onClick={() => decide('once')}
+            disabled={busy}
+            className="tool-call__approve-btn tool-call__approve-btn--primary"
+          >
+            Allow Once
+          </button>
+        }
+        overflow={overflow}
+      />
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
           This request is no longer open.

@@ -15,7 +15,13 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { _setApiBase } from '@kontourai/station-sdk';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -395,12 +401,17 @@ describe('ACP (OpenCode) tool rows', () => {
     expect(screen.getAllByRole('button', { name: 'Deny' })).toHaveLength(1);
     // Item 5: the same grant words as the toast and the inbox card; the
     // command line is not the grant's subject.
-    const grant = screen.getByRole('button', {
+    // The session choices sit behind the row's overflow menu (#3045).
+    const more = screen.getByRole('button', {
+      name: 'More ways to allow this request',
+    });
+    fireEvent.click(more);
+    const grant = await screen.findByRole('menuitem', {
       name: 'Allow for this session',
     });
     expect(grant.textContent).not.toContain('gh api');
     // The card says which request it answers, so the header pill can find it.
-    const card = grant.closest<HTMLElement>('.tool-call');
+    const card = more.closest<HTMLElement>('.tool-call');
     expect(card?.dataset.approvalId).toBe('req-1');
     expect(card?.dataset.approvalThread).toBe(THREAD);
     // Item 2 on the pending path: proposed, so the bare verb — of a command.
@@ -463,7 +474,9 @@ describe('ACP (OpenCode) tool rows', () => {
     // #2915: a Claude Edit asked with no acceptEdits suggestion has nothing a
     // session answer could forward, so no session option is offered.
     expect(
-      screen.queryByRole('button', { name: /for this session/ }),
+      screen.queryByRole('button', {
+        name: 'More ways to allow this request',
+      }),
     ).toBeNull();
     expect(screen.getAllByText(/^Edit approved\.txt/)).toHaveLength(1);
   });
