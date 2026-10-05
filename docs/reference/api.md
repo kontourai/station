@@ -58,6 +58,17 @@ A `{ kind: 'project' }` workspace is unchanged. The operator, and the desktop
 app on the Station's own computer, are not decided by the rule. Other routes
 that take a path are not covered by it.
 
+Choosing a command for Station to run takes the same authority, decided by the
+same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
+or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
+when `command`, `args` or `cwd` change; `POST /integrations`, and
+`PUT /integrations/:id`, when `command` or `args` are set or change; `POST
+/api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
+when `terminalShell` changes. A saved Environment's dispatch that names no Project
+is sent with the verified project folder; if that Station answers
+`working-directory-not-granted`, the caller gets a fixed message naming a Project
+or the grant.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned

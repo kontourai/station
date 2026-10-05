@@ -727,18 +727,36 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   is not the authority: a `delegation` device and a `standard` device alike
   need the grant. A `kind: 'project'` target is already confined to that
   Project's folder and is unchanged, and a station-control tool call is
-  confined by `scopeDispatch`. Not a folder choice, so unchanged: the Task
-  `workspaceBinding` paths (they name a Task's recorded workspace and are read
-  for task output, not used as a session folder) and the Project-confined
-  coding routes.
+  confined by `scopeDispatch`. Not a folder choice, so unchanged: the
+  Project-confined coding routes and the Task `workspaceBinding` paths (below).
 
-  A saved SSH Environment's dispatch is pinned by the sender to a
-  `{ kind: 'directory' }` workspace at the verified project path when the
-  caller names no Project, and travels with this Station's outbound peer
-  credential. A receiver that holds that peer as a `delegation` or `standard`
-  device refuses it with the same code until the operator grants that peer
-  device `coding:exec`; naming a Project (sent as `kind: 'project'`) needs no
-  grant.
+  Choosing a command takes the same authority, decided by the same check
+  (`refusesWorkingDirectoryChoice`), with its own code,
+  `command-not-granted`, and nothing saved or run. It covers exactly:
+  `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`, `args`
+  or `cwd` change (renaming, toggling, listing, removing and reconnecting are
+  unchanged; reconnect re-probes the stored command and cannot change it);
+  `POST /integrations`, and `PUT /integrations/:id`, when `command` or `args`
+  are set or change; `POST /api/projects/:slug/flow/runs/:runId/evidence/command`,
+  which runs the command line the body names; and `PUT /config/app` when
+  `terminalShell` changes. Checked and not a command choice: the ACP registry
+  install (the command comes from the built-in registry), ACP provider settings
+  (a URL and headers), `/api/connections` and `/api/providers` (their `config`
+  names no executable that is read; Claude's executable is the installed copy),
+  scheduler jobs (a prompt for an Agent), Agent definitions (they reference tool
+  servers by id), and Skill `command` (a slash-command word).
+  Task `workspaceBinding` paths are not a folder choice either: Task creation
+  (including the starter launch's task) derives the binding from the Project and
+  refuses a contradicting path (`task-graph-service.ts`, pinned by its test), so
+  the folder the Task output reader later reads is always the Project's.
+
+  A saved SSH Environment's dispatch that names no Project is pinned by the
+  sender to a `{ kind: 'directory' }` workspace at the verified project path and
+  travels with this Station's outbound peer credential. The sender cannot know
+  whether the receiver's operator granted that device `coding:exec`, so the
+  folder is still sent, which keeps the granted path working, and a receiver's
+  `403 working-directory-not-granted` is answered here with a fixed sentence
+  (the receiver's own text is never relayed) naming a Project or the grant.
 
 The same owner also gates elevation to the `never` approval posture through
 `mayGrantFullAccess`: an Agent cannot grant full access to itself or another
@@ -768,13 +786,14 @@ What this does not close, stated so nobody assumes it does:
   skip there; junctions stand in for links), git other than 2.50.1,
   hard-linked object stores, Git LFS, reftable repositories as linked
   worktrees (refused), a Project that is a submodule's checkout.
-- **An `orchestration:operate` device can register an ACP connection.**
-  `POST` and `PUT /acp/connections` take an arbitrary `command` and `cwd`
-  and sit under the `/acp` family's operate tier
-  (`orchestration:operate`; `src-server/security/pairing-route-scopes.ts`),
-  with no further check in the handler. For such a device the folder rule
-  above does not bound where a process it registers runs; this is a separate
-  decision and is not changed here.
+- **Still open at the `orchestration:operate` tier, not closed by the rule
+  above**, each a separate decision: the `env` and secret-environment values of
+  an existing tool server (they shape the environment of the command it
+  spawns; they are also how credentials are entered); installing or updating a
+  plugin (`/api/plugins`, which runs the package's code; refused only for
+  Station's own control callers); and starting or enabling an existing tool
+  server or connection whose command was chosen earlier. `POST` and `PUT`
+  `/acp/connections` were in this list before the command rule above.
 - `terminal:operate` (in the `standard` preset) already opens an interactive
   shell on this host. A `standard` device therefore runs commands whatever the
   Run commands switch says: the switch narrows only devices without the
