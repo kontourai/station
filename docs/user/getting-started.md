@@ -412,20 +412,24 @@ how Station preserves the same work identity through retries and response loss.
 
 ## See Conversations Started Outside Station
 
-**Activity** also lists Claude Code and Codex conversations you ran in a
+**Activity** also lists Claude Code, Codex and Grok conversations you ran in a
 terminal or another app on this machine. Station reads them; it never controls
-them. It looks in two places:
+them. It looks in three places:
 
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
   not set.
+- Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
+  is not set. A Grok session appears once it has a prompt. A subagent's own
+  session is not listed separately, and neither is a Grok chat you started in
+  Station, which is already there.
 
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_CODEX_SOURCE_ROOT`
-point Station at a different folder. Station checks every two seconds and reads
-the 128 most recently changed conversations from each place. Older ones stay in
-Activity once Station has read them, but new messages in them are not picked up
-until they are among the 128 again.
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` point Station at a different folder. Station
+checks every two seconds and reads the 128 most recently changed conversations
+from each place. Older ones stay in Activity once Station has read them, but new
+messages in them are not picked up until they are among the 128 again.
 
 Each conversation is filed under a Project by the folder it ran in:
 

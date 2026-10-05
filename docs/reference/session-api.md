@@ -466,6 +466,25 @@ are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
 
+Grok observation reads `GROK_HOME/sessions` (`~/.grok/sessions` by default)
+through the same bounded, read-only follower
+([`grok-session-source.ts`](../../src-server/providers/sessions/grok-session-source.ts)).
+Each session's `updates.jsonl` is Grok's append-only log of ACP session updates,
+so a byte offset resumes it. The working directory comes from the session's
+`summary.json`, never from its folder name, which Grok shortens to a lossy
+slug-plus-hash for long paths. A session is listed once its log holds a user
+prompt; this excludes the prompt-less sessions Station's own engine probes
+leave behind. Subagent child sessions are not listed. A Station chat on the
+Grok engine runs through ACP; the follower treats the Grok session named by its
+resume cursor as Station-owned and does not import it again. Prompts, reasoning,
+assistant messages, tool calls and results with their success or failure,
+plans, per-turn token usage, stop reasons and compaction markers are imported;
+a mid-turn interjection is a steer. A rewind appends to the log rather than
+removing turns, so rewound turns stay in Station's copy. A log or summary in an
+unrecognized shape is skipped with one logged warning, never guessed at.
+Discovery inspects at most 1,024 new or changed sessions per poll, so a large
+backlog of probe sessions delays the first listing by a few polls.
+
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
 unknown or evicted parents leave the current turn's usage accumulator intact.
@@ -504,9 +523,11 @@ usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
-`STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
-can select separate history roots for observation. Each root contains the engine's
-`sessions` or `projects` directory, respectively. Discovery does not change the
+`STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` can select separate history roots for
+observation. Each root contains the engine's `sessions`, `projects` or
+`sessions` directory, respectively. Grok observation otherwise uses `GROK_HOME`,
+then `~/.grok`; Grok sessions offer no continuation. Discovery does not change the
 process environment or ordinary launch configuration. Continuation has an
 additional binding: Codex adoption and resume set the child process's
 `CODEX_HOME` to the verified source home, ahead of a credential-profile home.
