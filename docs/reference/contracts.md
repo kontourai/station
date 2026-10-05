@@ -38,6 +38,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from |
+| `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
@@ -98,6 +99,12 @@ reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
 is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
+
+`ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
+not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
+chat banner reads it through the Session API's
+[usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -200,9 +207,8 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) names the turn's engine ("No response from Claude
-Code for …") and shows the stall notice with a Stop button, and the user
-decides. On the exec fallback, Stop signals the
+`progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
+Stop button, and the user decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
@@ -563,7 +569,17 @@ and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConfli
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
-separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+separate meaning. `needs_input` and `review_pending` items may also carry the
+optional `environmentKind: 'peer'` and `environmentName` fields
+(`AttentionSessionEnvironment`). They mark a delegated task that runs on a
+paired Station, where a local reply cannot reach it. The fields are additive.
+Their absence means the task runs on this Station, or the server predates them.
+`peerRequestReference` names the paired Station's open request (`environmentId`,
+`taskId`, `requestId`, `requestType`), and `viewerCanRespond` reports this
+Station's checks on the delegated `respond` route. Both are additive and
+optional; neither feeds the local request routes. The source is
+`OrchestrationDelegationContext.peerPendingRequest` on the orchestration
+subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)

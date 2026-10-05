@@ -1113,17 +1113,20 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/');
 
     await expect(page).toHaveURL(/\/$/);
+    // With work on the page Home leads with the start form and the work; the
+    // "What's next?" heading is an empty Station's (design round 2026-10, V1).
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
-    const continuation = page.getByRole('button', {
-      name: /Continue most recent work/i,
-    });
+    ).toHaveCount(0);
+    const continuation = page.getByRole('button', { name: /^Continue/ });
     await expect(continuation).toContainText('Codex · gpt-5.3-codex');
-    // Home's New chat button carries no identity line anymore (#3201); the
-    // concrete default identity is advertised under the goal field.
-    const advertised = page.locator('.home-view__goal-identity');
-    await expect(advertised).toHaveText('Using Codex · gpt-5.3-codex');
+    // Home's New chat button carries no identity line anymore (#3201). With
+    // work on the page the goal field is the compact one-line form, which
+    // drops the "Using …" caption too (design round 2026-10, V1); the default
+    // identity is the one the New chat draft opens with, asserted below.
+    await expect(page.locator('.home-view__goal--compact')).toBeVisible();
+    await expect(page.locator('.home-view__goal-identity')).toHaveCount(0);
     await expect(
       page
         .locator('.home-view__goal-actions')
@@ -1134,34 +1137,26 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await expect(page.getByText('Default Model')).toHaveCount(0);
 
+    // A desktop continuation of project work opens the chat where it lives,
+    // the project's Coding layout, with that chat active (design round
+    // 2026-10, U1); only project-less work stays in the dock.
     await continuation.click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/projects/station/layouts/coding');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBe('task-first-home');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
-    await expect(
-      page.locator('.chat-dock__active-identity').getByText('New chat'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Hide Chat', exact: true }),
-    ).toBeVisible();
-    await page.locator('.chat-dock__header').hover();
-    await page.getByRole('button', { name: 'Close chat' }).click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+
+    // Back on Home with the dock open and no chat in it.
+    await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
     await expect(page.getByText('No chat open')).toBeVisible();
 
-    // The identity Home advertises is the one the New chat draft opens with,
-    // as its Agent and Model controls.
-    await expect(advertised).toHaveText('Using Codex · gpt-5.3-codex');
+    // The default identity is the one the New chat draft opens with, as its
+    // Agent and Model controls.
     const { dialog, draft } = await openNewChatDraft(page);
     await expect(
       draft.getByRole('button', { name: 'Agent: Codex', exact: true }),
@@ -1176,7 +1171,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page
+      .getByRole('button', { name: 'Close new project', exact: true })
+      .click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -2296,7 +2293,7 @@ test('profiles Home with substantial session history', async ({
       await page.goto('/');
       expect((await (await response).json()).data).toHaveLength(1000);
       await expect(
-        page.getByRole('heading', { name: "What's next?" }),
+        page.getByRole('form', { name: 'Start work' }),
       ).toBeVisible();
       await expect(
         page.getByText('History session 0', { exact: true }).first(),

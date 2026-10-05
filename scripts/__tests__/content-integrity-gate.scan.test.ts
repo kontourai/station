@@ -43,6 +43,7 @@ describe('BINARY_EXCLUDES cross-checked against the independent git-binary-detec
     const out = execFileSyncBounded('git', ['ls-files', '--eol'], {
       cwd: repoRoot,
       encoding: 'utf8',
+      windowsHide: true,
     });
     const classification = new Map<string, boolean>();
     for (const line of out.trim().split('\n')) {
@@ -67,6 +68,7 @@ describe('BINARY_EXCLUDES cross-checked against the independent git-binary-detec
     return execFileSyncBounded('git', ['ls-files'], {
       cwd: repoRoot,
       encoding: 'utf8',
+      windowsHide: true,
     })
       .trim()
       .split('\n')
