@@ -1505,6 +1505,23 @@ const SCREENS: Screen[] = [
         .click();
       const tooltip = page.getByRole('tooltip');
       await expect(tooltip).toBeVisible();
+      await expect
+        .poll(
+          () =>
+            page.locator('.app__main').evaluate((element) => element.scrollTop),
+          {
+            message:
+              'Section navigation must keep the application frame in view',
+          },
+        )
+        .toBe(0);
+      await expect
+        .poll(() =>
+          page
+            .locator('.app-toolbar')
+            .evaluate((element) => element.getBoundingClientRect().top),
+        )
+        .toBeGreaterThanOrEqual(0);
       await tooltip.evaluate(async (element) => {
         await Promise.all(
           element.getAnimations().map((animation) => animation.finished),
