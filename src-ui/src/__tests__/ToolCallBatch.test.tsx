@@ -437,6 +437,27 @@ test('a collapsed batch discloses an awaiting-approval call without being opened
   expect(flag.className).toContain('tool-call-batch__awaiting');
 });
 
+// #3312: the plural flag counts in the ladder's word, "N need approval",
+// never the retired "N awaiting approval".
+test('a collapsed batch counts several awaiting-approval calls as needing approval', () => {
+  const run = runFor(
+    ['b', 'c'].map((id) => ({
+      type: 'tool-invocation' as const,
+      toolCallId: id,
+      toolName: 'Write',
+      args: { path: `${id}.env` },
+      needsApproval: true,
+      state: 'awaiting-approval' as const,
+    })),
+  );
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  const flag = screen.getByText('2 need approval');
+  expect(flag.className).toContain('tool-call-batch__awaiting');
+  expect(document.body.textContent).not.toMatch(/awaiting approval/i);
+});
+
 test('a policy-denied write is disclosed as denied, not as a generic failure', () => {
   const run = runFor([
     {

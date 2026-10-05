@@ -461,6 +461,9 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
 const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   // The banner's one sentence form of the ladder's "No progress · Nm".
   ['components/home/ProgressSilenceObservation.tsx', 'No progress for'],
+  // A sentence about a refused decision reply ("The engine is still waiting
+  // for an answer."), not the retired "Still waiting" status label.
+  ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
   ['components/home/HomeActionSection.tsx', 'Model not reported'],
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
@@ -530,8 +533,11 @@ describe('one vocabulary on the work surfaces', () => {
     for (const file of files) {
       const name = relative(SRC_ROOT, file);
       const source = withoutComments(readFileSync(file, 'utf8'));
+      // Case-blind: a retired word is retired at the start of a label and
+      // mid-sentence alike ("Awaiting approval", "2 awaiting approval").
+      const folded = source.toLowerCase();
       for (const [retired, use] of RETIRED) {
-        if (!source.includes(retired)) continue;
+        if (!folded.includes(retired.toLowerCase())) continue;
         if (RETIRED_ALLOWED.some(([f, r]) => f === name && r === retired))
           continue;
         offenders.push(`${name}: "${retired}" — write "${use}"`);
