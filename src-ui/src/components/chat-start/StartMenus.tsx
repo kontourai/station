@@ -282,11 +282,16 @@ export function StartProjectMenu({
           folderlessHint={folderlessHint}
           renderMark={(option) =>
             option.value === GLOBAL_CONTEXT ? undefined : (
-              <ProjectIcon
-                project={{ name: option.label, icon: icons.get(option.value) }}
-                size={24}
-                accent={accents.get(option.value)}
-              />
+              <span className="start-menu__mark">
+                <ProjectIcon
+                  project={{
+                    name: option.label,
+                    icon: icons.get(option.value),
+                  }}
+                  size={24}
+                  accent={accents.get(option.value)}
+                />
+              </span>
             )
           }
           contextSearch={search}

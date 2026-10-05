@@ -185,6 +185,29 @@
 .start-menu__list .new-chat-modal__dropdown-item {
   min-height: 44px;
 }
+/* The name keeps its width and the folder gives way: a long folder used to
+   squeeze the name's box below its text, which then drew over the folder. */
+.start-menu__list .new-chat-modal__dropdown-item-main {
+  flex: 1 1 auto;
+}
+.start-menu__list .new-chat-modal__dropdown-item-label {
+  flex: 0 0 auto;
+  max-width: 60%;
+}
+/* An icon and a colour dot take the same 24px column, so names line up. */
+.start-menu__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+.start-menu__list .new-chat-modal__dropdown-item-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* In the Agent menu a row keeps its Model beside the name at every width:
    the sheet is the row's whole width, so the phone list's stacked row (the
    Model pill alone on a second line) only cost height here. */
