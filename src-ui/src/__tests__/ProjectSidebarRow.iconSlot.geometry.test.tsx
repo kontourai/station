@@ -113,7 +113,7 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       await browser?.close();
     });
 
-    test('every project name starts at the same x, and an icon-less row shows a faint colour dot in the slot', async () => {
+    test('every project name starts at the same x, and an icon-less row leaves the reserved slot empty', async () => {
       for (const viewport of [
         { width: 1280, height: 800 },
         { width: 390, height: 844 },
@@ -130,15 +130,15 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             ).map((row) => {
               const name = row.querySelector('.sidebar__project-name');
               const icon = row.querySelector('.sidebar__project-icon');
-              const dot = row.querySelector('[data-project-icon="dot"]');
+              const slot = row.querySelector('.sidebar__project-icon-slot');
               return {
                 name: name?.textContent,
                 nameLeft: name?.getBoundingClientRect().left ?? null,
                 hasImageOrGlyph: Boolean(
                   icon?.querySelector('img, .brand-icon__glyph'),
                 ),
-                dotWidth: dot?.getBoundingClientRect().width ?? 0,
-                dotOpacity: dot ? Number(getComputedStyle(dot).opacity) : null,
+                slotWidth: slot?.getBoundingClientRect().width ?? 0,
+                slotChildren: slot?.childElementCount ?? null,
                 rowHeight: row.getBoundingClientRect().height,
               };
             }),
@@ -157,11 +157,15 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             `${label} names drawn: ${lefts}`,
           ).toBe(true);
           expect(new Set(lefts).size, `${label} name x: ${lefts}`).toBe(1);
-          // The icon-less rows with a colour draw it, faintly.
-          for (const row of [rows[1], rows[3]]) {
-            expect(row?.dotWidth, `${label} ${row?.name}`).toBeGreaterThan(0);
-            expect(row?.dotOpacity ?? 1).toBeLessThan(1);
-          }
+          // Every row reserves the same slot; only the iconed rows fill it.
+          expect(
+            rows.map((row) => row.slotWidth),
+            `${label} slot widths`,
+          ).toEqual([18, 18, 18, 18, 18]);
+          expect(
+            rows.map((row) => row.slotChildren),
+            `${label} slot contents`,
+          ).toEqual([1, 0, 1, 0, 0]);
           // An icon changes no row's height.
           expect(new Set(rows.map((row) => row.rowHeight)).size).toBe(1);
         } finally {
@@ -170,13 +174,15 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       }
     });
 
-    test('the collapsed rail draws no dot: an icon-less project keeps its bar alone', async () => {
+    test('the collapsed rail reserves no slot: an icon-less project keeps its bar alone', async () => {
       const page = await browser.newPage();
       try {
         await page.setContent(
           `<style>${css}</style><div class="sidebar sidebar--collapsed" style="width:56px">${rowsMarkup(true)}</div>`,
         );
-        expect(await page.locator('[data-project-icon="dot"]').count()).toBe(0);
+        expect(await page.locator('.sidebar__project-icon-slot').count()).toBe(
+          0,
+        );
         expect(await page.locator('.sidebar__project-icon').count()).toBe(2);
       } finally {
         await page.close();

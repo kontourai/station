@@ -185,9 +185,10 @@ export function ProjectSidebarRow({
               remote URL is never hotlinked from here.
 
               Expanded, every row reserves the icon's slot, so names line up
-              whether or not a project has an icon; an icon-less project fills
-              it with a faint dot of its colour. The collapsed rail has no
-              names to align, so it draws only an icon there. */}
+              whether or not a project has an icon. An icon-less project
+              leaves it empty: the bar already carries its colour, and a dot
+              there would read as a status or presence dot. The collapsed
+              rail has no names to align, so it draws only an icon there. */}
           {collapsed ? (
             <ProjectIcon
               project={project}
@@ -200,9 +201,8 @@ export function ProjectSidebarRow({
               <ProjectIcon
                 project={project}
                 size={18}
-                accent={accent}
+                fallback="none"
                 className="sidebar__project-icon"
-                swatchClassName="sidebar__project-icon-dot"
               />
             </span>
           )}

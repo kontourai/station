@@ -791,12 +791,12 @@ describe('project row identity (#2150)', () => {
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
     expect(row.querySelector('img')).toBeNull();
-    // Treated as no icon: the slot holds the colour dot instead.
+    // Treated as no icon: the slot is reserved and empty; the bar carries
+    // the colour.
+    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
     expect(
-      row
-        .querySelector('.sidebar__project-icon')
-        ?.getAttribute('data-project-icon'),
-    ).toBe('dot');
+      row.querySelector('.sidebar__project-icon-slot')?.childElementCount,
+    ).toBe(0);
     expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
   });
 
@@ -820,16 +820,17 @@ describe('project row identity (#2150)', () => {
       expect(slot?.nextElementSibling?.className).toBe('sidebar__project-name');
       expect(slot?.getAttribute('aria-hidden')).toBe('true');
     }
+    // An icon-less project leaves the slot empty: no dot that could read as
+    // status or presence. Its colour is the bar's alone.
     const ferry = screen.getByRole('button', { name: 'Ferry' });
-    const dot = ferry.querySelector<HTMLElement>(
-      '.sidebar__project-icon-slot [data-project-icon="dot"]',
-    );
-    // The project's own colour, the bar's.
-    expect(dot?.style.backgroundColor).toBe(
+    expect(
+      ferry.querySelector('.sidebar__project-icon-slot')?.childElementCount,
+    ).toBe(0);
+    expect(ferry.querySelector('[data-project-icon]')).toBeNull();
+    expect(
       ferry.querySelector<HTMLElement>('.sidebar__project-accent')?.style
         .backgroundColor,
-    );
-    expect(dot?.classList.contains('sidebar__project-icon-dot')).toBe(true);
+    ).toBeTruthy();
   });
 });
 

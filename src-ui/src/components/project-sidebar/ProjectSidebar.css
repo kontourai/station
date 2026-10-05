@@ -361,8 +361,8 @@
 }
 
 /* Every expanded row holds the icon's 18px slot, icon or not, so project
-   names start at one x. An icon-less project's slot shows a faint dot of its
-   colour (the bar beside it is the full-strength mark). */
+   names start at one x. An icon-less project's slot stays empty; the bar
+   beside it carries the colour. */
 .sidebar__project-icon-slot {
   display: inline-flex;
   align-items: center;
@@ -370,10 +370,6 @@
   flex: 0 0 18px;
   width: 18px;
   height: 18px;
-}
-
-.sidebar__project-icon-dot {
-  opacity: 0.45;
 }
 
 .sidebar--collapsed .sidebar__project-accent {
