@@ -46,6 +46,12 @@ interface SessionTranscriptReadsDeps {
     threadId: string,
   ) => { conversationId: string; slug?: string } | null | undefined;
   listEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
+  /**
+   * #3112: the durable conversation an execution Session belongs to (the
+   * thread itself when it has no lineage). A successor Session is not a
+   * conversation of its own.
+   */
+  conversationIdForThread?: (threadId: string) => string;
   listUsageEventRecords: (
     threadId: string,
   ) => ReturnType<EventStore['listEvents']>;
@@ -132,7 +138,8 @@ export class SessionTranscriptReads {
       .filter((row) => this.deps.canReadSession(row.threadId, authority))
       .slice(0, Math.min(Math.max(limit, 1), 20))
       .map((row) => ({
-        conversationId: row.threadId,
+        conversationId:
+          this.deps.conversationIdForThread?.(row.threadId) ?? row.threadId,
         // The transcript's stable ids are based on turn.started.  A user
         // row is its own anchor; an assistant row uses the turn anchor.
         messageId:
@@ -160,6 +167,25 @@ export class SessionTranscriptReads {
     // than absorbed (packages/shared/src/usage-fold.ts's drop contract).
     return foldUsageEvents(this.deps.listEventPayloads(threadId), (dropped) =>
       this.deps.reportDroppedUsageFigure(dropped),
+    );
+  }
+
+  /**
+   * #3112: one conversation's usage across its execution Sessions, folded in
+   * lineage order as one event stream, so cumulative figures sum and
+   * "latest" figures (context occupancy, model) come from the newest turn.
+   * A Session the authority cannot read contributes nothing, as in the
+   * conversation message read.
+   */
+  readConversationUsage(
+    threadIds: readonly string[],
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    return foldUsageEvents(
+      threadIds
+        .filter((threadId) => this.deps.canReadSession(threadId, authority))
+        .flatMap((threadId) => this.deps.listEventPayloads(threadId)),
+      (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
   }
 
