@@ -1261,9 +1261,26 @@ describe('ChatInputArea', () => {
       onModelReset,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use default model' }));
     expect(onModelReset).toHaveBeenCalledOnce();
   });
+
+  test.each([
+    ['project default', 'Use project default'],
+    // 'unknown' has no user-facing label; the reset never reads a bare "Use".
+    ['unknown', 'Use default model'],
+  ] as const)(
+    'names a %s reset after the default it restores',
+    (source, name) => {
+      renderChatInputArea({
+        currentModel: 'override-model',
+        currentModelSource: 'session override',
+        defaultModelSource: source,
+        onModelReset: vi.fn(),
+      });
+      expect(screen.getByRole('button', { name, exact: true })).toBeTruthy();
+    },
+  );
 
   test('adds a pasted screenshot without changing the typed draft', async () => {
     const selectAttachmentFiles = vi.fn(async () => {});

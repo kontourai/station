@@ -4,7 +4,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import {
   type EffectiveModelSource,
-  modelSourceLabel,
+  modelResetSourceLabel,
 } from '../../utils/execution';
 import type {
   NewChatModelChoice,
@@ -361,11 +361,7 @@ export function StartModelPicker({
             // The reset names where the default comes from, never the
             // current choice: with a Model chosen that is always the
             // override itself ("Use session override").
-            defaultSourceLabel={
-              (defaultModel?.source &&
-                modelSourceLabel(defaultModel.source).toLowerCase()) ||
-              'default model'
-            }
+            defaultSourceLabel={modelResetSourceLabel(defaultModel?.source)}
             runtimeOptions={choice?.providerOptions}
             // Choosing or resetting a Model finishes the picker, as it does
             // in a chat's composer; effort changes keep it open.
