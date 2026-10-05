@@ -501,6 +501,41 @@ describe('describeProjectRunLocations never holds the list on a folder (#3370 re
     expect(locations.get('healthy')).toEqual({ kind: 'folder', path: folder });
   });
 
+  test('a project that joins a check still waiting for its turn says it was not checked', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b', 'c', 'd'])
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    // A second project on the same folder joins the first one's queued check.
+    await saveProject(harness.adapter, {
+      slug: 'twin',
+      workingDirectory: '/mnt/d',
+    });
+    const hung = vi.fn(never);
+    const resolver = makeResolver(harness, noGitOnListReads);
+    await resolver.describeProjectRunLocations(['a', 'b', 'c'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+    const first = resolver.describeProjectRunLocations(['d'], {
+      timeoutMs: 1_000,
+      fs: mountFs(hung),
+    });
+
+    const joined = await resolver.describeProjectRunLocations(['twin'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+
+    expect(joined.get('twin')).toEqual({
+      kind: 'unavailable',
+      reason: RUN_LOCATION_BUSY_REASON,
+    });
+    await first;
+  });
+
   test('a check that never gets a turn says it was not checked, not that the folder timed out', async () => {
     const harness = createHome();
     for (const slug of ['a', 'b', 'c', 'd'])
