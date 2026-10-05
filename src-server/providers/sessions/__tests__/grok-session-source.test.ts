@@ -1,16 +1,14 @@
 import {
   appendFileSync,
   mkdirSync,
-  mkdtempSync,
   realpathSync,
   renameSync,
-  rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -25,19 +23,11 @@ import {
   writeSummary,
 } from './grok-session-fixtures.js';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 
 function fixtureRoot(): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'station-grok-')));
-  roots.push(root);
-  return root;
+  return realpathSync(makeTempDir('station-grok-'));
 }
-
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 async function discoverOne(source: GrokSessionSource) {
   const discovery = await source.discover();

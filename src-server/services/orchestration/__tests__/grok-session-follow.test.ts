@@ -1,13 +1,7 @@
-import {
-  appendFileSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   grokSession,
   oneTurn,
@@ -22,16 +16,14 @@ let homeDir: string;
 let project: string;
 let database: string;
 
+const makeTempDir = trackTempDirs();
+
 beforeEach(() => {
-  directory = realpathSync(mkdtempSync(join(tmpdir(), 'station-grok-follow-')));
+  directory = realpathSync(makeTempDir('station-grok-follow-'));
   homeDir = join(directory, 'grok');
   project = join(directory, 'project');
   database = join(directory, 'events.sqlite');
   mkdirSync(project);
-});
-
-afterEach(() => {
-  rmSync(directory, { recursive: true, force: true });
 });
 
 function follower(store: EventStore): AttachedSessionFollowService {
