@@ -2324,7 +2324,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (
       effectiveDecision === 'acceptForSession' &&
       context?.sessionGrantScope === 'server' &&
-      pending.serverGrant === 'server'
+      pending.serverGrant === 'server' &&
+      // The offer may predate an init that revoked verification.
+      record.stationBrowserVerified
     ) {
       record.serverGrants.add(STATION_BROWSER_MCP_SERVER_ID);
     }

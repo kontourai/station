@@ -128,7 +128,7 @@ register). Agents that author no tool servers keep Claude's MCP discovery
 (`.mcp.json`, user config), and which server wins a shared name is decided in
 the compiled Claude CLI, which could not be read here, so a missing source, a
 second server of that name or a non-`sdk` source means no choice is offered
-or honoured. The check is repeated at every turn's `init`, and Station does not
+or honoured. The check is repeated at each `init` the engine sends (how often that is has not been confirmed), and Station does not
 turn on strict MCP config to get it. It is offered on the approval
 toast, the inline card and the inbox card, not in the CLI, which has no
 interactive approval prompt.

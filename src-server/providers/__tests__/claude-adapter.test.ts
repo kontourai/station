@@ -4970,6 +4970,49 @@ describe('ClaudeAdapter', () => {
         },
       );
 
+      test('an offer opened before an init that revokes verification mints nothing when answered', async () => {
+        const controlled = createControlledMockQuery();
+        const { adapter, ask, waitFor } = await grantHarness(
+          'thread-browser-revoked',
+          {
+            agent: { slug: 'browser-agent' },
+            stationBrowser: true,
+            query: controlled,
+          },
+        );
+        const init = (servers: Array<Record<string, unknown>>) =>
+          controlled.push({
+            type: 'system',
+            subtype: 'init',
+            session_id: 'thread-browser-revoked-engine',
+            cwd: '/workspace/project',
+            model: 'claude-sonnet-4-6',
+            tools: [],
+            mcp_servers: servers,
+          });
+        init(SDK_ONLY);
+        await waitFor((event) => event.method === 'session.configured');
+        const offered = await ask('mcp__station-browser__browser_click', {});
+        if (offered.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(offered.event.payload).toMatchObject({
+          stationBrowserServer: true,
+        });
+        // A discovered server now shares the name: verification is revoked.
+        init([
+          ...SDK_ONLY,
+          { name: 'station-browser', status: 'connected', source: 'project' },
+        ]);
+        await waitFor((event) => event.method === 'session.configured');
+        await offered.answer('acceptForSession', SERVER);
+        // Verified again, yet the answer minted no grant.
+        init(SDK_ONLY);
+        await waitFor((event) => event.method === 'session.configured');
+        const later = await ask('mcp__station-browser__browser_open', {});
+        expect(later.kind).toBe('prompted');
+        if (later.kind === 'prompted') await later.answer('decline');
+        await adapter.stopSession('thread-browser-revoked');
+      });
+
       test('a session not delivered the in-process server is never offered the grant', async () => {
         const { adapter, ask } = await grantHarness(
           'thread-browser-undelivered',
