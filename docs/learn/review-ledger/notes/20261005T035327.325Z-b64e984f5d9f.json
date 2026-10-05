@@ -1,0 +1,7 @@
+{
+  "revision": "07afae552b359cdc509ccdb0610291686d6e9f0e",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"Re-checked after merging main (W2 squashed): the Windows service paragraph still matches full-install.ts (handoff, stopped-service switch and record, refusals).","inputs":["docs/guides/release-channel-ports.md"]}
+  ]
+}
