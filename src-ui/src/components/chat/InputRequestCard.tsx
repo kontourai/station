@@ -21,6 +21,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import {
+  CUSTOM_CHOICE,
   clearInputRequestDraft,
   type InputRequestDraft,
   readInputRequestDraft,
@@ -41,9 +42,6 @@ const CARD_STATE: Record<InputRequestAction, RequestCardState> = {
   decline: 'declined',
   cancel: 'cancelled',
 };
-
-/** The draft value that stands for "my own answer" in a choice field. */
-export const CUSTOM_CHOICE = '\u0000custom';
 
 function initialDraft(form: InputRequestForm): InputRequestDraft {
   const values: InputRequestDraft['values'] = {};

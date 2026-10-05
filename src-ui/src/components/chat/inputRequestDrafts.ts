@@ -11,6 +11,9 @@ export interface InputRequestDraft {
   custom: Record<string, string>;
 }
 
+/** The draft value that stands for "my own answer" in a choice field. */
+export const CUSTOM_CHOICE = '\u0000custom';
+
 // The pre-#3390 harness question drafts lived in this same store. An entry
 // in that shape admits nothing below and is simply not restored.
 const store = createStore('station-harness-question-drafts', 'answers');
@@ -36,7 +39,7 @@ function admitted(form: InputRequestForm, value: unknown): InputRequestDraft {
       'options' in field
         ? new Set([
             ...field.options.map((option) => option.value),
-            ...(field.allowCustom ? ['\u0000custom'] : []),
+            ...(field.allowCustom ? [CUSTOM_CHOICE] : []),
           ])
         : undefined;
     switch (field.kind) {

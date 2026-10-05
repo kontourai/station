@@ -28,7 +28,7 @@ function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-export const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
+const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
 
 function harnessForm(
   engine: 'claude' | 'codex',

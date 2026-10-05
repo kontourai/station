@@ -13,7 +13,7 @@ import { Button } from '../Button';
  */
 export type ApprovalAction = 'once' | 'trust' | 'deny';
 
-export function approvalActionForOption(
+function approvalActionForOption(
   option: InputRequestDecisionOption,
 ): ApprovalAction {
   if (option.effect === 'deny') return 'deny';
