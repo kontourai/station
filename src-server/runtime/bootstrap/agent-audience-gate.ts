@@ -1,6 +1,8 @@
 /**
- * #3276: the Agent audience gate — every Agent surface a Project member's
- * request can reach, answered in one place.
+ * #3276: the Agent audience gate — the Agent catalog, Agent-addressed and
+ * Agent-targeted turn routes, answered in one place for a Project member's
+ * request. Paths it does not decide yet are listed in
+ * docs/design/project-membership.md ("Not yet covered by the gate").
  *
  * A member caller is a request acting for a deployment account: one that
  * carries a current account session (on a credential that is not
@@ -14,8 +16,8 @@
  * personal-device and peer requests that keep the operator's rules today,
  * pass through untouched.
  *
- * For a member caller the gate answers every Agent surface itself and never
- * hands the request to an Agent handler:
+ * For a member caller the gate answers these surfaces itself and never hands
+ * the request to their handlers:
  *
  * - `GET /agents`, `GET /api/agents`: only Agents whose audience admits the
  *   caller, each as a `MemberAgentView` (no prompt, tools or engine
@@ -29,6 +31,15 @@
  *   turn must run with the intersection of the Agent's scope and the
  *   member's access (R2), and that turn path lands with #3277. Until then no
  *   member turn runs with the operator's authority.
+ * - Every Agent catalog mutation — create (`POST /agents`), engine
+ *   materialization (`POST /agents/materialize-engine`), and any non-read
+ *   `/agents/:slug` leaf that is not a turn (update, delete, tools and
+ *   workflows edits): `member_agent_catalog_read_only` (403). An addressed
+ *   Agent the audience does not admit is still the uniform not-found, so a
+ *   mutation never reveals whether a hidden slug exists. The collection
+ *   operations address no Agent and are answered before the body is read:
+ *   the member can already list the collection, so a 404 would misstate it
+ *   and a 403 reveals nothing.
  * - Continuing an existing orchestration conversation or task: refused with
  *   the same code, because it is also a new member turn.
  *
@@ -79,6 +90,8 @@ export interface AgentAudienceGateDeps {
 
 export const MEMBER_AGENT_TURNS_UNAVAILABLE =
   'member_agent_turns_unavailable' as const;
+export const MEMBER_AGENT_CATALOG_READ_ONLY =
+  'member_agent_catalog_read_only' as const;
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
@@ -99,6 +112,17 @@ const turnsUnavailable = () =>
     { status: 403, headers: NO_STORE },
   );
 
+const catalogReadOnly = () =>
+  Response.json(
+    {
+      success: false,
+      code: MEMBER_AGENT_CATALOG_READ_ONLY,
+      error:
+        'A Project member cannot change Agent definitions on this Station.',
+    },
+    { status: 403, headers: NO_STORE },
+  );
+
 const unavailable = () =>
   Response.json(
     { success: false, error: 'Agent catalog unavailable' },
@@ -106,6 +130,19 @@ const unavailable = () =>
   );
 
 const LIST_PATHS = new Set(['/agents', '/api/agents']);
+/** Collection operations that write the catalog without addressing an Agent. */
+const COLLECTION_MUTATIONS = new Set(['/agents/materialize-engine']);
+/** Agent-addressed leaves that start a turn, not edit the Agent. */
+const ADDRESSED_TURN = /^\/(?:invoke|invoke\/stream|chat)$/;
+/** `POST /agents/:slug/tools/:toolName` runs a tool; other `/tools` writes edit. */
+const ADDRESSED_TOOL_RUN = /^\/tools\/(?!allowed$)[^/]+$/;
+
+function addressedTurn(method: string, leaf: string): boolean {
+  return (
+    ADDRESSED_TURN.test(leaf) ||
+    (method === 'POST' && ADDRESSED_TOOL_RUN.test(leaf))
+  );
+}
 const ADDRESSED = /^\/(?:api\/)?agents\/([^/]+)(\/.*)?$/;
 /** Orchestration routes whose body names the Agent a new turn runs on. */
 const TURN_WITH_TARGET = new Set([
@@ -122,8 +159,9 @@ const TURN_CONTINUE = [
 
 type Surface =
   | { kind: 'list' }
+  | { kind: 'catalog-mutation' }
   | { kind: 'detail'; slug: string }
-  | { kind: 'addressed'; slug: string }
+  | { kind: 'addressed'; slug: string; mutation: boolean }
   | { kind: 'turn-with-target' }
   | { kind: 'turn-continue' };
 
@@ -138,7 +176,10 @@ function decodeSlug(raw: string): string | undefined {
 function classify(method: string, rawPath: string): Surface | undefined {
   const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
   const read = method === 'GET' || method === 'HEAD';
-  if (LIST_PATHS.has(path)) return read ? { kind: 'list' } : undefined;
+  if (LIST_PATHS.has(path))
+    return read ? { kind: 'list' } : { kind: 'catalog-mutation' };
+  if (!read && COLLECTION_MUTATIONS.has(path))
+    return { kind: 'catalog-mutation' };
   const addressed = ADDRESSED.exec(path);
   if (addressed) {
     // A caller's own conversation history lives under the Agent's path but
@@ -153,9 +194,12 @@ function classify(method: string, rawPath: string): Surface | undefined {
     // An undecodable slug names no Agent: still an Agent surface, so it
     // gets the same not-found as any other slug.
     const slug = decodeSlug(addressed[1]!) ?? '';
-    return read && addressed[2] === undefined
-      ? { kind: 'detail', slug }
-      : { kind: 'addressed', slug };
+    if (read && addressed[2] === undefined) return { kind: 'detail', slug };
+    return {
+      kind: 'addressed',
+      slug,
+      mutation: !read && !addressedTurn(method, addressed[2] ?? ''),
+    };
   }
   if (method !== 'POST') return undefined;
   if (TURN_WITH_TARGET.has(path)) return { kind: 'turn-with-target' };
@@ -175,6 +219,38 @@ function memberView(
     ...(record.description ? { description: record.description } : {}),
     project: record.project,
   };
+}
+
+/**
+ * The Agent catalog a request may receive, decided once for every surface
+ * that returns one (the Agent lists here and `/api/boot`'s `agents` section):
+ * `operator` keeps the caller's own full catalog; anyone else gets only the
+ * admitted Agents as member views (none for a caller that acts for nobody).
+ */
+export async function agentCatalogForCaller(
+  deps: AgentAudienceGateDeps,
+  c: GateContext,
+): Promise<
+  | { readonly kind: 'operator' }
+  | { readonly kind: 'member'; readonly data: MemberAgentView[] }
+> {
+  const caller = await deps.caller(c);
+  if (caller.kind === 'operator') return { kind: 'operator' };
+  return {
+    kind: 'member',
+    data: memberCatalog(await deps.listAgents(), caller),
+  };
+}
+
+function memberCatalog(
+  agents: readonly AgentAudienceRecord[],
+  caller: AgentAudienceCaller,
+): MemberAgentView[] {
+  return agents.flatMap((record) =>
+    agentAudienceAdmits(record, caller)
+      ? [memberView(record as AgentAudienceRecord & { project: string })]
+      : [],
+  );
 }
 
 /** The Agent a turn-starting body names, read from a copy of the request. */
@@ -219,6 +295,7 @@ export function installAgentAudienceGate(
       return undefined;
     }
     if (surface.kind === 'turn-continue') return turnsUnavailable();
+    if (surface.kind === 'catalog-mutation') return catalogReadOnly();
     let agents: readonly AgentAudienceRecord[];
     try {
       agents = await deps.listAgents();
@@ -229,13 +306,11 @@ export function installAgentAudienceGate(
       record !== undefined && agentAudienceAdmits(record, caller)
         ? (record as AgentAudienceRecord & { project: string })
         : undefined;
-    if (surface.kind === 'list') {
-      const data = agents.flatMap((record) => {
-        const visible = admitted(record);
-        return visible ? [memberView(visible)] : [];
-      });
-      return Response.json({ success: true, data }, { headers: NO_STORE });
-    }
+    if (surface.kind === 'list')
+      return Response.json(
+        { success: true, data: memberCatalog(agents, caller) },
+        { headers: NO_STORE },
+      );
     const slug =
       surface.kind === 'turn-with-target'
         ? await targetAgent(c.req.raw)
@@ -250,6 +325,8 @@ export function installAgentAudienceGate(
         { success: true, data: memberView(visible) },
         { headers: NO_STORE },
       );
+    if (surface.kind === 'addressed' && surface.mutation)
+      return catalogReadOnly();
     return turnsUnavailable();
   });
 }

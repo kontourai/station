@@ -230,21 +230,50 @@ path by their own gate before audience is consulted.
 
 **What a member caller gets.** The
 [Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
-answers every Agent surface such a caller reaches. A request never reaches an
-Agent handler:
+answers the surfaces below itself, so such a request never reaches their
+handlers:
 
-- the Agent lists (`GET /agents`, `GET /api/agents`) contain only admitted
-  Agents, each as `station.member-agent/v1` (slug, name, description, Project);
-  prompt, tools and engine configuration are excluded;
+- the Agent lists (`GET /agents`, `GET /api/agents`) and `/api/boot`'s
+  `agents` section contain only admitted Agents, each as
+  `station.member-agent/v1` (slug, name, description, Project); prompt, tools
+  and engine configuration are excluded. Boot uses the same caller decision
+  and projection as the lists;
 - an Agent that is unknown or not admitted returns the same uniform
-  `404 Agent not found`, whether addressed by path or named as a turn's
-  `target.agent`;
+  `404 Agent not found` on every `/agents/:slug/...` and `/api/agents/:slug/...`
+  path, of any method, and when named as the `target.agent` of
+  `POST /api/orchestration/chat`, `/chat/delegated`, `/chat/background` or
+  `/delegations`;
 - a turn on an admitted Agent is refused with `403
-  member_agent_turns_unavailable`. This covers invoke, chat, tools, and new,
-  continued or delegated orchestration turns.
+  member_agent_turns_unavailable`: `/agents/:slug/invoke` and `/invoke/stream`,
+  `/api/agents/:slug/chat`, `POST /agents/:slug/tools/:toolName`, the four
+  orchestration routes above, and `.../chat/:id/continue` and
+  `.../delegations/:id/continue`. Read-only leaves of an admitted Agent
+  (health, tools, workflows, binding) get the same refusal;
+- an Agent catalog change is refused with `403
+  member_agent_catalog_read_only`: `POST /agents`,
+  `POST /agents/materialize-engine`, and on an admitted Agent `PUT` and
+  `DELETE /agents/:slug` and the tools and workflows edits. The collection
+  operations name no Agent, so a 403 reveals nothing the member's list does
+  not; a write to a hidden slug is still the uniform 404.
 
 The caller's own conversation history under `/agents/:slug/conversations` stays
 readable; those routes already authorize by conversation owner.
+
+**Not yet covered by the gate.** These member-reachable paths are not decided
+by Agent audience in this slice:
+
+- starting or steering work without naming an Agent route the gate reads:
+  `POST /api/orchestration/commands`, `POST /api/orchestration/delegations/:id/respond`,
+  the global `POST /invoke`, and
+  `POST /agents/:slug/conversations/:id/fork` (inside the conversation
+  carve-out);
+- Agent names outside the catalog routes: `GET /integrations` (`usedBy` lists
+  the Agents bound to each integration), `GET /monitoring/stats` and
+  `/monitoring/metrics` (per-Agent slug, name and model), and Project layout
+  reads whose stored config and integrity diagnostics quote Agent slugs.
+
+None of these returns an Agent's prompt or tool configuration. They belong to
+the wider member-surface inventory (#488, #490) and to member turns (#3277).
 
 **Authority rule for member turns (R2).** When #3277 admits a member's turn on
 a member-facing Agent, that turn's effective authority is the intersection of:

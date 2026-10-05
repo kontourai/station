@@ -639,7 +639,11 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
-import { installAgentAudienceGate } from '../bootstrap/agent-audience-gate.js';
+import {
+  type AgentAudienceGateDeps,
+  agentCatalogForCaller,
+  installAgentAudienceGate,
+} from '../bootstrap/agent-audience-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
   createPersonalHomeAuthorityDatabase,
@@ -1927,7 +1931,7 @@ export function configureRuntimeRoutes(
             status: member.status,
           }))
       : [];
-  installAgentAudienceGate(context.app, {
+  const agentAudience: AgentAudienceGateDeps = {
     caller: async (c) => {
       const request = c.req.raw;
       try {
@@ -1960,7 +1964,8 @@ export function configureRuntimeRoutes(
       return { kind: 'operator' };
     },
     listAgents: () => context.agentService.listAgents(),
-  });
+  };
+  installAgentAudienceGate(context.app, agentAudience);
   // #2561: every route family below decides a session or conversation read
   // (or records an owner that a later session read compares against), so it
   // must use the request's principal, exactly like the chat routes bound
@@ -6010,7 +6015,12 @@ export function configureRuntimeRoutes(
           ).request('/capabilities')
         ).json(),
       branding: async () => (await createBrandingRoutes().request('/')).json(),
-      agents: async () => {
+      agents: async (c) => {
+        // #3276: the same caller decision and member projection as
+        // `GET /api/agents`; a member never receives the operator catalog.
+        const catalog = await agentCatalogForCaller(agentAudience, c);
+        if (catalog.kind === 'member')
+          return { success: true, data: catalog.data };
         return {
           success: true,
           data: await context.agentService.getAgentCatalog(

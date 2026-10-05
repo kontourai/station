@@ -9,8 +9,8 @@
  *   and write of `agent.json`, ahead of the JSON schema, so a refusal names
  *   the actual problem instead of a `oneOf` mismatch.
  * - {@link agentAudienceAdmits}: whether one caller may see and use one Agent.
- *   Every listing and Agent-addressed route that a Project member can reach
- *   asks this, never a local copy of the rule.
+ *   The member-caller gate (`agent-audience-gate.ts`) and `/api/boot` ask
+ *   this, never a local copy of the rule.
  *
  * Admission is not authority. A member admitted here still holds only their
  * own membership; the turn they start must run with the intersection of the

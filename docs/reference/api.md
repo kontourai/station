@@ -319,10 +319,13 @@ this shape. The
 [Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
 answers `GET /agents`, `GET /api/agents` and `GET /api/agents/:slug` for it
 with `station.member-agent/v1` views of Agents whose
-[audience](config.md#audience) admits it. Any other or unknown Agent slug, in a
-path or as an orchestration `target.agent`, returns `404 Agent not found`. A
-turn on an admitted Agent returns `403 member_agent_turns_unavailable`. All of
-these responses are `no-store`. See
+[audience](config.md#audience) admits it; `/api/boot`'s `agents` section
+carries the same views. Any other or unknown Agent slug, in a path or as an
+orchestration `target.agent`, returns `404 Agent not found`. A turn on an
+admitted Agent returns `403 member_agent_turns_unavailable`, and creating,
+materializing, updating or deleting an Agent, or editing its tools or
+workflows, returns `403 member_agent_catalog_read_only`. All of these gate
+responses are `no-store`. See
 [Agent audience](../design/project-membership.md#agent-audience).
 
 ---

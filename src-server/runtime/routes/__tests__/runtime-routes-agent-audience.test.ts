@@ -23,7 +23,7 @@
  *  - `viewers-desk` b-project, audience: role `viewer` only        -> hidden
  *  - `elsewhere`   a-project, audience: members holding `view`     -> hidden
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -305,6 +305,13 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService,
+      getVoltAgent: () => ({ getAgents: async () => [] }),
+      applyAgentConfigurationMutation: undefined,
+      getLiveAppConfig: () => ({}),
+      providerService: deepStub({ listProviderConnections: () => [] }),
+      connectionService: deepStub({
+        checkGatedModelConnectionIds: () => new Set<string>(),
+      }),
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -355,7 +362,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
-    return { base, revokeB };
+    return { base, revokeB, home };
   }
 
   /** A request exactly as a station-control tool in `session` makes it. */
@@ -398,9 +405,14 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
   async function asOperator(
     base: string,
     path: string,
+    init: RequestInit = {},
   ): Promise<{ status: number; body: any }> {
     const response = await fetch(`${base}${path}`, {
-      headers: { authorization: `Bearer ${OPERATOR_CREDENTIAL}` },
+      ...init,
+      headers: {
+        ...(init.headers as Record<string, string> | undefined),
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+      },
     });
     return {
       status: response.status,
@@ -594,5 +606,117 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       success: false,
       error: 'Agent not found',
     });
+  });
+
+  const send = (method: string, body?: unknown): RequestInit => ({
+    method,
+    headers: { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const CREATE = {
+    slug: 'member-made',
+    name: 'Member made',
+    prompt: 'MEMBER-MADE-PROMPT',
+  };
+  /** Every non-turn write an Agent path accepts, addressed to `slug`. */
+  const addressedMutations = (slug: string): [string, string, unknown][] => [
+    ['PUT', `/agents/${slug}`, { name: 'Renamed', prompt: 'x' }],
+    ['DELETE', `/agents/${slug}`, undefined],
+    ['POST', `/agents/${slug}/tools`, { serverId: 'private-crm' }],
+    ['PUT', `/agents/${slug}/tools/allowed`, { allowed: [] }],
+    ['DELETE', `/agents/${slug}/tools/private-crm`, undefined],
+    ['POST', `/agents/${slug}/workflows`, { filename: 'w.md', content: 'x' }],
+    ['PUT', `/agents/${slug}/workflows/w.md`, { content: 'x' }],
+    ['DELETE', `/agents/${slug}/workflows/w.md`, undefined],
+  ];
+
+  test('a member cannot create, materialize, edit or delete an Agent: 403 on the collection and admitted Agents, the uniform not-found on hidden ones', async () => {
+    const { base, home } = await setup();
+    for (const [path, body] of [
+      ['/agents', CREATE],
+      ['/agents/', CREATE],
+      ['/agents/materialize-engine', { engineId: 'claude' }],
+    ] as const) {
+      const refused = await asAccount(base, path, send('POST', body));
+      expect([path, refused.status, refused.body?.code]).toEqual([
+        path,
+        403,
+        'member_agent_catalog_read_only',
+      ]);
+      expect(refused.cacheControl).toBe('no-store');
+      // A station-control call B's session makes is refused too — by the
+      // station-control role guard, which answers a catalog write before
+      // this gate runs.
+      expect([
+        path,
+        (await asTool('b-agent', path, send('POST', body))).body?.success,
+      ]).toEqual([path, false]);
+    }
+    for (const [method, path, body] of addressedMutations('concierge')) {
+      const refused = await asAccount(base, path, send(method, body));
+      expect([method, path, refused.status, refused.body?.code]).toEqual([
+        method,
+        path,
+        403,
+        'member_agent_catalog_read_only',
+      ]);
+    }
+    const unknown = await asAccount(base, '/api/agents/no-such-agent');
+    for (const slug of HIDDEN)
+      for (const [method, path, body] of addressedMutations(slug)) {
+        const refused = await asAccount(base, path, send(method, body));
+        expect([method, path, refused.status, refused.body]).toEqual([
+          method,
+          path,
+          unknown.status,
+          unknown.body,
+        ]);
+      }
+    // Nothing was written: no new Agent, and the admitted one is intact.
+    expect(existsSync(join(home, 'agents', 'member-made'))).toBe(false);
+    expect(
+      JSON.parse(
+        readFileSync(join(home, 'agents', 'concierge', 'agent.json'), 'utf8'),
+      ),
+    ).toEqual(AGENTS.concierge);
+    expect(existsSync(join(home, 'agents', 'ops-only', 'agent.json'))).toBe(
+      true,
+    );
+  });
+
+  test('the operator still creates and deletes Agents through the Agent route', async () => {
+    const { base, home } = await setup();
+    const created = await asOperator(base, '/agents', send('POST', CREATE));
+    expect(created.body?.code).not.toBe('member_agent_catalog_read_only');
+    expect([created.status, created.body?.success]).toEqual([201, true]);
+    expect(existsSync(join(home, 'agents', 'member-made', 'agent.json'))).toBe(
+      true,
+    );
+    const deleted = await asOperator(base, '/agents/ops-only', send('DELETE'));
+    expect([deleted.status, deleted.body?.success]).toEqual([200, true]);
+    expect(existsSync(join(home, 'agents', 'ops-only', 'agent.json'))).toBe(
+      false,
+    );
+  });
+
+  test('a member’s /api/boot carries only member views; the operator’s boot carries the operator catalog', async () => {
+    const { base } = await setup();
+    const boot = await asAccount(base, '/api/boot');
+    expect(boot.status).toBe(200);
+    expect(boot.body.sections.agents).toEqual({
+      data: { success: true, data: [memberConcierge] },
+    });
+    // No hidden Agent's name, and no Agent's prompt or tools, anywhere in it.
+    expect(JSON.stringify(boot.body)).not.toMatch(
+      /PRIVATE-PROMPT|private-crm|Ops only|Viewers desk|Elsewhere/,
+    );
+
+    const operator = await asOperator(base, '/api/boot');
+    expect(operator.status).toBe(200);
+    const catalog = operator.body.sections.agents.data.data as any[];
+    expect(catalog.map((agent) => agent.slug).sort()).toEqual(
+      ['concierge', 'elsewhere', 'ops-only', 'viewers-desk'].sort(),
+    );
+    expect(catalog.some((agent) => agent.kind === 'member-agent')).toBe(false);
   });
 });
