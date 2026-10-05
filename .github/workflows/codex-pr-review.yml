@@ -6,10 +6,10 @@ name: Advisory PR review
 #
 # The review engine spends credits on every run, so the `gate` job admits a
 # pull request only when scripts/advisory-review-gate.mjs says so: it was
-# requested (auto-merge armed, the `advisory-review` label set, or a person
-# dispatched this workflow for it), it is still at the head the Secret Scan run
-# saw, it changes more than generated output, and no review exists for that
-# exact head. The gate reads the GitHub API only and runs the default-branch
+# requested (the `advisory-review` label set, or a person dispatched this
+# workflow for it; armed auto-merge alone is not a request), it is still at
+# the head the Secret Scan run saw, it changes more than generated output,
+# and no review exists for that exact head. The gate reads the GitHub API only and runs the default-branch
 # copy of the script; it never checks out or executes pull-request code.
 on:
   workflow_run:

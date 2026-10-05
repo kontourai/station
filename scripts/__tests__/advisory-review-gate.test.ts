@@ -32,8 +32,8 @@ afterEach(() => {
 function pullRequest(overrides: Record<string, unknown> = {}) {
   return {
     state: 'open',
-    auto_merge: { merge_method: 'squash' },
-    labels: [],
+    auto_merge: null,
+    labels: [{ name: 'advisory-review' }],
     head: { sha: HEAD, repo: { full_name: 'kontourai/station' } },
     base: { sha: 'c'.repeat(40) },
     ...overrides,
@@ -118,7 +118,7 @@ async function runGate(
 const source = ['src-server/index.ts'];
 
 describe('advisory review gate (child process)', () => {
-  it('admits an armed pull request with reviewable source and no prior review', async () => {
+  it('admits a labelled pull request with reviewable source and no prior review', async () => {
     const result = await runGate({ files: source });
     expect(result.code).toBe(0);
     expect(result.outputs).toMatchObject({
@@ -131,9 +131,9 @@ describe('advisory review gate (child process)', () => {
     });
   });
 
-  it('skips a pull request nobody requested, without reading files or reviews', async () => {
+  it('skips an armed pull request nobody requested, without reading files or reviews', async () => {
     const result = await runGate({
-      pr: pullRequest({ auto_merge: null }),
+      pr: pullRequest({ auto_merge: { merge_method: 'squash' }, labels: [] }),
       files: source,
     });
     expect(result.outputs).toMatchObject({
@@ -145,10 +145,7 @@ describe('advisory review gate (child process)', () => {
 
   it('admits when the advisory-review label requests it', async () => {
     const result = await runGate({
-      pr: pullRequest({
-        auto_merge: null,
-        labels: [{ name: 'advisory-review' }],
-      }),
+      pr: pullRequest({ labels: [{ name: 'advisory-review' }] }),
       files: source,
     });
     expect(result.outputs.admit).toBe('true');
@@ -156,7 +153,7 @@ describe('advisory review gate (child process)', () => {
 
   it('does not treat unrelated labels as a request', async () => {
     const result = await runGate({
-      pr: pullRequest({ auto_merge: null, labels: [{ name: 'bug' }] }),
+      pr: pullRequest({ labels: [{ name: 'bug' }] }),
       files: source,
     });
     expect(result.outputs.reason).toBe('not-requested');
@@ -164,7 +161,7 @@ describe('advisory review gate (child process)', () => {
 
   it('admits a manual dispatch without arming or a label', async () => {
     const result = await runGate(
-      { pr: pullRequest({ auto_merge: null }), files: source },
+      { pr: pullRequest({ labels: [] }), files: source },
       { EVENT_NAME: 'workflow_dispatch', EVENT_HEAD_SHA: '' },
     );
     expect(result.outputs).toMatchObject({ admit: 'true', head_sha: HEAD });

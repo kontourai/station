@@ -2,8 +2,9 @@
 // Admission decision for the advisory PR review (#3101 I). The review engine
 // costs credits per run, so it only runs for a pull request that:
 //   1. is open and still at the head the triggering event saw;
-//   2. was requested: auto-merge is armed, the `advisory-review` label is
-//      set, or a person dispatched the workflow for it;
+//   2. was requested: the `advisory-review` label is set, or a person
+//      dispatched the workflow for it. Armed auto-merge is not a request:
+//      nearly every PR here is armed, and each already gets its own review;
 //   3. changes something other than generated output; and
 //   4. has no review (comment marker or retained result) for that exact head.
 // Everything is read from the GitHub API with the workflow's read token; the
@@ -75,7 +76,6 @@ export async function decide({
     return { admit: false, reason: 'superseded-head' };
   const requested =
     eventName === 'workflow_dispatch' ||
-    Boolean(pr.auto_merge) ||
     (pr.labels ?? []).some((label) => label.name === REQUEST_LABEL);
   if (!requested) return { admit: false, reason: 'not-requested' };
   const { files, truncated } = await readFiles();
