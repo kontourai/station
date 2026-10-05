@@ -97,7 +97,13 @@ A restart without resume starts a new total. A figure lower than the one it
 would replace also starts a new total; a missing-transcript resume reports
 `0`, for example. The session cost and the receipt rollup use the same rule.
 `session.started` events recorded before this marker existed read as restarts,
-so older resumed sessions can still over-report their cost. Durable event sequence resolves equal Station-observation timestamps,
+so older resumed sessions can still over-report their cost. The SDK reports
+no starting total, so the rule has two blind spots. A reset or a resume whose
+transcript saved no total undercounts when its first figure already exceeds the
+previous total. A restated total slightly below the last live figure starts a
+new total and overcounts.
+
+Durable event sequence resolves equal Station-observation timestamps,
 and sparse cumulative updates preserve previously reported components.
 Combined counter estimates remain unpriced when their model, price snapshot,
 or inherited component evidence does not support one estimate. These receipts

@@ -259,7 +259,17 @@ export function sessionStartedResumedNativeSession(event: {
  *
  * A resumed `session.started` opens nothing: the resumed process's figures
  * continue the previous running total (and are checked against it by the
- * rule above).
+ * rule above). An EQUAL figure stays in the segment: a resume handshake
+ * result (`num_turns: 0`) restates the saved total unchanged.
+ *
+ * Known blind spots of this heuristic (the SDK reports no starting total):
+ *
+ * - A reset (`/clear`, or a resume whose transcript saved no total) whose
+ *   FIRST figure is already above the previous running total reads as a
+ *   continuation, so the spend before the reset is undercounted.
+ * - A restated total slightly LOWER than the last live figure (a transcript
+ *   that saved an earlier total than the one last reported) opens a new
+ *   segment, so the restated part is overcounted.
  *
  * Shared by `foldUsageEvents` and the usage receipt reader
  * (`EventStore.listUsageReceiptEvents`), so the session total and the

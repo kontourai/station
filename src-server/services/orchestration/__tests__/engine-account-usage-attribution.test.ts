@@ -355,6 +355,8 @@ test('a resumed Claude process continues its cost receipt while a fresh restart 
     result(0.02);
     result(0.030603);
     started(true);
+    // The resume handshake restates the saved total unchanged.
+    result(0.030603);
     result(0.0324923);
     // A fresh process (new transcript) starts from zero and adds.
     started(false);

@@ -323,6 +323,20 @@ describe('foldUsageEvents', () => {
         expect(aggregate.reportedCostUsd).toBeCloseTo(0.0413706, 10);
       });
 
+      it('keeps an equal restatement after a resume in the same running total', () => {
+        // The resume handshake result (`num_turns: 0`) restates the saved
+        // total unchanged before the next turn adds to it.
+        const aggregate = foldUsageEvents([
+          started(false),
+          cost(0.030603),
+          started(true),
+          cost(0.030603),
+          cost(0.0324923),
+        ]);
+        // Opening a new total on the equal figure would report 0.0630953.
+        expect(aggregate.reportedCostUsd).toBeCloseTo(0.0324923, 10);
+      });
+
       it('follows a chain of resumes and a later fresh restart', () => {
         const aggregate = foldUsageEvents([
           started(false),

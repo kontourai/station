@@ -310,10 +310,12 @@ export class SessionTranscriptReads {
         // Figures in one cumulative cost segment restate one running total,
         // so they share an identity and the rollup keeps the latest; a
         // resumed process continues its predecessor's segment (station#3320).
+        // A cumulative figure without a segment (not reachable from the
+        // store today) still shares one thread-wide identity, so the rollup
+        // keeps its latest figure instead of summing restatements.
         const costId =
-          providerCostScope(event.provider) === 'engine-process-cumulative' &&
-          costSegment !== undefined
-            ? `usage:${event.threadId}:${event.provider}:cost:${costSegment}`
+          providerCostScope(event.provider) === 'engine-process-cumulative'
+            ? `usage:${event.threadId}:${event.provider}:cost:${costSegment ?? 'unsegmented'}`
             : `usage:${event.id}:cost`;
         return [
           ...tokenReceipts,
