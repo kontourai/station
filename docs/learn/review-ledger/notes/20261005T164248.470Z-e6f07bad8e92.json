@@ -1,0 +1,7 @@
+{
+  "revision": "fa4fcd1ac2ca9353fc52cb48cd76d211471f4979",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3386 follow-up: attached-session-follow-service.ts changed only by restructuring one project-root read (skip a project without workingDirectory, then canonicalPath) with identical behavior; focused tests re-run green. Claims unchanged.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}
