@@ -63,6 +63,7 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
     toolCallId: item.parent?.toolCallId,
     description: item.title,
     subagentType: item.kindLabel,
+    ...(item.model ? { model: item.model } : {}),
     backgrounded: item.backgrounded === true,
     // Absent depth stays absent: "not reported" is not "top level".
     spawnDepth: item.depth,

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const DEPENDENCIES_PATH = fileURLToPath(
@@ -81,7 +81,7 @@ export function assertPublishedPluginScaffoldDependencies(
 }
 
 function livePublishedVersions(packageName) {
-  const raw = execFileSync(
+  const raw = execFileSyncBounded(
     'npm',
     [
       'view',

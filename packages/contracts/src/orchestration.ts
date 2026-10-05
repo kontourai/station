@@ -543,7 +543,35 @@ export interface OrchestrationDelegationContext {
   /** Bounded dispatch prompt used only as the delegator-side Activity label. */
   title?: string;
   mode?: string;
+  /**
+   * The open request the PAIRED Station last reported for this task, on a
+   * delegator-side peer record only (`environmentKind: 'peer'`). Copied from
+   * that Station's own delegated-task status read (`pendingRequest`), which
+   * derives it from its unresolved `request.opened` events; this Station
+   * never derives it. Absent means the last status read reported none, or
+   * no read has observed one yet. `id` names the request ON THE PAIRED
+   * STATION: it is answerable only through
+   * `POST /api/orchestration/delegations/:taskId/respond` with the record's
+   * `environmentId`, never by a local `respondToRequest`.
+   */
+  peerPendingRequest?: OrchestrationPeerPendingRequest;
 }
+
+/** See `OrchestrationDelegationContext.peerPendingRequest`. */
+export interface OrchestrationPeerPendingRequest {
+  id: string;
+  /** The paired Station's `requestType`, when it reported a known one. */
+  type?: CanonicalRequestType;
+  /** The paired Station's request title, bounded. */
+  title?: string;
+  /** When this Station observed it on the paired Station's status read. */
+  observedAt: string;
+}
+
+type CanonicalRequestType = Extract<
+  CanonicalRuntimeEvent,
+  { method: 'request.opened' }
+>['requestType'];
 
 /**
  * Server-issued provenance for the input that created or currently drives a
@@ -982,6 +1010,11 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
   lastRuntimeErrorMessage?: string;
+  /**
+   * #3157: that terminal runtime error is a provider usage limit
+   * (`UsageLimitFailureDetails`). Clients hold queued follow-ups on it.
+   */
+  lastRuntimeErrorUsageLimit?: true;
   /** Reason from the latest non-recovery turn abort, when it is terminal. */
   lastTurnAbortReason?: string;
   /** Present only while this process is watching this session's active turn. */
@@ -1462,8 +1495,10 @@ export interface ConversationListItem {
   /**
    * Durable title provenance for mutable store conversations. A UI must ask
    * before replacing a human-owned title; runtime conversations have none.
+   * `agent` is a title a station-control agent set with `rename_session`: it
+   * is not a person's, so any later rename replaces it without asking.
    */
-  titleSource?: 'user' | 'generated' | 'provider' | 'prompt';
+  titleSource?: 'user' | 'generated' | 'provider' | 'prompt' | 'agent';
   /**
    * Carried from the base summary's decoration. Required on this shape too:
    * `useConversationInventoryQuery`'s consumers fold the same

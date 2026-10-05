@@ -135,6 +135,13 @@ const expectedDependencies = new Map(
     'src-ui/src/lib/device-settings-store.ts': 'persistence',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
+    // The Diff pane's body: the git rows, then ONE view at full width (the
+    // working tree's changes or the pull requests). `aggregate-host`, like
+    // the workbench: it composes the pane's surfaces and owns none of them.
+    'src-ui/src/components/coding-layout/CodingDiffPaneBody.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/CodingDiffPaneBody.tsx':
+      'aggregate-host',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingTerminalPanel.tsx':
@@ -148,6 +155,9 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/DiffCommentThread.tsx': 'git-review',
     'src-ui/src/components/coding-layout/DiffPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/DiffPanel.tsx': 'git-review',
+    // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
+    // module: drawn pixels, nothing decided.
+    'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -188,6 +198,12 @@ const expectedDependencies = new Map(
     // accepted layout types AND retained-LayoutTab/parser adaptation checks;
     // a UI-only field would make contributed routing metadata unverifiable.
     'src-ui/src/views/ProjectPage.tsx': 'navigation',
+    // Home's Continue/work rows open a chat where it lives: the view model
+    // reads the project's layout list and, when one is a Coding layout and
+    // the device does not fold every region into one, navigates to it after
+    // focusing the chat so the Coding host centres it. It renders no Coding
+    // pane and grants no workspace authority: a route choice only.
+    'src-ui/src/views/home/useHomeViewModel.ts': 'navigation',
     // #2047: the surface → pane inventory joins the coding dock surfaces
     // (`coding:terminal`, `coding:diff`, `coding:file-browser`) to the
     // coding pane contracts' fixed per-project instances and canonical
@@ -203,7 +219,6 @@ const expectedDependencies = new Map(
     'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',
-    'src-ui/src/workspace-panes/WorkspacePaneHost.css': 'presentation',
     'src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts':
       'pane-contract',
     'src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx':

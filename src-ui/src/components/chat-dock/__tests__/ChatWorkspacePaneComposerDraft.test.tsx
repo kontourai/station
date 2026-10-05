@@ -493,7 +493,7 @@ test('a foreign chat’s git state and code layout are its own Project’s, not 
 
   fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
   fireEvent.click(
-    await screen.findByRole('menuitem', { name: 'Open code layout' }),
+    await screen.findByRole('menuitem', { name: 'Open in Coding' }),
   );
   expect(navigationStore.getSnapshot().pathname).toBe(
     '/projects/other/layouts/other-code',

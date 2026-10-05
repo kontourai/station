@@ -1,5 +1,7 @@
 import { HomeActionSection } from '../../components/home/HomeActionSection';
+import { HomeChatStartForm } from '../../components/home/HomeChatStartForm';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
+import { SkeletonBlock } from '../../components/state';
 import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import type { NavigationView } from '../../types';
 import {
@@ -21,14 +23,20 @@ export interface HomeSurfaceProps {
 }
 
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
+/** The recent-work section's id: the skip target (U2). */
+const RECENT_WORK_SECTION_ID = 'home-recent-work';
 
 /**
  * The one Home (archive#3122's experiment, concluded).
  *
- * Reading order: name the question, offer the ways in, show where the work
- * has been, then the work itself. The first two sections are what Home has
- * always shown; the activity chart and the counts captioning recent work are
- * what the composed variant contributed and the owner kept.
+ * Reading order (design round 2026-10, V1-V6, Q3, U2): the start form, then
+ * the work. With recent work on the page the lanes come right after the
+ * form and the heading, the action cards and the chart wait below them —
+ * someone with work does not need to be asked what they want to work on
+ * above it. An empty Station keeps the heading and leads with the cards.
+ * The counts that used to caption the lanes are gone: the lane headings
+ * carry their counts, and the chart draws only once it has more than one
+ * row to compare.
  *
  * There is exactly ONE list of recent work on this page, and that is a
  * constraint rather than an accident: the composed variant carried its own
@@ -65,52 +73,94 @@ export function HomeSurface({
   ];
   const heatRows = buildHeatRows(visible, lanes.now);
   const openProject = projectOpener(model, onNavigate);
+  const hasWork = model.workItems.length > 0;
+
+  // The skeleton stands where the cards will stand. It used to sit under the
+  // start form, which put a 150px placeholder above the work it had nothing
+  // to do with (Q3).
+  const actions = model.actionsLoading ? (
+    <SkeletonBlock count={1} label="Finding available ways to help" />
+  ) : (
+    <HomeActionSection
+      continuation={continuation}
+      model={model}
+      onNavigate={onNavigate}
+    />
+  );
+  const recentWork = (
+    <HomeRecentWorkSection
+      id={RECENT_WORK_SECTION_ID}
+      lanes={lanes}
+      workItems={model.workItems}
+      workFacts={model.workFacts}
+      workLoading={model.workLoading}
+      workDegraded={model.workDegraded}
+      workError={model.workError}
+      agents={model.agents}
+      remoteUnavailable={model.remoteUnavailable}
+      remoteAuthenticationRequired={model.remoteAuthenticationRequired}
+      onOpen={model.continueWork}
+      onViewActivity={() => showSurfacePage('activity')}
+      onRetry={model.retryWork}
+    />
+  );
+  // One bar is not a comparison. The chart earns its height past one row.
+  const chart = heatRows.length > 1 && (
+    <section
+      className="home-view__activity"
+      aria-labelledby={ACTIVITY_HEADING_ID}
+    >
+      <h2
+        id={ACTIVITY_HEADING_ID}
+        className="home-view__activity-heading"
+        tabIndex={-1}
+      >
+        Where the work has been
+      </h2>
+      <ActivityBars
+        rows={heatRows}
+        onOpen={model.continueWork}
+        resolveProjectOpen={openProject}
+      />
+    </section>
+  );
 
   return (
     <>
-      <header className="home-view__intro">
-        <p className="home-view__eyebrow">Your work</p>
-        <h1>What's next?</h1>
-        <p>Chat, explore agents, or open a project.</p>
-      </header>
-      <HomeActionSection
-        continuation={continuation}
-        model={model}
-        onNavigate={onNavigate}
-      />
-      {heatRows.length > 0 && (
-        <section
-          className="home-view__activity"
-          aria-labelledby={ACTIVITY_HEADING_ID}
-        >
-          <h2
-            id={ACTIVITY_HEADING_ID}
-            className="home-view__activity-heading"
-            tabIndex={-1}
-          >
-            Where the work has been
-          </h2>
-          <ActivityBars
-            rows={heatRows}
-            onOpen={model.continueWork}
-            resolveProjectOpen={openProject}
-          />
-        </section>
+      {/* U2: the first inbox row sat 35 tab stops in. A keyboard reader lands
+          on the work in one. */}
+      {hasWork && (
+        <a className="home-view__skip" href={`#${RECENT_WORK_SECTION_ID}`}>
+          Skip to recent work
+        </a>
       )}
-      <HomeRecentWorkSection
-        lanes={lanes}
-        workItems={model.workItems}
-        workFacts={model.workFacts}
-        workLoading={model.workLoading}
-        workDegraded={model.workDegraded}
-        workError={model.workError}
-        agents={model.agents}
-        remoteUnavailable={model.remoteUnavailable}
-        remoteAuthenticationRequired={model.remoteAuthenticationRequired}
-        onOpen={model.continueWork}
-        onViewActivity={() => showSurfacePage('activity')}
-        onRetry={model.retryWork}
-      />
+      {!hasWork && (
+        <header className="home-view__intro">
+          <h1>What's next?</h1>
+        </header>
+      )}
+      {/* A plain wrapper: the form is the one "Start work" landmark. A
+          section named the same nested a second landmark with one name. */}
+      <div
+        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
+      >
+        <HomeChatStartForm
+          identity={model.startReady ? model.startIdentity : undefined}
+          compact={hasWork}
+        />
+      </div>
+      {hasWork ? (
+        <>
+          {recentWork}
+          {actions}
+          {chart}
+        </>
+      ) : (
+        <>
+          {actions}
+          {recentWork}
+        </>
+      )}
     </>
   );
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 
 const providerIndex = process.argv.indexOf('--provider');
 const provider =
@@ -39,7 +39,7 @@ if (!provider) {
     );
     process.exitCode = 2;
   } else if (provider === 'nova-s2s') {
-    const result = spawnSync(
+    const result = spawnSyncBounded(
       process.execPath,
       ['--import', 'tsx', 'scripts/voice-realtime-nova-smoke.ts'],
       {
@@ -64,7 +64,7 @@ if (!provider) {
       process.exitCode = 2;
     }
   } else if (provider === 'openai-realtime-compatible') {
-    const result = spawnSync(
+    const result = spawnSyncBounded(
       process.execPath,
       ['--import', 'tsx', 'scripts/voice-realtime-openai-smoke.ts'],
       {
