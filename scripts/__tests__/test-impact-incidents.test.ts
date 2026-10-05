@@ -7,12 +7,24 @@
  * asserts the broken suite is selected. Suite paths are spelled out here, not
  * read from the manifest under test.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { prepareChangedSelection } from '../run-changed-verification.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
-import { REPO_SCAN_SUITES } from '../test-impact-manifest.mjs';
+import {
+  dependencyChangeEdges,
+  REPO_SCAN_SUITES,
+} from '../test-impact-manifest.mjs';
 
 const root = process.cwd();
 const incidents: Record<string, { merge: string; paths: string[] }> =
@@ -205,5 +217,50 @@ describe('#3170: the SDK client portability scan', () => {
     // The incident escalated with more than 32 explicit tests, so its plan ran
     // none of them; the repo-scans job runs this suite regardless.
     expect(REPO_SCAN_SUITES).toContain(PORTABILITY);
+  });
+});
+
+describe('dependency fan-out limit (#3149 review)', () => {
+  // A package imported by more suites than the limit defers to the full lane
+  // instead of naming them all; at the limit it still names each suite.
+  function edgesFor(importers: number) {
+    const fixture = mkdtempSync(join(tmpdir(), 'dependency-fanout-'));
+    try {
+      const testFiles = Array.from(
+        { length: importers },
+        (_, index) => `src/__tests__/consumer-${index}.test.ts`,
+      );
+      mkdirSync(join(fixture, 'src', '__tests__'), { recursive: true });
+      for (const file of testFiles)
+        writeFileSync(
+          join(fixture, file),
+          "import { thing } from '@kontourai/fanout-fixture';\n",
+        );
+      const manifest = (version: string) =>
+        JSON.stringify({
+          dependencies: { '@kontourai/fanout-fixture': version },
+        });
+      return dependencyChangeEdges({
+        root: fixture,
+        paths: ['package.json'],
+        readBase: () => manifest('1.0.0'),
+        readHead: () => manifest('1.1.0'),
+        testFiles,
+      });
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  }
+
+  test('17 importers defer to test-full rather than naming every suite', () => {
+    const [edge] = edgesFor(17);
+    expect(edge?.deferredLanes).toEqual(['test-full']);
+    expect(edge && 'tests' in edge ? edge.tests : undefined).toBeUndefined();
+  });
+
+  test('16 importers are each named', () => {
+    const [edge] = edgesFor(16);
+    expect(edge?.deferredLanes).toBeUndefined();
+    expect(edge && 'tests' in edge ? edge.tests : []).toHaveLength(16);
   });
 });
