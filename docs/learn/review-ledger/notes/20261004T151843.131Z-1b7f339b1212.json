@@ -1,0 +1,7 @@
+{
+  "revision": "01ea0bcee0115d386bfb75a5d395a79856332d3a",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Added file-access and process-identity notes for start --watch; Vite CORS off and fs.allow narrowed in vite.config.ts; claims checked against the live probe.","inputs":["docs/guides/development.md"]}
+  ]
+}

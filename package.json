@@ -157,6 +157,7 @@
     "install:playwright:ci": "node scripts/install-playwright-browsers.mjs chromium",
     "check:full-regression-browser": "node scripts/check-full-regression-browser.mjs",
     "dev:server": "tsx watch ./src-server/index.ts",
+    "dev:server:poll": "tsx scripts/dev-server-watch.mts",
     "dev:ui": "vite dev",
     "dev:desktop": "tsx scripts/dev-desktop.mts",
     "verify:desktop-rust": "mkdir -p dist-server dist-desktop-runtime/node_modules && cd src-desktop && cargo test",

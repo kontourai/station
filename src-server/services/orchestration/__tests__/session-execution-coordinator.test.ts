@@ -1,6 +1,9 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
-import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
+import {
+  SessionExecutionCoordinator,
+  SessionLifecycleClaimRefusedError,
+} from '../session-execution-coordinator.js';
 import type { SessionTurnBoundaryAuthority } from '../session-turn-boundary.js';
 import { WorkspaceExecutionBusyError } from '../workspace-execution-barrier.js';
 
@@ -217,5 +220,32 @@ describe('SessionExecutionCoordinator', () => {
       coordinator.runLifecycleTransition('thread-fault', async () => 'second'),
     ).resolves.toBe('second');
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  test('a boundary refusal of a lifecycle claim is typed; the operation own failure is not', async () => {
+    const refusing = (kind: 'active-turn' | 'busy') =>
+      new SessionExecutionCoordinator({
+        claimLifecycle: () => ({ kind }),
+      } as unknown as SessionTurnBoundaryAuthority);
+    const operation = vi.fn(async () => 'ran');
+    await expect(
+      refusing('active-turn').runLifecycleTransition('thread-1', operation),
+    ).rejects.toMatchObject({
+      name: 'SessionLifecycleClaimRefusedError',
+      reason: 'active-turn',
+      message: 'Session has an active turn: thread-1',
+    });
+    await expect(
+      refusing('busy').runLifecycleTransition('thread-1', operation),
+    ).rejects.toBeInstanceOf(SessionLifecycleClaimRefusedError);
+    expect(operation).not.toHaveBeenCalled();
+
+    const owning = new SessionExecutionCoordinator();
+    const failure = new Error('stop failed');
+    await expect(
+      owning.runLifecycleTransition('thread-1', async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
   });
 });

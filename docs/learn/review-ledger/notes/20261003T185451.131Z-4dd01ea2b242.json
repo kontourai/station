@@ -1,0 +1,7 @@
+{
+  "revision": "e1544fe9cb9f8309b7c608efac65601f6f4804a4",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"RegionPaneHost.project.test.tsx changed only its stale-binding case: the binding naming a deleted project is now set after navigating to /projects/alpha, because #3144 made opening a workspace set the default project for new chats (which would overwrite a binding set before). The case still pins what placement.md describes: the dock host reads around a binding that names a missing project, falling back to the route's project without writing the binding. No placement rule changed.","inputs":["packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx"]}
+  ]
+}

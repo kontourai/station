@@ -140,7 +140,7 @@ function ChatDockContentAreaImpl({
           <button
             type="button"
             className="conversation-history__backdrop"
-            aria-label="Close conversation history"
+            aria-label="Close history"
             tabIndex={-1}
             onClick={onCloseHistory}
           />
@@ -152,7 +152,7 @@ function ChatDockContentAreaImpl({
                   <span className="conversation-history__title">History</span>
                 </div>
                 <div className="conversation-history__list">
-                  <SkeletonList label="Loading conversation history" />
+                  <SkeletonList label="Loading history" />
                 </div>
               </div>
             }

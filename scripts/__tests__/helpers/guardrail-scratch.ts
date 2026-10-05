@@ -144,7 +144,14 @@ export function scratchRepo({
   expect(readFileSync(join(dir, 'scripts', script), 'utf8')).toBe(
     readFileSync(join('scripts', script), 'utf8'),
   );
-  for (const lib of new Set(['module-entry.mjs', ...libs])) {
+  // `bounded-capture.mjs` travels with every guardrail for the same reason
+  // as `module-entry.mjs`: the `git ls-files`-scoped majority capture through
+  // it (#2787), and a fixture without it dies at import.
+  for (const lib of new Set([
+    'module-entry.mjs',
+    'bounded-capture.mjs',
+    ...libs,
+  ])) {
     copyFileSync(join('scripts', 'lib', lib), join(dir, 'scripts', 'lib', lib));
   }
   for (const extra of extraScripts) {

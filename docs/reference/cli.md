@@ -218,7 +218,9 @@ What it does, in order:
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
 2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
-   browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+   browser at `http://<host>:<ui-port>#station-ui-bootstrap=<token>`, where
+   `<host>` is the host the instance recorded at start, or `localhost` for a
+   wildcard bind or an entry with no recorded host.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
    [local-bootstrap-token.md](../design/local-bootstrap-token.md). The token
@@ -604,6 +606,12 @@ browser this command cannot open, such as a simulator or another profile. Each
 link is single use, and minting one replaces any earlier unspent link, including
 the one `station start` printed (#2612). Without `--print`, the command never
 prints the token.
+
+The link names the host the instance's UI listener bound, as recorded in the
+registry at start (`127.0.0.1` for `start --watch`, which is loopback-only). A
+wildcard bind (`0.0.0.0`, `::`) or an entry that recorded no host keeps
+`localhost`. The host matters because the sign-in a link completes belongs to
+that origin: `localhost` and `127.0.0.1` do not share it.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
@@ -1782,16 +1790,23 @@ station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--p
 station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
 ```
 
-`run` is the foreground supervisor. It runs the server and UI in the current
-process and does not return, so it is the process an external supervisor
-wraps rather than a command that registers one: the installed systemd unit,
-the launchd plist, and this repository's container image all invoke it. Use it
-directly when the host has no service manager to register with — a container,
-or any Linux without a systemd user session — where `service install` fails by
-design (see the backend table below). It is not a replacement for
-`station start`, which builds if needed and launches both processes detached;
-`run` deliberately stays in the foreground so its supervisor owns the
-lifecycle.
+`run` is the foreground supervisor used by installed OS units and containers.
+It takes the same atomic home claim before starting Station. With no installed
+policy, it creates a service owner record with its PID and birth fingerprint;
+existing installed policy is preserved. A conflicting live owner keeps the
+supervisor alive without running Station. It polls at 5, 10, 20, then at most
+30-second intervals, logging only refusal-reason changes, and claims and starts
+when the owner is gone. Unreadable registry state exits nonzero. Lost ownership
+at readiness stops Station before returning to the same wait. Install still
+writes policy and a live installer reservation before starting the backend,
+restoring prior policy if backend startup fails.
+
+The container image's existing `service run` invocation self-claims a fresh
+home without a policy-registration step. Direct `command-station.js` is still
+unfenced and must not be described as exclusive ownership when sharing a
+writable home.
+`station start` remains the detached lifecycle command with its separate
+shared-home checks and overrides.
 
 The default service uses the selected channel's runtime home and generated
 server/UI ports (`~/.station/instances/stable`, `18141`, and `18000` for
@@ -1925,7 +1940,7 @@ origins on an `origins` line.
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
 | Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
-| No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
+| No service manager (container, or Linux without a systemd user session) | foreground `service run` with an atomic home claim | when invoked after winning the claim; waits while another live owner holds the home | supervisor stdout/stderr and `<STATION_HOME>/logs/<instance>.log` |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
@@ -2032,7 +2047,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2044,6 +2059,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
 | `--build` | — | Force rebuild before starting (even if dist exists) |
+| `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory |
@@ -2130,7 +2146,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -2138,6 +2154,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--port-offset=<n>` | derived | Force an exact offset (`0`-`500`), overriding the derivation. `--port-offset=0` is valid and yields the base ports `39140`/`40140` (just below the derived `39141`-`39640` band). |
 | `--host=<address>` | `0.0.0.0` | Bind address; the default is a wildcard so a phone or LAN/tailnet client can reach the stable URL |
 | `--build` | — | Force a rebuild before starting |
+| `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
 | `--features=<flags>` | — | Comma-separated feature flags |
@@ -3135,7 +3152,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 

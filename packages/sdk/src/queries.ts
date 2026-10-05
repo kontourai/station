@@ -246,6 +246,7 @@ export {
   unregisterNativePush,
   unsubscribePushNotifications,
   useAcknowledgeConversationMutation,
+  useChildWorkTranscriptQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,
@@ -466,6 +467,7 @@ export {
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -490,6 +492,7 @@ export {
   TaskRoomWorkNotSentError,
   type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
+  useAppendProjectTaskRoomOutputFeedbackMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,

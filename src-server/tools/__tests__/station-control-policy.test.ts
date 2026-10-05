@@ -73,6 +73,9 @@ const DECISION_2_OPERATOR_READS = [
 const DECISION_2_PRINCIPAL_READS = [
   'list_conversations',
   'get_conversation_messages',
+  // #3159: the route further limits it to the caller's conversation, its
+  // scope, and conversations a person referenced there.
+  'read_conversation',
   'board_read',
   'get_basis',
   'get_task_basis',
@@ -522,11 +525,14 @@ describe('station-control authority: route matching and refusals', () => {
           mode,
         }),
       ).toBe('station_control_assurance_insufficient');
-    // Other commands keep the dispatch policy (slice C); steerTurn has its
-    // own rule (below).
+    // Slice C3: the thread commands are held to the scope rule (below), so
+    // an interrupt whose thread the guard could not read is refused.
     expect(
-      decide(CALLERS['bearer-operator'] ?? null, { type: 'interruptTurn' }),
-    ).toBeUndefined();
+      decide(CALLERS['bearer-operator'] ?? null, {
+        type: 'interruptTurn',
+        threadId: 't',
+      }),
+    ).toBe('station_control_assurance_insufficient');
     // The dedicated respond leaf is the bound operator's too.
     expect(
       authorizeStationControlRequest(
@@ -657,10 +663,14 @@ describe('station-control authority: route matching and refusals', () => {
       'station_control_caller_required',
     );
 
-    // The steer and adopt leaf applies the same rule.
+    // The thread commands on `/commands` apply the same rule (slices C1
+    // and C3).
     for (const body of [
       { type: 'steerTurn', threadId: 't', input: 'go' },
       { type: 'adoptSession', sourceThreadId: 't' },
+      { type: 'interruptTurn', threadId: 't' },
+      { type: 'stopSession', threadId: 't' },
+      { type: 'discardDraft', threadId: 't' },
     ]) {
       const command = (commandThread?: StationControlDispatchTarget) =>
         authorizeStationControlRequest('POST', '/api/orchestration/commands', {

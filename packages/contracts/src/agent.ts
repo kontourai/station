@@ -71,6 +71,7 @@ export const DEFAULT_GUARDRAILS = {
  */
 export const BUILTIN_STATION_AGENT_MCP_SERVER_IDS = [
   'station-control',
+  'station-knowledge',
   'station-docs',
 ] as const;
 

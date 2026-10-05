@@ -1,0 +1,7 @@
+{
+  "revision": "3badbed61353cad6ff411962569f03361e215104",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#3112: added tests/chat-send-again-failed-turn.spec.ts to the smoke-live bucket in tests/e2e-manifest.mjs. The guide names buckets and the manifest as the ownership source, not individual smoke-live specs; bucket list, runner and settlement claims are unchanged. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

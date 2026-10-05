@@ -20,6 +20,10 @@ import type { ChatMessage, ChatSession } from '../../types';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import { isTurnStreamLive } from '../../utils/execution';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import {
+  chatWaitsOnUser,
+  requestsWaitingOnUser,
+} from '../../utils/waiting-approvals';
 import { AgentIcon } from '../icons/AgentIcon';
 import { LoadingDots } from '../LoadingDots';
 import {
@@ -584,6 +588,16 @@ function ChatMessageListComponent({
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
+    // A transcript with no height (a short dock gives the composer priority and
+    // shrinks it to nothing) cannot be read, so the scroll event its collapse
+    // can dispatch is the layout moving, not the reader leaving the bottom.
+    // Treating it as the latter raised "Scroll to bottom" over a transcript
+    // nobody can see, in the composer's scarcest row. The size observer
+    // re-pins or re-anchors it when it has height again.
+    if (target.clientHeight === 0) {
+      lastClientHeightRef.current = 0;
+      return;
+    }
     const previousClientHeight = lastClientHeightRef.current;
     const resized =
       previousClientHeight !== null &&
@@ -667,6 +681,16 @@ function ChatMessageListComponent({
   // bubble re-render on every token. These are the only fields a row reads
   // (`MessageBubbleSession`); keyed on their values, the object is stable
   // across the tokens that do not move any of them.
+  // Requests still waiting on the USER: an answered one stays open on the
+  // server until `request.resolved`, and no longer holds the typing dots back.
+  const waitingApprovalCount = useMemo(
+    () =>
+      requestsWaitingOnUser({
+        pendingApprovals: activeSession.pendingApprovals,
+        answeredApprovals: activeSession.answeredApprovals,
+      }).length,
+    [activeSession.pendingApprovals, activeSession.answeredApprovals],
+  );
   const bubbleSession: MessageBubbleSession = useMemo(
     () => ({
       id: activeSession.id,
@@ -676,7 +700,7 @@ function ChatMessageListComponent({
       conversationId: activeSession.conversationId,
       messageCount: messages.length,
       isThinking: activeSession.isThinking,
-      pendingApprovalCount: activeSession.pendingApprovals?.length,
+      pendingApprovalCount: waitingApprovalCount,
       activityShownElsewhere: statusShownElsewhere,
     }),
     [
@@ -686,7 +710,7 @@ function ChatMessageListComponent({
       activeSession.projectSlug,
       activeSession.conversationId,
       activeSession.isThinking,
-      activeSession.pendingApprovals?.length,
+      waitingApprovalCount,
       statusShownElsewhere,
       messages.length,
     ],
@@ -910,14 +934,17 @@ function ChatMessageListComponent({
                   suppressActivity={suppressActivity}
                   hideProgressSilence={progressSilenceShownElsewhere}
                   statusLabel={
-                    activeSession.orchestrationStatus === 'awaiting-approval'
+                    activeSession.orchestrationStatus === 'awaiting-approval' &&
+                    chatWaitsOnUser(activeSession)
                       ? // station#2235: the status alone asserts nothing about
                         // an approval — a crashed turn's needs_input folds to
                         // this status with no request behind it. Name the
-                        // approval only when a pending grant exists; without
-                        // one the session is waiting on the user, not on a
-                        // decision.
-                        (activeSession.pendingApprovals?.length ?? 0) > 0
+                        // approval only when a request is still waiting on
+                        // the user; without one the session is waiting on the
+                        // user, not on a decision. A session whose requests
+                        // are all answered is waiting on the engine, and says
+                        // nothing here.
+                        waitingApprovalCount > 0
                         ? 'Waiting for approval'
                         : 'Waiting on you'
                       : undefined

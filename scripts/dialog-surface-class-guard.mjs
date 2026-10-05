@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Zero-tolerance gate for #1130 (and the identical shape found beside it,
 // #1170's sibling class-of-defect) — a `overlayClassName` or
 // `panelClassName` passed DIRECTLY to a `<ResponsiveDialogSurface>` element
@@ -42,7 +43,8 @@
 //    resolve, and guessing would be noise too.
 // 3. A prop VALUE with more than one class is a violation only when NONE of
 //    its tokens are defined — not when any single token in it lacks a rule.
-//    `SnoozeMenu.tsx`'s `overlayClassName="composer-popover-overlay
+//    The inbox row's snooze choice (`ChatDockInboxRows.tsx`) has
+//    `overlayClassName="composer-popover-overlay
 //    composer-popover-overlay--start"` pairs a fully-styled base
 //    (`.composer-popover-overlay`: `position: fixed; inset: 0; …`,
 //    chat.css) with a horizontal-alignment modifier that need not exist on
@@ -72,8 +74,8 @@
 // instead of reporting vacuously green). Modeled directly on
 // `random-uuid-guard.mjs`.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
@@ -103,7 +105,9 @@ export const EXEMPT = [
 /**
  * Files with a DIRECT `<ResponsiveDialogSurface>` `overlayClassName`/
  * `panelClassName` when this gate was written, covering a plain literal, a
- * multi-class string (`SnoozeMenu.tsx`), and — deliberately — `Dialog.tsx`
+ * multi-class string (the inbox row's snooze choice in
+ * `ChatDockInboxRows.tsx`, formerly `SnoozeMenu.tsx`), and — deliberately —
+ * `Dialog.tsx`
  * itself, whose own internal `<ResponsiveDialogSurface>` call is where
  * `station-dialog__overlay`/`station-dialog` genuinely are the direct props
  * (every `<Dialog>` CALLER is out of scope; the wrapper's own definition is
@@ -114,7 +118,7 @@ export const SCOPE_SENTINELS = [
   'src-ui/src/components/acp-connections/ACPAddConnectionModal.tsx',
   'src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx',
   'src-ui/src/components/Dialog.tsx',
-  'src-ui/src/components/home/SnoozeMenu.tsx',
+  'src-ui/src/components/chat-dock/ChatDockInboxRows.tsx',
 ];
 
 /**
@@ -138,10 +142,14 @@ function escapeRegExp(value) {
 }
 
 export function listScannedSourceFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   return output
     .split('\n')
     .filter((line) => line.endsWith('.tsx'))
@@ -149,10 +157,14 @@ export function listScannedSourceFiles() {
 }
 
 export function listScannedStyleFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   return output.split('\n').filter((line) => line.endsWith('.css'));
 }
 

@@ -230,6 +230,12 @@ export interface ModelOptionCapabilities {
   fastModeLabel?: string;
   supportsAutoMode?: boolean;
   contextWindow?: number;
+  /**
+   * Whether the engine reports this model accepts image input. Absent means
+   * the runtime did not say (never "no"); `false` is a positive statement that
+   * the model cannot read an image.
+   */
+  imageInput?: boolean;
 }
 
 export interface ModelOption {
@@ -480,6 +486,37 @@ export interface ConnectionConfig {
   prerequisites: Prerequisite[];
   lastCheckedAt?: string | null;
   readinessEvidence?: ConnectionReadinessEvidence;
+}
+
+/**
+ * Names what blocks a connection that is not ready: each missing or errored
+ * required prerequisite with its first fix step and command. Only the
+ * prerequisite's name, id and catalog install guide are used. Readiness
+ * evidence text (a failed smoke's reason) can carry remote error text, so it
+ * is deliberately not surfaced to a delegating agent. Empty when no
+ * prerequisite is recorded, so a caller appends it only when present.
+ */
+export function describeConnectionBlockers(
+  connection: Pick<ConnectionConfig, 'prerequisites'>,
+): string {
+  const blocked = (connection.prerequisites ?? []).filter(
+    (p) => p.category === 'required' && p.status !== 'installed',
+  );
+  if (blocked.length > 0) {
+    return blocked
+      .map((p) => {
+        const guide = p.installGuide;
+        const fix = [
+          guide?.steps?.[0],
+          guide?.commands?.[0] ? `run \`${guide.commands[0]}\`` : undefined,
+        ].filter(Boolean);
+        return `${p.name} (${p.id}) is ${p.status === 'error' ? 'failing' : 'missing'}${
+          fix.length > 0 ? `: ${fix.join('; ')}` : ''
+        }`;
+      })
+      .join('. ');
+  }
+  return '';
 }
 
 export interface ModelConnectionConfig extends ConnectionConfig {

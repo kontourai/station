@@ -900,6 +900,39 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'fail-closed orchestration transfer comparator',
   },
   {
+    pattern: 'scripts/lib/transfer-capture-barrier.ts',
+    tests: [
+      'scripts/__tests__/transfer-capture-barrier.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+    ],
+    reason: 'capture barrier deadline derived from the configured bound',
+  },
+  {
+    pattern: 'scripts/lib/liveness-scale.mjs',
+    tests: [
+      'scripts/__tests__/liveness-scale.test.ts',
+      'scripts/__tests__/prepush-orchestration-transfer.test.ts',
+    ],
+    reason: 'host-pressure liveness scale consumers and transfer scope',
+  },
+  {
+    pattern: 'scripts/lib/liveness-scale-resolve.mjs',
+    tests: ['scripts/__tests__/liveness-scale.test.ts'],
+    reason:
+      'host-pressure liveness scale resolution and the pre-push resolver CLI',
+  },
+  {
+    pattern: 'scripts/lib/transfer-capture-progress.ts',
+    tests: [
+      'scripts/__tests__/transfer-capture-progress.test.ts',
+      'scripts/__tests__/prepush-orchestration-transfer.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+    ],
+    reason: 'bounded exact-source capture phase diagnostic writer',
+  },
+  {
     pattern: 'scripts/orchestration-transfer-capture.ts',
     tests: [
       'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
@@ -1195,6 +1228,34 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: ['src-ui/src/__tests__/station-vocabulary.test.ts'],
     reason: 'glossary copy ratchet scans all src-ui sources by path',
   },
+  // The one-vocabulary scan reads the work surfaces' sources by path, so no
+  // import edge reaches a retired word written in a new file there. Its
+  // edges are exactly the roots it walks (`SURFACE_ROOTS` in the suite), not
+  // all of src-ui, so it is added only where it can find something.
+  // Supplemental, like the copy ratchet above.
+  ...[
+    'src-ui/src/components/home/**',
+    'src-ui/src/components/inbox-row/**',
+    'src-ui/src/components/chat-dock/**',
+    'src-ui/src/components/project-sidebar/**',
+    'src-ui/src/components/session-detail/**',
+    'src-ui/src/components/status/**',
+    'src-ui/src/views/home/**',
+    'src-ui/src/views/activity/**',
+    'src-ui/src/views/sessions/**',
+    'src-ui/src/views/project-page/**',
+    'src-ui/src/views/SessionsView.tsx',
+    'src-ui/src/views/HomeView.tsx',
+    'src-ui/src/components/flow/WorkflowPlanPanel.tsx',
+    'src-ui/src/components/chat/PendingApprovalStrip.tsx',
+    'src-ui/src/components/chat/TurnActivityProgress.tsx',
+    'src-ui/src/components/chat/ChatEmptyState.tsx',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/session-state-word-consistency.test.ts'],
+    reason: 'status vocabulary scan reads the work-surface sources by path',
+  })),
   {
     // #2401: the example-manifest field check reads every examples/*/plugin.json
     // by path, so no import edge reaches it. Supplemental: it ADDS the check to

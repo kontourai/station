@@ -12,10 +12,10 @@ import {
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
-import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
+import { ChatHttpError } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -40,6 +40,7 @@ import {
   isApiRequestScope,
 } from '../client/http';
 import {
+  getChildWorkTranscript,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventWindow,
   getSessionBuilderRun,
@@ -50,6 +51,7 @@ import {
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import { isStationAnswer } from '../client/station-envelope';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -457,6 +459,45 @@ export function useStopProviderTaskMutation(apiBase?: string) {
   });
 }
 
+/** #3163: one page of transcript messages per fetch. */
+const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
+
+/**
+ * #3163: an engine subagent's own read-only transcript, paged by message.
+ * `fetchNextPage` continues where the last page ended. Off until `enabled`,
+ * so a closed row reads nothing; a transcript is history, so it is fetched
+ * once and not polled.
+ */
+export function useChildWorkTranscriptQuery(
+  input: { threadId: string; childId: string; enabled?: boolean },
+  apiBase?: string,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'orchestration-child-work-transcript',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+    ],
+    enabled:
+      (input.enabled ?? true) &&
+      input.threadId.length > 0 &&
+      input.childId.length > 0,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) =>
+      getChildWorkTranscript(
+        await resolveApiBase(apiBase),
+        input.threadId,
+        input.childId,
+        { offset: pageParam, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
+        { signal },
+      ),
+    getNextPageParam: (page) => page.nextOffset,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useInterruptDelegatedTaskMutation(apiBase?: string) {
   return useMutation({
     mutationFn: (input: InterruptOrchestrationDelegatedTaskInput) =>
@@ -552,7 +593,7 @@ export async function dispatchOrchestrationCommand<T = unknown>(
             code: result.code,
             details: result.details ?? undefined,
           }),
-          isStationEnvelope(result),
+          isStationAnswer(response, result),
         )
       : new Error(message);
   }

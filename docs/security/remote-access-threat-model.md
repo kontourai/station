@@ -43,6 +43,22 @@ repository-owned private-tailnet deployment described in the
 [deployment guide](../guides/deployment.md) private, and do not expose it to an
 untrusted network.
 
+Consent decisions are served by a separate listener on its own origin. By
+default review URLs are `http://<request host>:<consent port>`. If
+`STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
+second Tailscale Serve mapping to the consent port), Station issues review URLs
+at that origin and accepts a decision from it when the request `Host` is that
+name and the `Origin` header equals it exactly, in addition to the existing
+nonce, Fetch Metadata and session checks. The port-pinned
+`http://<host>:<consent port>` path still works alongside it. The HTTPS name
+must be the same hostname as the app's, because the host-only consent cookie is
+not sent across hostnames and a mismatch fails closed as `unauthenticated`. The setting adds no authority: a different
+HTTPS origin is refused, the origin is not an `ALLOWED_ORIGINS` entry, and a
+malformed value (http, path, userinfo, wildcard, IP literal, port 0, trailing-dot host) stops
+startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
+marking it so would break the plain-http consent path. See
+the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
+
 Origin and authentication are independent controls:
 
 - Origin limits which browser origins may call Station. It never identifies or
@@ -360,8 +376,15 @@ the operator. Attribution is exact, from the server-derived actor on the
 decision or beside the start's `host` stamp. The sessions its grant unconfined
 run confined again, because the stamp is checked against the grant at every
 turn start and respawn. A running turn finishes; the next one is confined and
-asks. The exception is a running engine with no decision standing: it keeps
-its start posture until it restarts, and it is listed. Full access from the
+asks. With no decision standing, the confinement change itself makes the next
+turn re-apply the engine's mode confined (#2898), so no engine keeps its start
+posture past its next turn. A turn that started unconfined cannot be extended
+by steering: Station refuses a steer into it (`confinement-changed`), so new
+instructions wait for the confined next turn. Answers to that turn's own
+questions and approval requests still reach it (an accepted residual; Stop
+now ends it). Each session still running
+unconfined is listed until then, and the operator can stop it at once from the
+revocation notice. Full access from the
 operator, another device, or an Agent or Station default on someone else's
 session is listed and left alone. So are live sessions started before
 grantors were recorded (at most 50, with the total).

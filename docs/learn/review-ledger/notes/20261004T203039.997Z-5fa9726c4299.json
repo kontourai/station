@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"The capture shows a local request Inspect request dialog; the fix round touches only the paired-Station path (bounds, recorded-host check, predicate module) and leaves the local inspection UI unchanged.","inputs":["docs/learn/media/inspect-request.png","src-server/routes/orchestration/attention.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

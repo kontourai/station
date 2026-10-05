@@ -1,0 +1,7 @@
+{
+  "revision": "1274059ae6e8caecc3a2c34d95af78a63c782cd9",
+
+  "notes": [
+    {"path":".github/codex/qualification-repair.md","note":"Qualification-from-Nightly change: repair prepare now judges a run by the 'qualification / Full source qualification' job when the run is red only because the called Nightly failed. These agent instructions describe the bounded sweep, protected paths and publication; none depends on how a run's conclusion is derived. No prose change.","inputs":[".github/codex/qualification-repair.md","scripts/__tests__/qualification-repair.test.ts","scripts/qualification-repair.mjs"]}
+  ]
+}

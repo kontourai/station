@@ -47,10 +47,11 @@ import {
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import type {
-  AgentConnectionView,
-  ConnectionConfig,
-  ModelOption,
+import {
+  type AgentConnectionView,
+  type ConnectionConfig,
+  describeConnectionBlockers,
+  type ModelOption,
 } from '@kontourai/station-contracts/tool';
 import {
   type ApprovalDecision,
@@ -72,6 +73,10 @@ import {
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
+import {
+  assertPreparationRequirementSupported,
+  verifyPreparedCheckout,
+} from '../services/execution-target/execution-preparation.js';
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
@@ -96,6 +101,7 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
+import type { DispatchCwdAdmission } from '../services/orchestration/dispatch-cwd-admission.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
@@ -279,6 +285,7 @@ interface StationHandshake {
   capabilities?: {
     portableExecutionOffers?: boolean;
     delegationAttemptClaims?: boolean;
+    executionPreparation?: boolean;
   };
 }
 
@@ -376,6 +383,11 @@ export interface DelegateTaskInput {
    * in-process caller) starts it confined to its workspace.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: route-set only: the dispatch route's scope decision for the
+   * folder this task starts in, run again where its engine is spawned.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -1700,6 +1712,9 @@ function dispatchContextForAuthority(
   // #2493: the route's full-access grant for a start this dispatch causes.
   // `prepareStart` reads it (`startConfinement`); absent confines the start.
   fullAccessGrant?: FullAccessGrant | null,
+  // #2873: the route's scope decision for a new session's folder; the
+  // service runs it again beside the adapter start.
+  dispatchCwdAdmission?: DispatchCwdAdmission,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
@@ -1707,6 +1722,7 @@ function dispatchContextForAuthority(
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
   fullAccessGrant?: FullAccessGrant;
+  dispatchCwdAdmission?: DispatchCwdAdmission;
 } {
   return {
     userId: authority.userId,
@@ -1717,6 +1733,7 @@ function dispatchContextForAuthority(
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
     ...(fullAccessGrant ? { fullAccessGrant } : {}),
+    ...(dispatchCwdAdmission ? { dispatchCwdAdmission } : {}),
   };
 }
 
@@ -2062,6 +2079,14 @@ async function postDelegationJson(
   });
 }
 
+/** A respond naming an environment that is not the task's recorded host. */
+export const PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE =
+  'This task is not recorded as running on the selected Station; the decision was not sent.';
+
+/** See `postPeerPortableFollowUp`'s `forbiddenMessage`. */
+export const PEER_RESPOND_FORBIDDEN_MESSAGE =
+  'The paired Station refused this decision: the access this Station holds there does not allow answering its requests.';
+
 /**
  * The portable follow-up's own peer poster: identical wire behavior to
  * `postCanonical` for success, but a receiver's closed portable refusal
@@ -2073,6 +2098,12 @@ async function postPeerPortableFollowUp<T>(
   path: string,
   body: unknown,
   unavailableMessage: string,
+  /**
+   * This Station's own sentence for an HTTP 403 from the selected Station.
+   * The selected Station's diagnostics still never cross this seam (#2708);
+   * only the status is read.
+   */
+  forbiddenMessage?: string,
 ): Promise<T> {
   let response: Response;
   try {
@@ -2092,6 +2123,8 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
+    if (response.status === 403 && forbiddenMessage)
+      throw new PeerPortableFollowUpError(forbiddenMessage);
     // The sentinel itself stays code-free: a peer's diagnostics never cross
     // this seam. Only this Station's own answer rides along, as a cause the
     // routes never read (#2708, `LocalStationRefusal`).
@@ -2443,7 +2476,10 @@ async function pinSshDispatchWorkspace(
   executionTarget: ExecutionTarget,
 ): Promise<ExecutionTarget> {
   if (target.kind !== 'ssh') return executionTarget;
-  if (executionTarget.workspace?.kind === 'project-portable') {
+  if (
+    executionTarget.workspace?.kind === 'project-portable' ||
+    executionTarget.workspace?.kind === 'project-portable-prepared'
+  ) {
     // #484 phase A (bounded scope, not a transport claim): the portable
     // intent is admitted ONLY by the receiving runtime's offer authority,
     // and this slice composes that admission on the direct-peer path only —
@@ -2622,8 +2658,15 @@ async function readConnection(
     connection.status === 'error' ||
     !connection.capabilities.includes('agent-runtime')
   ) {
+    const blockers = describeConnectionBlockers(connection);
     throw new Error(
-      `Engine connection '${id}' is not ready for delegated work`,
+      `Engine connection '${id}' is not ready for delegated work (${connection.status})${
+        blockers
+          ? `: ${blockers}`
+          : // No prerequisite is recorded (a failed smoke, say): a fixed next
+            // step, never the connection's own free text.
+            `. Check this connection in Connections or run \`station connections test ${id}\``
+      }`,
     );
   }
   return connection;
@@ -4178,6 +4221,11 @@ export async function observeDelegatedTask(
             environmentId: target.environmentId,
             status: snapshot.status,
           });
+          orchestrationService.recordPeerDelegationPendingRequest({
+            taskId: snapshot.taskId,
+            environmentId: target.environmentId,
+            pendingRequest: peerPendingRequestOf(snapshot),
+          });
         } catch {
           // The peer read is authoritative; local Activity bookkeeping is not.
         }
@@ -4213,6 +4261,11 @@ export async function observeDelegatedTask(
             environmentId: target.environmentId,
             status: snapshot.status,
           });
+          orchestrationService.recordPeerDelegationPendingRequest({
+            taskId: snapshot.taskId,
+            environmentId: target.environmentId,
+            pendingRequest: peerPendingRequestOf(snapshot),
+          });
         } catch {
           // The peer read is authoritative; local Activity bookkeeping is not.
         }
@@ -4223,6 +4276,24 @@ export async function observeDelegatedTask(
   return snapshotFor(
     await loadDelegatedTask(input, orchestrationService, remote),
   );
+}
+
+/**
+ * The paired Station's reported open request, exactly as its status read
+ * carried it (id, type, title); `null` when it reported none. Nothing here is
+ * derived on this Station.
+ */
+function peerPendingRequestOf(
+  snapshot: DelegatedTaskSnapshot,
+): { id: string; type?: string; title?: string } | null {
+  const request = snapshot.pendingRequest;
+  if (!request || typeof request.id !== 'string' || !request.id.trim())
+    return null;
+  return {
+    id: request.id,
+    ...(typeof request.type === 'string' ? { type: request.type } : {}),
+    ...(typeof request.title === 'string' ? { title: request.title } : {}),
+  };
 }
 
 /**
@@ -4439,9 +4510,21 @@ export async function respondToDelegatedTaskRequest(
         'receiver_execution_authority_changed',
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
       );
+    // A decision goes only to the paired Station this Station recorded as
+    // hosting the task: a body naming another environment is refused before
+    // any outbound request, so a request id is never decided elsewhere.
+    if (selectedTarget.kind === 'peer' && orchestrationService) {
+      const hosts =
+        await orchestrationService.peerDelegationHostingEnvironmentIds(
+          input.taskId,
+          readAuthority,
+        );
+      if (!hosts.includes(selectedTarget.environmentId))
+        throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
+    }
     // Same follow-up poster as the continue path — a receiver's closed
     // portable refusal keeps its code/403 here too.
-    return normalizeDelegatedIdentity(
+    const handle = normalizeDelegatedIdentity(
       await postPeerPortableFollowUp<DelegatedTaskRequestResponseHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/respond`,
@@ -4451,8 +4534,29 @@ export async function respondToDelegatedTaskRequest(
           ...relayQuery(selectedTarget),
         },
         'The selected Station could not resolve the delegated task request',
+        PEER_RESPOND_FORBIDDEN_MESSAGE,
       ),
     );
+    // The paired Station resolved this exact request: the mirror record
+    // stops offering it now rather than on the next status poll.
+    if (
+      selectedTarget.kind === 'peer' &&
+      orchestrationService &&
+      handle.status === 'resolved' &&
+      handle.requestId === input.requestId
+    ) {
+      try {
+        orchestrationService.recordPeerDelegationPendingRequest({
+          taskId: input.taskId,
+          environmentId: selectedTarget.environmentId,
+          pendingRequest: null,
+          resolvedRequestId: input.requestId,
+        });
+      } catch {
+        // Local Activity bookkeeping; the next status read reconciles it.
+      }
+    }
+    return handle;
   }
   const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   // Same fresh-admission enforcement as the continue path.
@@ -4638,7 +4742,16 @@ export async function delegateTask(
       'Task room invocation admission requires the current Task Project.',
     );
   const readAuthority = readAuthorityForInput(input);
-  const portableIntent = input.target.workspace?.kind === 'project-portable';
+  // #2875: a prepared intent IS a portable intent with a version
+  // requirement — every portable rule below (admission, no-onward-hop, SSH
+  // refusal, attempt claims) applies to it unchanged.
+  const preparedWorkspace =
+    input.target.workspace?.kind === 'project-portable-prepared'
+      ? input.target.workspace
+      : undefined;
+  const portableIntent =
+    input.target.workspace?.kind === 'project-portable' ||
+    preparedWorkspace !== undefined;
   // #484 no-onward-hop, derived BEFORE any effect from the verified caller
   // facts only (never body/userId/metadata) — see isInboundDelegationPeer.
   const inboundPeer =
@@ -4713,6 +4826,20 @@ export async function delegateTask(
       throw new ReceiverExecutionRefusal(
         'receiver_execution_not_offered',
         'The selected Station does not support portable execution offers.',
+      );
+    }
+    // #2875: an older receiver would refuse the unknown workspace variant
+    // at its schema; refuse here first, before the wire, with the typed
+    // code. Checked before the attempt capability so an older receiver gets
+    // the more specific refusal. Never strip the requirement and send a
+    // plain portable intent.
+    if (
+      preparedWorkspace &&
+      handshake.capabilities?.executionPreparation !== true
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'execution_preparation_unsupported',
+        RECEIVER_EXECUTION_REFUSAL_COPY.execution_preparation_unsupported,
       );
     }
     // #485: an opt-in attempt id may only be forwarded to a receiver that
@@ -4955,6 +5082,7 @@ export async function delegateTask(
   let attemptInitialTurnAccepted = false;
   const settleAttemptClaim = async (
     classify: 'refused' | 'unresolved',
+    refusalCode?: string,
   ): Promise<void> => {
     if (!attemptClaim) return;
     const claimStore = input.delegationAttemptClaimStore!;
@@ -4965,19 +5093,43 @@ export async function delegateTask(
           attemptClaim.ownerToken,
         );
       } else {
-        await claimStore.markRefused(attemptClaim.key, attemptClaim.ownerToken);
+        await claimStore.markRefused(
+          attemptClaim.key,
+          attemptClaim.ownerToken,
+          refusalCode,
+        );
       }
     } catch {
       // Deliberately conservative: see the classification comment above.
     }
   };
+  // #2875: the matched version check, bound to the claim and returned on
+  // the resolution receipt. Replaced by the pre-start recheck below.
+  let preparationReceipt:
+    | Awaited<ReturnType<typeof verifyPreparedCheckout>>
+    | undefined;
   try {
+    if (preparedWorkspace) {
+      // Preparation is a phase of one #485 attempt: its outcome is recorded
+      // on the claim, so a prepared intent without one refuses (the route
+      // refuses first; this covers direct server-internal callers).
+      if (!attemptClaim) {
+        throw new ReceiverExecutionRefusal(
+          'execution_preparation_attempt_required',
+          RECEIVER_EXECUTION_REFUSAL_COPY.execution_preparation_attempt_required,
+        );
+      }
+      // Protocol, mode and guarantees need no admission and no read: refuse
+      // them before touching the operator's offer or checkout.
+      assertPreparationRequirementSupported(preparedWorkspace.preparation);
+    }
     let receiverAdmission = input.receiverAdmission;
     if (portableIntent && !receiverAdmission) {
       const workspace = input.target.workspace;
       if (
         !input.authorizeReceiverExecution ||
-        workspace?.kind !== 'project-portable'
+        (workspace?.kind !== 'project-portable' &&
+          workspace?.kind !== 'project-portable-prepared')
       ) {
         throw new ReceiverExecutionRefusal(
           'receiver_execution_not_offered',
@@ -5086,6 +5238,13 @@ export async function delegateTask(
       resolved.workspace?.kind === 'project' &&
       resolved.workspace.workspaceIsolation.mode === 'worktree'
     ) {
+      // #2875: for a prepared intent the refusal names why — the checked
+      // checkout would not be the directory the Agent runs in.
+      if (preparedWorkspace)
+        throw new ReceiverExecutionRefusal(
+          'execution_preparation_isolation_unsupported',
+          RECEIVER_EXECUTION_REFUSAL_COPY.execution_preparation_isolation_unsupported,
+        );
       throw new ReceiverExecutionRefusal(
         'receiver_execution_unavailable',
         'The offered Project resource is unavailable.',
@@ -5163,6 +5322,27 @@ export async function delegateTask(
             },
           }
         : undefined;
+    // #2875: check the admitted checkout against the requested version.
+    // Paths and the adapter's resource kind come from the receiver-owned
+    // admission, never the request. Refusals here are pre-effect.
+    const checkPreparedCheckout = async () =>
+      verifyPreparedCheckout({
+        requirement: preparedWorkspace!.preparation,
+        resourceId: receiverAdmission!.resourceId,
+        resourceKind: receiverAdmission!.admittedProject.resourceKind,
+        checkoutRoot: resolveFilesystemPath(
+          receiverAdmission!.admittedProject.resourcePath,
+        ),
+        cwd: portableAdmittedCwd!,
+      });
+    if (preparedWorkspace) {
+      if (!receiverAdmission || portableAdmittedCwd === undefined)
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_unavailable',
+          'The offered Project resource is unavailable.',
+        );
+      preparationReceipt = await checkPreparedCheckout();
+    }
     const bindingTarget = {
       kind: 'agent' as const,
       id: resolved.agentId,
@@ -5183,6 +5363,7 @@ export async function delegateTask(
           portableProjectId: receiverAdmission!.portableProjectId,
           resourceId: receiverAdmission!.resourceId,
           localProjectId: receiverAdmission!.admittedProject.localProjectId,
+          ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
         },
       );
       if (bound.kind !== 'applied') {
@@ -5202,6 +5383,9 @@ export async function delegateTask(
         bindingTarget,
         readAuthority.userId,
       );
+      // #2875: the reattach path starts no session, so its version check
+      // runs here instead, before the claim advances and before the turn.
+      if (preparedWorkspace) preparationReceipt = await checkPreparedCheckout();
       // #485: reattach path — the read just proved the reserved session
       // exists. Record `session-started` (NOT accepted: the requested
       // initial turn is still unproven) before the turn dispatch below.
@@ -5245,6 +5429,10 @@ export async function delegateTask(
       // invocation (a door check alone cannot cover what races the awaits
       // inside the service).
       await receiverAdmission?.recheck();
+      // #2875: check the version again immediately before the start, after
+      // every preceding await. The receipt then says what was true at this
+      // check — and only "when checked": nothing fences later writers.
+      if (preparedWorkspace) preparationReceipt = await checkPreparedCheckout();
       // #485: from this point the invocation may happen — classification
       // below (and in the outer catch) flips to `unresolved`.
       attemptStartInvoked = true;
@@ -5311,6 +5499,7 @@ export async function delegateTask(
           input.principal,
           input.ownerAttribution,
           input.fullAccessGrant,
+          input.dispatchCwdAdmission,
         ),
         {
           conversationIdentity: {
@@ -5491,7 +5680,9 @@ export async function delegateTask(
     return {
       ...handleFor(input, target, project, sessionId),
       target: { kind: 'agent', id: resolved.agentId },
-      resolution: resolved.receipt,
+      resolution: preparationReceipt
+        ? { ...resolved.receipt, preparation: preparationReceipt }
+        : resolved.receipt,
       provider: resolved.provider,
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };
@@ -5509,7 +5700,14 @@ export async function delegateTask(
       } else if (attemptStartInvoked) {
         await settleAttemptClaim('unresolved');
       } else {
-        await settleAttemptClaim('refused');
+        // #2875: a typed refusal's closed code rides the tombstone, so the
+        // lookup can say why without free text.
+        await settleAttemptClaim(
+          'refused',
+          attemptError instanceof ReceiverExecutionRefusal
+            ? attemptError.code
+            : undefined,
+        );
       }
     }
     throw attemptError;
@@ -5626,6 +5824,8 @@ export async function executeExecutionTargetMessage(
     const {
       automaticBackground: _automaticBackground,
       fullAccessGrant: _fullAccessGrant,
+      // #2873: this Station's own scope decision; never forwarded.
+      dispatchCwdAdmission: _dispatchCwdAdmission,
       delegation: _claimedDelegation,
       delegationAttestation: _claimedAttestation,
       stationControlToolCall: _stationControlToolCall,
@@ -5836,11 +6036,24 @@ export async function executeExecutionTargetMessage(
       ) {
         return { sessionId: conversationId, startRequired: false };
       }
+      // The service forwards `ConversationLineage`'s result as-is, including
+      // `retirePredecessorSessionId`, which its declared return type omits.
       return await orchestrationService.resolveConversationContinuation(
         conversationId,
         readAuthority,
         requested,
       );
+    },
+    retireSession: async (_access: EnvironmentAccess, sessionId: string) => {
+      // Conditional at execution time inside the service, not here: the
+      // predecessor may have taken a turn since the successor was reserved.
+      const context = dispatchContextForAuthority(readAuthority);
+      await orchestrationService.retireNeverRanSession(sessionId, {
+        userId: context.userId,
+        ...(context.tenantExecutionContext
+          ? { tenantExecutionContext: context.tenantExecutionContext }
+          : {}),
+      });
     },
     prepareConversationHandoff: async (access: EnvironmentAccess, handoff) => {
       // The target was resolved by the foreground seam immediately before
@@ -5983,6 +6196,7 @@ export async function executeExecutionTargetMessage(
           input.principal,
           input.ownerAttribution,
           input.fullAccessGrant,
+          input.dispatchCwdAdmission,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),
