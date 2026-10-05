@@ -106,7 +106,14 @@ function writeStoredHeldDrafts(next: readonly string[]) {
     else
       window.sessionStorage.setItem(HELD_HOME_DRAFTS_KEY, JSON.stringify(next));
   } catch {
-    // Storage unavailable: the drafts still live for this page's life.
+    // The write failed (quota, blocked storage): an older list left behind
+    // would bring back a discarded draft and miss a newer one on reload, so
+    // leave nothing. The drafts still live for this page's life.
+    try {
+      window.sessionStorage.removeItem(HELD_HOME_DRAFTS_KEY);
+    } catch {
+      // Storage is unreachable altogether; nothing stale can be read back.
+    }
   }
 }
 let heldHomeDrafts: readonly string[] = readStoredHeldDrafts();
@@ -484,7 +491,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         {held.length > 0 && (
           <fieldset className="start-composer__held" aria-label="Earlier draft">
             <p className="start-composer__note">
-              Your earlier draft came back from the chat dock: “
+              Earlier draft: “
               {held[0].length > 60 ? `${held[0].slice(0, 60)}…` : held[0]}”
             </p>
             <div className="start-composer__held-actions">

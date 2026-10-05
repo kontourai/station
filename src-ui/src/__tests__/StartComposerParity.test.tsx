@@ -44,6 +44,7 @@ const state = vi.hoisted(() => ({
   projects: [] as unknown[],
   projectsLoading: false,
   projectsError: false,
+  agentConnections: [] as unknown[],
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -84,7 +85,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: async () => ({}),
   }),
   useModelPickerCatalogQuery: () => ({
-    data: { agentConnections: [], modelConnections: [] },
+    data: { agentConnections: state.agentConnections, modelConnections: [] },
     isLoading: false,
     isFetching: false,
     error: null,
@@ -206,6 +207,7 @@ beforeEach(() => {
   state.projects = [STATION];
   state.projectsLoading = false;
   state.projectsError = false;
+  state.agentConnections = [];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -724,6 +726,77 @@ describe('Home and the dock start the same way', () => {
     second.cleanupListener();
   }, 30_000);
 
+  // Round-3 FI-1: the folderless hint follows the chosen Agent on BOTH
+  // surfaces. An ACP engine with no folder of its own runs a folderless
+  // project in a private Station-managed workspace, never home.
+  test('with an ACP engine and no folder anywhere, both surfaces say a folderless project runs in a private folder', async () => {
+    state.agents = [
+      {
+        slug: 'gemini',
+        name: 'Gemini',
+        available: true,
+        engineConnectionType: 'acp',
+        execution: { agentConnectionId: 'gemini-acp' },
+      } as unknown as AgentData,
+    ];
+    // A ready ACP connection with no Working Directory of its own.
+    state.agentConnections = [
+      {
+        id: 'gemini-acp',
+        name: 'Gemini',
+        type: 'acp',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '' },
+    ];
+    const ui = renderBoth();
+    const managed = 'Runs in a private folder Station makes for this chat';
+    // Chosen on Home; the choice is shared, so the dock reads it too.
+    fireEvent.click(agentChip(screen.getByTestId('home')));
+    const agents = await screen.findByRole(
+      'dialog',
+      { name: 'Choose agent' },
+      { timeout: 15_000 },
+    );
+    fireEvent.click(
+      agents.querySelector<HTMLButtonElement>(
+        'button[data-agent-slug="gemini"]',
+      )!,
+    );
+    for (const root of [screen.getByTestId('home'), ui.dock()]) {
+      await waitFor(() =>
+        expect(agentChip(root).getAttribute('aria-label')).toMatch(
+          /^Agent: Gemini/,
+        ),
+      );
+      fireEvent.click(projectChip(root));
+      const menu = await screen.findByRole(
+        'dialog',
+        { name: 'Choose project' },
+        { timeout: 15_000 },
+      );
+      const badge = menu
+        .querySelector('[data-context-value="notes"]')
+        ?.querySelector('.new-chat-modal__no-cwd-badge');
+      expect(badge?.textContent).toBe('No folder');
+      expect(badge?.getAttribute('title')).toBe(managed);
+      fireEvent.keyDown(menu, { key: 'Escape' });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Choose project' }),
+        ).toBeNull(),
+      );
+    }
+    ui.cleanupListener();
+  }, 30_000);
+
   // Review FI-B: an errored project list is not a loaded one. Home must not
   // resolve the dock's bound project to No project and start there.
   test('an errored project list holds Home rather than starting in No project', async () => {
@@ -1097,6 +1170,33 @@ describe('Home and the dock start the same way', () => {
       expect(
         window.sessionStorage.getItem('station-home-held-drafts-v1'),
       ).toBeNull();
+    });
+
+    // Round-3 L-b: a failed write must not leave the older list behind, or
+    // a reload brings back a draft already restored or discarded.
+    test('a failed storage write leaves no stale list to restore on reload', () => {
+      window.sessionStorage.setItem(
+        'station-home-held-drafts-v1',
+        JSON.stringify(['Old', 'Older']),
+      );
+      reloadHeldHomeDraftsForTests();
+      const setItem = vi
+        .spyOn(Storage.prototype, 'setItem')
+        .mockImplementation(() => {
+          throw new Error('QuotaExceededError');
+        });
+      try {
+        renderHome();
+        // 'Old' went into the field; writing ['Older'] failed.
+        expect(field().value).toBe('Old');
+        expect(earlier()?.textContent).toContain('Older');
+        expect(setItem).toHaveBeenCalled();
+        expect(
+          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        ).toBeNull();
+      } finally {
+        setItem.mockRestore();
+      }
     });
 
     test('unreadable stored drafts are ignored, not restored', () => {
