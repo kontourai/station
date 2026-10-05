@@ -294,6 +294,7 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { createOperatorPasskeyHostRoutes } from '../../routes/operator-passkeys/operator-passkey-host-routes.js';
 import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
@@ -464,6 +465,7 @@ import {
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
+import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
@@ -772,6 +774,8 @@ export interface ConfigureRuntimeRoutesContext {
    * state. Approval routes consult it before minting a review URL.
    */
   consentChannel: ConsentChannelService;
+  /** #3257 (S2b): operator passkey enrollment; absent on hosted tenants. */
+  operatorPasskeys?: OperatorPasskeyEnrollmentService;
   /**
    * The app config as it stood when routes were constructed.
    *
@@ -2473,6 +2477,7 @@ export function configureRuntimeRoutes(
       relayEnrollment: context.relayEnrollment,
       resetFullAccessGrantedBy: (input) =>
         context.orchestrationService.resetFullAccessGrantedBy(input),
+      operatorPasskeys: context.operatorPasskeys,
     },
   );
 
@@ -8301,6 +8306,8 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    /** #3257 (S2b): operator passkey administration for the host CLI. */
+    operatorPasskeys?: OperatorPasskeyEnrollmentService;
   },
 ): void {
   const audit = options.audit;
@@ -8358,6 +8365,15 @@ export function configureDevicePairingHostRoutes(
       return false;
     }
   };
+  if (options.operatorPasskeys) {
+    app.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({
+        service: options.operatorPasskeys,
+        isOperator: (c) => currentOperator(c, (c as Context).req.raw),
+      }),
+    );
+  }
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {
