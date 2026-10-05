@@ -1,0 +1,7 @@
+{
+  "revision": "a821f33f3a481a5d8615002f78a21d97bed7df63",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"mobile-layout.spec.ts now reads the toolbar home link as the logo and the wordmark text separately (#3235); the matrix row for Android mobile-layout coverage is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}
