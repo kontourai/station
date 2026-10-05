@@ -82,6 +82,7 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  routeLabel?: string;
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   branchLabel: string | null;
@@ -104,6 +105,7 @@ export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  routeLabel,
   sessionProjectMismatchLabel,
   agentIdentity,
   branchLabel,
@@ -217,7 +219,7 @@ export function ChatDockMobileHeader({
         data-dock-drag-passthrough=""
         aria-label={
           agentIdentity
-            ? `Chats and tasks — ${agentIdentity.name}`
+            ? `Chats and tasks — ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}`
             : 'Chats and tasks'
         }
         aria-describedby={titleDescriptionId}
@@ -234,6 +236,7 @@ export function ChatDockMobileHeader({
           {agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
+              {routeLabel ? ` · via ${routeLabel}` : ''}
               {sessionProjectMismatchLabel &&
                 ` · ${sessionProjectMismatchLabel}`}
             </span>

@@ -708,6 +708,50 @@ describe('Activity list', () => {
     ).toBeNull();
   });
 
+  // #3386: a conversation started outside Station in a folder no project
+  // claims is listed, and the Project filter can find it under No project.
+  test('No project is a Project option that lists exactly the sessions with no project', () => {
+    sessions = [
+      session('Station chat', { projectSlug: 'station' }),
+      session('Scratch transcript', { controlMode: 'read-only-attached' }),
+      session('Direct chat'),
+      // Ambiguous with a cut-short candidate list: it names projects, so it
+      // is not under No project even though it matches every project filter.
+      session('Shared folder transcript', {
+        controlMode: 'read-only-attached',
+        projectAttribution: {
+          state: 'ambiguous',
+          candidates: ['alpha', 'beta'],
+          omittedCandidates: 1,
+        },
+      }),
+    ];
+    const { container } = renderView();
+    const names = () =>
+      Array.from(container.querySelectorAll('.split-pane__item-name-text'))
+        .map((node) => node.textContent)
+        .sort();
+    const project = screen.getByRole('combobox', {
+      name: /^Project/,
+    }) as HTMLSelectElement;
+    expect(
+      Array.from(project.options).map((option) => option.textContent),
+    ).toEqual([
+      'All projects',
+      'alpha (1)',
+      'beta (1)',
+      // The cut-short candidate list may hide station, so it counts there too.
+      'station (2)',
+      'No project (2)',
+    ]);
+
+    fireEvent.change(project, { target: { value: 'No project' } });
+    expect(names()).toEqual(['Direct chat', 'Scratch transcript']);
+    expect(
+      screen.getByRole('button', { name: 'Remove filter Project: No project' }),
+    ).toBeTruthy();
+  });
+
   test('removing one filter chip leaves the others applied', () => {
     sessions = [
       session('Station task', {

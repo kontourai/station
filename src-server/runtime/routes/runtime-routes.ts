@@ -338,6 +338,7 @@ import {
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
 import {
+  createProjectCatalogueReader,
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
@@ -472,6 +473,7 @@ import {
   FileStationSurveyReviewSessionStore,
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
+import { connectedAccountOwnerId } from '../../services/identity/connected-account-owner.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
@@ -655,6 +657,12 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import {
+  type AgentAudienceGateDeps,
+  agentCatalogForCaller,
+  installAgentAudienceGate,
+  memberApprovalGuard,
+} from '../bootstrap/agent-audience-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
   createPersonalHomeAuthorityDatabase,
@@ -699,7 +707,10 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
-import { runtimeAttentionRouteOptions } from './runtime-attention-route-options.js';
+import {
+  mayAnswerDelegatedRequest,
+  runtimeAttentionRouteOptions,
+} from './runtime-attention-route-options.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -1650,6 +1661,21 @@ export function configureRuntimeRoutes(
           }
         : {}),
     });
+  // #3279: a connected-account owner is the request's resolved
+  // `PrincipalRef.id`, the same id an authorized Station-agent turn records
+  // as its session owner. Devices without a person, non-human principals and
+  // hosted (tenant-qualified) requests own none; unresolvable is `undefined`.
+  // Person-owned credentials then refuse instead of guessing an owner.
+  const resolveConnectedAccountPrincipalId = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ): string | undefined => {
+    if (tenantExecutionContextForRequest(c.req.raw)) return undefined;
+    try {
+      return connectedAccountOwnerId(resolveOrchestrationRequestPrincipal(c));
+    } catch {
+      return undefined;
+    }
+  };
   const conversationReadAuthorityForContext = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
   ) => {
@@ -1927,6 +1953,59 @@ export function configureRuntimeRoutes(
         ),
     }),
   );
+  // #3276: a request acting for a deployment account (a Project member)
+  // sees and uses only the Agents whose audience admits it. Installed after
+  // the station-control guard, which records whom a tool call acts for, and
+  // ahead of every Agent and orchestration mount (Hono runs middleware in
+  // registration order). The caller rule is `authenticatedProjectMember`'s:
+  // an authenticated account, or a station-control call whose session an
+  // account owns, is a member; every other request keeps its own rules.
+  const agentAudienceAdmissions = (principalId: string) => () =>
+    context.projectMembership
+      ? context.projectMembership
+          .admissionsForResolvedPrincipal(principalId)
+          .map(({ scope, member }) => ({
+            projectSlug: scope.localProjectSlug,
+            role: member.role,
+            actions: member.actions,
+            status: member.status,
+          }))
+      : [];
+  const agentAudience: AgentAudienceGateDeps = {
+    caller: async (c) => {
+      const request = c.req.raw;
+      try {
+        const account =
+          await context.deploymentAuthentication?.service.authenticate(request);
+        if (account?.kind === 'authenticated') {
+          roomRequestPrincipals.set(
+            request,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const actor = await projectMembershipAuthority(request).current();
+          return {
+            kind: 'member',
+            admissions: agentAudienceAdmissions(actor.principal.id),
+          };
+        }
+        if (account && account.kind !== 'absent') return { kind: 'none' };
+      } catch {
+        return { kind: 'none', unresolved: true };
+      }
+      const ownerId = agentOwnerIdForRequest(request);
+      // A station-control call that acts for no resolved principal (caller-
+      // less, or a session with no recorded owner) fails closed: it is
+      // admitted to no Agent, as Task-room authority refuses an unresolved
+      // principal. The audience is always composed with the membership of
+      // the resolved `PrincipalRef.id`, never granted by the id alone.
+      if (ownerId === null) return { kind: 'none' };
+      if (ownerId !== undefined && isDeploymentAccountPrincipalId(ownerId))
+        return { kind: 'member', admissions: agentAudienceAdmissions(ownerId) };
+      return { kind: 'operator' };
+    },
+    listAgents: () => context.agentService.listAgents(),
+  };
+  installAgentAudienceGate(context.app, agentAudience);
   // #2561: every route family below decides a session or conversation read
   // (or records an owner that a later session read compares against), so it
   // must use the request's principal, exactly like the chat routes bound
@@ -2596,6 +2675,7 @@ export function configureRuntimeRoutes(
       context.secretBindingAdministration,
       context.secretBindingIntegrationAdministration,
       context.mcpService,
+      { resolveViewerPrincipalId: resolveConnectedAccountPrincipalId },
     ),
   );
   context.app.route('/api/users', createUserRoutes());
@@ -3493,6 +3573,7 @@ export function configureRuntimeRoutes(
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
+      resolveAccountPrincipalId: resolveConnectedAccountPrincipalId,
       // MCP-UI tool calls with `approvalPolicy: 'require'` block on a real inbox
       // approval before executing (the existing managed-approval registry +
       // inbox surface); the spec-compliant tool result is returned only after.
@@ -4352,6 +4433,19 @@ export function configureRuntimeRoutes(
           remoteStations,
         ),
       ),
+      // `delegatedInputAnswers`: `pendingRequest.callerCanRespond` on a task
+      // this Station serves, from the answering route's own two gates.
+      callerMayAnswerDelegatedRequest: (c, taskId, requestType) =>
+        mayAnswerDelegatedRequest(
+          {
+            security: context.environmentSecurityService,
+            stationControlDispatchScope,
+          },
+          c,
+          taskId,
+          requestType,
+          false,
+        ),
       observeDelegatedTask: stationServerEntry((input) =>
         observeDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
@@ -5081,6 +5175,45 @@ export function configureRuntimeRoutes(
       canSeePlugin: canSeePluginForRequest,
     }),
   );
+  // #3276: `GET /api/projects` and `/api/boot`'s `projects` section answer
+  // from one catalogue decision (`createProjectCatalogueReader`).
+  const projectCatalogueDeps = {
+    memberProjectAdmissions: async (c) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      const authority = await authenticatedProjectMember(c.req.raw);
+      if (!authority) return undefined;
+      return (
+        await context.projectMembership!.readableProjectAdmissions(authority)
+      ).map(({ scope, member }) => ({
+        scope,
+        actions: member.actions.filter((action) => action === 'view'),
+      }));
+    },
+    projectCatalogueCurrent: async (c, admittedScopes) => {
+      const authority = await authenticatedProjectMember(c.req.raw);
+      if (!authority) return false;
+      const current =
+        await context.projectMembership!.readableProjectScopes(authority);
+      return (
+        current.length === admittedScopes.length &&
+        admittedScopes.every((admitted) =>
+          current.some(
+            (scope) =>
+              scope.localProjectId === admitted.localProjectId &&
+              scope.portableProjectId === admitted.portableProjectId &&
+              scope.localProjectSlug === admitted.localProjectSlug,
+          ),
+        )
+      );
+    },
+  } satisfies Parameters<typeof createProjectCatalogueReader>[1];
+  const projectCatalogue = createProjectCatalogueReader(
+    context.projectService,
+    projectCatalogueDeps,
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -5153,22 +5286,6 @@ export function configureRuntimeRoutes(
           !hostedTenantRegistry && !isHostedTenantExecutionRequired()
             ? 'supported'
             : 'unsupported',
-        memberProjectAdmissions: async (c) => {
-          roomRequestPrincipals.set(
-            c.req.raw,
-            resolveOrchestrationRequestPrincipal(c),
-          );
-          const authority = await authenticatedProjectMember(c.req.raw);
-          if (!authority) return undefined;
-          return (
-            await context.projectMembership!.readableProjectAdmissions(
-              authority,
-            )
-          ).map(({ scope, member }) => ({
-            scope,
-            actions: member.actions.filter((action) => action === 'view'),
-          }));
-        },
         memberProjectAdmission: async (c, slug) => {
           const authority = await authenticatedProjectMember(c.req.raw);
           if (!authority) return undefined;
@@ -5185,23 +5302,7 @@ export function configureRuntimeRoutes(
             ),
           };
         },
-        projectCatalogueCurrent: async (c, admittedScopes) => {
-          const authority = await authenticatedProjectMember(c.req.raw);
-          if (!authority) return false;
-          const current =
-            await context.projectMembership!.readableProjectScopes(authority);
-          return (
-            current.length === admittedScopes.length &&
-            admittedScopes.every((admitted) =>
-              current.some(
-                (scope) =>
-                  scope.localProjectId === admitted.localProjectId &&
-                  scope.portableProjectId === admitted.portableProjectId &&
-                  scope.localProjectSlug === admitted.localProjectSlug,
-              ),
-            )
-          );
-        },
+        ...projectCatalogueDeps,
       },
     ),
   );
@@ -6071,7 +6172,12 @@ export function configureRuntimeRoutes(
           ).request('/capabilities')
         ).json(),
       branding: async () => (await createBrandingRoutes().request('/')).json(),
-      agents: async () => {
+      agents: async (c) => {
+        // #3276: the same caller decision and member projection as
+        // `GET /api/agents`; a member never receives the operator catalog.
+        const catalog = await agentCatalogForCaller(agentAudience, c);
+        if (catalog.kind === 'member')
+          return { success: true, data: catalog.data };
         return {
           success: true,
           data: await context.agentService.getAgentCatalog(
@@ -6083,10 +6189,14 @@ export function configureRuntimeRoutes(
           ),
         };
       },
-      projects: async () => ({
-        success: true,
-        data: await context.projectService.listProjects(),
-      }),
+      projects: async (c) => {
+        // #3276: the same answer `GET /api/projects` gives this request, so
+        // a member never receives the operator's Project records.
+        const response = await projectCatalogue(c);
+        if (!response.ok)
+          throw new Error(`Project catalogue refused (${response.status})`);
+        return response.json();
+      },
       models: async () =>
         (
           await createModelsRoutes({
@@ -6624,6 +6734,13 @@ export function configureRuntimeRoutes(
         context.orchestrationService.canUserReadSession(sessionId, authority),
       // #2584: agents use `notify_user`, never this caller-chosen source.
       isAgentOriginatedRequest,
+      // #3276: a member may not answer a live approval through the inbox.
+      approvalAnswerGuard: (c) =>
+        memberApprovalGuard(
+          agentAudience,
+          c,
+          approvalInboxProvider.isLiveApproval.bind(approvalInboxProvider),
+        ),
     }),
   );
   // #2584 `notify_user`'s REST side. The caller is re-derived from the

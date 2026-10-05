@@ -290,6 +290,8 @@ interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /** #3279: each person connects their own account (see the API reference). */
+  credentialOwnership?: { owner: 'principal'; allowInstanceFallback?: boolean };
 }
 
 interface ToolPermissions {

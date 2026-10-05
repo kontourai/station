@@ -192,7 +192,16 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService: {
-        listAgents: () => [],
+        // `writer` as the store lists it: Project-owned, no audience, so it
+        // is operator-only (#3276).
+        listAgents: () => [
+          {
+            slug: 'writer',
+            name: 'Writer',
+            project: 'account-slug',
+            updatedAt: '2026-09-01T00:00:00.000Z',
+          },
+        ],
       },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
@@ -654,7 +663,13 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     }
   });
 
-  test('the Project execute action: an account member dispatches only where it may execute', async () => {
+  test('an account member cannot dispatch an operator-only Agent, even where its membership may execute (#3276)', async () => {
+    // Before #3276 a member holding `execute` reached the dispatch here. The
+    // Agent audience gate now answers first: `writer` declares no audience,
+    // so it is operator-only, and a member gets the uniform not-found
+    // whether or not the Project scope rule would admit the dispatch. A
+    // member turn on an admitted Agent is refused too until #3277 brings
+    // intersection authority (runtime-routes-agent-audience.test.ts).
     const { base } = await setup();
     const member = as('bearer-exposed', 'acct-caller-acct');
     const chat = ROUTES['POST /chat']!;
@@ -664,21 +679,19 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     })!;
     expect(
       await outcome(base, inOwnProject.path, member(), inOwnProject.body),
-    ).toBe('reached');
-    // A viewer may not execute there.
+    ).toBe('not reached (404 )');
     support.accountActions = ['view'];
     expect(
       await outcome(base, inOwnProject.path, member(), inOwnProject.body),
-    ).toBe(ROLE);
+    ).toBe('not reached (404 )');
     const followUp = chat({ kind: 'thread', threadId: 'acct-thread-acct' })!;
     expect(await outcome(base, followUp.path, member(), followUp.body)).toBe(
-      ROLE,
+      'not reached (404 )',
     );
-    // Nor may a bound member.
     const boundMember = as('bound', 'acct-caller-acct');
     expect(
       await outcome(base, followUp.path, boundMember(), followUp.body),
-    ).toBe(ROLE);
+    ).toBe('not reached (404 )');
   });
 
   test('an input reply, and a follow-up to a conversation that has no session yet', async () => {
