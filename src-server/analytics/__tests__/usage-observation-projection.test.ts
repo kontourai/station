@@ -114,6 +114,7 @@ function fixture() {
     createdAt = day1,
     model = 'model-a',
     metadata: Record<string, unknown> = {},
+    resumed = false,
   ) {
     store.upsertSession({
       provider,
@@ -129,7 +130,10 @@ function fixture() {
       method: 'session.started',
       sessionId: threadId,
       initialState: 'created',
-      metadata: { userId: 'reader' },
+      metadata: {
+        userId: 'reader',
+        ...(resumed ? { nativeSessionResumed: true } : {}),
+      },
     });
     store.appendEvent({
       ...event(threadId, provider, createdAt),
@@ -196,6 +200,58 @@ async function memory(
   );
   return path;
 }
+
+test.each([
+  {
+    name: 'resumed continuation',
+    restart: 'resumed',
+    nextCost: 2,
+    expected: 2,
+  },
+  { name: 'fresh process', restart: 'fresh', nextCost: 2, expected: 3 },
+  {
+    name: 'lower figure in the same process',
+    restart: 'none',
+    nextCost: 0.25,
+    expected: 1.25,
+  },
+  { name: 'resumed reset', restart: 'resumed', nextCost: 0.25, expected: 1.25 },
+])(
+  'Claude $name keeps retained breakdowns aligned with the canonical cost',
+  async ({ restart, nextCost, expected }) => {
+    const f = fixture();
+    try {
+      f.start('cost-segments', 'claude');
+      f.turn('cost-segments', 'claude', 'first', day1, { reportedCostUsd: 1 });
+      if (restart !== 'none') {
+        f.start(
+          'cost-segments',
+          'claude',
+          day2,
+          'model-a',
+          {},
+          restart === 'resumed',
+        );
+      }
+      f.turn('cost-segments', 'claude', 'next', day2, {
+        reportedCostUsd: nextCost,
+      });
+      const stats = await f.current();
+      expect(stats.lifetime.reportedCostUsd).toBeCloseTo(expected);
+      expect(stats.byProvider?.claude.reportedCostUsd).toBeCloseTo(expected);
+      expect(
+        Object.values(stats.byModel).reduce((sum, row) => sum + row.cost, 0) +
+          (stats.unallocated?.model.cost ?? 0),
+      ).toBeCloseTo(expected);
+      expect(
+        Object.values(stats.byDate).reduce((sum, row) => sum + row.cost, 0) +
+          (stats.unallocated?.date.cost ?? 0),
+      ).toBeCloseTo(expected);
+    } finally {
+      f.store.close();
+    }
+  },
+);
 
 test.each([null, true, false, [], [day1], {}])(
   'invalid persisted timestamp %j stays undated',
