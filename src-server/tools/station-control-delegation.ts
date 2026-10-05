@@ -2134,14 +2134,11 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    // The paired-Station sentence is for a paired Station's 403 only. This
-    // Station's own 403 keeps its typed code through the local refusal below
-    // (#2708, #2795).
-    if (
-      response.status === 403 &&
-      forbiddenMessage &&
-      target.kind !== 'current'
-    )
+    // The paired-Station sentence is for a paired (peer) target's 403 only.
+    // `current` and `ssh` fall through to the local refusal below: this
+    // Station's own 403 keeps its typed code (#2708, #2795), and an SSH
+    // target is not a paired Station.
+    if (response.status === 403 && forbiddenMessage && target.kind === 'peer')
       throw new PeerPortableFollowUpError(forbiddenMessage);
     // The sentinel itself stays code-free: a peer's diagnostics never cross
     // this seam. Only this Station's own answer rides along, as a cause the
