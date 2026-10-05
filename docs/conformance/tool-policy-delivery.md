@@ -69,8 +69,8 @@ session option. In a delegated child that cannot grant approvals
 denied at once with the staged evaluator's `delegation_deny_approvals` denial,
 since nobody could answer it. That includes a question from such a child.
 Known `AskUserQuestion` callbacks are handled before those grants: answering
-a question requires an exact structured batch and never creates a session
-tool grant. This is a question interaction boundary, not a new consent floor
+a question requires content that passes the opened form (#3390) and never
+creates a session tool grant. This is a question interaction boundary, not a new consent floor
 for every tool or proof that the engine invokes every callback.
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
