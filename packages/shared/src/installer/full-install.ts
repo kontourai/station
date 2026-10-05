@@ -33,7 +33,6 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -95,14 +94,18 @@ const CURRENT_NEXT = 'current.next';
  * its place; a crash between the two leaves only `current.next`, which
  * `recoverCurrent` finishes.
  */
-export function pointCurrentAt(installRoot: string, target: string): void {
+export function pointCurrentAt(
+  installRoot: string,
+  target: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
   const current = join(installRoot, 'current');
   const next = join(installRoot, CURRENT_NEXT);
   if (isLink(next)) unlinkSync(next);
   // 'junction' is ignored off Windows, where this makes a symlink.
   symlinkSync(target, next, 'junction');
-  if (process.platform === 'win32' && isLink(current)) unlinkSync(current);
-  renamePathSyncRetrying(next, current);
+  if (platform === 'win32' && isLink(current)) unlinkSync(current);
+  renamePathSyncRetrying(next, current, { platform });
 }
 
 /**
@@ -110,12 +113,15 @@ export function pointCurrentAt(installRoot: string, target: string): void {
  * `current`, a `current.next` becomes it. With both, `current` stands and
  * the stale `current.next` goes.
  */
-export function recoverCurrent(installRoot: string): void {
+export function recoverCurrent(
+  installRoot: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
   const current = join(installRoot, 'current');
   const next = join(installRoot, CURRENT_NEXT);
   if (!isLink(next)) return;
   if (isLink(current) || existsSync(current)) unlinkSync(next);
-  else renamePathSyncRetrying(next, current);
+  else renamePathSyncRetrying(next, current, { platform });
 }
 
 function removeCurrent(installRoot: string): void {
@@ -991,8 +997,8 @@ function switchToRelease(
     } else if (previous === null || !same(previous, releaseDir)) {
       pointCurrentAt(paths.installRoot, releaseDir);
     }
-    renameSync(stagedLauncher, paths.launcher);
-    renameSync(stagedState, paths.stateFile);
+    renamePathSyncRetrying(stagedLauncher, paths.launcher);
+    renamePathSyncRetrying(stagedState, paths.stateFile);
   } catch (error) {
     io.err(`${(error as Error).message}`);
     rollback('could not publish the new release');

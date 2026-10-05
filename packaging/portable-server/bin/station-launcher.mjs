@@ -218,6 +218,47 @@ function fsyncDirectory(directory) {
   }
 }
 
+/**
+ * Renames a file or directory, retrying a refusal Windows gives while
+ * another process (an antivirus scanner, the search indexer) briefly holds a
+ * handle inside it: EPERM, EACCES or EBUSY, up to 10 tries 500 ms apart,
+ * then the first error is thrown; any other error, and every error off
+ * Windows, at once (#3363). packages/shared/src/fs-windows-compat.ts
+ * `renamePathSyncRetrying`, ported (nothing of any version sits beside this
+ * file); service-launcher.test.ts runs both over the same refusals.
+ */
+// Exported for service-launcher.test.ts (the parity pin).
+// fallow-ignore-next-line unused-export
+export function renamePathRetrying(source, destination, options = {}) {
+  const platform = options.platform ?? process.platform;
+  const attempts = options.attempts ?? 10;
+  const rename = options.rename ?? renameSync;
+  const wait =
+    options.wait ??
+    ((milliseconds) =>
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        milliseconds,
+      ));
+  let first;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      rename(source, destination);
+      return;
+    } catch (error) {
+      const transient =
+        platform === 'win32' &&
+        ['EPERM', 'EACCES', 'EBUSY'].includes(error?.code ?? '');
+      if (!transient) throw first ?? error;
+      first ??= error;
+      if (attempt >= attempts) throw first;
+      wait(options.delayMs ?? 500);
+    }
+  }
+}
+
 function statePaths(installRoot) {
   const runtime = join(installRoot, 'runtime');
   return {
@@ -293,7 +334,7 @@ function writeServiceState(installRoot, state) {
     closeSync(fd);
   }
   try {
-    renameSync(temp, paths.state);
+    renamePathRetrying(temp, paths.state);
   } catch (error) {
     rmSync(temp, { force: true });
     throw error;
@@ -364,7 +405,7 @@ export function pointCurrentAt(
     // A junction needs no privilege, unlike a directory symlink.
     symlinkSync(target, next, 'junction');
     if (isLink(current)) unlinkSync(current);
-    renameSync(next, current);
+    renamePathRetrying(next, current, { platform });
     fsyncDirectory(installRoot);
     return;
   }
@@ -386,12 +427,12 @@ export function pointCurrentAt(
  */
 // Exported for service-launcher.test.ts (the parity pin with install.ps1).
 // fallow-ignore-next-line unused-export
-export function recoverCurrent(installRoot) {
+export function recoverCurrent(installRoot, platform = process.platform) {
   const current = join(installRoot, 'current');
   const next = join(installRoot, CURRENT_NEXT);
   if (!isLink(next)) return;
   if (isLink(current) || existsSync(current)) unlinkSync(next);
-  else renameSync(next, current);
+  else renamePathRetrying(next, current, { platform });
 }
 
 // --- process identity -------------------------------------------------------

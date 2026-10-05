@@ -1280,6 +1280,55 @@ describe('the Windows switch of `current` is install.ps1’s (#2675 W3)', () => 
     },
   );
 
+  it('retries a refused rename exactly as install.ps1 does (#3363)', async () => {
+    type Retrying = (
+      source: string,
+      destination: string,
+      options: {
+        platform?: string;
+        rename?: (source: string, destination: string) => void;
+        wait?: (milliseconds: number) => void;
+      },
+    ) => void;
+    const launcher = (await launcherModule()) as unknown as {
+      renamePathRetrying: Retrying;
+    };
+    const shared = (await import(
+      '../../packages/shared/src/fs-windows-compat.js'
+    )) as unknown as { renamePathSyncRetrying: Retrying };
+    const refusal = (code: string) => Object.assign(new Error(code), { code });
+    const scripts: Array<{ platform: string; codes: (string | null)[] }> = [
+      { platform: 'win32', codes: ['EPERM', 'EBUSY', null] },
+      { platform: 'win32', codes: Array(12).fill('EACCES') },
+      { platform: 'win32', codes: ['EPERM', 'ENOENT'] },
+      { platform: 'linux', codes: ['EPERM', null] },
+    ];
+    for (const { platform, codes } of scripts) {
+      const run = (retrying: Retrying) => {
+        const errors = codes.map((code) => (code ? refusal(code) : null));
+        const waits: number[] = [];
+        let calls = 0;
+        let thrown: unknown = null;
+        try {
+          retrying('a', 'b', {
+            platform,
+            rename: () => {
+              const error = errors[calls++];
+              if (error) throw error;
+            },
+            wait: (ms) => waits.push(ms),
+          });
+        } catch (error) {
+          thrown = errors.indexOf(error as Error);
+        }
+        return { calls, waits, thrown };
+      };
+      expect(run(launcher.renamePathRetrying), JSON.stringify(codes)).toEqual(
+        run(shared.renamePathSyncRetrying),
+      );
+    }
+  });
+
   it('switches `current` to the same version, leaving no current.next', async () => {
     const both = await rules();
     for (const rule of Object.values(both)) {
