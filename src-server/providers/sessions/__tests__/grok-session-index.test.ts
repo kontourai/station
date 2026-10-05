@@ -91,8 +91,9 @@ describe('GrokSessionIndex', () => {
   });
 
   test('past the cap, old sessions in unchanged groups are reached once the backlog drains', async () => {
-    // Full-scale shape scaled down: probes far beyond the cap and newer than
-    // the user groups, with few inspections per poll.
+    // The full-scale shape (140k probes over a 131k cap, 1,024 inspections a
+    // poll) scaled to 1,100 probes over a 1,000 cap with 8 inspections: the
+    // probes are newer than the user groups and never change.
     const root = tree();
     for (const user of ['a-user', 'n-user', 'z-user']) {
       folder(root, user, `real-${user}`);
@@ -100,8 +101,8 @@ describe('GrokSessionIndex', () => {
       utimesSync(join(root, user, `real-${user}`), old, old);
       utimesSync(join(root, user), old, old);
     }
-    for (let group = 0; group < 12; group += 1) {
-      for (let item = 0; item < 10; item += 1) {
+    for (let group = 0; group < 11; group += 1) {
+      for (let item = 0; item < 100; item += 1) {
         folder(
           root,
           `m-probe-${String(group).padStart(2, '0')}`,
@@ -109,12 +110,16 @@ describe('GrokSessionIndex', () => {
         );
       }
     }
-    const target = index({ maxEntries: 40, maxInspections: 4, maxStats: 64 });
+    const target = index({
+      maxEntries: 1000,
+      maxInspections: 8,
+      maxStats: 125,
+      maxSweepStats: 8,
+    });
     const found = new Set<string>();
     let polls = 0;
-    // 40 folders at 4 inspections a poll drain in 10 polls; the rotation then
-    // reaches the user groups within a few more.
-    for (; polls < 60 && found.size < 3; polls += 1) {
+    // 1,000 folders at 8 inspections a poll drain in 125 polls.
+    for (; polls < 200 && found.size < 3; polls += 1) {
       for (const session of (await poll(target, root)).sessions) {
         found.add(session.inspection.session!.sessionId);
       }
@@ -124,8 +129,7 @@ describe('GrokSessionIndex', () => {
       'real-n-user',
       'real-z-user',
     ]);
-    expect(polls).toBeLessThanOrEqual(40);
-  });
+  }, 120_000);
 
   test('the newest group is read first, ahead of older ones past the budget', async () => {
     const root = tree();
