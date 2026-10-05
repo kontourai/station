@@ -565,7 +565,7 @@ async function fullInstall() {
   check(
     launcherText.includes('rem station-owned-launcher-v2\r\n') &&
       launcherText.includes(
-        `call "${join(installRoot, 'current', 'bin', 'station.cmd')}" %*`,
+        `\r\n"%USERPROFILE%${join(installRoot, 'current', 'bin', 'station.cmd').slice(profile.length)}" %*\r\n`,
       ),
     `the launcher is not the owned one:\n${launcherText}`,
   );
