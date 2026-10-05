@@ -595,6 +595,68 @@ not proof of completion or failure. Poll with a deadline for the returned
 requests. Accepted/coalesced publication is owned by the orchestration service;
 a timeout or missing terminal event must remain unverified, not inferred success.
 
+### Conversation usage tree (`GET /conversations/:conversationId/usage-tree`)
+
+One conversation's usage with its children, as a
+[`ThreadUsageTree`](../../packages/contracts/src/thread-usage-tree.ts). The
+root holds the conversation's own turns (every session in its lineage). Its
+children are the engine subagents those sessions reported and the sessions
+launched from the conversation, nested recursively and read one depth level
+at a time. Each child carries its own figures and a `relation` for tokens and
+for cost: `added` (in the total), `included-in-parent` (the parent's figure
+already contains it) or `not-reported` (not in the total, which is then
+partial). `total` lists why it is partial in `partialReasons`.
+
+A session is a child of the conversation when its launch names any session of
+the conversation's lineage as its parent:
+
+- by its delegation context (`metadata.delegation.parentConversationId`).
+  When a Claude Code or Codex session calls `delegate_task` through its
+  session-bound station-control (Claude Code's in-process server, Codex's
+  per-session HTTP server), Station derives it from the calling session's own
+  record. For Station's own agent, the runtime attests it from the
+  conversation it ran the tool call in. Neither comes from the request. On a
+  direct request it is the requester's own claim. A paired-Station dispatch
+  record keeps the same value as `metadata.parentConversationId`;
+- otherwise by `metadata.parentTaskId`, which a request may set itself. A
+  delegation context naming another conversation always wins over it.
+
+A task launched through a caller-less station-control process (a stdio child
+with no per-session credential, as a Strands-runtime agent uses) carries no
+delegation context. Unless its
+request named `parentTaskId`, it is not found as a child and the total doesn't
+show it as missing.
+
+Tokens: `totalTokens` is input + output as each engine reported them; cache
+reads and writes are listed separately and are not added. `total.tokens`
+says what the summed input means in `cacheInclusion`: `excluded` (every engine
+reports uncached input), `mixed` (two declared conventions that differ were
+summed), or `not-established` (any other case, including an engine whose
+convention is unverified or undeclared; unknown is never called different). A subagent's own figure goes where its
+engine's meaning puts it: tokens used become `totalTokens`, a Claude Code
+subagent's last-request size is `lastRequestTokens`, and an undeclared
+engine's figure is `unverifiedTokens`. Only `totalTokens` is ever added.
+
+Cost stays in buckets: reported cost by currency, Station estimates by
+currency and price snapshot. Buckets are never summed together, and reported
+cost is never mixed with estimates.
+
+The read is authorized like the conversation transcript: every session in a
+conversation's lineage must be readable. A session you can't read that names
+your conversation is ignored, neither shown nor counted as missing: a real
+delegate of your conversation is your own work. One exception follows from
+that rule: in hosted mode, a delegate launched by a caller-less internal
+request (Station's own agent or a Strands-runtime agent) is owned by the
+Station operator, so another reader's tree doesn't count it and its total
+isn't marked partial for it. A delegate that ran on a
+paired Station is shown from this Station's own record, with `not-reported`
+usage, and no peer is contacted. Responses are `Cache-Control: private,
+no-store`. `404` means no conversation you can read. `422` means the tree is
+past a bound (200 nodes, delegates nested 8 deep, 5,000 usage observations,
+or more than 1,000 session records naming one level's parents) and is refused rather
+than cut. Each level's parent lookup scans session start records; there is no
+index on the JSON fields it matches.
+
 ### Reading assistant turn content programmatically
 
 For ACP-connected and other streaming-capable providers, assistant text arrives as a

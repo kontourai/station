@@ -733,8 +733,11 @@ describe("the Station Agent's own definition (#3662)", () => {
       id: 'station',
       kind: 'station',
     });
+    // #3196 split Knowledge data into its own built-in MCP server.
     await expect(loader.loadAgent('station')).resolves.toMatchObject({
-      tools: { mcpServers: ['station-control', 'station-docs'] },
+      tools: {
+        mcpServers: ['station-control', 'station-knowledge', 'station-docs'],
+      },
     });
   });
 
