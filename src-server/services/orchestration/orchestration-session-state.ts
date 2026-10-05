@@ -1146,6 +1146,19 @@ export function extractPeerPendingRequestObservation(
       ...(typeof record.title === 'string' && record.title.trim()
         ? { title: record.title }
         : {}),
+      // The binding pair is read only whole.
+      ...(typeof record.eventId === 'string' &&
+      record.eventId &&
+      typeof record.threadId === 'string' &&
+      record.threadId
+        ? { eventId: record.eventId, threadId: record.threadId }
+        : {}),
+      ...(typeof record.body === 'string' && record.body.trim()
+        ? { body: record.body }
+        : {}),
+      ...(typeof record.callerCanRespond === 'boolean'
+        ? { callerCanRespond: record.callerCanRespond }
+        : {}),
       observedAt,
     };
   }

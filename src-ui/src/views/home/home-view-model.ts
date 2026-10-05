@@ -32,6 +32,7 @@ import {
   sessionTitle,
 } from '../../utils/sessionDisplay';
 import { chatWaitsOnUser } from '../../utils/waiting-approvals';
+import { isPeerDelegationRecord } from './work-item-open-policy';
 
 export interface HomeWorkItem {
   id: string;
@@ -142,6 +143,15 @@ export interface HomeWorkItem {
    * even when `agentSlug` is present.
    */
   controlMode?: SessionControlMode;
+  /**
+   * Set only to `'peer'`, from the session's own `delegation.environmentKind`:
+   * the row is this Station's lifecycle record of a delegated task running
+   * on a PAIRED Station. The row-open policy reveals it in Activity rather
+   * than rehydrating a chat on the peer's conversation id. Distinct from
+   * `environmentId` below, which names the SSH environment a remote-session
+   * row was read from.
+   */
+  delegationEnvironmentKind?: 'peer';
   /**
    * archive#1097: set only on a `'remote-session'` item — the connected
    * SSH environment it was read from. Never set on a local item, and a
@@ -453,6 +463,9 @@ function buildSessionWorkItem(
       : {}),
     projectSlug: session.projectSlug,
     controlMode: session.controlMode,
+    ...(isPeerDelegationRecord(session)
+      ? { delegationEnvironmentKind: 'peer' as const }
+      : {}),
     ...(provenance
       ? {
           environmentId: provenance.environmentId,

@@ -218,30 +218,63 @@ export function peerAttentionElsewhereText(environmentName?: string): string {
     : 'Answer this on the paired Station that runs the task.';
 }
 
+type PeerRequestReference = NonNullable<
+  (NeedsInputAttentionItem | ReviewPendingAttentionItem)['peerRequestReference']
+>;
+
 /**
- * Whether the inbox may offer Allow/Deny for a paired-Station item: the
- * paired Station reported an open approval or permission request, and this
- * Station's own checks on the respond route pass for the caller
- * (`viewerCanRespond`, absent = unknown = no). The paired Station still
- * authorizes on its side; its refusal is shown when it comes back.
+ * What the inbox may offer for a paired-Station item:
+ * - `decide` (Allow/Deny) for an approval or permission request;
+ * - `answer` (a reply bound to the request) for an input question the
+ *   paired Station reported with its event identity, which only a Station
+ *   that enforces bound answers reports;
+ * - otherwise the note.
+ * Either needs this Station's own gates to pass for the reader
+ * (`viewerCanRespond`, absent = unknown = no) and the paired Station not to
+ * have said it would refuse (`callerCanRespond: false`; absent means it did
+ * not say, and its refusal is shown if it comes).
  */
 export function peerRequestDecision(
   item: NeedsInputAttentionItem | ReviewPendingAttentionItem,
 ):
-  | { kind: 'decide'; reference: NonNullable<typeof item.peerRequestReference> }
+  | { kind: 'decide'; reference: PeerRequestReference }
+  | {
+      kind: 'answer';
+      reference: PeerRequestReference & {
+        threadId: string;
+        requestEventId: string;
+      };
+    }
   | { kind: 'note'; reason?: string } {
   const reference = item.peerRequestReference;
+  if (!reference) return { kind: 'note' };
   const decidable =
-    reference?.requestType === 'approval' ||
-    reference?.requestType === 'permission';
-  if (reference && decidable) {
-    return item.viewerCanRespond === true
-      ? { kind: 'decide', reference }
-      : {
-          kind: 'note',
-          reason:
-            "Your access to this Station doesn't allow deciding paired-Station requests from here.",
-        };
-  }
-  return { kind: 'note' };
+    reference.requestType === 'approval' ||
+    reference.requestType === 'permission';
+  const answerable =
+    reference.requestType === 'input' &&
+    reference.threadId !== undefined &&
+    reference.requestEventId !== undefined;
+  if (!decidable && !answerable) return { kind: 'note' };
+  if (item.viewerCanRespond !== true)
+    return {
+      kind: 'note',
+      reason:
+        "Your access to this Station doesn't allow answering paired-Station requests from here.",
+    };
+  if (reference.callerCanRespond === false)
+    return {
+      kind: 'note',
+      reason:
+        "The paired Station doesn't allow this Station to answer its requests.",
+    };
+  if (decidable) return { kind: 'decide', reference };
+  return {
+    kind: 'answer',
+    reference: {
+      ...reference,
+      threadId: reference.threadId as string,
+      requestEventId: reference.requestEventId as string,
+    },
+  };
 }
