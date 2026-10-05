@@ -14,6 +14,7 @@ export const EXPECTED_LABEL_NAMES = Object.freeze([
   'P2',
   'P3',
   'acceptance-needed',
+  'advisory-review',
   'agent:claimed',
   'blocked',
   'bug',
