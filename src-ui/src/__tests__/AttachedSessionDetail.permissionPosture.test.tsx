@@ -721,9 +721,7 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe(
-      `Station won't continue this conversation. ${refusal}`,
-    );
+    expect(alert.textContent).toBe(refusal);
     const action = screen.getByRole('button', {
       name: 'Continue and send',
     }) as HTMLButtonElement;

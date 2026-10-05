@@ -390,7 +390,7 @@ export function AttachedSessionDetail({
           role="alert"
         >
           {adoptionRefusal
-            ? `Station won't continue this conversation. ${adoptionRefusal}`
+            ? adoptionRefusal
             : serverRejectedRetry
               ? 'Station says this continuation cannot be retried safely from this state.'
               : adoptionNonRetryable
