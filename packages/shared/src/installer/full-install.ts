@@ -61,6 +61,7 @@ import {
   owner,
   type Paths,
   type PreparedRelease,
+  plainPowerShellMessage,
   prepareOwnedInstallRoot,
   prepareOwnedRoot,
   prepareRelease,
@@ -68,6 +69,7 @@ import {
   RINGS,
   readChannel,
   readStageRequest,
+  removeInstallRoot,
   removeTree,
   resolvePaths,
   same,
@@ -539,7 +541,7 @@ function assertBinDirTrusted(binDir: string): void {
     ]);
   } catch (error) {
     fail(
-      `the launcher directory ${binDir} is writable by another account (${(error as Error).message}); choose another with STATION_BIN_DIR`,
+      `the launcher directory ${binDir} is writable by another account (${plainPowerShellMessage((error as Error).message)}); choose another with STATION_BIN_DIR`,
     );
   }
 }
@@ -843,7 +845,7 @@ export async function uninstallArchive(
       );
     unlinkSync(paths.launcher);
   }
-  if (present(paths.installRoot)) removeTree(paths.installRoot);
+  if (present(paths.installRoot)) removeInstallRoot(paths.installRoot, env);
   if (purge && present(paths.stationHome)) removeTree(paths.stationHome);
   io.out('Station uninstalled.');
   if (!purge) io.out(`Data preserved at ${paths.stationHome}`);

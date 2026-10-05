@@ -31,7 +31,6 @@ import {
   realpathSync,
   renameSync,
   rmdirSync,
-  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -221,7 +220,7 @@ export function installRootTrustProblem(
     ]);
     return null;
   } catch (error) {
-    return (error as Error).message;
+    return plainPowerShellMessage((error as Error).message);
   }
 }
 
@@ -244,7 +243,7 @@ function secureInstallRoot(
       ]);
     } catch (error) {
       fail(
-        `could not restrict the install root to your account: ${(error as Error).message}`,
+        `could not restrict the install root to your account: ${plainPowerShellMessage((error as Error).message)}`,
       );
     }
     return;
@@ -334,7 +333,39 @@ function sha256File(path: string): string {
   return hash.digest('hex');
 }
 
-/** Makes a tree writable again (an installed version is sealed) and removes it. */
+/**
+ * Runs a removal, retrying briefly where Windows refuses to delete a file
+ * a process that is just exiting still holds (a stopped Station's node.exe).
+ */
+function removeWithRetries(remove: () => void): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      remove();
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (code === 'ENOENT') return;
+      if (
+        attempt >= 10 ||
+        !['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY'].includes(code)
+      )
+        throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+  }
+}
+
+/**
+ * Removes a tree an installed version is sealed in, without ever following
+ * a link: each entry is lstat'ed, a link (the `current` junction, or one
+ * another account placed in a root it could write) is unlinked itself,
+ * files are unlinked and directories removed only once empty. Nothing is
+ * removed recursively by path, so a directory swapped for a link during the
+ * walk is unlinked, not descended into by a later recursive removal. (Node
+ * offers no handle-relative removal, so a swap between an lstat and the
+ * readdir that follows it remains possible; that window is the walk's
+ * only one.)
+ */
 export function removeTree(path: string): void {
   let info: ReturnType<typeof lstatSync>;
   try {
@@ -343,26 +374,66 @@ export function removeTree(path: string): void {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
-  // A link (the `current` junction on Windows) is removed itself, never
-  // followed: its target is a version this tree does not own.
   if (info.isSymbolicLink()) {
-    unlinkSync(path);
+    removeWithRetries(() => unlinkSync(path));
     return;
   }
-  if (info.isDirectory()) {
-    chmodSync(path, info.mode | 0o700);
-    for (const name of readdirSync(path)) removeTree(join(path, name));
-  } else {
+  if (!info.isDirectory()) {
+    // Writable again (an installed version is sealed read-only); chmod
+    // follows links, so only after lstat showed a plain file.
     chmodSync(path, info.mode | 0o200);
+    removeWithRetries(() => unlinkSync(path));
+    return;
   }
-  // Windows refuses to delete a file a process that is just exiting still
-  // holds (a stopped Station's node.exe); retry briefly before giving up.
-  rmSync(path, {
-    recursive: true,
-    force: true,
-    maxRetries: 10,
-    retryDelay: 200,
-  });
+  chmodSync(path, info.mode | 0o700);
+  for (const name of readdirSync(path)) removeTree(join(path, name));
+  removeWithRetries(() => rmdirSync(path));
+}
+
+/**
+ * Removes an install root with its ownership marker last, so a removal
+ * that fails partway (a file a running process still holds) leaves a root
+ * this installer still recognizes, and the uninstall can simply be rerun.
+ */
+export function removeInstallRoot(root: string, env: InstallerEnv): void {
+  const failOn = env.STATION_INSTALL_TEST_FAIL_REMOVE ?? '';
+  if (failOn && env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS !== '1')
+    fail(
+      'STATION_INSTALL_TEST_FAIL_REMOVE is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+    );
+  try {
+    for (const name of readdirSync(root).sort()) {
+      if (name === INSTALL_ROOT_MARKER) continue;
+      if (name === failOn)
+        throw new Error(`test-only failure removing ${join(root, name)}`);
+      removeTree(join(root, name));
+    }
+    removeTree(join(root, INSTALL_ROOT_MARKER));
+    removeWithRetries(() => rmdirSync(root));
+  } catch (error) {
+    fail(
+      `could not remove all of ${root} (${(error as Error).message}); it is still marked as this installer's, so rerun the uninstall once nothing uses it`,
+    );
+  }
+}
+
+/**
+ * A PowerShell error as one readable line: Windows PowerShell reports a
+ * redirected error stream as CLIXML (`#< CLIXML …`), progress records and
+ * all; this keeps the text before it and the first error record.
+ */
+export function plainPowerShellMessage(message: string): string {
+  const start = message.indexOf('#< CLIXML');
+  if (start < 0) return message;
+  const first = /<S S="Error">([^<]*)<\/S>/.exec(message.slice(start))?.[1];
+  const error = (first ?? '')
+    .replace(/_x000D__x000A_/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .trim();
+  return `${message.slice(0, start)}${error}`.trim();
 }
 
 /**

@@ -860,6 +860,43 @@ describe('install.ps1 installer core: uninstall (#2675 W2)', () => {
     expect(existsSync(f.installRoot)).toBe(true);
   });
 
+  it('removes links inside the tree, never what they point at', () => {
+    const f = installed();
+    const outside = join(f.dir, 'outside-keep');
+    mkdirSync(join(outside, 'deep'), { recursive: true });
+    writeFileSync(join(outside, 'deep', 'precious'), 'keep me');
+    symlinkSync(outside, join(f.installRoot, 'versions', 'planted-dir'));
+    symlinkSync(
+      join(outside, 'deep', 'precious'),
+      join(f.installRoot, 'planted-file'),
+    );
+    const result = core(f, {}, ['uninstall']);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(f.installRoot)).toBe(false);
+    expect(readFileSync(join(outside, 'deep', 'precious'), 'utf8')).toBe(
+      'keep me',
+    );
+  });
+
+  it('removes the ownership marker last, so a removal that fails partway can be rerun', () => {
+    const f = installed();
+    const failed = core(f, { STATION_INSTALL_TEST_FAIL_REMOVE: 'versions' }, [
+      'uninstall',
+    ]);
+    expect(failed.status).toBe(1);
+    expect(failed.stderr).toContain('rerun the uninstall once nothing uses it');
+    expect(
+      readFileSync(
+        join(f.installRoot, '.station-portable-install-root'),
+        'utf8',
+      ),
+    ).toBe('station-portable-install-root-v1\n');
+    expect(existsSync(join(f.installRoot, 'versions'))).toBe(true);
+    const rerun = core(f, {}, ['uninstall']);
+    expect(rerun.status, rerun.stderr).toBe(0);
+    expect(existsSync(f.installRoot)).toBe(false);
+  });
+
   it('refuses an install root it does not own', () => {
     const f = fixture();
     mkdirSync(f.installRoot, { recursive: true });
