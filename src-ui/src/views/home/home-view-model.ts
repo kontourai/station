@@ -398,7 +398,9 @@ function buildSessionWorkItem(
     // still folds to Home's own copy, which is a display fallback for an
     // absent value rather than a second derivation of it.
     projectLabel: sessionProjectLabel(session) ?? 'No project',
-    agentLabel: resolvedAgentLabel,
+    agentLabel: session.modelRoute
+      ? `${resolvedAgentLabel} · via ${session.modelRoute.label}`
+      : resolvedAgentLabel,
     // `model` is only the adapter's direct session field. A restored
     // orchestration row can instead carry its durable resolved identity in
     // `effectiveModel`; prefer it so a completed chat does not lose its

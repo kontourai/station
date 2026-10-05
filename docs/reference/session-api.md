@@ -21,6 +21,12 @@ They do not replace foreground chat or the Task's current-session association.
 
 ---
 
+Execution summaries can include `modelRoute: {connectionId, label, endpoint}`.
+It is a safe route snapshot from the engine launch: `endpoint` is an HTTP(S)
+origin without credentials, and no proxy key is included. Older sessions may
+omit it. Changing saved connection settings alone does not rewrite the snapshot;
+a new configured execution records its actual route.
+
 ## Visual Skill presentation
 
 Installed [Skill experiences](skill-experiences.md) use this same foreground

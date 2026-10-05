@@ -581,9 +581,13 @@ export interface AgentConnectionSettings {
   enabled?: boolean;
   /**
    * Engine-connection runtime config. Claude and Codex connections accept
-   * two additional keys (station#2072, for routing a connection through a
+   * additional keys (station#2072, for routing a connection through a
    * local model proxy):
    *
+   * - `proxyConnectionId`: an explicitly selected saved OpenAI-compatible model
+   *   connection. Its current address/key are resolved at launch; credentials
+   *   are not copied into this engine configuration. Missing or disabled proxies
+   *   refuse launch. Native Codex provider arguments preserve the config home.
    * - `env`: map of environment-variable name → string value, merged into
    *   every engine subprocess the connection spawns (sessions, model
    *   discovery, quota probes, source-home maintenance; adoption/login
