@@ -61,12 +61,19 @@ beforeEach(() => {
 });
 
 describe('detectClaudeAuthState', () => {
-  test('accepts explicit API authentication without touching the CLI', async () => {
-    await expect(
-      detectClaudeAuthState({ ANTHROPIC_API_KEY: 'configured' }, '/missing'),
-    ).resolves.toBe('authenticated');
-    expect(secure.calls).toEqual([]);
-  });
+  test.each([
+    'ANTHROPIC_API_KEY',
+    'ANTHROPIC_AUTH_TOKEN',
+    'CLAUDE_CODE_OAUTH_TOKEN',
+  ])(
+    'accepts explicit %s authentication without touching the CLI',
+    async (key) => {
+      await expect(
+        detectClaudeAuthState({ [key]: 'configured' }, '/missing'),
+      ).resolves.toBe('authenticated');
+      expect(secure.calls).toEqual([]);
+    },
+  );
 
   test('recognizes the selected secure credential without a credential file', async () => {
     secure.result = JSON.stringify({
@@ -108,6 +115,88 @@ describe('detectClaudeAuthState', () => {
         'Claude Code-credentials-c7724621',
       ],
     ]);
+  });
+
+  test.each([
+    ['', 'Claude Code-credentials'],
+    [' /qa/secure ', 'Claude Code-credentials-569775b7'],
+  ])(
+    'preserves the selected secure override %j namespace',
+    async (storage, service) => {
+      secure.result = JSON.stringify({
+        claudeAiOauth: { accessToken: 'fixture-token' },
+      });
+      await expect(
+        detectClaudeAuthState(
+          {
+            CLAUDE_CONFIG_DIR: '/qa/config',
+            CLAUDE_SECURESTORAGE_CONFIG_DIR: storage,
+          },
+          '/missing',
+        ),
+      ).resolves.toBe('authenticated');
+      expect(secure.calls).toEqual([
+        ['find-generic-password', '-a', 'fixture-user', '-w', '-s', service],
+      ]);
+    },
+  );
+
+  test('keeps credential-file fallback in the selected secure-storage directory', async () => {
+    const home = makeTempDir('station-claude-auth-');
+    const config = join(home, 'config');
+    const storage = join(home, 'secure');
+    await mkdir(config);
+    await mkdir(storage);
+    await writeFile(
+      join(config, '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { accessToken: 'different-account' } }),
+      { mode: 0o600 },
+    );
+    const env = {
+      CLAUDE_CONFIG_DIR: config,
+      CLAUDE_SECURESTORAGE_CONFIG_DIR: storage,
+    };
+    const probe = vi.fn().mockResolvedValue({
+      stdout: '{"loggedIn":false}',
+      stderr: '',
+      code: 1,
+    });
+    await expect(detectClaudeAuthState(env, home, probe)).resolves.toBe(
+      'unauthenticated',
+    );
+    expect(probe).toHaveBeenCalledTimes(1);
+    await writeFile(
+      join(storage, '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { refreshToken: 'selected-account' } }),
+      { mode: 0o600 },
+    );
+    probe.mockClear();
+    await expect(detectClaudeAuthState(env, home, probe)).resolves.toBe(
+      'authenticated',
+    );
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  test('an empty secure-storage override selects the default credential-file directory', async () => {
+    secure.platform = 'linux';
+    const home = makeTempDir('station-claude-auth-');
+    await mkdir(join(home, '.claude'));
+    await mkdir(join(home, 'config'));
+    await writeFile(
+      join(home, '.claude', '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { refreshToken: 'selected-account' } }),
+      { mode: 0o600 },
+    );
+    await expect(
+      detectClaudeAuthState(
+        {
+          CLAUDE_CONFIG_DIR: join(home, 'config'),
+          CLAUDE_SECURESTORAGE_CONFIG_DIR: '',
+        },
+        home,
+      ),
+    ).resolves.toBe('authenticated');
+    expect(secure.calls).toEqual([]);
   });
 
   test.each([{ code: 36 }, { code: 'ENOENT' }, { code: 44, killed: true }])(

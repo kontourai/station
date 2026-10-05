@@ -128,20 +128,24 @@ export async function detectClaudeAuthState(
   }
 
   const configDir = env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude');
+  const storageOverride = env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+  const storageDir =
+    storageOverride === undefined
+      ? configDir
+      : (storageOverride || join(home, '.claude')).normalize('NFC');
   if (platform() === 'darwin') {
-    const secureDir = env.CLAUDE_SECURESTORAGE_CONFIG_DIR?.trim() || configDir;
     const secure = await secureAuthState(
       env,
-      secureDir,
-      !env.CLAUDE_SECURESTORAGE_CONFIG_DIR?.trim() &&
-        !env.CLAUDE_CONFIG_DIR?.trim() &&
-        home === homedir(),
+      storageDir,
+      storageOverride === undefined
+        ? !env.CLAUDE_CONFIG_DIR?.trim() && home === homedir()
+        : storageOverride.length === 0,
     );
     if (secure !== undefined) return secure;
   }
   try {
     const parsed = JSON.parse(
-      await readFile(join(configDir, '.credentials.json'), 'utf8'),
+      await readFile(join(storageDir, '.credentials.json'), 'utf8'),
     ) as ClaudeCredentials;
     const oauth = parsed.claudeAiOauth;
     if (
@@ -157,7 +161,7 @@ export async function detectClaudeAuthState(
       // The CLI itself writes into its config dir even to answer `auth
       // status`, so a dir that does not exist yet is never probed: a login
       // would have created it, and a readiness read must create nothing.
-      if (!probe || !(await isDirectory(configDir))) return 'unauthenticated';
+      if (!probe || !(await isDirectory(storageDir))) return 'unauthenticated';
       return parseClaudeAuthStatus(await probe().catch(() => null));
     }
     return 'unknown';
