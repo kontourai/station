@@ -1,4 +1,5 @@
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
+import { useSyncExternalStore } from 'react';
 import type { AgentData } from '../contexts/AgentsContext';
 
 const STORAGE_KEY = 'station.newChat.lastModelByBinding';
@@ -26,6 +27,58 @@ export function getLastChosenModelMap(): LastChosenModelMap {
   }
 }
 
+const listeners = new Set<() => void>();
+function notifyLastChosenModel(): void {
+  for (const listener of listeners) listener();
+}
+
+function readRawLastChosenModel(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// `useSyncExternalStore` needs a stable snapshot between changes; parse once
+// per distinct stored string.
+let cachedRaw: string | null | undefined;
+let cachedMap: LastChosenModelMap = {};
+function lastChosenModelSnapshot(): LastChosenModelMap {
+  const raw = readRawLastChosenModel();
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    cachedMap = getLastChosenModelMap();
+  }
+  return cachedMap;
+}
+
+function subscribeLastChosenModel(listener: () => void): () => void {
+  listeners.add(listener);
+  // Another tab's write arrives as a `storage` event, not through track/clear.
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === STORAGE_KEY) listener();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/**
+ * The remembered map, live: re-renders when a chat records or forgets a
+ * choice, so a surface that stays mounted (Home's start identity) never
+ * names a Model the next New Chat would no longer open on.
+ */
+export function useLastChosenModelMap(): LastChosenModelMap {
+  return useSyncExternalStore(
+    subscribeLastChosenModel,
+    lastChosenModelSnapshot,
+    lastChosenModelSnapshot,
+  );
+}
+
 export function trackLastChosenModel(
   bindingKey: string,
   modelId: string,
@@ -39,6 +92,7 @@ export function trackLastChosenModel(
     // Storage may be unavailable (quota, private browsing) — this memory
     // is best-effort and must never throw out of a caller's click handler.
   }
+  notifyLastChosenModel();
 }
 
 /**
@@ -56,6 +110,7 @@ export function clearLastChosenModel(bindingKey: string): void {
   } catch {
     // Best-effort, same as trackLastChosenModel.
   }
+  notifyLastChosenModel();
 }
 
 /**

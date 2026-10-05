@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   absoluteTime,
+  clockTime,
   relativeTime,
   relativeTimeAgo,
 } from '../utils/relativeTime';
@@ -51,5 +52,24 @@ describe('relativeTime', () => {
     expect(relativeTimeAgo(NOW - 10_000, NOW)).toBe('just now');
     expect(relativeTimeAgo(0, NOW)).toBe('just now');
     expect(relativeTimeAgo(NOW - 19 * DAY, NOW)).toBe('on Sep 12');
+  });
+});
+
+describe('clockTime', () => {
+  it('is the local time on the same day, and adds the weekday on another', () => {
+    const today = new Date(2026, 9, 1, 23, 0).getTime();
+    const tomorrow = new Date(2026, 9, 2, 6, 0).getTime();
+    const morning = new Date(2026, 9, 1, 9, 0).getTime();
+    const time = (at: number) =>
+      new Date(at).toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    expect(clockTime(today, morning)).toBe(time(today));
+    const weekday = new Date(tomorrow).toLocaleDateString(undefined, {
+      weekday: 'short',
+    });
+    expect(clockTime(tomorrow, morning)).toBe(`${weekday} ${time(tomorrow)}`);
+    expect(clockTime(tomorrow, morning)).not.toBe(time(tomorrow));
   });
 });
