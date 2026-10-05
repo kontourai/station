@@ -96,6 +96,26 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
 }));
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
+// The Model picker's own UI has its own tests; here it is the choice it makes.
+vi.mock('../components/session/SessionModelPicker', () => ({
+  SessionModelPicker: ({
+    onSelect,
+    onClose,
+  }: {
+    onSelect: (model: { id: string; name: string }) => void;
+    onClose: () => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => {
+        onSelect({ id: 'sonnet', name: 'Sonnet' });
+        onClose();
+      }}
+    >
+      Choose Sonnet
+    </button>
+  ),
+}));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ selectedProject: null, selectedProjectLayout: null }),
 }));
@@ -113,7 +133,10 @@ const CLAUDE = {
   name: 'Claude',
   available: true,
   model: 'opus',
-  modelOptions: [{ id: 'opus', name: 'Opus' }],
+  modelOptions: [
+    { id: 'opus', name: 'Opus' },
+    { id: 'sonnet', name: 'Sonnet' },
+  ],
 } as unknown as AgentData;
 const CODEX = {
   slug: 'codex',
@@ -301,6 +324,34 @@ describe('Home and the dock start the same way', () => {
     expect(ui.dockSelect.mock.calls[0][0].slug).toBe('codex');
     ui.cleanupListener();
   });
+
+  test('a Model chosen in the dock is remembered and is what Home names next', async () => {
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    fireEvent.click(agentChip(ui.dock()));
+    const menu = await screen.findByRole(
+      'dialog',
+      { name: 'Choose agent' },
+      { timeout: 15_000 },
+    );
+    fireEvent.click(within(menu).getByRole('button', { name: /^Model: Opus/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Choose Sonnet' },
+        { timeout: 15_000 },
+      ),
+    );
+    await waitFor(() =>
+      expect(agentChip(home).getAttribute('aria-label')).toMatch(
+        /^Agent: Claude · [Ss]onnet$/,
+      ),
+    );
+    expect(agentChip(ui.dock()).getAttribute('aria-label')).toMatch(
+      /^Agent: Claude · [Ss]onnet$/,
+    );
+    ui.cleanupListener();
+  }, 30_000);
 
   test('the project chip rebinds the dock, and No workspace clears the binding', async () => {
     const ui = renderBoth();
