@@ -1435,7 +1435,7 @@ export const e2eManifest = [
     surface: 'Chat / Orchestration',
     tierTarget: 'full',
     rationale:
-      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content.',
+      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
     exceptions: [],
   },
   {
