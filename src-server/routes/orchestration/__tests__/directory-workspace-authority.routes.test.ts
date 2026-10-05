@@ -21,6 +21,8 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { pairedDeviceMayNotChooseDirectory } from '../../../security/coding-authority.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
@@ -289,5 +291,46 @@ describe.each(ROUTES)('$name', (route) => {
     );
     expect(local.status).toBeLessThan(300);
     expect(calls(f)).toBe(2);
+  });
+});
+
+describe('pairedDeviceMayNotChooseDirectory, for callers no route reaches', () => {
+  const requestFor = (
+    principal: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
+  ) => {
+    const request = new Request('http://station.test/api/orchestration/chat');
+    if (principal) setRuntimeAuthenticatedRequestPrincipal(request, principal);
+    return request;
+  };
+
+  test('only a paired device without the grant is refused', () => {
+    const device = requestFor({
+      credential: 'c',
+      authority: 'device-credential',
+      deviceId: 'd',
+      source: 'bearer',
+    });
+    expect(
+      pairedDeviceMayNotChooseDirectory(device, 'orchestration:operate'),
+    ).toBe(true);
+    expect(
+      pairedDeviceMayNotChooseDirectory(
+        device,
+        `orchestration:operate ${PAIRING_SCOPE_CODING_EXEC}`,
+      ),
+    ).toBe(false);
+  });
+
+  test('Station-internal and principal-less requests are not decided here', () => {
+    const internal = requestFor({
+      kind: 'internal',
+      credential: 'internal-token',
+      authority: undefined,
+      source: 'bearer',
+    });
+    expect(pairedDeviceMayNotChooseDirectory(internal, undefined)).toBe(false);
+    expect(
+      pairedDeviceMayNotChooseDirectory(requestFor(undefined), undefined),
+    ).toBe(false);
   });
 });
