@@ -230,6 +230,12 @@ Full Project invitation links are accepted as token input without changing the
 selected Station.
 
 This records inspected source integration, not a completed native delivery.
+The mounted server/account/native-proof composition suite at `07a7d02ff0`
+has an executed 35/35 receipt and maintained fault/restoration controls. It uses
+controlled peer transport and an external broker stub, with real account/proof
+checks and surface-registry effects. Device approve/deny coverage is admission
+only (`503 enrollment_unavailable`), not an enrollment-decision result. It does
+not exercise Rust IPC, a native shell or physical delivery.
 The account-bound gate now admits exact native relay-management leaves with
 current Device/account proof and separate management scope; credential-only
 account-bound Devices remain refused. This inspected source change does not
