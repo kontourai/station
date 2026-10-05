@@ -14,11 +14,17 @@
  * U+061C, LRM, RLM, U+202A–202E, U+2066–2069), so shown text cannot reorder
  * ("Trojan source"); and the invisible characters that can hide or smuggle
  * text: soft hyphen, zero-width space, word joiner and invisible operators
- * (U+2060–2064), BOM, and tag characters (U+E0000–E007F). ZWJ and ZWNJ are
- * kept: emoji and several scripts need them, and they cannot hide a word.
+ * (U+2060–2064), BOM, and tag characters (U+E0000–E007F); and the fillers
+ * that draw as blank space without being whitespace, so they cannot push a
+ * command's tail out of view: CGJ (U+034F), Hangul fillers (U+115F, U+1160,
+ * U+3164, U+FFA0), Mongolian variation selectors (U+180B–180F), the blank
+ * braille pattern (U+2800), and variation selectors (U+FE00–FE0F,
+ * U+E0100–E01EF), except VS15/VS16 after an emoji, which choose how it is
+ * drawn. ZWJ and ZWNJ are kept: emoji and several scripts need them, and
+ * they cannot hide a word.
  */
 const INVISIBLE_FORMAT =
-  /[\u00AD\u061C\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu;
+  /[\u00AD\u061C\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]|[\u115F\u1160\u2800\u3164\uFFA0]|\u034F|[\u180B-\u180F]|[\uFE00-\uFE0D]|[\u{E0100}-\u{E01EF}]|(?<!\p{Emoji})(?:\uFE0E|\uFE0F)/gu;
 
 /** C0, DEL and C1 controls. Replaced by a space, not deleted, so "a\u0085b"
  * does not merge into one word. */
@@ -174,8 +180,21 @@ export function displayMultilineText(value: string): string {
  * or body that arrives raw (a stored notification, a request title).
  */
 export function boundedDisplayText(value: string, max: number): string {
-  return boundedJoinedLines(displayLines(value).map(displayText), max);
+  const lines = displayLines(value).map(displayText);
+  const joined = lines.join(DISPLAY_LINE_SEPARATOR);
+  // Text that already says how many lines it hides (a Codex approval title,
+  // stored as a notification title) keeps saying so when it is cut again.
+  const marker = TRAILING_LINES_MARKER.exec(joined);
+  if (!marker || displayLength(joined) <= max) {
+    return boundedJoinedLines(lines, max);
+  }
+  const head = joined.slice(0, marker.index);
+  const room = Math.max(1, max - displayLength(marker[0]));
+  return `${boundedJoinedLines([head], room, { truncated: true })}${marker[0]}`;
 }
+
+/** A " (+N lines)" marker (`hiddenLinesMarker`) ending a value. */
+const TRAILING_LINES_MARKER = / \(\+\d+ lines?\)$/;
 
 /** How many of `lines`, joined by `DISPLAY_LINE_SEPARATOR`, have their first
  * character within the first `visible` code points. */
@@ -199,7 +218,7 @@ function linesStartedWithin(lines: readonly string[], visible: number): number {
  * break and spacing they are.
  */
 const HIDDEN_CHARACTERS =
-  /[\u00AD\u061C\u200B\u200C\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]|[^\P{Cc}\n\t]|(?<!\p{Extended_Pictographic}|\u{FE0F}|[\u{1F3FB}-\u{1F3FF}])\u200D|\u200D(?!\p{Extended_Pictographic})/gu;
+  /[\u00AD\u061C\u200B\u200C\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]|[\u115F\u1160\u2800\u3164\uFFA0]|\u034F|[\u180B-\u180F]|[\uFE00-\uFE0D]|[\u{E0100}-\u{E01EF}]|(?<!\p{Emoji})(?:\uFE0E|\uFE0F)|[^\P{Cc}\n\t]|(?<!\p{Extended_Pictographic}|\u{FE0F}|[\u{1F3FB}-\u{1F3FF}])\u200D|\u200D(?!\p{Extended_Pictographic})/gu;
 
 /** One run of a raw value: text shown as written, or a hidden character
  * shown as its token (`hiddenCharacterToken`). */
@@ -216,6 +235,12 @@ export function hiddenCharacterToken(codePoint: number): string {
 
 const HIDDEN_CHARACTER_NAMES: Readonly<Record<number, string>> = {
   173: 'soft hyphen',
+  847: 'combining grapheme joiner',
+  4447: 'Hangul filler',
+  4448: 'Hangul filler',
+  10240: 'blank braille pattern',
+  12644: 'Hangul filler',
+  65440: 'Hangul filler',
   1564: 'arabic letter mark',
   8203: 'zero-width space',
   8204: 'zero-width non-joiner',
@@ -241,6 +266,13 @@ const HIDDEN_CHARACTER_NAMES: Readonly<Record<number, string>> = {
 
 function hiddenCharacterName(codePoint: number): string {
   if (codePoint >= 0xe0000 && codePoint <= 0xe007f) return 'tag character';
+  if (
+    (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+    (codePoint >= 0xe0100 && codePoint <= 0xe01ef)
+  )
+    return 'variation selector';
+  if (codePoint >= 0x180b && codePoint <= 0x180f)
+    return 'Mongolian variation selector';
   return HIDDEN_CHARACTER_NAMES[codePoint] ?? 'control character';
 }
 

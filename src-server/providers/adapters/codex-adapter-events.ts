@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { domainToASCII } from 'node:url';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { sniffChatImageMimeType } from '@kontourai/station-contracts/chat-attachment';
-import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   RequestOpenedEvent,
@@ -11,6 +10,7 @@ import type {
 import {
   boundedJoinedLines,
   displayLines,
+  displayText as sharedDisplayText,
 } from '@kontourai/station-shared/display-text';
 import type { ProviderSession } from '../adapter-shape.js';
 import {
@@ -473,9 +473,7 @@ function commandApprovalTitle(payload: Record<string, unknown>): string {
 function commandLines(value: unknown): string[] | undefined {
   const text = extractString(value);
   if (!text) return undefined;
-  const lines = displayLines(text)
-    .map((line) => sanitizeUntrustedDisplayText(line, Number.POSITIVE_INFINITY))
-    .filter(Boolean);
+  const lines = displayLines(text).map(sharedDisplayText).filter(Boolean);
   return lines.length > 0 ? lines : undefined;
 }
 
@@ -601,9 +599,9 @@ function keepEnd(text: string, max: number): string {
 /** Engine-supplied text made one visible line, unbounded (callers bound). */
 function displayText(value: unknown): string | undefined {
   const text = extractString(value);
-  return text
-    ? sanitizeUntrustedDisplayText(text, Number.POSITIVE_INFINITY) || undefined
-    : undefined;
+  // The display form every approval surface uses (#3382): a C1 control
+  // reads as a space, as in the preview, and an emoji keeps its ZWJ.
+  return text ? sharedDisplayText(text) || undefined : undefined;
 }
 
 export function mapApprovalResolutionStatus(

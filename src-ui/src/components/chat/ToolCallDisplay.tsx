@@ -215,11 +215,14 @@ function ToolCallDisplayComponent({
   // only the first line and a "(+N lines)" count, and a count is easy to miss:
   // `echo a` then `rm -rf /` must not be approvable from "Run echo a" alone.
   // Hidden characters open it too, even on one line: the label drops them,
-  // and only the details show them.
+  // and only the details show them. So does a label cut short ("…"): what
+  // it does not show is what the details are for. A command that itself
+  // contains "…" opens too, which costs nothing.
   const openByDefault =
     awaitingApproval &&
     Boolean(onApprove) &&
     (hiddenCommandLines(kind, toolName, args) > 0 ||
+      label.includes('…') ||
       argumentsHideCharacters(args));
   const isExpanded = userExpanded ?? openByDefault;
   const toggleExpanded = () => {
@@ -710,20 +713,26 @@ function RevealedText({ text }: { text: string }) {
   );
 }
 
-/** Right-to-left scripts (Hebrew, Arabic, Syriac, Thaana, N'Ko, …). */
-const RIGHT_TO_LEFT =
-  /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+/** A maximal run of right-to-left letters (Hebrew, Arabic, Syriac, Thaana,
+ * N'Ko, …), with their combining marks. Nothing else: no spaces, digits,
+ * punctuation or Latin. */
+const RIGHT_TO_LEFT_RUN =
+  /([\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]+)/u;
 
 /**
- * #3382: each whitespace-separated word holding right-to-left letters in
- * its own `<bdi>`, so it reads right to left inside itself but cannot move
- * the words around it: unisolated, `cp שלום עולם` shows its two arguments
- * swapped. The block itself is `dir="ltr"`.
+ * #3382: each run of right-to-left letters in its own `<bdi>`, inside a
+ * left-to-right block, so the run reads right to left inside itself and
+ * nothing else moves. Only the letters are isolated: wrapping a whole word
+ * moved its Latin part too, so `echo שלום;rm` read as "echo rm;…" and
+ * `שלום/../../etc/passwd` as "etc/passwd/../../…". Unisolated, the runs
+ * reorder their neighbours (`cp שלום עולם` shows its arguments swapped).
  */
 function isolateRightToLeft(text: string, key: number): React.ReactNode {
-  if (!RIGHT_TO_LEFT.test(text)) return text;
-  return text.split(/(\s+)/).map((part, index) =>
-    RIGHT_TO_LEFT.test(part) ? (
+  const parts = text.split(RIGHT_TO_LEFT_RUN);
+  if (parts.length === 1) return text;
+  return parts.map((part, index) =>
+    // `split` with a capture puts every run at an odd index.
+    index % 2 === 1 ? (
       // Parts are positions in one string and never reorder.
       <bdi key={`${key}:${index}`}>{part}</bdi>
     ) : (

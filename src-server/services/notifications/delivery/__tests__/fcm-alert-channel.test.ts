@@ -352,6 +352,39 @@ describe('FcmAlertChannel through the delivery router', () => {
     expect(sent.plaintext.body).toBe('run it');
   });
 
+  test('#3382: a cut title ends in "…" and keeps a "(+N lines)" marker', async () => {
+    const ELLIPSIS = String.fromCodePoint(0x2026);
+    const h = await harness();
+    h.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      notification({
+        id: 'cut-1',
+        title: `echo ${'x'.repeat(300)} (+2 lines)`,
+      }) as never,
+    );
+    h.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      notification({
+        id: 'cut-2',
+        title: `echo ${'y'.repeat(300)}\nrm -rf /`,
+      }) as never,
+    );
+    await h.settle();
+    const titles = h.sent
+      .filter((s) => s.deviceId === h.phone)
+      .map((s) => s.plaintext.title as string);
+    expect(titles).toHaveLength(2);
+    for (const title of titles) {
+      expect(
+        title.endsWith(`${ELLIPSIS} (+2 lines)`) ||
+          title.endsWith(`${ELLIPSIS} (+1 line)`),
+      ).toBe(true);
+      expect([...title].length).toBeLessThanOrEqual(120);
+    }
+    expect(titles[0]!.endsWith('(+2 lines)')).toBe(true);
+    expect(titles[1]!.endsWith('(+1 line)')).toBe(true);
+  });
+
   test('a phone that asked to hide content is never sent the text', async () => {
     const h = await harness({ hideContentOn: 'first-phone' });
     h.eventBus.emit(

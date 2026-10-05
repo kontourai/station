@@ -232,8 +232,8 @@ export class FcmAlertChannel implements DeliveryChannel {
     return this.#sendAll(notification.id, to, urgent, (hideContent) => ({
       kind: 'alert',
       ...fitContent(
-        hideContent ? HIDDEN_TITLE : osNotificationTitle(notification.title),
-        hideContent ? HIDDEN_BODY : osNotificationBody(notification.body),
+        hideContent ? HIDDEN_TITLE : notification.title,
+        hideContent ? HIDDEN_BODY : notification.body,
       ),
       urgency: envelope.urgency,
       ...route,
@@ -601,29 +601,32 @@ function sessionReference(
 }
 
 /**
- * Title and body, cut to the plaintext budget: the body shortens first,
- * then the title. Cuts are by code point, so no surrogate pair is split.
+ * Title and body in display form (#3382), cut to the plaintext budget: the
+ * body shortens first, then the title. Every cut is made by
+ * `osNotificationTitle`/`osNotificationBody` at a smaller bound, so it is by
+ * code point, ends in "…", and keeps the title's "(+N lines)" count.
  */
 function fitContent(
-  title: string,
-  body: string | undefined,
+  rawTitle: string,
+  rawBody: string | undefined,
 ): Pick<NativePushNotificationPlaintext, 'title' | 'body'> {
-  let titleChars = [...title].slice(0, TITLE_MAX_CHARS);
-  let bodyChars = [...(body ?? '')].slice(0, BODY_MAX_CHARS);
-  const size = () =>
-    Buffer.byteLength(
-      JSON.stringify({ title: titleChars.join(''), body: bodyChars.join('') }),
-      'utf8',
-    );
+  let titleMax = TITLE_MAX_CHARS;
+  let bodyMax = BODY_MAX_CHARS;
+  let title = osNotificationTitle(rawTitle, titleMax);
+  let body = osNotificationBody(rawBody, bodyMax) ?? '';
+  const size = () => Buffer.byteLength(JSON.stringify({ title, body }), 'utf8');
   // Leaves room for the fixed fields (ids, times, route) around them.
   const budget = MAX_PLAINTEXT_BYTES - 700;
-  while (size() > budget && bodyChars.length > 0)
-    bodyChars = bodyChars.slice(0, Math.floor(bodyChars.length * 0.9));
-  while (size() > budget && titleChars.length > 1)
-    titleChars = titleChars.slice(0, Math.floor(titleChars.length * 0.9));
-  const fittedBody = bodyChars.join('');
+  while (size() > budget && body) {
+    bodyMax = Math.min(Math.floor(bodyMax * 0.9), [...body].length - 1);
+    body = bodyMax > 0 ? (osNotificationBody(rawBody, bodyMax) ?? '') : '';
+  }
+  while (size() > budget && titleMax > 1) {
+    titleMax = Math.max(1, Math.floor(titleMax * 0.9));
+    title = osNotificationTitle(rawTitle, titleMax);
+  }
   return {
-    title: titleChars.join(''),
-    ...(fittedBody ? { body: fittedBody } : {}),
+    title,
+    ...(body ? { body } : {}),
   };
 }

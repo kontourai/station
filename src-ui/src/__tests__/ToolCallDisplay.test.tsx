@@ -945,3 +945,71 @@ test('#3382: the label and the Tool line isolate right-to-left words the way the
   const tool = document.querySelector('.tool-call__meta code[dir="ltr"]')!;
   expect(tool.querySelectorAll('bdi')).toHaveLength(2);
 });
+
+// #3382 round 4: right-to-left runs, not words, are isolated; blank fillers
+// are revealed; a cut label opens the details.
+const RIGHT_TO_LEFT_ONLY = /^[\u0590-\u08FF]+$/u;
+
+describe('ToolCallDisplay — round 4 (#3382)', () => {
+  test('only the right-to-left letters are isolated, never the Latin around them', () => {
+    const view = pendingBash({
+      command: `echo ${HEBREW_HELLO};rm -rf /tmp/x\ncat ${HEBREW_HELLO}/../../etc/passwd`,
+    });
+    const label = view.container.querySelector('.tool-call__label')!;
+    const block = view.container.querySelector('.tool-call__code--command')!;
+    expect(label.textContent).toBe(
+      `Run echo ${HEBREW_HELLO};rm -rf /tmp/x (+1 line)`,
+    );
+    expect(block.textContent).toBe(
+      `echo ${HEBREW_HELLO};rm -rf /tmp/x\ncat ${HEBREW_HELLO}/../../etc/passwd`,
+    );
+    for (const container of [label, block]) {
+      const runs = Array.from(container.querySelectorAll('bdi')).map(
+        (bdi) => bdi.textContent ?? '',
+      );
+      expect(runs.length).toBeGreaterThan(0);
+      for (const run of runs) expect(run).toMatch(RIGHT_TO_LEFT_ONLY);
+    }
+  });
+
+  test('5000 Hangul fillers cannot hide the tail: the label drops them and the details open and reveal them', () => {
+    const filler = String.fromCodePoint(0x3164);
+    pendingBash({ command: `echo a${filler.repeat(5000)}; rm -rf /` });
+    expect(document.querySelector('.tool-call__label')!.textContent).toBe(
+      'Run echo a; rm -rf /',
+    );
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(
+      document.querySelectorAll(
+        '.tool-call__code--command .tool-call__hidden-char',
+      ),
+    ).toHaveLength(5000);
+  });
+
+  test('a pending call whose label is cut opens its details', () => {
+    pendingBash({ command: `echo ${'x'.repeat(200)}` });
+    expect(
+      document
+        .querySelector('.tool-call__label')!
+        .textContent!.endsWith(String.fromCodePoint(0x2026)),
+    ).toBe(true);
+    expect(
+      document
+        .querySelector('button.tool-call__line')!
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  test('VS16 after an emoji stays; elsewhere it is revealed', () => {
+    const heart = String.fromCodePoint(0x2764, 0xfe0f);
+    const vs16 = String.fromCodePoint(0xfe0f);
+    pendingBash({ command: `echo ${heart} a${vs16}b` });
+    expect(
+      document.querySelector('.tool-call__code--command')!.textContent,
+    ).toBe(`echo ${heart} a${token('FE0F')}b`);
+  });
+});

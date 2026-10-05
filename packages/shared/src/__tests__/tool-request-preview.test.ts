@@ -1341,3 +1341,25 @@ describe('display form strips more invisible characters (#3382)', () => {
     );
   });
 });
+
+describe('blank fillers cannot pad a preview (#3382)', () => {
+  test('each filler is removed, so the tail stays in view', () => {
+    const fillers = [
+      0x3164, 0x2800, 0xfe00, 0xe0100, 0x034f, 0x180b, 0x115f, 0x1160, 0xffa0,
+    ].map((codePoint) => String.fromCodePoint(codePoint));
+    for (const filler of fillers) {
+      expect(
+        toolRequestPreview('Bash', {
+          command: `echo a${filler.repeat(5000)}; rm -rf /`,
+        }),
+      ).toBe('echo a; rm -rf /');
+    }
+  });
+
+  test('VS16 after an emoji is kept in a preview', () => {
+    const heart = String.fromCodePoint(0x2764, 0xfe0f);
+    expect(toolRequestPreview('Bash', { command: `echo ${heart}` })).toBe(
+      `echo ${heart}`,
+    );
+  });
+});

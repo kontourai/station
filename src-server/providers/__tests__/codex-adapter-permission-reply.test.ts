@@ -586,6 +586,19 @@ describe('#2911 round 4: command approval titles are bounded display text', () =
     },
   );
 
+  test("#3382: the title uses the preview's display form: a C1 control is a space and an emoji keeps its ZWJ", async () => {
+    const NEL = String.fromCodePoint(0x85);
+    const technologist = String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb);
+    const raw = `echo a${NEL}rm -rf /`;
+    const opened = await titleFor({}, raw);
+    expect(opened.title).toBe('echo a rm -rf /');
+    // The same words the toast's preview shows for this payload.
+    expect(toolRequestPreviewFromPayload(opened.payload)).toBe(opened.title);
+    expect((await titleFor({}, `echo ${technologist}`)).title).toBe(
+      `echo ${technologist}`,
+    );
+  });
+
   test('#3382: a multi-line command keeps its lines apart in the title, and a cut counts the hidden ones', async () => {
     const RETURN_SYMBOL = String.fromCodePoint(0x23ce);
     // The app-server's `item/commandExecution/requestApproval` params, sent
