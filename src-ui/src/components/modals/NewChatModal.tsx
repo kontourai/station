@@ -632,6 +632,8 @@ export function NewChatModal({
     selectedContext,
     returnedFromSetup,
     projectCatalogResolved,
+    projectsLoaded,
+    startSelection,
     preferredAgentIndex,
     setSelectFeedback,
   ]);
@@ -1116,7 +1118,8 @@ export function NewChatModal({
     projectCatalogResolved,
     contextPending,
     selectedContextResolved,
-    startSelection?.agentSlug,
+    startSelection,
+    selectedProject,
     defaultSelection?.agent,
     flatList,
   ]);

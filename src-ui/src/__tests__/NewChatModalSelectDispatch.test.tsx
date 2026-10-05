@@ -1453,9 +1453,7 @@ describe('the start composer in the dock', () => {
         .textContent,
     ).toBeTruthy();
     expect(message().value).toBe('From Home');
-    expect(
-      screen.getByRole('button', { name: 'Project: gone', exact: true }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: gone' })).toBeTruthy();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
