@@ -69,6 +69,7 @@ function item(over: Partial<HomeWorkItem> & { id: string }): HomeWorkItem {
     kindLabel: 'Direct chat',
     title: `${over.id} with a title long enough that it has to be truncated in a rail`,
     projectLabel: 'station',
+    projectSlug: 'station',
     agentLabel: 'Claude Code',
     modelLabel: 'Opus',
     updatedAt: NOW - 120_000,
@@ -121,10 +122,12 @@ function seed() {
   writeSnooze('snoozed', NOW + 3_600_000, NOW);
 }
 
-function panelMarkup(): string {
+/** Pass `accents` to paint the rows' project swatches. */
+function panelMarkup(accents?: ReadonlyMap<string, string>): string {
   seed();
   const { container, unmount } = render(
     <ChatDockInboxPanel
+      projectAccentBySlug={accents}
       items={ITEMS}
       activeChatSessionId={null}
       openChatSessionIds={ITEMS.map((entry) => entry.id)}
@@ -149,10 +152,11 @@ function panelMarkup(): string {
   return markup;
 }
 
-function sheetMarkup(): string {
+function sheetMarkup(accents?: ReadonlyMap<string, string>): string {
   seed();
   const { unmount } = render(
     <MobileTaskSwitcher
+      projectAccentBySlug={accents}
       open
       tasks={ITEMS}
       activeChatSessionId={null}
@@ -255,6 +259,53 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       }
     } finally {
       await pg.close();
+    }
+  });
+
+  test("a project swatch changes no row's height, in the panel or the phone sheet", async () => {
+    const accents = new Map([['station', 'var(--event-tool-call)']]);
+    const cases = [
+      {
+        label: 'panel',
+        plain: panelMarkup(),
+        painted: panelMarkup(accents),
+        viewport: { width: 1280, height: 900 },
+      },
+      {
+        label: 'sheet',
+        plain: sheetMarkup(),
+        painted: sheetMarkup(accents),
+        viewport: { width: 390, height: 844 },
+      },
+    ];
+    for (const { label, plain, painted, viewport } of cases) {
+      // The fixture must contain what it claims to compare.
+      expect(plain, label).not.toContain('inbox-row__project-accent');
+      expect(painted, label).toContain('inbox-row__project-accent');
+      const pg = await browser.newPage({ viewport });
+      try {
+        const measure = async (markup: string) => {
+          await pg.setContent(page(markup));
+          await settle(pg);
+          return pg
+            .locator('[data-testid="inbox-row"]')
+            .evaluateAll((rows) =>
+              rows.map((row) => row.getBoundingClientRect().height),
+            );
+        };
+        const plainHeights = await measure(plain);
+        const paintedHeights = await measure(painted);
+        // The swatch is drawn, not just present in the markup.
+        const swatch = await pg
+          .locator('.inbox-row__project-accent')
+          .first()
+          .boundingBox();
+        expect(swatch?.width, `${label} swatch drawn`).toBeGreaterThan(0);
+        expect(plainHeights.length, label).toBe(ITEMS.length);
+        expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
+      } finally {
+        await pg.close();
+      }
     }
   });
 

@@ -76,6 +76,17 @@
   white-space: nowrap;
 }
 
+/* The project's colour, as a dot before its name (decorative; the name is the
+   identity). Inline in the one-line meta text, so it never sets the height. */
+.inbox-row__project-accent {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-2);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
 .inbox-row__time {
   flex: 0 0 auto;
   color: var(--text-tertiary);

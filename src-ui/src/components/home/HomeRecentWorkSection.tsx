@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -198,6 +200,9 @@ function HomeWorkContent({
   // Decided once for every row: hover chrome on a fine pointer, the 44px
   // touch chrome on a coarse one (B5).
   const coarsePointer = useCoarsePointer();
+  // The same row facts the dock's inbox reads, from the same derivations.
+  const gitLocationByThreadId = useGitLocationByThreadId();
+  const projectAccentBySlug = useProjectAccents();
   if (workLoading && !workDegraded) {
     return (
       <SkeletonList count={3} withIcon={false} label="Loading recent work" />
@@ -223,6 +228,8 @@ function HomeWorkContent({
           detailsFor: controller.detailsFor,
           setDetailsFor: controller.setDetailsFor,
           chrome: coarsePointer ? 'touch' : 'hover',
+          gitLocationByThreadId,
+          projectAccentBySlug,
         }}
         onOpen={onOpen}
       />
