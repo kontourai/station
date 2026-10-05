@@ -1206,11 +1206,11 @@ describe('only file-like arguments are file targets (#3364 review round 3)', () 
     const patch = settled('apply_patch', {
       input: `*** Begin Patch\n*** Update File: ev${rlo}il\u0007.ts\n*** End Patch`,
     }).summary;
-    expect(patch).toBe('Edited evil.ts');
+    expect(patch).toBe('Edited evil .ts');
     const paths = settled('read_multiple_files', {
       paths: [`/r/⁦a\u0085b.ts`],
     }).summary;
-    expect(paths).toBe('Read ab.ts');
+    expect(paths).toBe('Read a b.ts');
   });
 
   test("trash is a noun only as the listing verb's object", () => {
@@ -1220,5 +1220,63 @@ describe('only file-like arguments are file targets (#3364 review round 3)', () 
     expect(settled('list_and_trash', { path: '/r/app.tsx' }).summary).toBe(
       'Deleted app.tsx',
     );
+  });
+});
+
+describe('displayed labels are sanitised and cut safely (#3364 review round 4)', () => {
+  const settled = (toolName: string, args: unknown, extra = {}) =>
+    classifyFirstRun([toolCall({ toolCallId: 'a', toolName, args, ...extra })]);
+
+  test('a mixed paths list counts every named file', () => {
+    expect(
+      settled('delete_files', { paths: ['Makefile', 'src/a.ts'] }).summary,
+    ).toBe('Deleted Makefile +1 more');
+    expect(
+      settled(
+        'delete_files',
+        { paths: ['Makefile', 'src/a.ts'] },
+        {
+          state: 'call',
+          needsApproval: true,
+        },
+      ).summary,
+    ).toBe('Delete Makefile +1 more');
+    expect(
+      settled('read_multiple_files', {
+        paths: ['Makefile', 'src/a.ts', 'LICENSE'],
+      }).summary,
+    ).toBe('Read Makefile +2 more');
+  });
+
+  test('an RLO in a command never reaches the approval label', () => {
+    const label = callLabel(
+      'exec',
+      'Bash',
+      { command: 'echo \u202Etxt.exe' },
+      'proposed',
+    );
+    expect(label).toBe('Run echo txt.exe');
+  });
+
+  test('bidi marks are stripped from display titles and queries', () => {
+    expect(
+      callLabel('other', 'Fetch\u200F the\u061C docs\u200E', {}, 'done'),
+    ).toBe('Used Fetch the docs');
+    expect(
+      callLabel('search', 'Grep', { pattern: 'a\u2067b\u200Ec' }, 'done'),
+    ).toBe('Searched abc');
+  });
+
+  test('control characters become spaces, so words do not merge', () => {
+    expect(
+      callLabel('search', 'Grep', { pattern: 'hello\tworld' }, 'done'),
+    ).toBe('Searched hello world');
+  });
+
+  test('truncation never splits an emoji into a lone surrogate', () => {
+    const command = `${'a'.repeat(58)}\u{1F600}bbb`;
+    const label = callLabel('exec', 'Bash', { command }, 'done');
+    expect(label).toBe(`Ran ${'a'.repeat(58)}\u{1F600}…`);
+    expect(label).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
   });
 });

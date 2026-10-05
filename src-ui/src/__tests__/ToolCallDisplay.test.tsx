@@ -550,3 +550,28 @@ describe('ToolCallDisplay — a delete is never worded as a read (#3364)', () =>
     );
   });
 });
+
+// #3364 review: the approval label is sanitised; the details keep the raw
+// arguments the user is being asked to allow.
+describe('ToolCallDisplay — an approval label strips bidi controls (#3364)', () => {
+  test('the label drops the RLO and the details still show it', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't1',
+          toolName: 'Bash',
+          args: { command: 'echo \u202Etxt.exe' },
+          state: 'call',
+          needsApproval: true,
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    const label = document.querySelector('.tool-call__label')!;
+    expect(label.textContent).toBe('Run echo txt.exe');
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    const details = document.querySelector('.tool-call')!.textContent!;
+    expect(details).toContain('echo \u202Etxt.exe');
+  });
+});

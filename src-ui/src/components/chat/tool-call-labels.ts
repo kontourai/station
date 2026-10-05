@@ -303,12 +303,30 @@ function filePathArgument(args: Record<string, unknown>): string | undefined {
 
 const MAX_TARGET_LENGTH = 60;
 
-/** Bidi overrides/isolates and C0/C1 controls: a file name from a patch or
- * an argument is untrusted and must not reorder or hide the row's text. */
-const UNSAFE_NAME_CHARACTERS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/gu;
+/** Bidi marks, embeddings, overrides and isolates (LRM, RLM, ALM,
+ * U+202A–202E, U+2066–2069). Every label target is untrusted engine or
+ * model text and must not reorder what the row shows ("Trojan source"). */
+const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+/** C0/C1 controls. Replaced by a space, not deleted, so "a\tb" does not
+ * merge into one word. */
+const CONTROL_CHARACTERS = /\p{Cc}/gu;
+
+/**
+ * The displayed form of untrusted text: bidi controls removed, control
+ * characters turned into spaces, whitespace collapsed onto one line. Only
+ * the label changes; the call's arguments, and the details view that shows
+ * them, keep the raw text.
+ */
+function displayText(value: string): string {
+  return value
+    .replace(BIDI_CONTROLS, '')
+    .replace(CONTROL_CHARACTERS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function safeName(value: string): string {
-  return value.replace(UNSAFE_NAME_CHARACTERS, '').trim();
+  return displayText(value);
 }
 
 /** The shown name of one file: its sanitised basename. */
@@ -394,8 +412,14 @@ function fileCallTarget(args: unknown): string | null | undefined {
     if (path && fileName(path)) return listTarget(path, a.changes.length);
   }
   if (Array.isArray(a.paths)) {
-    const paths = a.paths.filter(isPathLike).filter((p) => fileName(p));
-    if (paths.length > 0) return listTarget(paths[0]!, paths.length);
+    // One path-like entry says these are files; then every named entry is
+    // one (`['Makefile', 'src/a.ts']` is two files).
+    if (a.paths.some(isPathLike)) {
+      const paths = a.paths.filter(
+        (p): p is string => typeof p === 'string' && Boolean(fileName(p)),
+      );
+      if (paths.length > 0) return listTarget(paths[0]!, paths.length);
+    }
   }
   // A move or copy names both ends. A `source` alone is as often an id
   // (`delete_agent {source: 'github'}`) as a file, so it is no target.
@@ -498,10 +522,13 @@ export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
   return classifyToolArgs(call.args);
 }
 
+/** Every displayed target passes through here: sanitised (`displayText`)
+ * and cut by code point, so an emoji at the cut is never split into a lone
+ * surrogate. */
 function truncate(value: string, max = MAX_TARGET_LENGTH): string {
-  const collapsed = value.trim().replace(/\s+/g, ' ');
-  if (collapsed.length <= max) return collapsed;
-  return `${collapsed.slice(0, max - 1)}…`;
+  const codePoints = Array.from(displayText(value));
+  if (codePoints.length <= max) return codePoints.join('');
+  return `${codePoints.slice(0, max - 1).join('')}…`;
 }
 
 function basename(path: string): string {
