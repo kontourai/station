@@ -1766,10 +1766,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect
       .poll(() => new URL(page.url()).pathname)
       .toBe('/projects/station/layouts/coding');
-    expect((await changesRead).status()).toBe(200);
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
+    expect((await changesRead).status()).toBe(200);
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();
