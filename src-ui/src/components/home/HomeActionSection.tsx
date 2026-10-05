@@ -95,8 +95,6 @@ export function HomeActionSection({
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
   const showLocalProject = hasLocalStationForProfile(profile);
-  const coarsePointer = useCoarsePointer();
-  const [detailsFor, setDetailsFor] = useState<string | null>(null);
   // TODO(useProjectAccents): the sibling lane adds a shared hook; until then
   // the same set the sidebar colours.
   const accents = projectAccents(
@@ -107,41 +105,14 @@ export function HomeActionSection({
       ? continuation.projectSlug
       : continuation.slug
     : undefined;
-  const primary = model.primaryWorkItem;
 
   return (
     <section className="home-view__actions" aria-label="Work actions">
       {/* V2: a label, the thing, and a detail only where one says something
           the title does not. The helper lines ("Resume your previous
           workspace", "1 project already available") explained the cards. */}
-      {/* Continue is the work row itself (the inbox's and the lanes' row):
-          its agent icon, status, time and hover card read exactly as they
-          do one scroll below, rather than a card's own summary line. */}
-      {showPrimary && primary && (
-        <section
-          className="home-view__continue"
-          aria-labelledby="home-continue-label"
-        >
-          <span id="home-continue-label" className="home-view__continue-label">
-            Continue
-          </span>
-          {/* The lanes' own list, so the row is the full Home row. */}
-          <ul className="home-view__task-list home-view__continue-list">
-            {renderHomeWorkRow({
-              task: { ...primary, stableId: `continue:${primary.id}` },
-              isWoken: false,
-              agents: model.agents,
-              onOpen: () => model.continueWork(primary),
-              context: {
-                now: Date.now(),
-                workFacts: model.workFacts,
-                detailsFor,
-                setDetailsFor,
-                chrome: coarsePointer ? 'touch' : 'hover',
-              },
-            })}
-          </ul>
-        </section>
+      {showPrimary && model.primaryWorkItem && (
+        <HomeContinueCard model={model} />
       )}
       <HomeActionCard
         label="Agents"
@@ -176,6 +147,43 @@ export function HomeActionSection({
           onClick={() => onNavigate(continuation)}
         />
       )}
+    </section>
+  );
+}
+
+/**
+ * Continue: the newest work as the work row itself (the lanes' row, full
+ * size), so its agent icon, status, time and hover card read exactly as the
+ * rows below it do, rather than a card's own summary line.
+ */
+export function HomeContinueCard({ model }: { model: HomeViewModel }) {
+  const coarsePointer = useCoarsePointer();
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const primary = model.primaryWorkItem;
+  if (!primary) return null;
+  return (
+    <section
+      className="home-view__continue"
+      aria-labelledby="home-continue-label"
+    >
+      <span id="home-continue-label" className="home-view__continue-label">
+        Continue
+      </span>
+      <ul className="home-view__task-list home-view__continue-list">
+        {renderHomeWorkRow({
+          task: { ...primary, stableId: `continue:${primary.id}` },
+          isWoken: false,
+          agents: model.agents,
+          onOpen: () => model.continueWork(primary),
+          context: {
+            now: Date.now(),
+            workFacts: model.workFacts,
+            detailsFor,
+            setDetailsFor,
+            chrome: coarsePointer ? 'touch' : 'hover',
+          },
+        })}
+      </ul>
     </section>
   );
 }

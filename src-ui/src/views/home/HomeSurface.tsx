@@ -1,4 +1,7 @@
-import { HomeActionSection } from '../../components/home/HomeActionSection';
+import {
+  HomeActionSection,
+  HomeContinueCard,
+} from '../../components/home/HomeActionSection';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
@@ -85,6 +88,9 @@ export function HomeSurface({
       continuation={continuation}
       model={model}
       onNavigate={onNavigate}
+      // With work on the page Continue leads the work (above Recent work,
+      // which leaves its item out); an empty page has nothing to continue.
+      showPrimary={false}
     />
   );
   // The Continue card shows its item as the full work row; the list beside
@@ -95,6 +101,10 @@ export function HomeSurface({
       ? model.primaryWorkItem.id
       : undefined;
   const listedLanes = continued ? withoutItem(lanes, continued) : lanes;
+  const continueCard =
+    !model.actionsLoading && model.primaryWorkItem ? (
+      <HomeContinueCard model={model} />
+    ) : null;
   const recentWork = (
     <HomeRecentWorkSection
       id={RECENT_WORK_SECTION_ID}
@@ -156,6 +166,7 @@ export function HomeSurface({
       </div>
       {hasWork ? (
         <>
+          {continueCard}
           {recentWork}
           {actions}
           {chart}

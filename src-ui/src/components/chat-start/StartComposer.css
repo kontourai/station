@@ -204,3 +204,8 @@
 .start-menu__list .new-chat-modal__model-trigger {
   max-width: min(40vw, 200px);
 }
+/* When the two chips do not fit, the Agent chip (the longer text) gives up
+   width first, so a short project name ("No project") stays whole. */
+.start-composer__chip--agent {
+  flex-shrink: 4;
+}

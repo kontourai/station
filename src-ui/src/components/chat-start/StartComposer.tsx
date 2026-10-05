@@ -168,7 +168,7 @@ export function StartComposer({
           ) : (
             <button
               type="button"
-              className={`choice-trigger start-composer__chip${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+              className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
               aria-haspopup="dialog"
               aria-label={`Agent: ${agentText}${agent.needsSetup ? ', needs setup' : ''}`}
               onClick={(event) => onOpenAgents(event.currentTarget)}
