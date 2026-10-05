@@ -432,8 +432,10 @@ export function NewChatModal({
     onCancel: onClose,
     allowedPaths: ['/registry', '/connections', '/agents'],
     revalidate: async () => {
-      if (!mode && !startWithDefault && !initialPrompt)
-        await experienceInventory.refetch();
+      // Visual skills can show in the composer (opened there, or handed
+      // over from Home with a message), so a Registry round trip refetches
+      // them whenever this is not a fork.
+      if (!mode) await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
         await Promise.all([
@@ -571,6 +573,12 @@ export function NewChatModal({
     }
   }, [contextOpen, isMobile]);
 
+  // Keyed on the item ids: the dock builds a new draft object every render,
+  // and re-selecting on each one would bring back a chip the user removed.
+  const draftContextKey = draftContext?.items
+    .map((item) => item.id)
+    .join('\u001f');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draftContextKey is the identity of draftContext's items; the effect reads the current object.
   useEffect(() => {
     setSelectedDraftContextIds((current) =>
       preserveSetupContext.current
@@ -579,13 +587,19 @@ export function NewChatModal({
           )
         : draftContext?.items.map((item) => item.id) || [],
     );
-  }, [draftContext]);
+  }, [draftContextKey]);
 
   useEffect(() => {
     const selectedProjectStillExists = projects.some(
       (project) => project?.slug === selectedContext,
     );
     if (selectedContext !== GLOBAL_CONTEXT && !selectedProjectStillExists) {
+      // Home's chosen project is kept, never swapped for a default; the start
+      // refuses it out loud once the list says it is gone.
+      if (startSelection && selectedContext === startSelection.context) {
+        if (projectCatalogResolved && projectsLoaded) refuseMissingProject();
+        return;
+      }
       if (preserveSetupContext.current) {
         if (returnedFromSetup && projectCatalogResolved)
           setSelectFeedback(
@@ -707,7 +721,11 @@ export function NewChatModal({
       : (initialPrompt ??
         buildCodingChatInitialMessage(draftItems, draftContext?.framing));
     const defaultEffectiveModel = defaultEffectiveModelForAgent(agent);
-    const choice = options.choice ?? modelChoices[modelChoiceKey(agent)];
+    const choice =
+      options.choice ??
+      (composer
+        ? start.modelChoiceFor(agent)
+        : modelChoices[modelChoiceKey(agent)]);
     if (
       returnedFromSetup &&
       choice?.modelId &&
@@ -999,14 +1017,24 @@ export function NewChatModal({
     );
   });
 
+  const refuseMissingProject = useEffectEvent(() => {
+    setShowChatOptions(true);
+    setSelectFeedback(
+      'The project you chose is no longer available. Choose a project to continue; your message is kept.',
+    );
+  });
+
   // Seed what Home handed over (a start that fell back, or a hand-off): the
   // chosen Agent, then that Agent's Model choice once it resolves.
   const seededSelection = useRef(false);
   useEffect(() => {
-    if (seededSelection.current || !startSelection?.agentSlug) return;
+    // Only once the composer shows: an automatic start uses the selection as
+    // given and must not write it to memory before anything starts.
+    if (seededSelection.current || !startSelection?.agentSlug || automaticMode)
+      return;
     seededSelection.current = true;
     start.chooseAgent(startSelection.agentSlug);
-  }, [start, startSelection]);
+  }, [start, startSelection, automaticMode]);
   const seededModel = useRef(false);
   useEffect(() => {
     if (
@@ -1045,6 +1073,11 @@ export function NewChatModal({
     )
       return;
     const pinnedSlug = startSelection?.agentSlug;
+    if (startSelection && !isGlobal && !selectedProject) {
+      automaticStartAttempted.current = true;
+      refuseMissingProject();
+      return;
+    }
     if (pinnedSlug) {
       const pinned = flatList.find((agent) => agent.slug === pinnedSlug);
       automaticStartAttempted.current = true;
@@ -1135,7 +1168,9 @@ export function NewChatModal({
   const accents = projectAccents(
     accentProjectSlugs ?? projects.map((project) => project.slug),
   );
-  const draftModelLabel = draftAgent ? modelFor(draftAgent).label : undefined;
+  const draftModelLabel = draftAgent
+    ? start.modelFor(draftAgent).label
+    : undefined;
   const agentChip: StartAgentChip =
     runtimeLoading ||
     modelsLoading ||
@@ -1154,9 +1189,12 @@ export function NewChatModal({
     ? { status: 'loading' }
     : {
         status: 'ready',
-        label: currentContextOption?.label ?? 'No workspace',
+        // A project the list no longer has keeps its own name (its slug),
+        // never a No workspace the start would not use.
+        label:
+          currentContextOption?.label ??
+          (isGlobal ? 'No workspace' : selectedContext),
         isGlobal,
-        icon: currentContextOption?.icon,
         accent: isGlobal ? undefined : accents.get(selectedContext),
         folder: workspaceHint.kind === 'home' ? '~' : workspaceHint.path,
       };
@@ -1900,7 +1938,7 @@ export function NewChatModal({
                 }
               }}
               onSetUpConnections={() => beginSetup('/connections')}
-              modelLabelFor={(agent) => modelFor(agent).label}
+              modelLabelFor={(agent) => start.modelFor(agent).label}
               modelUnavailableFor={(agent) =>
                 modelsForAgent(agent).length === 0 && !modelsLoading
               }
@@ -2004,16 +2042,20 @@ export function NewChatModal({
                   modelChoiceFor(modelPickerAgent)?.providerOptions
                 }
                 onSelect={(model) =>
-                  updateModelChoice(modelPickerAgent, (current) => ({
-                    ...current,
-                    modelId: model.id,
-                    providerId: model.providerId,
-                    providerType: model.providerType,
-                    providerOptions: sanitizeRuntimeOptionsForModel(
-                      model,
-                      current.providerOptions,
-                    ),
-                  }))
+                  // The composer's choices are remembered wherever they are
+                  // made; a fork's list keeps its choice local.
+                  showStart
+                    ? start.chooseModel(modelPickerAgent, model)
+                    : updateModelChoice(modelPickerAgent, (current) => ({
+                        ...current,
+                        modelId: model.id,
+                        providerId: model.providerId,
+                        providerType: model.providerType,
+                        providerOptions: sanitizeRuntimeOptionsForModel(
+                          model,
+                          current.providerOptions,
+                        ),
+                      }))
                 }
                 onReset={() => {
                   const key = modelChoiceKey(modelPickerAgent);

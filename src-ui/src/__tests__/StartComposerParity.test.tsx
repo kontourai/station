@@ -325,6 +325,42 @@ describe('Home and the dock start the same way', () => {
     ui.cleanupListener();
   });
 
+  // Review finding: after a pick on Home, a later pick in the dock must
+  // still move Home's chip; the remembered choice is the chip.
+  test('a pick on Home does not pin Home against a later pick in the dock', async () => {
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    const pick = async (root: HTMLElement, slug: string) => {
+      fireEvent.click(agentChip(root));
+      const menu = await screen.findByRole(
+        'dialog',
+        { name: 'Choose agent' },
+        { timeout: 15_000 },
+      );
+      fireEvent.click(
+        menu.querySelector<HTMLButtonElement>(
+          `button[data-agent-slug="${slug}"]`,
+        )!,
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Choose agent' }),
+        ).toBeNull(),
+      );
+    };
+    await pick(home, 'codex');
+    await pick(ui.dock(), 'claude');
+    await waitFor(() =>
+      expect(agentChip(home).getAttribute('aria-label')).toBe(
+        'Agent: Claude · Opus',
+      ),
+    );
+    expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
+      'Agent: Claude · Opus',
+    );
+    ui.cleanupListener();
+  }, 30_000);
+
   test('a Model chosen in the dock is remembered and is what Home names next', async () => {
     const ui = renderBoth();
     const home = screen.getByTestId('home');

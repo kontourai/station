@@ -7,11 +7,13 @@ import type {
   NewChatModelChoice,
   SelectableModel,
 } from '../../utils/modelCapabilities';
-import type { AgentFixRoute } from '../AgentReadinessCell';
+import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
+import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
   type NewChatModalContextOption,
+  resolveNewChatAgentEnable,
   scheduleSelectedAgentVisibility,
 } from '../modals/new-chat-modal-utils';
 import {
@@ -144,7 +146,15 @@ export function StartAgentMenu({
             flatList[activeIndex]
           ) {
             event.preventDefault();
-            onChoose(flatList[activeIndex]);
+            const row = flatList[activeIndex];
+            // The row's own button is disabled when it cannot start; Enter
+            // does what that row offers instead: Enable, or nothing.
+            if (agentRunnability(row).runnable) onChoose(row);
+            else if (
+              resolveNewChatAgentEnable(row) &&
+              agentFixRoute(row) === 'enable'
+            )
+              onFix(row, 'enable');
           }
         }}
       />

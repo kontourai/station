@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
@@ -100,7 +101,17 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   // An explicit pick on this page. The binding it writes reads a folderless
   // project back as No workspace (see `useBindStartProject`), so the pick
   // itself holds the chip until the page goes.
-  const [pickedContext, setPickedContext] = useState<string>();
+  const [picked, setPicked] = useState<{
+    context: string;
+    binding: string | null;
+  } | null>(null);
+  const { chatDockProjectSlug } = useDeviceSettings();
+  // Held only while the dock is still bound as this pick left it: a rebind
+  // from the dock (or anywhere) moves Home's chip with it.
+  const pickedContext =
+    picked && picked.binding === chatDockProjectSlug
+      ? picked.context
+      : undefined;
   const context = pickedContext ?? startContext ?? GLOBAL_CONTEXT;
   const contextPending = pickedContext === undefined && !startContext;
   const [agentSearch, setAgentSearch] = useState('');
@@ -212,9 +223,10 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     ? { status: 'loading' }
     : {
         status: 'ready',
-        label: option?.label ?? 'No workspace',
+        // A project the list no longer has keeps its own name (its slug),
+        // never a No workspace the start would not use.
+        label: option?.label ?? (isGlobal ? 'No workspace' : context),
         isGlobal,
-        icon: option?.icon,
         accent: isGlobal ? undefined : accents.get(context),
         folder: workspaceHint.kind === 'home' ? '~' : workspaceHint.path,
       };
@@ -384,7 +396,10 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               selectedContext={context}
               workspaceHint={workspaceHint}
               onChoose={(value) => {
-                setPickedContext(value);
+                setPicked({
+                  context: value,
+                  binding: value === GLOBAL_CONTEXT ? null : value,
+                });
                 bindProject(value);
                 setMenu(null);
               }}

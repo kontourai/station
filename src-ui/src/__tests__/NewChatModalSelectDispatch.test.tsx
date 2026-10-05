@@ -34,6 +34,7 @@ import {
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
+import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
 const AGENT: AgentData = {
   slug: 'assistant',
@@ -128,11 +129,16 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       selectedProject: selectionModelState.selectedProject,
       contextOptions: [],
       filteredContextOptions: [],
-      currentContextOption: {
-        value: selectionModelState.selectedProject?.slug ?? '__global__',
-        label: selectionModelState.selectedProject?.name ?? 'No workspace',
-        glyph: 'folder',
-      },
+      // As the real view model: no option for a project the list lacks.
+      currentContextOption:
+        selectionModelState.isGlobal || selectionModelState.selectedProject
+          ? {
+              value: selectionModelState.selectedProject?.slug ?? '__global__',
+              label:
+                selectionModelState.selectedProject?.name ?? 'No workspace',
+              glyph: 'folder',
+            }
+          : undefined,
       groups: [
         {
           label: 'Station',
@@ -180,6 +186,8 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  // Chip choices are remembered in storage; no test may inherit another's.
+  localStorage.clear();
   experienceInventory.current = { experiences: [], diagnostics: [] };
   selectionModelState.isGlobal = true;
   selectionModelState.selectedProject = undefined;
@@ -1396,5 +1404,94 @@ describe('the start composer in the dock', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('once the list arrives the held automatic start runs in the bound project', async () => {
+    const station = {
+      id: 'p1',
+      slug: 'station',
+      name: 'Station',
+      workingDirectory: '/w/station',
+    } as unknown as ProjectMetadata;
+    const onSelect = vi.fn();
+    const props = {
+      startSurface: true,
+      agents: selectionModelState.agents,
+      onSelect,
+      onClose: vi.fn(),
+      activeProjectSlug: 'station',
+      startWithDefault: true,
+      initialPrompt: 'From Home',
+    };
+    const view = render(
+      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    selectionModelState.isGlobal = false;
+    selectionModelState.selectedProject = station;
+    view.rerender(
+      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+    );
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][1]).toBe('station');
+    expect(onSelect.mock.calls[0][3]).toBe('From Home');
+  });
+
+  // Review finding: Home's chosen project must never be swapped for a
+  // default when the dock's list no longer has it.
+  test('a start whose chosen project is gone is refused out loud, keeping the message and the project', async () => {
+    selectionModelState.isGlobal = false;
+    selectionModelState.selectedProject = undefined;
+    const onSelect = start(vi.fn(), {
+      startWithDefault: true,
+      initialPrompt: 'From Home',
+      startSelection: { context: 'gone', agentSlug: 'assistant' },
+    });
+    expect(
+      (await screen.findByText(/project you chose is no longer available/))
+        .textContent,
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+    expect(
+      screen.getByRole('button', { name: 'Project: gone', exact: true }),
+    ).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  // Review finding: the dock builds a new draft object every render; a chip
+  // the user removed must stay removed and stay out of the message.
+  test('a removed context chip stays removed when the dock re-renders', () => {
+    const draft = () => ({
+      title: 'Prepared request',
+      description: 'From the plugin primer',
+      framing: 'verbatim' as const,
+      items: [
+        {
+          id: 'composer-draft',
+          label: 'Request',
+          detail: 'Build a plugin',
+          messageLine: 'CTX LINE',
+        },
+      ],
+    });
+    const onSelect = vi.fn();
+    const props = {
+      startSurface: true,
+      agents: selectionModelState.agents,
+      projects: [],
+      onSelect,
+      onClose: vi.fn(),
+    };
+    const view = render(<NewChatModal {...props} draftContext={draft()} />);
+    const chip = () =>
+      screen.getByRole('button', { name: 'Request: Build a plugin' });
+    fireEvent.click(chip());
+    expect(chip().getAttribute('aria-pressed')).toBe('false');
+    view.rerender(<NewChatModal {...props} draftContext={draft()} />);
+    expect(chip().getAttribute('aria-pressed')).toBe('false');
+    fireEvent.change(message(), { target: { value: 'Just this' } });
+    fireEvent.click(startButton());
+    expect(onSelect.mock.calls[0][3]).toBe('Just this');
   });
 });

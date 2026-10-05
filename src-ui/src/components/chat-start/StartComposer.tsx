@@ -4,7 +4,6 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph, GlobeGlyph } from '../icons/Glyph';
-import { LayoutIcon } from '../icons/LayoutIcon';
 import { Skeleton } from '../state';
 import './StartComposer.css';
 
@@ -35,12 +34,9 @@ export type StartProjectChip =
       label: string;
       /** The project's accent (the sidebar's), absent for No workspace. */
       accent?: string;
-      icon?: string;
       isGlobal: boolean;
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
-      /** A dock scoped to one project: shown, not changeable. */
-      locked?: boolean;
     };
 
 export interface StartContextItem {
@@ -194,19 +190,17 @@ export function StartComposer({
             <button
               type="button"
               className="choice-trigger start-composer__chip"
-              aria-haspopup={project.locked ? undefined : 'dialog'}
+              aria-haspopup="dialog"
               aria-label={`Project: ${project.label}`}
               title={project.folder}
-              disabled={project.locked}
               onClick={(event) => onOpenProject(event.currentTarget)}
             >
+              {/* TODO(project-icons): adopt `ProjectIcon` (with its accent
+                  fallback) once feat/project-icons lands. Until then the
+                  sidebar's accent swatch, never a raw `project.icon`:
+                  LayoutIcon would hotlink a remote or path icon. */}
               {project.isGlobal ? (
                 <GlobeGlyph />
-              ) : project.icon ? (
-                <LayoutIcon
-                  layout={{ name: project.label, icon: project.icon }}
-                  size={18}
-                />
               ) : (
                 <span
                   className="start-composer__swatch"
@@ -215,7 +209,7 @@ export function StartComposer({
                 />
               )}
               <span className="start-composer__chip-text">{project.label}</span>
-              {!project.locked && <ArrowDownGlyph className="choice-caret" />}
+              <ArrowDownGlyph className="choice-caret" />
             </button>
           )}
           {skill && (

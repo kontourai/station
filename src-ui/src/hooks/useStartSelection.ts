@@ -12,10 +12,11 @@ import { sanitizeRuntimeOptionsForModel } from '../utils/modelCapabilities';
 import {
   buildLastChosenModelBindingKey,
   clearLastChosenModel,
+  isProviderManagedAgent,
   trackLastChosenModel,
 } from './lastChosenModel';
 import type { useNewChatSelectionModel } from './useNewChatSelectionModel';
-import { trackContextAgent } from './useRecentAgents';
+import { trackContextAgent, useContextAgent } from './useRecentAgents';
 
 type SelectionModel = ReturnType<typeof useNewChatSelectionModel>;
 
@@ -50,13 +51,22 @@ export function useStartSelection(selection: SelectionModel, context: string) {
     modelChoiceKey,
     defaultEffectiveModelForAgent,
     modelsForAgent,
+    lastChosenModelByBinding,
   } = selection;
   const flatList = viewModel.flatList;
   const scopedAgents = viewModel.scopedAgents ?? [];
-  const chosenSlug = chosen?.context === context ? chosen.slug : undefined;
+  // With verified access the remembered choice IS the chip, on every mounted
+  // surface: a pick on one surface moves the other's chip too. A per-surface
+  // pick is held only while memory cannot be written (unverified access).
+  const remembered = useContextAgent(namespace, context);
+  const chosenSlug = namespace
+    ? remembered
+    : chosen?.context === context
+      ? chosen.slug
+      : undefined;
   // A remembered Agent that needs setup is still the one shown: the composer
   // offers its repair rather than quietly starting another (the dock draft's
-  // rule, now both surfaces').
+  // rule, now both surfaces'). One the scope no longer has is not shown.
   const agent: AgentData | undefined = chosenSlug
     ? (scopedAgents.find((candidate) => candidate.slug === chosenSlug) ??
       flatList.find((candidate) => candidate.slug === chosenSlug))
@@ -76,8 +86,22 @@ export function useStartSelection(selection: SelectionModel, context: string) {
     [context, namespace],
   );
 
-  const modelChoiceFor = (target: AgentData) =>
-    modelChoices[modelChoiceKey(target)];
+  // This surface's Model choice, unless another surface has since
+  // remembered a different Model for the same binding: the remembered one
+  // then wins here too, so the chips agree.
+  const modelChoiceFor = (target: AgentData) => {
+    const choice = modelChoices[modelChoiceKey(target)];
+    const rememberedModel = isProviderManagedAgent(target)
+      ? undefined
+      : lastChosenModelByBinding?.[buildLastChosenModelBindingKey(target)];
+    if (
+      choice?.modelId &&
+      rememberedModel &&
+      rememberedModel !== choice.modelId
+    )
+      return undefined;
+    return choice;
+  };
 
   const modelFor = (target: AgentData) => {
     const choice = modelChoiceFor(target);
