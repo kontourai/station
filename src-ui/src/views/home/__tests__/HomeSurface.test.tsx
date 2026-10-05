@@ -296,6 +296,57 @@ describe('HomeSurface composition', () => {
     expect(region.querySelector('ul.home-view__task-list')).toBeTruthy();
   });
 
+  // Second review: with one item, Continue holds it and Recent work would
+  // be a heading over nothing. It is left out; View Activity sits beside
+  // the Continue heading, which is an h2 like the section it replaces.
+  test('one item: no empty Recent work, and View Activity beside Continue', () => {
+    const only = item('a', 'Wire the delegate verbs', 'Station', 2, 'Running');
+    renderHome({ workItems: [only], primaryWorkItem: only });
+    expect(screen.queryByRole('region', { name: 'Recent work' })).toBeNull();
+    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(
+      within(region).getByRole('heading', { level: 2, name: 'Continue' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(region).getByRole('button', { name: 'View Activity' }),
+    );
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    // The skip link still lands on the work.
+    expect(
+      screen
+        .getByRole('link', { name: 'Skip to recent work' })
+        .getAttribute('href'),
+    ).toBe(`#${region.id}`);
+  });
+
+  test('several items: Recent work holds the rest and keeps View Activity', () => {
+    const newest = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const older = item(
+      'b',
+      'Audit the ref translation',
+      'Station',
+      30,
+      'Running',
+    );
+    renderHome({ workItems: [newest, older], primaryWorkItem: newest });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    expect(
+      within(recent).getByRole('button', { name: 'View Activity' }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: 'Continue' })).queryByRole(
+        'button',
+        { name: 'View Activity' },
+      ),
+    ).toBeNull();
+  });
+
   test('Last project carries the project accent the sidebar uses', () => {
     accentProbe.accents = new Map([['station', 'rgb(1, 2, 3)']]);
     renderHome({}, vi.fn(), { type: 'project', slug: 'station' });

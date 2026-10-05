@@ -810,6 +810,20 @@ describe('HomeView', () => {
     },
   );
 
+  // Second review: one item of work. Continue holds it, so there is no empty
+  // Recent work region, and View Activity is still on the page.
+  test('one item of work shows Continue with View Activity and no empty Recent work', () => {
+    fixtures.sessions = [workSession()];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(screen.queryByRole('region', { name: 'Recent work' })).toBeNull();
+    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(continueRow().textContent).toContain(CODEX_SESSION_TITLE);
+    fireEvent.click(
+      within(region).getByRole('button', { name: 'View Activity' }),
+    );
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+  });
+
   test('with no Agent to offer the chip asks for one and Start still goes (first run)', () => {
     fixtures.defaultAgent = undefined;
     fixtures.sessions = [workSession()];

@@ -28,6 +28,8 @@ export interface HomeSurfaceProps {
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
 /** The recent-work section's id: the skip target (U2). */
 const RECENT_WORK_SECTION_ID = 'home-recent-work';
+/** Continue leads the work, so the skip link lands there when it shows. */
+const CONTINUE_SECTION_ID = 'home-continue';
 
 /**
  * The one Home (archive#3122's experiment, concluded).
@@ -101,9 +103,35 @@ export function HomeSurface({
       ? model.primaryWorkItem.id
       : undefined;
   const listedLanes = continued ? withoutItem(lanes, continued) : lanes;
+  // With Continue holding the only item, Recent work would be a heading
+  // over nothing: it is left out, and View Activity moves beside Continue.
+  // Loading, failure and remote notes still need the section.
+  const listEmpty =
+    Boolean(continued) &&
+    !model.workLoading &&
+    !model.workDegraded &&
+    !model.workError &&
+    model.remoteUnavailable.length === 0 &&
+    model.remoteAuthenticationRequired.length === 0 &&
+    [
+      listedLanes.needsYou,
+      listedLanes.running,
+      listedLanes.idle,
+      listedLanes.external ?? [],
+      listedLanes.drafts ?? [],
+      listedLanes.recentlyFinished,
+      listedLanes.snoozed,
+      listedLanes.settled,
+    ].every((items) => items.length === 0);
   const continueCard =
     !model.actionsLoading && model.primaryWorkItem ? (
-      <HomeContinueCard model={model} />
+      <HomeContinueCard
+        model={model}
+        id={CONTINUE_SECTION_ID}
+        onViewActivity={
+          listEmpty ? () => showSurfacePage('activity') : undefined
+        }
+      />
     ) : null;
   const recentWork = (
     <HomeRecentWorkSection
@@ -148,7 +176,10 @@ export function HomeSurface({
       {/* U2: the first inbox row sat 35 tab stops in. A keyboard reader lands
           on the work in one. */}
       {hasWork && (
-        <a className="home-view__skip" href={`#${RECENT_WORK_SECTION_ID}`}>
+        <a
+          className="home-view__skip"
+          href={`#${continueCard ? CONTINUE_SECTION_ID : RECENT_WORK_SECTION_ID}`}
+        >
           Skip to recent work
         </a>
       )}
@@ -167,7 +198,7 @@ export function HomeSurface({
       {hasWork ? (
         <>
           {continueCard}
-          {recentWork}
+          {!listEmpty && recentWork}
           {actions}
           {chart}
         </>

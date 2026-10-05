@@ -154,7 +154,19 @@ export function HomeActionSection({
  * size), so its agent icon, status, time and hover card read exactly as the
  * rows below it do, rather than a card's own summary line.
  */
-export function HomeContinueCard({ model }: { model: HomeViewModel }) {
+export function HomeContinueCard({
+  model,
+  id,
+  onViewActivity,
+}: {
+  model: HomeViewModel;
+  id?: string;
+  /**
+   * Given when Recent work is not shown (Continue holds the only item), so
+   * the way to all work stays on the page, beside this heading.
+   */
+  onViewActivity?: () => void;
+}) {
   const coarsePointer = useCoarsePointer();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   // The lanes' own row inputs, so the row reads exactly as theirs do.
@@ -164,12 +176,25 @@ export function HomeContinueCard({ model }: { model: HomeViewModel }) {
   if (!primary) return null;
   return (
     <section
+      id={id}
       className="home-view__continue"
       aria-labelledby="home-continue-label"
+      tabIndex={-1}
     >
-      <span id="home-continue-label" className="home-view__continue-label">
-        Continue
-      </span>
+      {/* A heading at the same rung as Recent work: the page's work starts
+          here, not under a smaller label. */}
+      <div className="home-view__section-heading">
+        <h2 id="home-continue-label">Continue</h2>
+        {onViewActivity && (
+          <button
+            type="button"
+            className="home-view__link"
+            onClick={onViewActivity}
+          >
+            View Activity
+          </button>
+        )}
+      </div>
       <ul className="home-view__task-list home-view__continue-list">
         {renderHomeWorkRow({
           task: { ...primary, stableId: `continue:${primary.id}` },

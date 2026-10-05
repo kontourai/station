@@ -341,9 +341,6 @@
   flex-direction: column;
   gap: var(--k-space-2);
 }
-.home-view__continue-label {
-  color: var(--text-secondary);
-}
 .home-view__continue-list {
   list-style: none;
   margin: 0;
