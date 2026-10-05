@@ -1,14 +1,16 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { OpenCodeFixtureWriter } from '../../../providers/sessions/__tests__/opencode-fixture.js';
 import { OpenCodeSessionSource } from '../../../providers/sessions/opencode-session-source.js';
 import { AttachedSessionFollowService } from '../attached-session-follow-service.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
+
+const tempDir = trackTempDirs();
 
 function turn(
   store: OpenCodeFixtureWriter,
@@ -30,9 +32,7 @@ function turn(
 }
 
 test('an OpenCode session in a project appears in the read model and resumes after a cold restart', async () => {
-  const directory = realpathSync(
-    mkdtempSync(join(tmpdir(), 'station-opencode-follow-')),
-  );
+  const directory = realpathSync(tempDir('station-opencode-follow-'));
   const dataDir = join(directory, 'opencode');
   const project = join(directory, 'project');
   mkdirSync(project);
@@ -127,6 +127,5 @@ test('an OpenCode session in a project appears in the read model and resumes aft
   } finally {
     store.close();
     writer.close();
-    rmSync(directory, { recursive: true, force: true });
   }
 });

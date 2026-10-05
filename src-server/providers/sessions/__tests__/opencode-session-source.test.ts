@@ -2,16 +2,14 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   statSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -19,13 +17,11 @@ import type {
 import { OpenCodeSessionSource } from '../opencode-session-source.js';
 import { OPENCODE_SCHEMA, OpenCodeFixtureWriter } from './opencode-fixture.js';
 
-const roots: string[] = [];
+const tempDir = trackTempDirs();
 const writers: OpenCodeFixtureWriter[] = [];
 
 function fixtureRoot(): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'station-opencode-')));
-  roots.push(root);
-  return root;
+  return realpathSync(tempDir('station-opencode-'));
 }
 
 function writer(
@@ -46,9 +42,6 @@ afterEach(() => {
     } catch {
       // Already closed by the test.
     }
-  }
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
   }
 });
 
