@@ -6,13 +6,20 @@ import {
 import { Button } from '../Button';
 import { NewChatAction } from '../NewChatAction';
 
-export function HomeChatStartForm({ identity }: { identity?: string }) {
+export function HomeChatStartForm({
+  identity,
+  compact = false,
+}: {
+  identity?: string;
+  /** One line, no identity caption: the form above a page of work. */
+  compact?: boolean;
+}) {
   const [prompt, setPrompt] = useState('');
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   return (
     <form
-      className="home-view__goal"
+      className={`home-view__goal${compact ? ' home-view__goal--compact' : ''}`}
       aria-label="Start work"
       onSubmit={(event) => {
         event.preventDefault();
@@ -37,11 +44,11 @@ export function HomeChatStartForm({ identity }: { identity?: string }) {
         className="editor-textarea"
         aria-label="What would you like done?"
         placeholder="Tell Station what you want done…"
-        rows={3}
+        rows={compact ? 1 : 3}
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
       />
-      {identity ? (
+      {identity && !compact ? (
         <p className="home-view__goal-identity">Using {identity}</p>
       ) : null}
       <div className="home-view__goal-actions">

@@ -10957,3 +10957,121 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     ).toBe(true);
   });
 });
+
+/**
+ * #3163: a subagent's transcript lives under the config home its session's
+ * engine was SPAWNED with. These drive the real `startSession` spawn seams
+ * (credential/app-home profile, connection config home, source-affinity
+ * resume) and read the config home off the child-work item the adapter
+ * then publishes for a real captured `task_started`.
+ */
+describe('#3163 the transcript reference carries the spawn config home', () => {
+  const makeTempDir = trackTempDirs();
+  const taskStarted = loadClaudeTaskCapture('nested-agent')
+    .map((line) => line.message as Record<string, unknown> | undefined)
+    .find(
+      (message) =>
+        message?.subtype === 'task_started' &&
+        message.task_type === 'local_agent',
+    );
+
+  async function transcriptOf(
+    adapter: ClaudeAdapter,
+    start: Parameters<ClaudeAdapter['startSession']>[0],
+  ) {
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession(start);
+    for (let step = 0; step < 40; step++) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const event = next.value as {
+        method?: string;
+        delta?: { kind?: string; running?: Array<{ transcript?: unknown }> };
+      };
+      if (
+        event.method === 'child-work.updated' &&
+        event.delta?.kind === 'snapshot'
+      ) {
+        await adapter.stopSession(start.threadId);
+        return event.delta.running?.[0]?.transcript as
+          | { configHome?: string; agentId?: string }
+          | undefined;
+      }
+    }
+    throw new Error('no child-work snapshot');
+  }
+
+  test('premise: the capture starts a local agent', () => {
+    expect(taskStarted?.task_type).toBe('local_agent');
+  });
+
+  test('a credential or app-home profile session records its profile home', async () => {
+    mockQuery.mockReturnValue(createMockQuery([taskStarted]));
+    const adapter = new ClaudeAdapter({
+      getAppHomeEnv: async () => ({
+        env: { CLAUDE_CONFIG_DIR: '/station/app-homes/claude/profile-a' },
+        profileRef: 'profile-a',
+      }),
+      getConnectionEnv: async () => ({
+        CLAUDE_CONFIG_DIR: '/connection/claude-home',
+      }),
+    });
+    const transcript = await transcriptOf(adapter, {
+      provider: 'claude',
+      threadId: 'thread-3163-profile',
+      cwd: '/workspace/project',
+    });
+    expect(transcript).toMatchObject({
+      agentId: taskStarted?.task_id,
+      configHome: '/station/app-homes/claude/profile-a',
+    });
+  });
+
+  test('a connection with its own config home records that home', async () => {
+    mockQuery.mockReturnValue(createMockQuery([taskStarted]));
+    const adapter = new ClaudeAdapter({
+      getAppHomeEnv: async () => ({ profileRef: null }),
+      getConnectionEnv: async () => ({
+        CLAUDE_CONFIG_DIR: '/connection/claude-home',
+      }),
+    });
+    const transcript = await transcriptOf(adapter, {
+      provider: 'claude',
+      threadId: 'thread-3163-connection',
+      cwd: '/workspace/project',
+    });
+    expect(transcript?.configHome).toBe('/connection/claude-home');
+  });
+
+  test('a source-affinity resume records the global home, not a profile or connection one', async () => {
+    const home = makeTempDir('station-claude-3163-source-');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+    try {
+      const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+      mockQuery.mockReturnValue(createMockQuery([taskStarted]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => ({
+          env: { CLAUDE_CONFIG_DIR: '/unused-profile-home' },
+          profileRef: null,
+        }),
+        getConnectionEnv: async () => ({
+          CLAUDE_CONFIG_DIR: '/unused-connection-home',
+        }),
+        resolveSourceHome: (affinity: typeof identity.affinity) =>
+          resolveConfigHomeAffinity('claude-config-home', home, affinity),
+      });
+      const transcript = await transcriptOf(adapter, {
+        provider: 'claude',
+        threadId: 'thread-3163-source',
+        resumeCursor: {
+          claudeSessionId: 'vendor-child',
+          sourceAffinity: identity.affinity,
+        },
+        cwd: '/workspace/project',
+      });
+      expect(transcript?.configHome).toBe(home);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

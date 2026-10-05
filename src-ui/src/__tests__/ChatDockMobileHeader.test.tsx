@@ -267,7 +267,7 @@ describe('mobile conversation focus', () => {
   test('chat overflow is chats and dock chrome, not Profile or a second conversation list', async () => {
     renderHeader();
     await openActions();
-    expect(screen.getByRole('menuitem', { name: 'Chats' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Inbox' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Profile' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();

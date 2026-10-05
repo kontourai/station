@@ -1239,6 +1239,33 @@
   display: block;
 }
 
+/* A send queued to retry by itself is not a failure, but its notice carries the
+   one way to discard it, and that sits in the transcript this same state
+   shrinks to nothing. The composer repeats just the action, in the controls row
+   (already a 44px touch row, so the draft's floor is untouched); the notice's
+   words are its accessible description. The shared `-actions` row rule
+   (index.css) gives the button its 44px floor. */
+.chat-input__queued-retry-actions {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__queued-retry-actions {
+  display: inline-flex;
+}
+
+.chat-input__queued-retry-actions > button {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The banner steps aside (the composer's own line repeats what failed). The
    transcript only gives up its padding and shrinks to nothing: it is never
    taken out of the layout, so a stale reading cannot remove the conversation. */
@@ -2588,9 +2615,7 @@
   }
   .mobile-task-switcher__list .chat-dock-inbox__group-label,
   .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
-    font-size: var(--k-text-md);
-    text-transform: none;
-    letter-spacing: normal;
+    --work-group-label-size: var(--k-text-md);
   }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the

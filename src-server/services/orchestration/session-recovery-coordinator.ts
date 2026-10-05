@@ -40,6 +40,36 @@ import {
  */
 type ReplayableTurnStart = TurnStartedEvent & { prompt: string };
 
+/**
+ * #3157: what a user action on a waiting usage-limit stop did. `not-waiting`
+ * means there was nothing left to act on (settled, claimed, or never armed), and
+ * the caller should re-read the projection. `resumed` means the dispatch started
+ * (a provider refusal after that shows in the projection); `failed` means it
+ * could not be sent at all.
+ */
+export type UsageLimitRecoveryActionResult =
+  | { kind: 'resumed' }
+  | { kind: 'failed' }
+  | { kind: 'canceled' }
+  | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
+  | { kind: 'not-waiting' };
+
+/**
+ * #3157: the shortest wait a refused replay may re-arm for. A refusal that
+ * names a reset under a minute away is the provider disagreeing with itself,
+ * not a limit worth waiting out; ending the intent as failed keeps the user's
+ * next message the way forward. A minute also bounds an unattended
+ * resume-refuse-resume cycle to one dispatch per minute at the very worst.
+ */
+const REARM_MIN_WAIT_MS = 60_000;
+
+/**
+ * #3157: how many times in a row a refused replay may re-arm for a later
+ * reset before the intent just ends failed. A user turn resets the count. It
+ * is process-local: a restart forgets it, which can only allow a few more.
+ */
+const MAX_CONSECUTIVE_REARMS = 3;
+
 const DEFAULT_MAX_ATTEMPTS = 1;
 const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
@@ -59,6 +89,7 @@ export class SessionRecoveryCoordinator {
   private readonly inFlight = new Set<Promise<void>>();
   private readonly lifecycleByFingerprint = new Map<string, Promise<void>>();
   private readonly dispatchControllers = new Map<string, AbortController>();
+  private readonly rearmsByThread = new Map<string, number>();
   private readonly activeByThread = new Map<string, string>();
   private readonly ledger: RecoveryLedger;
   private readonly completingFingerprints = new Set<string>();
@@ -216,9 +247,26 @@ export class SessionRecoveryCoordinator {
         return;
       }
       if (this.completingFingerprints.has(resumed.fingerprint)) return;
-      this.enqueueLifecycle(resumed.fingerprint, () =>
-        this.failIntent(resumed),
-      );
+      // #3157: a resume sent before the reset (the user's Resume now) can be
+      // refused by the same limit. That is a new stop of the replayed turn, not
+      // the end of the wait: settle the spent intent, then arm the replay's own
+      // (its fingerprint names the replay turn) so the reset still resumes it.
+      // The old one is settled first, so the new one is the Session's latest.
+      const limitedAgain =
+        resumed.usageLimit === true &&
+        classifyConnectionFailure(event).usageLimit === true;
+      this.enqueueLifecycle(resumed.fingerprint, async () => {
+        await this.failIntent(resumed);
+        if (!limitedAgain || this.disposed || this.stopping) return;
+        const rearms = this.rearmsByThread.get(event.threadId) ?? 0;
+        if (rearms >= MAX_CONSECUTIVE_REARMS) return;
+        this.rearmsByThread.set(event.threadId, rearms + 1);
+        try {
+          this.armForRuntimeError(event, REARM_MIN_WAIT_MS);
+        } catch {
+          // Fail closed, as the rest of this observer does.
+        }
+      });
     } catch {
       // Fail closed: preserve the runtime event without a recovery action.
     }
@@ -228,6 +276,7 @@ export class SessionRecoveryCoordinator {
     try {
       const correlationId = event.metadata?.recoveryCorrelationId;
       if (typeof correlationId !== 'string') {
+        this.rearmsByThread.delete(event.threadId);
         this.retireSupersededBy(event);
         return;
       }
@@ -304,14 +353,21 @@ export class SessionRecoveryCoordinator {
     );
     for (const intent of waiting) {
       if (!conversation.has(intent.threadId)) continue;
-      this.enqueueLifecycle(intent.fingerprint, async () =>
-        this.retireWaiting(intent, 'canceled', 'superseded'),
-      );
+      this.enqueueLifecycle(intent.fingerprint, async () => {
+        this.retireWaiting(intent, 'canceled', 'superseded');
+      });
     }
   }
 
   private armForRuntimeError(
     event: Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>,
+    /**
+     * #3157: arm only a wait that ends at least this long from now. A replay
+     * refused again re-arms through here, and a reset that is already past
+     * (a stale provider time, clock skew) classifies as `retry-now`, which
+     * would send the replay again at once, forever.
+     */
+    minWaitMs?: number,
   ): void {
     const adapter = this.options.adapterForProvider(event.provider);
     const failure = classifyConnectionFailure(event);
@@ -320,6 +376,15 @@ export class SessionRecoveryCoordinator {
       failure,
       now: this.now(),
     });
+    if (
+      minWaitMs !== undefined &&
+      !(
+        decision.decision === 'wait-until-reset' &&
+        decision.dueAt !== undefined &&
+        Date.parse(decision.dueAt) - this.now().getTime() >= minWaitMs
+      )
+    )
+      return;
     const source = this.findSourceTurn(event.threadId, event.turnId);
     if (!source) return;
     // #2324: a turn the engine opened on its own has no send to replay.
@@ -459,6 +524,13 @@ export class SessionRecoveryCoordinator {
       now: this.now().toISOString(),
     });
     if (prepared.kind !== 'owner') return;
+    await this.dispatchPrepared(fingerprint, prepared.attempt);
+  }
+
+  private async dispatchPrepared(
+    fingerprint: string,
+    attempt: RecoveryClaim,
+  ): Promise<void> {
     const intent = this.ledger.find(fingerprint);
     if (!intent) return;
     if (this.disposed) {
@@ -471,7 +543,90 @@ export class SessionRecoveryCoordinator {
       await this.failIntent(intent);
       return;
     }
-    this.launchDispatch(intent, source, prepared.attempt);
+    this.launchDispatch(intent, source, attempt);
+  }
+
+  /**
+   * #3157: the newest usage-limit intent for this Session that still only
+   * waits (armed for its reset, or left to the user). Neither it nor a settled
+   * one is ever offered for a user action again.
+   */
+  private waitingUsageLimitIntent(
+    threadId: string,
+  ): ConnectionRecoveryIntent | undefined {
+    return [...this.ledger.pending(), ...this.ledger.awaitingUser()]
+      .filter(
+        (intent) =>
+          intent.threadId === threadId &&
+          intent.usageLimit === true &&
+          (intent.outcome === 'armed' || intent.outcome === 'manual'),
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  }
+
+  /**
+   * #3157: the user's "Resume now" on a usage-limit stop. It is the user's own
+   * consent, so the auto-resume setting and the reset time do not gate it,
+   * but the pre-dispatch checks do: a conversation that moved on, an open
+   * request or a closed Session retires the intent with that reason instead.
+   * It replays on the same account; failover to another credential profile
+   * stays an unattended-recovery decision.
+   */
+  async resumeUsageLimitNow(
+    threadId: string,
+  ): Promise<UsageLimitRecoveryActionResult> {
+    if (this.stopping || this.disposed) return { kind: 'not-waiting' };
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (!waiting) return { kind: 'not-waiting' };
+    let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
+    await this.enqueueLifecycle(waiting.fingerprint, async () => {
+      const current = this.ledger.find(waiting.fingerprint);
+      if (
+        !current?.usageLimit ||
+        (current.outcome !== 'armed' && current.outcome !== 'manual')
+      )
+        return;
+      const obstacle = this.dispatchObstacle(current);
+      if (obstacle) {
+        result = this.retireWaiting(current, 'canceled', obstacle)
+          ? { kind: 'retired', reason: obstacle }
+          : { kind: 'not-waiting' };
+        return;
+      }
+      const prepared = this.ledger.claim({
+        fingerprint: current.fingerprint,
+        kind: 'due',
+        immediate: true,
+        now: this.now().toISOString(),
+      });
+      if (prepared.kind !== 'owner') return;
+      this.clearTimer(current.fingerprint);
+      await this.dispatchPrepared(current.fingerprint, prepared.attempt);
+      // A turn that cannot be sent again (its attachment bytes are gone) is
+      // failed before any dispatch; saying it was resumed would be false.
+      result =
+        this.ledger.find(current.fingerprint)?.outcome === 'failed'
+          ? { kind: 'failed' }
+          : { kind: 'resumed' };
+    });
+    return result;
+  }
+
+  /** #3157: the user's "Cancel auto-resume": retire the waiting intent unsent. */
+  async cancelUsageLimitWaiting(
+    threadId: string,
+  ): Promise<UsageLimitRecoveryActionResult> {
+    if (this.stopping || this.disposed) return { kind: 'not-waiting' };
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (!waiting) return { kind: 'not-waiting' };
+    let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
+    await this.enqueueLifecycle(waiting.fingerprint, async () => {
+      const current = this.ledger.find(waiting.fingerprint);
+      if (!current?.usageLimit) return;
+      if (this.retireWaiting(current, 'canceled', 'user-canceled'))
+        result = { kind: 'canceled' };
+    });
+    return result;
   }
 
   /**
@@ -1124,16 +1279,17 @@ export class SessionRecoveryCoordinator {
     intent: ConnectionRecoveryIntent,
     outcome: 'manual' | 'canceled',
     reason: ConnectionRecoveryOutcomeReason,
-  ): void {
+  ): boolean {
     const retired = this.ledger.retireWaiting({
       fingerprint: intent.fingerprint,
       outcome,
       reason,
       now: this.now().toISOString(),
     });
-    if (retired.kind !== 'applied') return;
+    if (retired.kind !== 'applied') return false;
     this.clearTimer(intent.fingerprint);
     this.recordIntentOutcome(intent, outcome);
+    return true;
   }
 
   private async failIntent(intent: ConnectionRecoveryIntent): Promise<void> {

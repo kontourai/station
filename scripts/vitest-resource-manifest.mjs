@@ -258,6 +258,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
+  // Runs the real capture barrier and the real capture entrypoint as child
+  // processes to prove the configured bound reaches them.
+  'scripts/__tests__/transfer-capture-barrier.test.ts',
+  // #3302: runs scripts/liveness-scale.mjs as a child to prove the exit status
+  // and stdout contract the pre-push hook consumes, and a real fallow spawn.
+  'scripts/__tests__/liveness-scale.test.ts',
   // #2355: creates real linked worktrees, removes them with `git worktree
   // remove`, and holds one open with a live child process whose cwd is inside
   // it, because the in-use probe (lsof/proc/ps) is the behavior under test.
@@ -578,6 +584,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // file landed via #3609 without a resource classification, which the
   // manifest gate itself requires for any direct child_process importer.
   'src-server/services/orchestration/__tests__/engine-start-seam.test.ts',
+  // #3163: one bounded `mkfifo` child proves a profile swapped for a FIFO is
+  // refused without blocking, like the plugin-build FIFO sibling above.
+  'src-server/providers/__tests__/claude-subagent-transcript.test.ts',
   // #2707: builds the SDK barrel import graph from the real repository through
   // `git ls-files` and `git grep -l` (via scripts/lib/sdk-barrel-selection.mjs)
   // — the same enumeration the changed lane uses, so the oracle is what git
@@ -953,6 +962,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
+  // #2875: the git-commit preparation adapter over real repositories, with
+  // planted repository config, and the delegation path reading a real
+  // checkout that a test moves between checks.
+  'src-server/services/execution-target/__tests__/execution-preparation.test.ts',
+  'src-server/tools/__tests__/station-control-delegation-preparation.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.
