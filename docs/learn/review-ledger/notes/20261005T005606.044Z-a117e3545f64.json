@@ -1,0 +1,23 @@
+{
+  "revision": "7048c927750535b870819d9a81c1438481b31bc9",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/dependency-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Fix-round delta in actionlint-gate.mjs is only the landing policy digest, updated for a per-PR concurrency group on the dequeue job. This page states nothing about landing automation; its claims are unchanged.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Updated the dequeue paragraph for the fix round and traced it to merge-queue-dequeue.mjs: each new removal posts a new comment and minimizes the app's earlier reports (OUTDATED), an already-reported removal is skipped, other accounts' markers are ignored, and re-arm passes --match-head-commit for the head merge-tree checked. Executed merge-queue-dequeue.test.ts (9 tests) and fault injections for each behavior.","inputs":["docs/guides/releasing.md",".github/workflows/landing-automation.yml","scripts/merge-queue-dequeue.mjs"]}
+  ]
+}
