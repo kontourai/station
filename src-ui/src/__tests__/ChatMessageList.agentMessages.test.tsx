@@ -76,6 +76,7 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
+import { navigationStore } from '../contexts/navigation-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
@@ -361,8 +362,23 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     expect(link.getAttribute('aria-label')).toBe(
       'Open Fix login, the Session that sent this message',
     );
+    // Not an open chat: Activity opens it, through the canonical deep link.
+    const navigate = vi
+      .spyOn(navigationStore, 'navigate')
+      .mockImplementation(() => {});
+    fireEvent.click(link);
+    expect(navigate).toHaveBeenCalledWith(
+      `/?surface=activity&session=${SENDER_THREAD}`,
+    );
+    expect(focus).not.toHaveBeenCalled();
+    // An open chat is focused in the dock instead.
+    vi.spyOn(openChatsStore, 'getSnapshot').mockReturnValue({
+      [SENDER_THREAD]: { conversationId: SENDER_THREAD },
+    } as never);
+    navigate.mockClear();
     fireEvent.click(link);
     expect(focus).toHaveBeenCalledWith({ sessionId: SENDER_THREAD });
+    expect(navigate).not.toHaveBeenCalled();
     // A modified click is the browser's (new tab), not ours. jsdom cannot
     // navigate, so the document absorbs the default action after React ran.
     const absorb = (event: Event) => event.preventDefault();
