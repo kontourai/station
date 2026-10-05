@@ -181,7 +181,8 @@ The `InjectableStream` wrapper ensures approval events are emitted in the correc
 
 Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as one
 form in the Session, rendered by the same card as a tool server's form
-(#3390): inline on desktop, and in the request sheet on a phone. Select an
+(#3390): inline on desktop, and in the request sheet on a phone. Each
+question keeps the engine's short header above it, when it has one. Select an
 option, choose several where the harness supports it, or choose Other to
 enter a custom answer. Send checks every question first; an unanswered one is
 marked on its own field with its reason, and focus moves to the first.
