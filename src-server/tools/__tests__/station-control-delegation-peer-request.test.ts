@@ -395,9 +395,9 @@ describe('a decision on it is forwarded to the paired Station', () => {
     expect(error).toBeInstanceOf(Error);
     expect(error?.message).not.toBe(PEER_RESPOND_FORBIDDEN_MESSAGE);
     expect(error?.cause).toBeInstanceOf(LocalStationRefusal);
-    expect((error?.cause as LocalStationRefusal).refusalCode).toBe(
-      'station_control_caller_required',
-    );
+    expect(error?.cause).toMatchObject({
+      refusalCode: 'station_control_caller_required',
+    });
   });
 });
 
