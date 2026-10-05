@@ -1,0 +1,15 @@
+{
+  "revision": "25856de7b9354270099cf0c1a7b614c6334f4267",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed for #3279 fix round 1: the only mcp-service.ts change since the last review drops the `export` keyword from ConnectedAccountActorRequiredError, which has no caller outside the module (code-health unused-export finding). Behavior, refusal copy and routes are unchanged, and this document names no such export, so no prose change.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Re-reviewed for #3279 fix round 1: the only mcp-service.ts change since the last review drops the `export` keyword from ConnectedAccountActorRequiredError, which has no caller outside the module (code-health unused-export finding). Behavior, refusal copy and routes are unchanged, and this document names no such export, so no prose change.","inputs":["docs/design/mcp-ui-host.md","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Re-reviewed for #3279 fix round 1: the only mcp-service.ts change since the last review drops the `export` keyword from ConnectedAccountActorRequiredError, which has no caller outside the module (code-health unused-export finding). Behavior, refusal copy and routes are unchanged, and this document names no such export, so no prose change.","inputs":["docs/guides/plugins.md","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Re-reviewed for #3279 fix round 1: the only mcp-service.ts change since the last review drops the `export` keyword from ConnectedAccountActorRequiredError, which has no caller outside the module (code-health unused-export finding). Behavior, refusal copy and routes are unchanged, and this document names no such export, so no prose change.","inputs":["docs/reference/agent-plugins.md","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-reviewed for #3279 fix round 1: the only mcp-service.ts change since the last review drops the `export` keyword from ConnectedAccountActorRequiredError, which has no caller outside the module (code-health unused-export finding). Behavior, refusal copy and routes are unchanged, and this document names no such export, so no prose change.","inputs":["docs/reference/api.md","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}
