@@ -314,7 +314,9 @@ function OperatorPanel({ scope }: { scope: Scope }) {
           ))}
         </ul>
       ) : (
-        view.pendingDevices.length === 0 && <Empty variant="compact" />
+        view.pendingDevices.length === 0 && (
+          <Empty variant="compact" label="Invite a device to connect" />
+        )
       )}
       {inviting && (
         <InviteDeviceDialog
