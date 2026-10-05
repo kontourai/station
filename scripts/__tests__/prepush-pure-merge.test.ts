@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -87,11 +93,23 @@ function fixture() {
   git(['push', '-q', 'origin', 'main']);
   git(['checkout', '-q', 'feat']);
   git(['fetch', '-q', 'origin']);
-  const classify = (local = git(['rev-parse', 'HEAD']), remoteSha = gatedTip) =>
-    spawnSync(process.execPath, [SCRIPT], {
+  const classify = (
+    local = git(['rev-parse', 'HEAD']),
+    remoteSha = gatedTip,
+    {
+      remoteName = 'origin',
+      ref = 'refs/heads/feat',
+      extraEnv = {},
+    }: {
+      remoteName?: string;
+      ref?: string;
+      extraEnv?: Record<string, string>;
+    } = {},
+  ) =>
+    spawnSync(process.execPath, [SCRIPT, remoteName], {
       cwd: repo,
-      env,
-      input: `refs/heads/feat ${local} refs/heads/feat ${remoteSha}\n`,
+      env: { ...env, ...extraEnv },
+      input: `${ref} ${local} ${ref} ${remoteSha}\n`,
       encoding: 'utf8',
       windowsHide: true,
       timeout: 15_000,
@@ -176,7 +194,7 @@ describe.skipIf(process.platform === 'win32')(
       f.git(['merge', '-q', '--no-edit', 'other']);
       const result = f.classify();
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain('which is not on origin/main');
+      expect(result.stdout).toContain("which is not on origin's main");
     });
 
     it('refuses a brand-new ref and an unknown remote tip', () => {
@@ -190,9 +208,61 @@ describe.skipIf(process.platform === 'win32')(
       expect(unknown.stdout).toContain('not available locally');
     });
 
+    it('refuses a merge of a forged local origin/main, even with STATION_BASE_REF pointing at it', () => {
+      const f = fixture();
+      // Unreviewed content that never reached the remote's main.
+      f.git(['checkout', '-q', '--detach', 'origin/main']);
+      const evil = f.commit('evil.txt', 'never gated\n', 'feat: forged main');
+      f.git(['checkout', '-q', 'feat']);
+      f.git(['update-ref', 'refs/remotes/origin/main', evil]);
+      f.git(['merge', '-q', '--no-edit', 'origin/main']);
+      const result = f.classify(undefined, undefined, {
+        extraEnv: { STATION_BASE_REF: 'refs/remotes/origin/main' },
+      });
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toContain("which is not on origin's main");
+    });
+
+    it('refuses when the remote main cannot be read', () => {
+      const f = fixture();
+      f.git(['merge', '-q', '--no-edit', 'origin/main']);
+      const result = f.classify(undefined, undefined, {
+        remoteName: join(f.root, 'missing.git'),
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('cannot read refs/heads/main');
+    });
+
+    it('refuses a plain commit dressed up as a clean merge with git replace', () => {
+      const f = fixture();
+      const gated = f.gatedTip;
+      f.git(['merge', '-q', '--no-edit', 'origin/main']);
+      const cleanMerge = f.git(['rev-parse', 'HEAD']);
+      f.git(['reset', '-q', '--hard', gated]);
+      const plain = f.commit('feat.txt', 'unreviewed edit\n', 'feat: sneaky');
+      f.git(['replace', plain, cleanMerge]);
+      const result = f.classify(plain);
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toContain('is not a merge');
+    });
+
+    it('names a tag accurately instead of a long walk', () => {
+      const f = fixture();
+      f.git(['merge', '-q', '--no-edit', 'origin/main']);
+      f.git(['tag', '-a', '-m', 'release', 'v1']);
+      const tag = f.git(['rev-parse', 'v1']);
+      const asTag = f.classify(tag, f.gatedTip, { ref: 'refs/tags/v1' });
+      expect(asTag.status).toBe(1);
+      expect(asTag.stdout).toContain('refs/tags/v1 is not a branch');
+      const ontoBranch = f.classify(tag);
+      expect(ontoBranch.status).toBe(1);
+      expect(ontoBranch.stdout).toContain('is a tag, not a commit');
+      expect(ontoBranch.stdout).not.toContain('first-parent commits');
+    });
+
     it('refuses when no ref lines arrive', () => {
       const f = fixture();
-      const result = spawnSync(process.execPath, [SCRIPT], {
+      const result = spawnSync(process.execPath, [SCRIPT, 'origin'], {
         cwd: f.repo,
         env: f.env,
         input: '',
@@ -225,13 +295,15 @@ describe.skipIf(process.platform === 'win32')(
         readFileSync('.githooks/pre-push'),
         { mode: 0o755 },
       );
-      for (const file of [
-        'scripts/prepush-pure-merge.mjs',
-        'scripts/lib/module-entry.mjs',
-        'scripts/lib/git-environment.mjs',
-      ]) {
-        writeFileSync(join(f.repo, file), readFileSync(file));
-      }
+      // The whole helper directory: the hook calls several of these directly
+      // (environment cleanup, liveness scale) and they import one another.
+      cpSync('scripts/lib', join(f.repo, 'scripts', 'lib'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(f.repo, 'scripts', 'prepush-pure-merge.mjs'),
+        readFileSync('scripts/prepush-pure-merge.mjs'),
+      );
       // Hook files are untracked in the fixture so they never affect the merge.
       mkdirSync(join(f.repo, '.git', 'info'), { recursive: true });
       writeFileSync(
@@ -293,6 +365,18 @@ if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
         'proof:repo-governance',
         'scripts/commit-message-gate.mjs',
       ]);
+    });
+
+    it('runs every lane when origin/main was forged locally', () => {
+      const f = hookFixture();
+      f.git(['checkout', '-q', '--detach', 'origin/main']);
+      const evil = f.commit('evil.txt', 'never gated\n', 'feat: forged main');
+      f.git(['checkout', '-q', 'feat']);
+      f.git(['update-ref', 'refs/remotes/origin/main', evil]);
+      f.git(['merge', '-q', '--no-edit', 'origin/main']);
+      const { output, gates } = f.push();
+      expect(output).toContain('Pure merge of main: no');
+      for (const gate of EXPENSIVE) expect(gates).toContain(gate);
     });
 
     it('runs every lane for a hand-edited merge resolution', () => {
