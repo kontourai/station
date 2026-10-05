@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react';
+import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
@@ -58,6 +58,35 @@ function startAgentChipText(chip: StartAgentChip): string {
     : chip.agent.name;
 }
 
+/** The compact text box grows with its text up to this many lines. */
+const COMPACT_MAX_LINES = 5;
+
+/**
+ * Size a compact text box to its content, up to `COMPACT_MAX_LINES`, then
+ * scroll. Done here rather than with `field-sizing: content`, which the
+ * desktop app's WebKit does not support. The 44px floor is CSS min-height.
+ */
+function fitCompactTextarea(element: HTMLTextAreaElement) {
+  element.style.height = 'auto';
+  const content = element.scrollHeight;
+  // Not laid out (hidden, or no layout engine): leave the CSS size alone.
+  if (!content) {
+    element.style.removeProperty('height');
+    return;
+  }
+  const style = getComputedStyle(element);
+  const px = (value: string) => Number.parseFloat(value) || 0;
+  const lineHeight = px(style.lineHeight) || px(style.fontSize) * 1.2 || 20;
+  const padding = px(style.paddingTop) + px(style.paddingBottom);
+  const border = px(style.borderTopWidth) + px(style.borderBottomWidth);
+  // border-box: the height includes padding and border; scrollHeight has
+  // the padding but not the border.
+  const max = lineHeight * COMPACT_MAX_LINES + padding + border;
+  const wanted = content + border;
+  element.style.height = `${Math.min(wanted, max)}px`;
+  element.style.overflowY = wanted > max ? 'auto' : 'hidden';
+}
+
 /**
  * The one way to start a chat (Home, inline, and the dock's draft): a text
  * box, an Agent chip, a project chip, an overflow for the rarer options, and
@@ -111,6 +140,13 @@ export function StartComposer({
   /** Feedback and setup that belong to this draft. */
   children?: ReactNode;
 }) {
+  const ownTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fieldRef = textareaRef ?? ownTextareaRef;
+  // Typed, restored or cleared: the compact box fits what it now holds.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prompt is the trigger; the element is read from the ref.
+  useLayoutEffect(() => {
+    if (compact && fieldRef.current) fitCompactTextarea(fieldRef.current);
+  }, [compact, prompt]);
   const agentText = startAgentChipText(agent);
   return (
     <form
@@ -147,7 +183,7 @@ export function StartComposer({
         </fieldset>
       )}
       <textarea
-        ref={textareaRef}
+        ref={fieldRef}
         className="editor-textarea start-composer__input"
         aria-label="What would you like done?"
         placeholder="Tell Station what you want done…"
