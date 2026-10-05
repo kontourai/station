@@ -1578,7 +1578,8 @@ station flow report <project> <runId> [--api-base=<url>]
 ```
 
 `attach-command` runs the command **server-side in the project workspace**
-(same trust level as scheduler jobs and tool servers) and attaches the output
+(same trust level as scheduler jobs and tool servers, and a paired device needs the
+operator's `coding:exec` grant: `command-not-granted` otherwise) and attaches the output
 tail as claim evidence: exit 0 attaches the claim with status `assumed` — a
 passing command is a claim, not verification, and Surface downgrades
 `verified` without backing evidence; a non-zero exit or timeout attaches
