@@ -713,7 +713,7 @@ async function chooseProject(page: Page, composer: Locator, slug: string) {
 async function openProjectDraft(page: Page) {
   const opened = await openNewChatDraft(page);
   await expect(
-    opened.draft.getByRole('button', { name: 'Project: No workspace' }),
+    opened.draft.getByRole('button', { name: 'Project: No project' }),
   ).toBeVisible();
   await chooseProject(page, opened.draft, 'station');
   await expect(
@@ -1076,7 +1076,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // event stays wired, and the project page's "New here?" CTA is now its
     // caller (`requestProjectChat`), but nothing on THIS route dispatches
     // it. Reroute through the dock's "New chat" action, which opens the
-    // start composer in its intentionally task-free "No workspace" state, then drive
+    // start composer in its intentionally task-free "No project" state, then drive
     // the dock's own Maximize control explicitly — proving the maximize
     // transition through its real affordance instead of as a residual side
     // effect of the removed dispatch. Every downstream assertion below is
@@ -1084,7 +1084,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // assertion (now after an explicit click, not implicit) moved.
     const { dialog: newChat } = await openNewChatDraft(page);
     await expect(
-      newChat.getByRole('button', { name: 'Project: No workspace' }),
+      newChat.getByRole('button', { name: 'Project: No project' }),
     ).toBeVisible();
     await newChat.press('Escape');
     await expect(newChat).toHaveCount(0);
@@ -1437,7 +1437,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const opened = await openNewChatDraft(page);
     await expect(
-      opened.draft.getByRole('button', { name: 'Project: No workspace' }),
+      opened.draft.getByRole('button', { name: 'Project: No project' }),
     ).toBeVisible();
     await sendDraft(opened, 'Start a direct chat.');
     await expect(page.locator('.chat-dock')).toBeVisible();

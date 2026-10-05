@@ -1525,6 +1525,6 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   );
   await expect(fixture.modal).toBeVisible();
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: No workspace' }),
+    fixture.modal.getByRole('button', { name: 'Workspace: No project' }),
   ).toBeVisible();
 });
