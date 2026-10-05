@@ -3,7 +3,6 @@ import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
-  ModelProviderOption,
   NewChatModelChoice,
   SelectableModel,
 } from '../../utils/modelCapabilities';
@@ -12,6 +11,7 @@ import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
+  modelPickerProviders,
   type NewChatModalContextOption,
   type NewChatWorkspaceHint,
   resolveNewChatAgentEnable,
@@ -293,41 +293,6 @@ export function StartProjectMenu({
 }
 
 /** The provider rail the Model picker shows, one row per connection. */
-function modelPickerProviders(
-  models: SelectableModel[],
-  modelConnections: ConnectionConfig[],
-): ModelProviderOption[] {
-  return Array.from(
-    new Map(
-      models
-        .filter((model) => model.providerId)
-        .map((model) => {
-          const connection = modelConnections.find(
-            (candidate) => candidate.id === model.providerId,
-          );
-          const available = connection
-            ? connection.enabled && connection.status === 'ready'
-            : model.available !== false;
-          return [
-            model.providerId!,
-            {
-              id: model.providerId!,
-              name: model.providerName ?? model.providerId!,
-              available,
-              ...(!available
-                ? {
-                    detail:
-                      model.unavailableReason ??
-                      connection?.status ??
-                      'Unavailable',
-                  }
-                : {}),
-            },
-          ];
-        }),
-    ).values(),
-  );
-}
 
 /**
  * The Model picker for one Agent, with its runtime options (reasoning effort

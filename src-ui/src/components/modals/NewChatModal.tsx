@@ -80,6 +80,7 @@ import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
 import {
   GLOBAL_CONTEXT,
+  modelPickerProviders,
   NEW_CHAT_AGENT_UNAVAILABLE_FALLBACK,
   NO_PROJECT_LABEL,
   resolveNewChatAgentEnable,
@@ -960,38 +961,9 @@ export function NewChatModal({
   // shared picker mounted so it still owns focus, Escape, and the close action.
   const modelPickerLoading =
     !!modelPickerAgent && modelsLoading && modelPickerModels.length === 0;
-  const modelPickerProviders = Array.from(
-    new Map(
-      modelPickerModels
-        .filter((model) => model.providerId)
-        .map((model) => {
-          const connection = modelConnections.find(
-            (candidate) => candidate.id === model.providerId,
-          );
-          // The rail represents a connection, not whichever model entry was
-          // last encountered. Station-mode choices are eligibility-filtered in
-          // the selection hook; external catalogs retain their own status.
-          const available = connection
-            ? connection.enabled && connection.status === 'ready'
-            : model.available !== false;
-          return [
-            model.providerId!,
-            {
-              id: model.providerId!,
-              name: model.providerName ?? model.providerId!,
-              available,
-              ...(!available
-                ? {
-                    detail:
-                      model.unavailableReason ??
-                      connection?.status ??
-                      'Unavailable',
-                  }
-                : {}),
-            },
-          ];
-        }),
-    ).values(),
+  const pickerProviders = modelPickerProviders(
+    modelPickerModels,
+    modelConnections,
   );
 
   // archive#3027: Enable, shared with Home's composer. In the composer it
@@ -2071,7 +2043,7 @@ export function NewChatModal({
                 returnFocusTarget={modelPickerTrigger.current}
                 models={modelPickerModels}
                 loading={modelPickerLoading}
-                providers={modelPickerProviders}
+                providers={pickerProviders}
                 currentProviderId={
                   pickerChoiceFor(modelPickerAgent)?.providerId ??
                   modelPickerDefault?.providerId

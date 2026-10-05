@@ -18,6 +18,10 @@ import {
   resolveEffectiveModel,
   runtimeCatalogSourceLabel,
 } from '../../utils/execution';
+import type {
+  ModelProviderOption,
+  SelectableModel,
+} from '../../utils/modelCapabilities';
 import {
   AUTHORED_BAND_LABEL,
   ENGINE_BAND_LABEL,
@@ -660,3 +664,46 @@ export {
   isProviderManagedAgent,
   resolveNewChatAgentEnable,
 };
+
+/**
+ * The Model picker's provider rail: one entry per connection the Agent's
+ * Models come from. The rail represents a connection, not whichever model
+ * entry was last encountered; Station-mode choices are eligibility-filtered
+ * in the selection hook, and external catalogs keep their own status. Shared
+ * by the dock's list mode and the start composer's picker.
+ */
+export function modelPickerProviders(
+  models: SelectableModel[],
+  modelConnections: ConnectionConfig[],
+): ModelProviderOption[] {
+  return Array.from(
+    new Map(
+      models
+        .filter((model) => model.providerId)
+        .map((model) => {
+          const connection = modelConnections.find(
+            (candidate) => candidate.id === model.providerId,
+          );
+          const available = connection
+            ? connection.enabled && connection.status === 'ready'
+            : model.available !== false;
+          return [
+            model.providerId!,
+            {
+              id: model.providerId!,
+              name: model.providerName ?? model.providerId!,
+              available,
+              ...(!available
+                ? {
+                    detail:
+                      model.unavailableReason ??
+                      connection?.status ??
+                      'Unavailable',
+                  }
+                : {}),
+            },
+          ];
+        }),
+    ).values(),
+  );
+}
