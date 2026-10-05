@@ -704,6 +704,18 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   read by both gates). Anyone else gets `403 working-directory-not-granted`
   and nothing is saved; an update that sends the folder the Project already
   has is not a change, and every other Project edit keeps its operate tier.
+  The rule is the same wherever a request names a folder to start in: a
+  session start whose `target.workspace` is `{ kind: 'directory' }` (`POST
+  /api/orchestration/chat`, `/chat/delegated`, `/chat/background`,
+  `/conversations/:id/handoff` and `/delegations`) is refused with the same
+  `403 working-directory-not-granted` for a paired device without
+  `coding:exec`, and nothing is started
+  ([`workspace-authority.ts`](../../src-server/routes/orchestration/workspace-authority.ts),
+  reading `mayChooseWorkingDirectory` beside the Project gate). A `delegation`
+  device and a `standard` device alike need the grant: `terminal:operate` is
+  not the authority. A `kind: 'project'` target is already confined to that
+  Project's folder and is unchanged, and the operator in person and a
+  station-control tool call (confined by `scopeDispatch`) keep their own rules.
 
 The same owner also gates elevation to the `never` approval posture through
 `mayGrantFullAccess`: an Agent cannot grant full access to itself or another

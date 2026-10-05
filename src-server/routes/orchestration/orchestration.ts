@@ -177,6 +177,7 @@ import {
   scopeDispatch,
   withCanonicalCwd,
 } from './dispatch-scope.js';
+import { refuseUngrantedDirectoryWorkspace } from './workspace-authority.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -1951,6 +1952,11 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       if (
         body.skillExperience &&
         (body.automaticBackground || !body.clientTurnId)
@@ -2269,6 +2275,11 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.target.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        const directoryRefused = refuseUngrantedDirectoryWorkspace(
+          c,
+          body.target,
+        );
+        if (directoryRefused) return directoryRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.handoffConversation({
@@ -2605,6 +2616,11 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       // #2377 slice C2a: a new task starts in the Project the body names.
       const scoped = scopeDispatch(
         c,

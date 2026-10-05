@@ -36,6 +36,18 @@ apply to each tool operation.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Choosing a working folder on a session start
+
+A body whose `target.workspace` is `{ kind: 'directory', cwd }` starts an engine
+in a folder on the Station's computer, so a paired device needs the same
+authority as setting a Project's folder: the operator's `coding:exec` grant. A
+device without it, including a `delegation` or `standard` preset device, gets
+`403` with `code: 'working-directory-not-granted'` and nothing starts. The rule
+covers `POST /api/orchestration/delegations`, `/chat`, `/chat/delegated`,
+`/chat/background` and `/conversations/:conversationId/handoff`. A
+`{ kind: 'project' }` workspace is unchanged. The operator, and the desktop app
+on the Station's own computer, are not paired-device callers for this rule.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned

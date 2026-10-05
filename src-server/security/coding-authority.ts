@@ -94,6 +94,47 @@ export function mayRunCommandsOnHost(
 }
 
 /**
+ * The refusal code for choosing a folder on this computer without the
+ * authority to run commands there. One code for every route that takes a
+ * folder, so the Project routes and the session-start routes cannot answer
+ * the same rule two ways.
+ */
+export const WORKING_DIRECTORY_NOT_GRANTED_CODE =
+  'working-directory-not-granted' as const;
+
+/**
+ * Choosing a working folder takes the same authority as running commands
+ * there: the folder is where an engine session or a Project's coding routes
+ * run. The one rule behind `POST /api/projects`' and `PUT
+ * /api/projects/:slug`' `workingDirectory` and behind a session start that
+ * names a plain folder.
+ */
+export function mayChooseWorkingDirectory(
+  request: Request,
+  grantedScope: string | undefined,
+): boolean {
+  return mayRunCommandsOnHost(request, grantedScope);
+}
+
+/**
+ * Whether a session start that names a plain folder must be refused: the
+ * caller is a paired device that may not choose one. Callers that are not
+ * paired devices (the operator, Station's own server code, and a
+ * station-control tool call, which `scopeDispatch` confines) keep their own
+ * rules, and a Project target never reaches this because it is already
+ * confined to the Project's folder.
+ */
+export function pairedDeviceMayNotChooseDirectory(
+  request: Request,
+  grantedScope: string | undefined,
+): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (principal?.kind === 'internal') return false;
+  if (principal?.authority !== 'device-credential') return false;
+  return !mayChooseWorkingDirectory(request, grantedScope);
+}
+
+/**
  * #2436 (owner decision 2026-09-23): whether this request may put a session,
  * or an Agent's default, at full access (approval posture `never`). The
  * operator in person, or a caller the auth boundary accepted whose granted
