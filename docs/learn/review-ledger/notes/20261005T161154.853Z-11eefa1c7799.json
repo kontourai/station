@@ -1,0 +1,9 @@
+{
+  "revision": "0b545fa45309d8988c6848b43d5c466d42324afb",
+
+  "notes": [
+    {"path":"docs/reference/issue-lifecycle.md","note":"labels.json gains the advisory-review label; label-manifest.mjs expects it. The doc names labels.json as the canonical inventory and describes labels:check and reconcile, which still hold. The lifecycle reducer does not touch the new label.","inputs":["docs/reference/issue-lifecycle.md",".github/labels.json"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gains the new child-process test advisory-review-gate.test.ts, as the doc requires for new child-process tests. No other claim changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
