@@ -564,10 +564,16 @@ export async function loadAgentTools(
         const registered = native.tools;
         const normalized = normalizeLoadedMCPTools(
           agentSlug,
-          registered.map((tool) => ({
-            ...tool,
-            name: `${toolId}_${tool.name}`,
-          })),
+          // Plain Station tools typed as `Tool`, as `toStationMCPTool` does
+          // for every other MCP tool: `toVoltAgentTool` wraps them at the
+          // model seam, which is what marks their JSON Schema for the AI SDK.
+          registered.map(
+            (tool) =>
+              ({
+                ...tool,
+                name: `${toolId}_${tool.name}`,
+              }) as unknown as Tool<any>,
+          ),
           toolNameMapping,
           toolNameReverseMapping,
           provenanceGeneration,
