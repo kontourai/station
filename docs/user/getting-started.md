@@ -450,7 +450,7 @@ gone. You can open these conversations, and so can every device you have
 paired with Activity read access, including a phone.
 
 To stop reading conversations from folders outside your Projects, turn off
-**Settings → Station host → Conversations outside projects**
+**Conversations outside projects** in **Settings → Advanced** (under Station host), then **Save**
 (`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
 next check. Conversations it already read stay in Activity. Conversations
 inside a Project are read either way.
