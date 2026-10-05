@@ -1,7 +1,8 @@
 import { expect } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
 import { contrastRatio } from './helpers/color-contrast';
-import { test } from './helpers/fixture-audit';
+import { agentConnectionFixture } from './helpers/connection-fixtures';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   installMockOrchestrationConversationEventWindow,
@@ -255,6 +256,143 @@ test.describe('MCP elicitation form (#3284)', () => {
         elicitationContent: { name: 'Ada', age: 36, color: 'blue' },
       },
     ]);
+    browserHealth.assertHealthy();
+  });
+});
+
+/**
+ * #3284, in a real browser: an MCP prompt from the agent's tool view is
+ * offered in the composer's slash menu as `/<server>:<prompt>` with an MCP
+ * badge. The chat runs on Station's engine with an MCP server in its tool
+ * view, which is what opens the menu's MCP gate.
+ */
+test.describe('MCP prompt in the slash menu (#3284)', () => {
+  test('typing /fixture lists /fixture:summarize with an MCP badge at desktop and 390px', async ({
+    page,
+  }, testInfo) => {
+    const browserHealth = await monitorBrowserHealth(page);
+    await seedActiveChats(page, [
+      {
+        sessionId: 'session-1',
+        conversationId: 'conv-1',
+        agentSlug: 'dev-agent',
+        agentConnectionId: 'station-runtime',
+        orchestrationSessionStarted: true,
+        ephemeralMessages: [],
+        inputHistory: [],
+      },
+    ]);
+    await installMockOrchestrationSse(page);
+    await seedOrchestrationRoutes(page);
+    await installMockOrchestrationConversationEventWindow(
+      page,
+      (conversationId) => (conversationId === 'conv-1' ? ['session-1'] : []),
+    );
+    // Registered after the shared routes, so these answers win.
+    await page.route('**/api/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              slug: 'dev-agent',
+              name: 'Dev Agent',
+              description: 'Test agent',
+              updatedAt: '2026-01-01T00:00:00Z',
+              execution: { agentConnectionId: 'station-runtime' },
+              toolsConfig: { mcpServers: ['fixture'], autoApprove: [] },
+            },
+          ],
+        },
+      }),
+    );
+    await page.route('**/api/connections/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            agentConnectionFixture({
+              id: 'station-runtime',
+              type: 'station',
+              name: 'Station',
+              config: { engineId: 'station' },
+            }),
+          ],
+        },
+      }),
+    );
+    const promptListings: string[] = [];
+    await page.route('**/agents/dev-agent/mcp-prompts', (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      promptListings.push(route.request().url());
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            prompts: [
+              {
+                command: 'fixture:summarize',
+                serverId: 'fixture',
+                name: 'summarize',
+                description: 'Summarize a topic in a chosen tone.',
+                arguments: [
+                  { name: 'topic', required: true },
+                  { name: 'tone', required: false },
+                ],
+              },
+            ],
+            unavailable: [],
+          },
+        },
+      });
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/projects/dev/layouts/code?chat=conv-1');
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+    await page.addStyleTag({
+      content:
+        '*, *::before, *::after { transition: none !important; animation: none !important; }',
+    });
+    const composer = page.locator('textarea[placeholder*="Type a message"]');
+    await expect(composer).toBeVisible();
+    const menu = page.getByRole('listbox', { name: 'Suggestions' });
+    const row = menu.getByRole('option', { name: /\/fixture:summarize/ });
+
+    const check = async (context: string) => {
+      await composer.fill('');
+      await composer.pressSequentially('/fixture');
+      await expect(row).toBeVisible();
+      await expect(row.getByText('/fixture:summarize')).toBeVisible();
+      await expect(row.getByText('MCP', { exact: true })).toBeVisible();
+      await expect(
+        row.getByText('Summarize a topic in a chosen tone. · <topic> [tone]'),
+      ).toBeVisible();
+      for (const theme of ['light', 'dark'] as const) {
+        await page.evaluate((value) => {
+          document.documentElement.setAttribute('data-theme', value);
+        }, theme);
+        await expect(row).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`slash-menu-${context}-${theme}.png`),
+          fullPage: false,
+        });
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+        `${context}: no horizontal overflow`,
+      ).toBe(true);
+    };
+
+    await check('desktop');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await check('mobile-390');
+    expect(promptListings.length).toBeGreaterThan(0);
     browserHealth.assertHealthy();
   });
 });
