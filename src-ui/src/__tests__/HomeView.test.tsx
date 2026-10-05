@@ -963,9 +963,7 @@ describe('HomeView', () => {
     });
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
 
     expect(focus).not.toHaveBeenCalled();
     expect(showSurface).toHaveBeenCalledWith('activity', {
