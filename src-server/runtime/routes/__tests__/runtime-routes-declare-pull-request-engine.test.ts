@@ -134,7 +134,16 @@ describe('an external engine declares a pull request: the Task shows it, a merge
 
   afterEach(async () => {
     __resetStationControlMcpTokensForTests();
-    for (const close of closers.splice(0)) await close();
+    const failures: unknown[] = [];
+    for (const close of closers.splice(0)) {
+      try {
+        await close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length)
+      throw new AggregateError(failures, 'Engine declaration teardown failed');
   });
 
   async function setup() {
