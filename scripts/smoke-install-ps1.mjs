@@ -39,6 +39,9 @@
 //      ports; archive 1 again is refused as a downgrade; the installed
 //      install.ps1 uninstalls, keeping the data; and an install root another
 //      account can write is refused, its Node.js never run.
+//   7. a profile path that is not ASCII: the launcher stays ASCII through
+//      %USERPROFILE% and runs the installed version, and passes an argument
+//      with `^` and `%` unchanged, with the environment it sets.
 // Windows only: it drives powershell.exe, pwsh.exe and NTFS junctions.
 import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -240,12 +243,18 @@ function runAsync(
   args,
   env,
   cwd = undefined,
-  { startsStation = false } = {},
+  { startsStation = false, verbatim = false } = {},
 ) {
   // The server answers in this process, so the child must not block it:
   // spawn and wait on its exit rather than spawnSync.
   return new Promise((done) => {
-    const child = spawn(program, args, { env, windowsHide: true, cwd });
+    const child = spawn(program, args, {
+      env,
+      windowsHide: true,
+      cwd,
+      // A cmd.exe line quoted by hand, so `^` and `%` reach the launcher.
+      windowsVerbatimArguments: verbatim,
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => {
@@ -390,6 +399,117 @@ function assertRestrictedToUser(path) {
 // 6. The full install (#2675 W2): install, upgrade through the launcher,
 // downgrade refusal, uninstall, and an install root another account can
 // write.
+/** A user profile's ACL: the user, SYSTEM and Administrators alone. */
+function hardenLikeProfile(path) {
+  const result = spawnSync(
+    win32.join(systemRoot, 'System32', 'icacls.exe'),
+    [
+      path,
+      '/inheritance:r',
+      '/grant:r',
+      `${process.env.USERNAME}:(OI)(CI)F`,
+      '*S-1-5-18:(OI)(CI)F',
+      '*S-1-5-32-544:(OI)(CI)F',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  check(result.status === 0, `icacls failed: ${result.stdout}${result.stderr}`);
+}
+
+// 7. A profile whose path is not ASCII (#2675 W2 review): cmd.exe reads a
+// batch file in the OEM code page, so the launcher names its paths through
+// %USERPROFILE% and must still run the installed version. A probe standing
+// in for bin\station.cmd shows the launcher's environment and that an
+// argument with `^` and `%` arrives unchanged (no CALL).
+async function nonAsciiProfile() {
+  const unicodeProfile = join(work, 'profile-José');
+  mkdirSync(unicodeProfile, { recursive: true });
+  hardenLikeProfile(unicodeProfile);
+  const stationRoot = join(unicodeProfile, '.station');
+  const installed = await runFile(
+    windowsPowerShell,
+    environment(stationRoot, publish('w2-unicode', first), {
+      USERPROFILE: unicodeProfile,
+      STATION_INSTALL_STAGE_ONLY: '',
+      STATION_INSTALL_NO_START: '1',
+    }),
+  );
+  check(installed.status === 0, 'install under a non-ASCII profile failed');
+  const launcher = join(
+    unicodeProfile,
+    '.local',
+    'bin',
+    `station-${first.runtime}.cmd`,
+  );
+  const text = readFileSync(launcher, 'utf8');
+  check(
+    /^[\x20-\x7e\r\n]*$/.test(text) && text.includes('%USERPROFILE%'),
+    `the launcher is not ASCII through %USERPROFILE%:\n${text}`,
+  );
+  // Only what a fresh console has: no STATION_* variables.
+  const bare = {
+    SystemRoot: systemRoot,
+    windir: systemRoot,
+    ComSpec: win32.join(systemRoot, 'System32', 'cmd.exe'),
+    PATH,
+    PATHEXT: '.COM;.EXE;.BAT;.CMD',
+    TEMP: process.env.TEMP,
+    TMP: process.env.TMP,
+    USERPROFILE: unicodeProfile,
+  };
+  const cmd = win32.join(systemRoot, 'System32', 'cmd.exe');
+  const version = await runAsync(
+    cmd,
+    ['/d', '/c', launcher, '--version'],
+    bare,
+  );
+  check(
+    version.status === 0 && version.stdout.includes(`Station ${first.tag}`),
+    'the launcher under a non-ASCII profile did not run the installed version',
+  );
+
+  const node = join(
+    stationRoot,
+    'installs',
+    first.runtime,
+    'versions',
+    first.version,
+    'runtime',
+    'node.exe',
+  );
+  const probeScript = join(work, 'launcher-probe.js');
+  writeFileSync(
+    probeScript,
+    'process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), root: process.env.STATION_ROOT, channel: process.env.STATION_CHANNEL }));\n',
+  );
+  const probe = join(work, 'launcher-probe.cmd');
+  writeFileSync(probe, `@"${node}" "${probeScript}" %*\r\n`);
+  const lines = text.split('\r\n');
+  const last = lines.findIndex((line) => line.endsWith('station.cmd" %*'));
+  check(last > 0, 'the launcher has no hand-over line');
+  lines[last] = `"${probe}" %*`;
+  const probed = join(work, 'launcher-probed.cmd');
+  writeFileSync(probed, lines.join('\r\n'));
+  const argument = 'x^y%STATION_NO_SUCH%z';
+  const run = await runAsync(
+    cmd,
+    ['/d', '/s', '/c', `""${probed}" "${argument}""`],
+    bare,
+    undefined,
+    { verbatim: true },
+  );
+  check(run.status === 0, 'the probed launcher failed');
+  const seen = JSON.parse(lastLine(run.stdout));
+  check(
+    seen.argv.length === 1 && seen.argv[0] === argument,
+    `the launcher changed the argument: ${JSON.stringify(seen.argv)}`,
+  );
+  check(
+    seen.root === stationRoot && seen.channel === first.runtime,
+    `the launcher's environment: ${JSON.stringify(seen)}`,
+  );
+}
+
 async function fullInstall() {
   const stationRoot = join(profile, 'w2');
   const installRoot = join(stationRoot, 'installs', first.runtime);
@@ -577,19 +697,7 @@ try {
   // A user profile grants only the user, SYSTEM and Administrators (the
   // runner's temporary directory may grant more); the launcher directory
   // beneath it must not be writable by anyone else.
-  const harden = spawnSync(
-    win32.join(systemRoot, 'System32', 'icacls.exe'),
-    [
-      profile,
-      '/inheritance:r',
-      '/grant:r',
-      `${process.env.USERNAME}:(OI)(CI)F`,
-      '*S-1-5-18:(OI)(CI)F',
-      '*S-1-5-32-544:(OI)(CI)F',
-    ],
-    { encoding: 'utf8', windowsHide: true },
-  );
-  check(harden.status === 0, `icacls failed: ${harden.stdout}${harden.stderr}`);
+  hardenLikeProfile(profile);
   // Long enough that versions\<v>\<deepest path> crosses MAX_PATH.
   const suffix = `\\installs\\${first.runtime}\\versions\\${first.version}\\`;
   // Beneath the (smoke's) user profile: install.ps1 refuses any other root
@@ -846,6 +954,7 @@ try {
     );
   }
   await fullInstall();
+  await nonAsciiProfile();
   console.log('install.ps1 smoke passed.');
 } finally {
   server.close();
