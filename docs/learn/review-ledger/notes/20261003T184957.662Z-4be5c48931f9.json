@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Re-recorded after a main merge reset the record. Re-read against the inventory edit (two entries removed, two re-described); the pattern's inventory guidance still describes the gate as run. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

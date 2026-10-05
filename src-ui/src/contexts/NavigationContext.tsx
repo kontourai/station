@@ -33,6 +33,7 @@ export type NavigationActions = {
     layoutSlug: string,
     options?: {
       openFilePreviewIntent?: OpenFilePreviewIntent;
+      from?: 'pane';
       preserveChatProjectDefault?: boolean;
     },
   ) => void;
@@ -94,6 +95,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       layoutSlug: string,
       options?: {
         openFilePreviewIntent?: OpenFilePreviewIntent;
+        from?: 'pane';
         preserveChatProjectDefault?: boolean;
       },
     ) => {

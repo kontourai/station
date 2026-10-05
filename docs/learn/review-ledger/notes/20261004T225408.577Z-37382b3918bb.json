@@ -1,0 +1,7 @@
+{
+  "revision": "d664121cf822aaef5235658e8c128ec71159ef77",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Merge delta in packages/shared/src/usage-rollup.ts: #3300's receipt reconciliation (sequence-ordered, sparse cumulative restatements keep omitted components) is extracted unchanged as reconcileUsageReceiptObservations and now also used by the conversation usage tree. The guide's claims that the receipt fold owns rollup grouping, and its Usage with children section, remain accurate; no prose change.","inputs":["docs/guides/monitoring.md","packages/shared/src/usage-rollup.ts"]}
+  ]
+}

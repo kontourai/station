@@ -59,6 +59,19 @@ describe('pending message disclosure', () => {
   });
 });
 
+describe('#3157 usage-limit hold', () => {
+  it('says why the queue is held, even while collapsed, and only while held', () => {
+    const { rerender } = render(
+      <QueuedMessages sessionId="s1" messages={['next']} heldByUsageLimit />,
+    );
+    expect(screen.getByRole('status').textContent).toBe(
+      'Held because of the usage limit. Send now to send anyway.',
+    );
+    rerender(<QueuedMessages sessionId="s1" messages={['next']} />);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
 describe('pending message actions', () => {
   it('shows persisted mode and coalesces repeated Send now clicks for the selected row', async () => {
     let resolve!: () => void;

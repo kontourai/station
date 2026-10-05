@@ -429,7 +429,7 @@ test('conversation timeline crosses execution history, preserves the live draft,
   expect(liveAnchor?.key).toBeTruthy();
   const openHistory = async () => {
     await page.getByRole('button', { name: 'Chat actions' }).click();
-    await page.getByRole('menuitem', { name: 'Conversation history' }).click();
+    await page.getByRole('menuitem', { name: 'History', exact: true }).click();
   };
   await openHistory();
   await expect(page.getByText('History', { exact: true })).toBeVisible();

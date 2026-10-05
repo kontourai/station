@@ -170,6 +170,14 @@ export interface ConnectionRecoveryIntent {
   /** Whether the prepared dispatch had staged a credential profile. */
   dispatchKind?: 'due' | 'profile';
   resumedTurnId?: string;
+  /** Why Station left this intent to the user or retired it unsent. */
+  outcomeReason?: ConnectionRecoveryOutcomeReason;
+  /**
+   * #3157: armed from a provider usage-limit stop (`UsageLimitFailureDetails`).
+   * Only these intents are gated by `usageLimitAutoResume` and re-checked
+   * against the conversation before an unattended resume.
+   */
+  usageLimit?: true;
   createdAt: string;
   updatedAt: string;
 }
@@ -183,5 +191,47 @@ export interface ConnectionRecoveryProjection {
   dueAt?: string;
   attempts: number;
   maxAttempts: number;
+  outcomeReason?: ConnectionRecoveryOutcomeReason;
+  /** #3157: the intent came from a provider usage-limit stop. */
+  usageLimit?: true;
+  /**
+   * #3157: on a usage-limit intent still waiting (`armed`), whether the
+   * `usageLimitAutoResume` setting currently lets it run unattended at
+   * `dueAt`. The setting is applied only when the resume is due, so this can
+   * change while it waits. Absent when the reader did not consult it.
+   */
+  autoResume?: boolean;
   updatedAt: string;
+}
+
+/**
+ * #3157: why a usage-limit intent did not resume on its own. A `manual`
+ * intent carries `auto-resume-off`. A `canceled` intent carries
+ * `superseded`, `request-pending`, `session-ended` or `user-canceled` when one
+ * of those retired it; other cancellations (a Stop, shutdown) carry no reason.
+ */
+export type ConnectionRecoveryOutcomeReason =
+  /** The user has not turned on automatic resume after usage limits. */
+  | 'auto-resume-off'
+  /** A newer turn started in the conversation before the resume ran. */
+  | 'superseded'
+  /** The Session was waiting on an open request when the resume was due. */
+  | 'request-pending'
+  /** The Session closed or no longer exists. */
+  | 'session-ended'
+  /** The user chose Cancel auto-resume on the banner while it waited. */
+  | 'user-canceled';
+
+/**
+ * #3157: `runtime.error` details an engine adapter attaches when the provider
+ * itself reported a usage limit. The classifier reads `usageLimit` as a
+ * `rate-limit` failure; `resetAt` is the provider's own reset time and is
+ * absent when the provider gave none, which keeps the stop manual. Adapters
+ * never derive it from message text (#2265).
+ */
+export interface UsageLimitFailureDetails {
+  usageLimit: true;
+  scope: 'account';
+  /** ISO 8601 instant the limited window resets, as the provider reported it. */
+  resetAt?: string;
 }

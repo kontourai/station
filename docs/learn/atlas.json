@@ -46,6 +46,7 @@
         "SessionLifecycleModule",
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",
+        "SessionMessageDelivery",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",
@@ -157,6 +158,7 @@
         "examples/meeting-notes/README.md"
       ],
       "modules": [
+        "StationKnowledgeMcpServer",
         "KnowledgeStoreProvider",
         "SqliteVecIndexProvider",
         "KnowledgeFileTransactions",

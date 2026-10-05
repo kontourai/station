@@ -1429,9 +1429,10 @@ describe('Orchestration Routes', () => {
       parentAgentSlug: 'derived-parent',
       rootAgentSlug: 'derived-root',
     };
-    const resolveRequestDelegation = vi
-      .fn()
-      .mockResolvedValue(resolvedDelegation);
+    const resolveRequestDelegation = vi.fn().mockResolvedValue({
+      context: resolvedDelegation,
+      provenance: 'runtime-attested',
+    });
     const app = createOrchestrationRoutes({} as any, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
@@ -1483,6 +1484,7 @@ describe('Orchestration Routes', () => {
     );
     const forwarded = executeForegroundMessage.mock.lastCall![0];
     expect(forwarded.delegation).toEqual(resolvedDelegation);
+    expect(forwarded.delegationProvenance).toBe('runtime-attested');
     expect(forwarded).not.toHaveProperty('delegationAttestation');
 
     // Without a resolver, no claimed context is ever stamped.

@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDock.tsx's change (Needs-you publication to a folding host) adds no configuration. No prose change.","inputs":["docs/reference/config.md","packages/contracts/src/agent.ts","pnpm-lock.yaml","schemas/agent.schema.json","src-server/routes/chat/chat.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/frameworks/strands-tool-loader.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/security/runtime-request-security.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

@@ -78,7 +78,7 @@ describe("every surface that names a session's model agrees (#1536 B5)", () => {
   ])('%s', (_case, modelId, expected) => {
     // Dock header identity row.
     expect(chatModelLabel(modelId, catalog)).toBe(expected);
-    // Home's "Continue most recent work" card and the sidebar's Open chats
+    // Home's Continue card and the sidebar's Open chats
     // rows, through their catalog-less default (the prettified id path).
     expect(defaultResolveModelLabel(modelId)).toBe(modelIdentityLabel(modelId));
     expect(modelIdentityLabel(modelId, catalog)).toBe(expected);

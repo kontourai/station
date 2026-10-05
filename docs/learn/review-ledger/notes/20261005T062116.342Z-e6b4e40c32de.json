@@ -1,0 +1,7 @@
+{
+  "revision": "f24710bf1963e2cd50547942485081ae6381b117",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Second fix round: folderless projects are now choosable on both chips and run in the home folder (ContextPickerOptions badge, chip folder text Runs in your home folder, resolveNewChatInitialContext keeps a folderless active project), so removed the folderless refusal and the bound-folderless-falls-back-to-No-project sentences. HomeStartComposer clearSent removes only the sent text; a dismissed hand-off returns the dock's edited text (NewChatModal onDraftChange -> useChatDockOverlays onClosed draft -> newChatIntent) into an empty field, else behind Restore your earlier draft (swap) / Discard it; rewrote those two paragraphs. ChatDock/ChatDockModalStack only thread the draft callback.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/lib/newChatIntent.ts"]}
+  ]
+}

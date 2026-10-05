@@ -28,14 +28,30 @@ export function useCodingChatPositionEffects({
   projectSlug,
   paneHostOpen,
   ownsMobileDock,
+  existingPreviewFor,
+  focusExisting,
 }: {
   projectId: string;
   projectSlug: string;
   paneHostOpen: WorkspacePaneHostOpenAction | null;
   ownsMobileDock: boolean;
+  /**
+   * The id of a preview the host already holds for this path, when the
+   * host can say (the Coding stack can: its rail names each preview's
+   * path). A reloaded or shared URL that names both a preview pane and its
+   * intent then shows the one preview rather than opening a second.
+   */
+  existingPreviewFor?: (path: string) => string | null;
+  /** Shows that existing preview, in the host's own way. */
+  focusExisting?: (instanceId: string) => void;
 }) {
   const isMobile = useIsMobile();
-  const { openFilePreviewIntent, setDockState, updateParams } = useNavigation();
+  const {
+    openFilePreviewIntent,
+    openFilePreviewIntentFrom,
+    setDockState,
+    updateParams,
+  } = useNavigation();
 
   useEffect(() => {
     if (!isMobile || !ownsMobileDock) return;
@@ -45,6 +61,15 @@ export function useCodingChatPositionEffects({
 
   useEffect(() => {
     if (!openFilePreviewIntent || !paneHostOpen) return;
+    // The Files pane's own row write: it opens its own preview, whichever
+    // page or panel it is on.
+    if (openFilePreviewIntentFrom === 'pane') return;
+    const existing = existingPreviewFor?.(openFilePreviewIntent.path) ?? null;
+    if (existing && focusExisting) {
+      focusExisting(existing);
+      updateParams(clearOpenFilePreviewIntent());
+      return;
+    }
     const state = {
       version: '1.0' as const,
       projectSlug,
@@ -76,7 +101,10 @@ export function useCodingChatPositionEffects({
       updateParams(clearOpenFilePreviewIntent());
     }
   }, [
+    existingPreviewFor,
+    focusExisting,
     openFilePreviewIntent,
+    openFilePreviewIntentFrom,
     paneHostOpen,
     projectId,
     projectSlug,

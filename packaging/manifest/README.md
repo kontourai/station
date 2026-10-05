@@ -40,7 +40,7 @@ shape is no longer accepted by the installer or manifest CLI.
 | --- | --- | --- |
 | v1: `artifacts.macos` and `artifacts.portable`, stable/preview | Manifest CLI `create`; ecosystem dry-run fixture | CLI `verify`/`cask`; `install.sh` selects `station-portable.tar.gz` |
 | Former v2: `artifacts.portable`, including Nightly | Historical installer fixtures | Refused by current `install.sh` and manifest CLI |
-| Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` then `create`; owner-gated portable Nightly workflow | CLI `verify`, shared verifier, macOS/Linux `install.sh` host selection, and the Windows `install.ps1` core (stage-only so far); no cask rendering |
+| Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` then `create`; owner-gated portable Nightly workflow | CLI `verify`, shared verifier, macOS/Linux `install.sh` host selection, and the Windows `install.ps1` core; no cask rendering |
 
 [release-manifest.mjs](../../packages/shared/src/release-manifest.mjs) and
 [portable-server-targets.mjs](../../packages/shared/src/portable-server-targets.mjs)

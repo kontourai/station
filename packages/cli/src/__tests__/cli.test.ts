@@ -826,6 +826,8 @@ describe('runCli', () => {
       serverPort: 3242,
       consentPort: 3245,
       uiPort: 5274,
+      // #3268: start forwards --watch; absent here, so false.
+      watch: false,
     });
   });
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   appendFileSync,
@@ -26,6 +26,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
 };
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
@@ -467,7 +468,7 @@ export function validateSelectedTestFiles(root, files) {
 
 function git(root, args) {
   try {
-    return execFileSync('git', args, {
+    return execFileSyncBounded('git', args, {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

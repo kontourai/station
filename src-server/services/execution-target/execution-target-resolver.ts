@@ -362,7 +362,12 @@ async function resolveWorkspace(
     };
   }
 
-  if (workspace.kind === 'project-portable') {
+  if (
+    workspace.kind === 'project-portable' ||
+    // #2875: a prepared intent resolves exactly like the portable intent;
+    // its version check runs in the delegation owner after admission.
+    workspace.kind === 'project-portable-prepared'
+  ) {
     // #484 phase A: the portable intent has NO caller-owned address — no
     // slug, no cwd, no isolation override. The whole workspace resolves
     // from the receiver-owned admission; a composition without one refuses

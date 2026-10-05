@@ -1,0 +1,7 @@
+{
+  "revision": "847bf52e5aba19f0117665d70b560ef568fdacf7",
+
+  "notes": [
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed the generated Knowledge-module addition and its source delta against this retained documentation role. The learning-tree entry uses the existing Knowledge branch and points to the five-tool factory and owner/access evidence. Existing source/record authority, static Docs behavior, capture provenance and historical limits remain unchanged; no runtime or release qualification is inferred from generated content.","inputs":["examples/repository-knowledge-graph/README.md"]}
+  ]
+}
