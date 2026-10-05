@@ -6,12 +6,3 @@
   flex: 0 0 auto;
   border-radius: var(--radius-pill);
 }
-
-/* A glyph icon (an emoji) scales with the icon box. BrandIcon's own glyph
-   size is a percentage of the INHERITED text size, which drew a project's
-   emoji at ~8px in a 12px row mark and the same ~10px in a 48px header;
-   `--icon-size` is the box BrandIcon sets inline. */
-.project-icon .brand-icon__glyph {
-  font-size: calc(var(--icon-size, 24px) * 0.72);
-  line-height: 1;
-}

@@ -178,17 +178,34 @@ export function ProjectSidebarRow({
           {/* #2150: an initials monogram (`CA`, `FE`) at 18px is a smudge,
               it would land in the accessible name ("CA Campfit"), and the
               design record draws the accent bar beside it for identity -- so
-              an icon-less project shows the bar alone (`fallback="none"`).
-              A project WITH an icon keeps the bar AND the icon: the bar is
-              the colour every surface shares, the icon is identity the user
-              chose. `ProjectIcon` draws only what the icon rule accepts, so
-              a legacy remote URL is never hotlinked from here. */}
-          <ProjectIcon
-            project={project}
-            size={collapsed ? 28 : 18}
-            fallback="none"
-            className="sidebar__project-icon"
-          />
+              an icon-less project never shows initials. A project WITH an
+              icon keeps the bar AND the icon: the bar is the colour every
+              surface shares, the icon is identity the user chose.
+              `ProjectIcon` draws only what the icon rule accepts, so a legacy
+              remote URL is never hotlinked from here.
+
+              Expanded, every row reserves the icon's slot, so names line up
+              whether or not a project has an icon. An icon-less project
+              leaves it empty: the bar already carries its colour, and a dot
+              there would read as a status or presence dot. The collapsed
+              rail has no names to align, so it draws only an icon there. */}
+          {collapsed ? (
+            <ProjectIcon
+              project={project}
+              size={28}
+              fallback="none"
+              className="sidebar__project-icon"
+            />
+          ) : (
+            <span className="sidebar__project-icon-slot" aria-hidden="true">
+              <ProjectIcon
+                project={project}
+                size={18}
+                fallback="none"
+                className="sidebar__project-icon"
+              />
+            </span>
+          )}
           <span className="sidebar__project-name">{project.name}</span>
           {liveCount > 0 && (
             <>
