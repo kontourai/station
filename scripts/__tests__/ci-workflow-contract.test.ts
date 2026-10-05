@@ -315,6 +315,7 @@ describe('CI verification workflow contracts', () => {
       | undefined;
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
+      '.github/workflows/qualification-health.yml',
       '.github/workflows/container-smoke.yml',
       '.github/workflows/secret-scan.yml',
       '.github/workflows/android-test.yml',

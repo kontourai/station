@@ -567,6 +567,31 @@ stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
 service refuses changes that would create a shadow copy.
 
+### Connected accounts (#3279)
+
+An integration whose definition sets `credentialOwnership: {owner: "principal"}`
+uses each person's own account instead of the shared Station credential. A turn
+uses only the credential of the principal it runs as (a credential narrowed to the
+Agent's Project first, then the person's own). A person without one gets a
+"connect your account" refusal; the shared credential is used only when
+`allowInstanceFallback` is `true`. The owner is the request's resolved human
+`PrincipalRef.id`; a paired device without a person, a non-human principal, and a
+hosted request cannot own an account.
+
+`POST /integrations/:id/oauth/authorize` and `POST /integrations/:id/oauth/callback`
+accept optional `owner` (`"self"` or, when fallback is allowed, `"instance"`) and
+`projectSlug`. A person's consent flow is keyed by the principal who started it, so
+only that principal's callback can complete it, and it never changes the
+integration's shared `probe.authorization`. A successful first connection records
+the tool catalog Agents load that integration's tools from.
+
+`GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+owner and availability only, never a token. `DELETE /integrations/:id/account`
+removes the caller's own credential; the next call that needs it refuses.
+
+MCP Apps reads and calls are not available yet for these integrations.
+
 ### Delete Integration
 
 `DELETE /integrations/:id` returns `{success: true}` after deletion.
@@ -1012,6 +1037,11 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
+Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
+OpenAI-compatible Model connection; its current address/key are resolved at
+launch. `config.modelRoute` is a secret-free discovery projection, not an
+editable credential. Selecting a missing/disabled proxy refuses launch.
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.
