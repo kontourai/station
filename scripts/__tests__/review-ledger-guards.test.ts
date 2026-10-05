@@ -609,6 +609,19 @@ describe('note archives (#3394)', () => {
     ]);
   });
 
+  it('still refuses a removal the added archive does not carry', () => {
+    const f = compactionFixture();
+    // Known bad: the command's compaction plus one note it left loose.
+    git(f.root, ['rm', '-q', f.n2]);
+    commit(f.root, 'compaction that also drops a later note');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    // n1 left into the archive; only n2 is refused.
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ rule: 'note-removed', path: f.n2 }),
+    ]);
+  });
+
   it('refuses a removal into an archive that already existed at the merge base', () => {
     const f = compactionFixture();
     commit(f.root, 'compact');
@@ -820,6 +833,19 @@ describe('note archives (#3394)', () => {
       ),
     ).toEqual(['ledger/note.json']);
     expect(existsSync(join(root, 'ledger/note.json'))).toBe(false);
+  });
+
+  it("tracks archives under the repository's real ignore rules", () => {
+    const repo = resolve(scripts, '..');
+    const ignored = (path: string) =>
+      spawnSync('git', ['check-ignore', '-q', '--no-index', path], {
+        cwd: repo,
+        env: gitEnv(),
+        windowsHide: true,
+      }).status;
+    // The root .gitignore drops every other archive/ directory (exit 0).
+    expect(ignored('tmp/archive/x.json')).toBe(0);
+    expect(ignored(noteArchiveFile('d'.repeat(40)))).toBe(1);
   });
 
   it("compiles the repository's real notes identically once archived", () => {
