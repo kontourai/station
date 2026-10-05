@@ -5,6 +5,7 @@ import {
   readFileSync,
   realpathSync,
   statSync,
+  utimesSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -661,6 +662,48 @@ describe('OpenCodeSessionSource', () => {
     ).toHaveLength(2);
     // Six messages: yields before the third and the fifth.
     expect(yieldFn).toHaveBeenCalledTimes(2);
+  });
+
+  test('sees a commit that leaves every file size and mtime unchanged', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', ['Question']);
+    const running = store.assistant('ses_main', user, { completed: false });
+    store.text('ses_main', running, 'Answer.');
+    const checkpoint = () => store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    const files = [store.path, `${store.path}-wal`];
+    // One coarse clock tick for every write in this test.
+    const tick = 1_790_000_000;
+    const pinClock = () => {
+      for (const file of files) utimesSync(file, tick, tick);
+    };
+    checkpoint();
+    pinClock();
+    const stats = files.map((file) => statSync(file));
+
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const first = await source.read(session);
+    expect(first.outcome).toBe('incomplete_tail');
+
+    // A coarse clock: the reply completes in place within one mtime tick.
+    store.completeAssistant('ses_main', running, user, 'stop');
+    checkpoint();
+    pinClock();
+    expect(files.map((file) => statSync(file).size)).toEqual(
+      stats.map((stat) => stat.size),
+    );
+    expect(files.map((file) => statSync(file).mtimeMs)).toEqual(
+      stats.map((stat) => stat.mtimeMs),
+    );
+
+    await source.discover();
+    const second = await source.read(session, first.cursor);
+    expect(second.events.map((event) => event.method)).toEqual([
+      'content.text-delta',
+      'turn.completed',
+    ]);
   });
 
   test('reads a live WAL store without writing to it', async () => {

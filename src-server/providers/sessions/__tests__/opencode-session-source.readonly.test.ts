@@ -6,7 +6,12 @@ import { OpenCodeSessionSource } from '../opencode-session-source.js';
 import { OpenCodeFixtureWriter } from './opencode-fixture.js';
 
 const opened = vi.hoisted(
-  () => [] as Array<{ path: string; options: unknown }>,
+  () =>
+    [] as Array<{
+      path: string;
+      options: unknown;
+      db: import('node:sqlite').DatabaseSync;
+    }>,
 );
 
 // Observe every connection opened in this file. The fixture writer's own
@@ -18,9 +23,9 @@ vi.mock('node:sqlite', async (importOriginal) => {
       path: string,
       options?: ConstructorParameters<typeof real.DatabaseSync>[1],
     ) {
-      opened.push({ path, options });
       if (options === undefined) super(path);
       else super(path, options);
+      opened.push({ path, options, db: this });
     }
   }
   return { ...real, DatabaseSync: ObservedDatabaseSync };
@@ -96,4 +101,45 @@ test('an unchanged store is answered without opening it, and a change is read ag
     'turn.completed',
   ]);
   expect(opened.length).toBeGreaterThan(before);
+});
+
+function seededStore(prefix: string): string {
+  const dataDir = join(realpathSync(tempDir(prefix)), 'opencode');
+  writer = new OpenCodeFixtureWriter(dataDir);
+  writer.session('ses_main', '/workspace/project');
+  const user = writer.user('ses_main', ['Hello']);
+  const answer = writer.assistant('ses_main', user, { finish: 'stop' });
+  writer.text('ses_main', answer, 'Hi.');
+  return dataDir;
+}
+
+test('a connection whose statement failed is closed, not leaked', async () => {
+  const dataDir = seededStore('station-opencode-leak-');
+  const source = new OpenCodeSessionSource({ dataDir, warn: () => {} });
+  const before = opened.length;
+  const session = (await source.discover()).sessions[0]!;
+  const connection = opened.slice(before).find((entry) => entry.options);
+  expect(connection?.db.isOpen).toBe(true);
+  vi.spyOn(connection!.db, 'prepare').mockImplementation(() => {
+    throw Object.assign(new Error('disk I/O error'), {
+      code: 'ERR_SQLITE_ERROR',
+    });
+  });
+  // The store changed, so the read cannot be answered from the drained cache.
+  writer!.touch('ses_main');
+  expect((await source.read(session)).outcome).toBe('rejected_candidate');
+  expect(connection!.db.isOpen).toBe(false);
+});
+
+test('close releases every connection the source holds', async () => {
+  const dataDir = seededStore('station-opencode-close-');
+  const source = new OpenCodeSessionSource({ dataDir });
+  const before = opened.length;
+  const session = (await source.discover()).sessions[0]!;
+  await source.read(session);
+  const held = opened.slice(before).filter((entry) => entry.options);
+  expect(held.length).toBeGreaterThan(0);
+  expect(held.every((entry) => entry.db.isOpen)).toBe(true);
+  source.close();
+  expect(held.every((entry) => !entry.db.isOpen)).toBe(true);
 });

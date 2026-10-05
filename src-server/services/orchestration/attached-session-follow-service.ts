@@ -323,9 +323,22 @@ export class AttachedSessionFollowService {
   }
 
   stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = undefined;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+    // A source may hold store handles (OpenCode's SQLite connections) between
+    // polls; none should outlive following.
+    for (const source of this.options.sources) {
+      try {
+        source.close?.();
+      } catch (error) {
+        this.options.logger?.warn('Attached-session source failed to close', {
+          source: sourceLabel(source),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   /**

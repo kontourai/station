@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import {
+  closeSync,
+  constants,
   existsSync,
   lstatSync,
+  openSync,
   readdirSync,
+  readSync,
   realpathSync,
   statSync,
 } from 'node:fs';
@@ -768,8 +772,23 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (connection) this.dropConnection(database.path, connection);
       return { ok: false, outcome: 'rejected_candidate' };
     } finally {
-      if (connection) connection.active -= 1;
+      if (connection) {
+        connection.active -= 1;
+        // A connection dropped while in use (a failed statement, or a new
+        // poll starting mid-read) is closed by its last user.
+        if (
+          connection.active === 0 &&
+          this.connections.get(database.path) !== connection
+        ) {
+          closeQuietly(connection.db);
+        }
+      }
     }
+  }
+
+  /** Release every held connection (the follower is stopping). */
+  close(): void {
+    this.closeConnections();
   }
 
   private connectionFor(database: DatabaseRegistration): {
@@ -799,11 +818,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     if (this.connections.get(path) === connection)
       this.connections.delete(path);
     if (connection.active > 0) return;
-    try {
-      connection.db.close();
-    } catch {
-      // Closing a read-only handle has nothing to flush.
-    }
+    closeQuietly(connection.db);
   }
 
   private closeConnections(): void {
@@ -842,10 +857,24 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   }
 }
 
+function closeQuietly(db: DatabaseSync): void {
+  try {
+    if (db.isOpen) db.close();
+  } catch {
+    // Closing a read-only handle has nothing to flush.
+  }
+}
+
+/** SQLite's two copies of the WAL-index header at the start of `-shm`. */
+const WAL_INDEX_HEADER_BYTES = 96;
+
 /**
- * Size and modification time of the database and its WAL. Every commit
- * appends to the WAL and every checkpoint writes the database, so an
- * unchanged signature means no transaction committed since it was taken.
+ * A change signature for the store: size and modification time of the
+ * database and its WAL, plus the WAL-index header in `-shm`. That header
+ * carries SQLite's per-transaction change counter (`iChange`), `mxFrame` and
+ * the WAL salts, so a commit changes the signature even when it lands within
+ * one mtime tick and leaves every file size the same. The header is read
+ * without SQLite's lock: a torn read can only cause a spurious refresh.
  */
 function storeSignature(path: string): string {
   const describe = (file: string): string => {
@@ -856,7 +885,24 @@ function storeSignature(path: string): string {
       return '-';
     }
   };
-  return `${describe(path)}|${describe(`${path}-wal`)}`;
+  return `${describe(path)}|${describe(`${path}-wal`)}|${walIndexHeader(`${path}-shm`)}`;
+}
+
+function walIndexHeader(shm: string): string {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(
+      shm,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    const header = Buffer.alloc(WAL_INDEX_HEADER_BYTES);
+    const read = readSync(descriptor, header, 0, header.length, 0);
+    return header.subarray(0, read).toString('hex');
+  } catch {
+    return '-';
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
 }
 
 function schemaMismatch(db: DatabaseSync): string | null {

@@ -1,7 +1,7 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { OpenCodeFixtureWriter } from '../../../providers/sessions/__tests__/opencode-fixture.js';
 import { OpenCodeSessionSource } from '../../../providers/sessions/opencode-session-source.js';
@@ -176,6 +176,34 @@ test("Station's own OpenCode session, run through ACP, is not imported a second 
       ]),
     );
     expect(store.readSessions()).toHaveLength(2);
+  } finally {
+    store.close();
+    writer.close();
+  }
+});
+
+test('stopping the follower closes the OpenCode store connections', async () => {
+  const directory = realpathSync(tempDir('station-opencode-stop-'));
+  const dataDir = join(directory, 'opencode');
+  const project = join(directory, 'project');
+  mkdirSync(project);
+  const writer = new OpenCodeFixtureWriter(dataDir);
+  writer.session('ses_fixture', project);
+  turn(writer, 'ses_fixture', 'Question', 'Answer');
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  const source = new OpenCodeSessionSource({ dataDir });
+  const close = vi.spyOn(source, 'close');
+  try {
+    const follow = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [{ slug: 'fixture', workingDirectory: project }],
+    });
+    follow.start();
+    await follow.pollNow();
+    follow.stop();
+    expect(close).toHaveBeenCalledTimes(1);
   } finally {
     store.close();
     writer.close();
