@@ -920,6 +920,40 @@ describe('Home and the dock start the same way', () => {
       expect(screen.queryByRole('group', { name: 'Earlier draft' })).toBeNull();
     });
 
+    // Only the text that was sent leaves the field: words typed while the
+    // start was pending stay.
+    test('text typed while a start is pending survives the start', async () => {
+      const taken: CustomEvent[] = [];
+      window.addEventListener('station:open-new-chat', (event) => {
+        event.preventDefault();
+        taken.push(event as CustomEvent);
+      });
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'First' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      fireEvent.change(field(), { target: { value: 'First, and then more' } });
+      act(() => taken.at(-1)!.detail.onClosed('started'));
+      expect(field().value).toBe('First, and then more');
+    });
+
+    // Second review F3: what comes back is the dock's edited text, not the
+    // text Home sent.
+    test('a dismissed hand-off brings back the text as edited in the dock', async () => {
+      const taken: CustomEvent[] = [];
+      window.addEventListener('station:open-new-chat', (event) => {
+        event.preventDefault();
+        taken.push(event as CustomEvent);
+      });
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Sent from Home' } });
+      await handOffSkills();
+      act(() =>
+        taken.at(-1)!.detail.onClosed('dismissed', 'Sent from Home, edited'),
+      );
+      expect(field().value).toBe('Sent from Home, edited');
+    });
+
     test('a started chat clears the field; a dismissed start keeps it', async () => {
       const taken: CustomEvent[] = [];
       const dock = (event: Event) => {
@@ -939,4 +973,33 @@ describe('Home and the dock start the same way', () => {
       window.removeEventListener('station:open-new-chat', dock);
     });
   });
+});
+
+test("the dock's draft reports its text as it changes, so a dismissal can return it", () => {
+  const onDraftChange = vi.fn();
+  render(
+    <AuthorityPersistenceContext.Provider
+      value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+    >
+      <NewChatModal
+        startSurface
+        agents={state.agents as AgentData[]}
+        projects={state.projects as ProjectMetadata[]}
+        activeProjectSlug={deviceSettingsStore.get('chatDockProjectSlug')}
+        projectBindable
+        initialPrompt="From Home"
+        onDraftChange={onDraftChange}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </AuthorityPersistenceContext.Provider>,
+  );
+  const dock = screen.getByRole('dialog', { name: 'New chat' });
+  fireEvent.change(
+    within(dock).getByRole('textbox', { name: 'What would you like done?' }),
+    { target: { value: 'From Home, edited in the dock' } },
+  );
+  expect(onDraftChange).toHaveBeenLastCalledWith(
+    'From Home, edited in the dock',
+  );
 });
