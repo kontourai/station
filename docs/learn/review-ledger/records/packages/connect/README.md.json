@@ -50,7 +50,13 @@
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
 
-    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx"
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [

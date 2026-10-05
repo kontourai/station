@@ -146,7 +146,13 @@
 
     "src-desktop/src/native_account_operations.rs",
 
-    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [

@@ -310,7 +310,11 @@
 
     "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx",
 
-    "src-server/routes/system/relay-management-routes.ts"
+    "src-server/routes/system/relay-management-routes.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [
