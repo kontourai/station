@@ -103,10 +103,11 @@ export function isConversationContinuationPending(
 
 /**
  * Whether the session ever started a turn (any `turn.*` event on record).
- * Known gap: a second send that resolves in the instant between a first turn's
- * dispatch and its `turn.started` write sees no turn and may stop the
- * predecessor mid-start; the window is a single event write and the stop is
- * best effort, so it is accepted rather than guarded.
+ * This is only the eligibility hint for naming a predecessor to retire. A send
+ * that resolves between a first turn's dispatch and its `turn.started` write
+ * sees no turn here, so the stop is re-decided when it runs:
+ * `OrchestrationService.retireNeverRanSession` re-checks turn facts, in-flight
+ * turns and "no longer current" under the Session's lifecycle lock.
  */
 function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
   return detail.events.some((event) => event.method.startsWith('turn.'));
@@ -351,6 +352,31 @@ export class ConversationLineage {
         resumeSupported,
       ),
     };
+  }
+
+  /**
+   * #3112: every execution Session of a durable conversation, in lineage
+   * order. An id with no lineage of its own — a pre-lineage conversation, or
+   * a child Session addressed directly — is its own single Session.
+   */
+  conversationSessionIds(conversationId: string): string[] {
+    const lineage =
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [];
+    return lineage.length > 0
+      ? lineage.map((entry) => entry.sessionId)
+      : [conversationId];
+  }
+
+  /**
+   * #3112: the durable conversation a successor execution Session continues,
+   * or undefined for a conversation's own root Session and for an id with no
+   * lineage.
+   */
+  successorConversationId(sessionId: string): string | undefined {
+    const lineage = this.deps.eventStore?.conversationForSession(sessionId);
+    return lineage && lineage.conversationId !== sessionId
+      ? lineage.conversationId
+      : undefined;
   }
 
   /** Current replaceable Session for a durable conversation; legacy falls back to its id. */

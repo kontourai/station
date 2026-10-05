@@ -192,6 +192,20 @@ export function NewChatModal({
   const [draftAgentSlug, setDraftAgentSlug] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const submitInFlight = useRef(false);
+  // The control that opened the model picker; focus returns there on close.
+  const modelPickerTrigger = useRef<HTMLElement | null>(null);
+  // Every opening goes through here so the picker always knows where to
+  // return focus: the clicked control when there is one, otherwise whatever
+  // holds focus (Send or the message after a setup return).
+  const openModelPicker = (agent: AgentData, trigger?: HTMLElement) => {
+    modelPickerTrigger.current =
+      trigger ??
+      (document.activeElement instanceof HTMLElement &&
+      document.activeElement !== document.body
+        ? document.activeElement
+        : null);
+    setModelPickerAgent(agent);
+  };
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const composerFirst =
     startSurface &&
@@ -620,7 +634,7 @@ export function NewChatModal({
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
       );
-      setModelPickerAgent(agent);
+      openModelPicker(agent);
       return;
     }
     const isPreferredForkAgent =
@@ -1452,7 +1466,9 @@ export function NewChatModal({
                   type="button"
                   className="choice-trigger"
                   aria-label={`Model: ${modelFor(draftAgent).label}`}
-                  onClick={() => setModelPickerAgent(draftAgent)}
+                  onClick={(event) =>
+                    openModelPicker(draftAgent, event.currentTarget)
+                  }
                 >
                   {modelFor(draftAgent).label}{' '}
                   <ArrowDownGlyph className="choice-caret" />
@@ -1705,7 +1721,7 @@ export function NewChatModal({
                       modelUnavailable={
                         modelsForAgent(agent).length === 0 && !modelsLoading
                       }
-                      onOpenModel={() => setModelPickerAgent(agent)}
+                      onOpenModel={() => openModelPicker(agent)}
                       interactionDisabled={
                         mode?.pending || checkingSetup || setupReturn.pending
                       }
@@ -1735,12 +1751,14 @@ export function NewChatModal({
               fallback={
                 <ModelPickerDialogFrame
                   onClose={() => setModelPickerAgent(null)}
+                  returnFocusTarget={modelPickerTrigger.current}
                 >
                   <SkeletonList count={3} label="Loading models" />
                 </ModelPickerDialogFrame>
               }
             >
               <SessionModelPicker
+                returnFocusTarget={modelPickerTrigger.current}
                 models={modelPickerModels}
                 loading={modelPickerLoading}
                 providers={modelPickerProviders}

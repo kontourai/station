@@ -101,4 +101,44 @@ describe('HttpTransferRecorder', () => {
       12,
     );
   });
+
+  test('counts debounced activity frames apart from event frames and names them', async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write('event: orchestration:caughtUp\ndata: {}\n\n');
+      response.write('event: orchestration:event\nid: 1\ndata: {}\n\n');
+      response.write(
+        'event: orchestration:activity\ndata: {"conversation":{}}\n\n',
+      );
+      response.end('event: orchestration:event\nid: 2\ndata: {}\n\n');
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('no listener');
+    closers.push(
+      () =>
+        new Promise<void>((resolveClose) => server.close(() => resolveClose())),
+    );
+    const recorder = new HttpTransferRecorder(
+      `http://127.0.0.1:${address.port}`,
+    );
+    const response = await recorder.transport(
+      `http://127.0.0.1:${address.port}/activity`,
+      {},
+    );
+    await response.text();
+    const [attempt] = recorder.attempts;
+    expect(attempt).toMatchObject({ frames: 3, activityFrames: 1 });
+    expect(attempt!.eventIdentities.map((item) => item.event)).toEqual([
+      'orchestration:caughtUp',
+      'orchestration:event',
+      'orchestration:activity',
+      'orchestration:event',
+    ]);
+    // Bytes still count: the activity frame is on the wire.
+    expect(attempt!.decodedBodyBytes).toBeGreaterThan(
+      'event: orchestration:activity\ndata: {"conversation":{}}\n\n'.length,
+    );
+  });
 });

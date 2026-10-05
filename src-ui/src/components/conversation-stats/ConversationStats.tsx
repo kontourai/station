@@ -1,3 +1,7 @@
+import {
+  StationHttpError,
+  useConversationUsageTreeQuery,
+} from '@kontourai/station-sdk';
 import { useEffect } from 'react';
 import { useStats } from '../../contexts/StatsContext';
 import { LazyBoundary } from '../LazyBoundary';
@@ -14,6 +18,12 @@ import { LazyBoundary } from '../LazyBoundary';
  * tab is hidden (React Query's `refetchIntervalInBackground` default).
  */
 const STATS_REFRESH_MS = 2_000;
+/**
+ * The usage tree walks every session the conversation launched (a scan of
+ * session-start records per depth level), so it is refreshed far less often
+ * than the stats read, and not at all after a 404 or 422.
+ */
+const USAGE_TREE_REFRESH_MS = 15_000;
 
 const loadConversationStatsModal = () =>
   import('./ConversationStatsModal').then((m) => ({
@@ -47,6 +57,16 @@ export function ConversationStats({
     refetch,
     loading: isLoading,
   } = useStats(agentSlug, conversationId, apiBase, isVisible, STATS_REFRESH_MS);
+
+  // The usage tree is a separate read: a conversation with no orchestration
+  // record (404) simply has no breakdown, which is not a stats failure.
+  const usageTree = useConversationUsageTreeQuery(conversationId, apiBase, {
+    enabled: isVisible,
+    refetchInterval: isVisible ? USAGE_TREE_REFRESH_MS : false,
+  });
+  const usageTreeMissing =
+    usageTree.error instanceof StationHttpError &&
+    usageTree.error.status === 404;
 
   // The message count is the trigger that reflects the conversation; the poll
   // above is what covers the window in which the server has not written the
@@ -82,6 +102,10 @@ export function ConversationStats({
         error,
         onRetry: () => void refetch(),
         onToggle,
+        usageTree: usageTree.data,
+        usageTreeLoading:
+          usageTree.isPending && usageTree.fetchStatus !== 'idle',
+        usageTreeError: usageTreeMissing ? undefined : usageTree.error,
       }}
       pending={null}
     />

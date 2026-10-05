@@ -45,6 +45,20 @@ interface ScenarioSource {
   finishHeavyTurn(): Promise<void>;
 }
 
+/**
+ * Exact `orchestration:activity` frames each source's live phase carries. The
+ * route flushes one 100ms after a trailing coalesced event that carried no
+ * activity binding. Station-native ends its heavy turn with such an event
+ * (`session.state-changed`), the external engine does not. The scenario waits
+ * for that frame before closing the stream, so a slow host cannot close the
+ * stream first: the frame and its bytes are always in the phase, and two
+ * baseline captures compare equal. Capture and tests read this one table.
+ */
+export const ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES = Object.freeze({
+  'external-engine': 0,
+  'station-native': 1,
+} as const);
+
 interface Budget {
   wireBytes: number;
   decodedBytes: number;
@@ -60,6 +74,9 @@ export class TransferMeasurementFailure extends Error {
       limit: Budget;
       eventIdentities: TransferAttempt['eventIdentities'];
       truncated: boolean;
+      /** Set when the phase's frame count, not a byte ceiling, was refused. */
+      activityFrames?: number;
+      expectedFrames?: number;
     },
   ) {
     super(`orchestration transfer scenario: ${message}`);
@@ -76,6 +93,7 @@ interface MeasureOrchestrationTransferOptions {
   recorder: {
     attempts: TransferAttempt[];
     checkpoint(): void;
+    activityFramesSinceCheckpoint(): number;
   };
   sdk: {
     getOrchestrationSessionEventWindow<T>(
@@ -94,6 +112,8 @@ interface MeasureOrchestrationTransferOptions {
     ): SseConnection;
   };
   budget: Record<string, Budget>;
+  /** Deadline for each internal barrier; the capture derives it from its bound. */
+  barrierTimeoutMs?: number;
 }
 
 export function groupTransferEventsByTurn(
@@ -113,10 +133,15 @@ function fail(message: string): never {
   throw new Error(`orchestration transfer scenario: ${message}`);
 }
 
-async function until(predicate: () => boolean, description: string) {
-  const deadline = performance.now() + 5_000;
+async function untilWithin(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs: number,
+) {
+  const deadline = performance.now() + timeoutMs;
   while (!predicate()) {
-    if (performance.now() > deadline) fail(`barrier timed out: ${description}`);
+    if (performance.now() > deadline)
+      fail(`barrier timed out after ${timeoutMs}ms: ${description}`);
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
 }
@@ -220,6 +245,8 @@ export async function measureOrchestrationTransfer(
   finalCursor: number;
 }> {
   const { source } = options;
+  const until = (predicate: () => boolean, description: string) =>
+    untilWithin(predicate, description, options.barrierTimeoutMs ?? 5_000);
   await source.seedRetained();
   const retained = options.store
     .listEvents(source.threadId)
@@ -288,6 +315,19 @@ export async function measureOrchestrationTransfer(
       }),
     `${source.scenario} heavy terminal delivered live`,
   );
+  const expectedActivity =
+    ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES[source.scenario];
+  const activityWaitMs = options.barrierTimeoutMs ?? 5_000;
+  const activityDeadline = performance.now() + activityWaitMs;
+  while (options.recorder.activityFramesSinceCheckpoint() < expectedActivity) {
+    // Unlike the other barriers this one waits for an event the route owes,
+    // so a miss is reported as a possible regression, not as host load.
+    if (performance.now() > activityDeadline)
+      fail(
+        `${source.scenario} trailing activity frame did not arrive within ${activityWaitMs}ms: the live phase saw ${options.recorder.activityFramesSinceCheckpoint()} activity frames, expected ${expectedActivity}. This may be a regression in the route's trailing activity flush, not only host load; check it before raising the timeout`,
+      );
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
   live.connection.close();
   await until(
     () => options.recorder.attempts.length === 3,
@@ -375,8 +415,32 @@ export async function measureOrchestrationTransfer(
     phase(source.scenario, name, options.recorder.attempts[index]),
   );
   assertWithinBudget(phases, options.budget, options.recorder.attempts);
-  if (phases[2]?.frames !== source.heavyLiveFrameCount)
-    fail(`${source.scenario} live phase did not contain one heavy turn`);
+  options.recorder.attempts.forEach((attempt, index) => {
+    const expected =
+      index === 2
+        ? ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES[source.scenario]
+        : 0;
+    if (attempt.activityFrames !== expected)
+      fail(
+        `${source.scenario}/${ORCHESTRATION_TRANSFER_PHASE_NAMES[index]} carried ${attempt.activityFrames} activity frames, expected ${expected}`,
+      );
+  });
+
+  if (phases[2]?.frames !== source.heavyLiveFrameCount) {
+    const attempt = options.recorder.attempts[2]!;
+    throw new TransferMeasurementFailure(
+      `${source.scenario} live phase did not contain one heavy turn: frames ${phases[2]?.frames} != ${source.heavyLiveFrameCount}, activityFrames ${attempt.activityFrames}`,
+      {
+        kind: 'station-transfer-failure',
+        phase: phases[2]!,
+        limit: options.budget.live!,
+        eventIdentities: attempt.eventIdentities,
+        truncated: attempt.frames > attempt.eventIdentities.length,
+        activityFrames: attempt.activityFrames,
+        expectedFrames: source.heavyLiveFrameCount,
+      },
+    );
+  }
   const finalCursor = options.service.readEventStreamHead();
   return { phases, beforeHeavyCursor, shortReplayCursor, finalCursor };
 }

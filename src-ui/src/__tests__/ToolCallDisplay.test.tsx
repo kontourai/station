@@ -433,6 +433,8 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
 
     // Bare infinitive — past tense would claim work that has not happened.
     expect(screen.getByText('Edit approved.txt')).toBeTruthy();
+    // The marker says what the status pill says (#3312).
+    expect(screen.getByRole('img', { name: 'Needs approval' })).toBeTruthy();
     expect(screen.queryByText('Edited approved.txt')).toBe(null);
     fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
     expect(onApprove).toHaveBeenCalledWith('once');

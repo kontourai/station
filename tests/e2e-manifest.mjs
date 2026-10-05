@@ -437,6 +437,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // instance with a sibling spec.
     'tests/agents-editor-gates.spec.ts',
     'tests/skills-command-routes.spec.ts',
+    // Creates a live project, suspends every LLM connection while it runs one
+    // real turn in that project, and saves the project's icon.
+    'tests/project-icons.spec.ts',
     // D9 resets the whole notification store and acknowledges every pending
     // attention item to get a deterministic bell count; D8 creates, deletes
     // and re-creates two projects by fixed slug. Both are instance-wide
@@ -818,6 +821,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted project lifecycle lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-icons.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "An icon set after creation, end to end: the settings picker uploads a real PNG, the live server validates and persists it, and the sidebar row, a Home row for a real session in that project, and the dock project switcher all draw the stored image. Live because the Home row and the persistence are the server's.",
     exceptions: [],
   },
   {
@@ -1701,7 +1714,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock.',
+      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock. Past the wide fold (#3040, #3051): a rail pick opens the tool beside Chat without a history entry, the Terminal in a lower panel under both, keyboard resizing that survives a reload, per-conversation panels, the fold crossed with a draft kept, one bar with Chat’s verbs as named icons (#3046), the inbox folding for a tool and keeping the reader’s own choice, a file opened from Files landing beside Chat by replace, the folded inbox’s edge strip (hover, keyboard, the reader’s choice) and the fold judged again on resize.',
     exceptions: [],
   },
   {

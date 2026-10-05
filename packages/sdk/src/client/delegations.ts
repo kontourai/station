@@ -794,6 +794,11 @@ export interface DelegationAttemptView {
   taskId?: string;
   /** Present only when `state === 'accepted'`: the real initial turn id. */
   turnId?: string;
+  /**
+   * Present only when `state === 'refused'` and the refusal carried a closed
+   * code, such as `execution_preparation_version_mismatch` (#2875).
+   */
+  refusalCode?: string;
 }
 
 /**

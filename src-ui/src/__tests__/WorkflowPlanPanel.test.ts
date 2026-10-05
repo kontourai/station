@@ -114,7 +114,7 @@ describe('deriveWorkflowRuntimeStrip — runtime-state strip derivation', () => 
         status: 'running',
       }),
     ).toEqual({
-      label: 'Approval required (2)',
+      label: 'Needs approval (2)',
       tone: 'attention',
       live: true,
     });
@@ -123,23 +123,23 @@ describe('deriveWorkflowRuntimeStrip — runtime-state strip derivation', () => 
   test('in-flight tool activity is a live state', () => {
     expect(
       deriveWorkflowRuntimeStrip({ isProcessingStep: true, status: 'idle' }),
-    ).toEqual({ label: 'Tool activity running', tone: 'live', live: true });
+    ).toEqual({ label: 'Running · tool', tone: 'live', live: true });
   });
 
   test('awaiting-approval status is an attention state', () => {
     expect(deriveWorkflowRuntimeStrip({ status: 'awaiting-approval' })).toEqual(
-      { label: 'Awaiting approval', tone: 'attention', live: true },
+      { label: 'Needs approval', tone: 'attention', live: true },
     );
   });
 
   test('running/sending status is a live state', () => {
     expect(deriveWorkflowRuntimeStrip({ status: 'running' })).toEqual({
-      label: 'Engine running',
+      label: 'Running',
       tone: 'live',
       live: true,
     });
     expect(deriveWorkflowRuntimeStrip({ status: 'sending' })).toEqual({
-      label: 'Engine running',
+      label: 'Running',
       tone: 'live',
       live: true,
     });
@@ -147,12 +147,12 @@ describe('deriveWorkflowRuntimeStrip — runtime-state strip derivation', () => 
 
   test('completed/exited status is a complete, non-live state', () => {
     expect(deriveWorkflowRuntimeStrip({ status: 'completed' })).toEqual({
-      label: 'Engine complete',
+      label: 'Done',
       tone: 'complete',
       live: false,
     });
     expect(deriveWorkflowRuntimeStrip({ status: 'exited' })).toEqual({
-      label: 'Engine complete',
+      label: 'Done',
       tone: 'complete',
       live: false,
     });

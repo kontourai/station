@@ -1,0 +1,7 @@
+{
+  "revision": "064e1d22843c435c6aefad5aec840397258a0c36",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Read the generated station-docs-content.ts delta against origin/main: the documentation digest changed and the only topic body that differs is the DeploymentAuthentication architecture topic, which gained the module-map paragraph naming the operator passkey enrollment owners (docs:mcp:generate output). This page documents how station-docs serves compiled content (list, retrieve, case-insensitive substring search, version and digest meaning) and makes no claim about a particular digest or topic body, so its claims stand.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

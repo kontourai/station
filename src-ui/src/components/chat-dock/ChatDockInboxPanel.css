@@ -86,14 +86,12 @@
 
 .chat-dock-inbox__group-label,
 .chat-dock-inbox__section-toggle {
+  /* The words and their face are WorkGroupLabel's; this is placement. */
   min-height: 28px;
   margin: 0;
   padding: var(--space-1) var(--space-2);
   color: var(--text-tertiary);
   font-size: var(--text-xs);
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .chat-dock-inbox__section-toggle {
@@ -176,21 +174,6 @@
 }
 
 /* Sheet-host count badge beside a group label (kontourai/station#3312). */
-.chat-dock-inbox__group-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  margin-left: var(--space-2);
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: var(--text-2xs);
-  letter-spacing: 0;
-}
-
 /**
  * Compact chrome (kontourai/station#3314): the project sidebar's Open chats
  * mini-inbox — same row anatomy, tighter geometry for a rail.

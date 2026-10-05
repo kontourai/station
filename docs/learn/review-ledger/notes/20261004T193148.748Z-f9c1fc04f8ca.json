@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"No prose change: grep found no claim about attention items, paired-Station requests, the delegated respond route or request-route access; runtime-routes only wires the attention route viewerMayRespondToPeerTask (HTTP route gate plus station-control approve scope); runtime-request-security only generalizes isRuntimeRequestPrincipalCurrent into a route-parameterized predicate with unchanged behaviour for its callers.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/runtime-request-security.ts"]}
+  ]
+}

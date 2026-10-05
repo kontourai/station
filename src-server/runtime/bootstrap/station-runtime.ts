@@ -141,6 +141,10 @@ import {
   VirtualApplicationIngress,
 } from '../../services/connections/virtual-application.js';
 import { ConsentChannelService } from '../../services/consent/consent-channel.js';
+import {
+  parseTrustedConsentOrigin,
+  TRUSTED_CONSENT_ORIGIN_ENV,
+} from '../../services/consent/consent-origin.js';
 import { AssignmentClaimService } from '../../services/evidence/assignment-claim-service.js';
 import type { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
@@ -149,6 +153,8 @@ import {
   type FeaturePreviewSelector,
 } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
+import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
+import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
@@ -1105,8 +1111,19 @@ export class StationRuntime {
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
-  public readonly consentChannel = new ConsentChannelService();
+  // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
+  public readonly consentChannel = new ConsentChannelService({
+    trustedOrigin: parseTrustedConsentOrigin(
+      process.env[TRUSTED_CONSENT_ORIGIN_ENV],
+    ),
+  });
   private consentListener: ConsentListener | null = null;
+  // #3257 (S2b): the operator passkey enrollment ceremony. The registry file is
+  // created only when a ceremony actually begins (which needs
+  // STATION_TRUSTED_CONSENT_ORIGIN), so a Station that never enrolls a passkey
+  // never creates the database; it is closed with the other private stores.
+  private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
+  private operatorPasskeys?: OperatorPasskeyEnrollmentService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
@@ -4130,6 +4147,33 @@ export class StationRuntime {
    * refusal — and never degrades open. This deliberately does NOT copy the
    * MCP frame proxy's silent `resolve(null)` optional-degrade shape.
    */
+  /**
+   * The enrollment service, or undefined where it must not exist (hosted
+   * tenants, D11). Opening the store is deferred to first use, and a store
+   * that cannot open privately fails that call closed; it never blocks startup.
+   */
+  private getOperatorPasskeys(): OperatorPasskeyEnrollmentService | undefined {
+    if (this.operatorPasskeys) return this.operatorPasskeys;
+    if (isHostedTenantExecutionRequired()) return undefined;
+    this.operatorPasskeyRegistry = new LazyOperatorPasskeyRegistry(
+      this.configLoader.getProjectHomeDir(),
+    );
+    this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      resolveDevice: (deviceId) => {
+        const device = this.environmentSecurityService.devicePairing
+          .listDevices()
+          .find((item) => item.id === deviceId);
+        return device && device.revokedAt === null
+          ? { scope: device.scope }
+          : null;
+      },
+      logger: this.logger,
+    });
+    return this.operatorPasskeys;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -4161,6 +4205,7 @@ export class StationRuntime {
         channel: this.consentChannel,
         credentials: this.environmentSecurityService,
         logger: this.logger,
+        passkeys: this.getOperatorPasskeys(),
       }),
       port,
       host: this.host,
@@ -4235,6 +4280,7 @@ export class StationRuntime {
       environmentSecurityService: this.environmentSecurityService,
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
+      operatorPasskeys: this.getOperatorPasskeys(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -4808,6 +4854,13 @@ export class StationRuntime {
     try {
       this.applicationSessions?.close();
       this.applicationSessions = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.operatorPasskeyRegistry?.close();
+      this.operatorPasskeyRegistry = undefined;
+      this.operatorPasskeys = undefined;
     } catch (error) {
       failures.push(error);
     }

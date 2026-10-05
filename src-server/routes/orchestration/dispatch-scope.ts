@@ -18,7 +18,10 @@ import type {
   StationControlDispatchTargetRef,
   StationControlProjectAction,
 } from '../../runtime/mcp/station-control-dispatch-scope.js';
-import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  isPrincipalScopedAgentRequest,
+  stationControlRequestAuthority,
+} from '../../security/station-control-request-authority.js';
 import {
   type DispatchCwdAdmission,
   DispatchCwdRefusedError,
@@ -202,6 +205,69 @@ export function refuseRemoteForStationControlCaller(
 }
 
 /**
+ * #2377 slice C3b (owner decision 2026-10-03): the `modelOptions` keys that
+ * choose an approval posture. `approvalMode` is Station's posture; `mode` is
+ * an ACP session mode (`bypassPermissions`, `full-access` and the like);
+ * `permissionMode` is Claude's raw permission mode; `autoMode` toggles
+ * Claude's auto-approval classifier. Refused whatever their value: Station
+ * does not rank postures, so even a stricter one is not accepted from an
+ * agent.
+ */
+export const POSTURE_OPTION_KEYS = [
+  'approvalMode',
+  'mode',
+  'permissionMode',
+  'autoMode',
+] as const;
+
+/** A body field that may carry a posture, by its path in the request body. */
+export interface PostureCarrier {
+  readonly path: string;
+  readonly value: unknown;
+  /** `pick`: the field itself is a posture; `options`: a `modelOptions` bag. */
+  readonly kind: 'pick' | 'options';
+}
+
+/** The posture fields a request body carries, by path. */
+function carriedPostureFields(carriers: readonly PostureCarrier[]): string[] {
+  const fields: string[] = [];
+  for (const carrier of carriers) {
+    if (carrier.value === undefined) continue;
+    if (carrier.kind === 'pick') {
+      fields.push(carrier.path);
+      continue;
+    }
+    if (!carrier.value || typeof carrier.value !== 'object') continue;
+    for (const key of POSTURE_OPTION_KEYS)
+      if (Object.hasOwn(carrier.value, key))
+        fields.push(`${carrier.path}.${key}`);
+  }
+  return fields;
+}
+
+/**
+ * #2377 slice C3b: a station-control caller that is not a bound operator
+ * may not choose the approval posture of a session it starts or continues.
+ * A request that carries one is refused (never clamped). Without an approval
+ * mode, the Session uses the conversation's recorded mode, else the Agent's
+ * saved default, else this Station's default. Bound operators, the operator's UI, paired
+ * devices and Station's own server code are not decided here.
+ */
+export function refuseCarriedPosture(
+  c: Context,
+  carriers: readonly PostureCarrier[],
+): Response | undefined {
+  if (!isPrincipalScopedAgentRequest(c.req.raw)) return undefined;
+  if (carriedPostureFields(carriers).length === 0) return undefined;
+  return c.json(
+    stationControlRefusalBody(
+      stationControlRefusal('station_control_posture_not_allowed'),
+    ),
+    403,
+  );
+}
+
+/**
  * The workspace a station-control caller dispatches: its `cwd` replaced by
  * the canonical path the scope check decided on, when there is one.
  */
@@ -304,6 +370,7 @@ export function newSessionFacts(
     remote:
       namesAnotherStation(target.environment) ||
       namesAnotherStation(defaultEnvironment) ||
-      workspace?.kind === 'project-portable',
+      workspace?.kind === 'project-portable' ||
+      workspace?.kind === 'project-portable-prepared',
   };
 }

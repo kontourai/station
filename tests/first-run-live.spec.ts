@@ -183,7 +183,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   await expect(goal).toBeVisible();
   await expect(goal).toBeEditable();
   const startAgent = page
-    .locator('.home-view__actions')
+    .getByRole('form', { name: 'Start work' })
     .getByRole('button', { name: 'Start a chat', exact: true });
   await expect(startAgent).toBeDisabled();
   await goal.fill('Help me get started');
