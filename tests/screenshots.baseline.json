@@ -17,7 +17,7 @@
       "name": "agents",
       "width": 1440,
       "height": 900,
-      "sha256": "dd6ea14606e76dc2ceea5956d058ebbcf76b550a0df8923c08c1ebe1c28cb354"
+      "sha256": "8e9ac978ab4dd486eeaf1ddaaa3ef481ab8994477231455cb8ec9a31a7ccda4e"
     },
     {
       "name": "agents-empty",
@@ -29,7 +29,7 @@
       "name": "command-palette-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "11d55d2b3ad3a74502e61a11e69eca878e2659413f5b1c4e18207d9ebc49196a"
+      "sha256": "9f1de1e579f08e3121c796a3f80d205d6ac3df90b59fef0709c7783f191b755f"
     },
     {
       "name": "connections",
@@ -71,7 +71,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "4c4fdee5222d0d3c4b9261eb5980f41c34514f8a15f995e44ae15bfc27b6d210"
+      "sha256": "52bede54dedf3febed0e2ead45586a160865155737d044a29419d1b1a8ad54c3"
     },
     {
       "name": "mobile-access-request-error-320",
@@ -173,7 +173,7 @@
       "name": "motion-reduced-notification",
       "width": 1440,
       "height": 900,
-      "sha256": "729d031ccd49f06c33f71bb6eb267fdee02385dbe066c29692164084c31a9ecc"
+      "sha256": "c3e0aa35e5e85b87c85c32c1b2e55ac708ea8b7ffc38fe748471f2a7056248fa"
     },
     {
       "name": "motion-reduced-schedule-loading",
@@ -203,7 +203,7 @@
       "name": "overlay-command-palette-results",
       "width": 1440,
       "height": 900,
-      "sha256": "5f35e9c991f1c81203d27227133722f6c62be73a3e7aa0af35e2ceaa0edd8ebb"
+      "sha256": "a49ec2c9aeecd3ea7d04577ab65d0ea9b5945e870ed88569696dad9e26959be4"
     },
     {
       "name": "overlay-confirm-dialog",
@@ -221,13 +221,13 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "b784469817ddb488af872a4f7b34d59429338e9bb24452455903123f0f0c4781"
+      "sha256": "951e577a4cf1369128c86c728af66350663a846f706df5550d7fe822d378a97a"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "8f7db5174dc4653b1cf03db173d48179d96c144572908951a7ad9db488277c14"
+      "sha256": "44887b5a7d59042dbedbc01cd22e843c9b93c4df77ccd8de622ace576debd60f"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -251,25 +251,25 @@
       "name": "overlay-project-switcher-populated",
       "width": 1440,
       "height": 900,
-      "sha256": "ee1b63f7bea37ba6960846ce83e6107bda8937c2999f23cda23bd44dbc670f04"
+      "sha256": "a24376f3da93c4fdf30ade31f3a2f72b307630fc41b3bbe609d7fbb867df35e3"
     },
     {
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "d20eecd5f51e7a4b73971897d5db1f8d7a0fe8444f253a95f67d49543662b818"
+      "sha256": "979e6a3825700a9b4b2f312eed53ea915beea8ba6752d9cf01d8e6e4481cc82f"
     },
     {
       "name": "overlay-toast",
       "width": 1440,
       "height": 900,
-      "sha256": "5ad4d6e7970fd76e88d6f8f5a9b9211aaa173341cd1da8a77f3031118c183827"
+      "sha256": "2f6d04935255d81ded46530a04da5c64424a2c46a24d208333e3e650a39931ef"
     },
     {
       "name": "overlay-toast-action",
       "width": 1440,
       "height": 900,
-      "sha256": "27a378ff95f98243972dd1065f6eb5f6ad810d1e60011e7256032ab2a34089b1"
+      "sha256": "09534cb0a34273c6c8af3525507314f6558a291f861f2c2c3c4901a5bea3fb36"
     },
     {
       "name": "plugins",
@@ -281,7 +281,7 @@
       "name": "profile",
       "width": 1440,
       "height": 900,
-      "sha256": "de3c19d8aae4d6cec4618531a145f0351354e76ec21c1083bdd80dccd16f3f5f"
+      "sha256": "0c33fcb8fa6e08bbad8d27ac8f4455e01d3cf1f7e653290212e30c8067809d5a"
     },
     {
       "name": "registry",
@@ -299,13 +299,13 @@
       "name": "sessions",
       "width": 1440,
       "height": 900,
-      "sha256": "9a5994528d2265ca5a095dbfdf1336de1a59ccd54dc4c09f950da966967f518a"
+      "sha256": "34d7e82718fe9504782e84519c267598f281633b5a205f46c15ccb61d6fec90f"
     },
     {
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "9a06dbac6bc42fa9db68801e598add31f8b1278dab15fb80a6d50ed21f71aacf"
+      "sha256": "65ee921deb59c32b046c6797c7b36cd603fbc8fc8b72fae16486331943194170"
     },
     {
       "name": "settings",
@@ -317,7 +317,7 @@
       "name": "settings-info-tip",
       "width": 1440,
       "height": 900,
-      "sha256": "4c9a8d4ba8ffd2e4a7a8822b970f3ba20293cd04cfaf2c88a3a668ccb22463ae"
+      "sha256": "c59dd3477bdb61da131530db4305e3cb6c5a36ea829aa1864c16578e9866539d"
     },
     {
       "name": "skills",

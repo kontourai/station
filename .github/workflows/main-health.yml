@@ -6,6 +6,7 @@ on:
     workflows:
       - "Nightly"
       - "Nightly: Gallery"
+      - "Main: Qualification health"
       - "Main: Container smoke"
       - "PR: Secret scan"
       - "Repo: Dependency advisory"

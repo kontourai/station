@@ -129,6 +129,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-health.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
+  // Runs the advisory review gate as a real child against a loopback GitHub API.
+  'scripts/__tests__/advisory-review-gate.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
