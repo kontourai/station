@@ -1,4 +1,5 @@
 import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
@@ -161,6 +162,8 @@ export type ChatMessage = {
   timestamp?: number;
   /** See `ChatMessage.steerInterruptedRun` in types.ts. */
   steerInterruptedRun?: boolean;
+  /** See `ChatMessage.sender` in types.ts. */
+  sender?: ClientOriginSender;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
   /**

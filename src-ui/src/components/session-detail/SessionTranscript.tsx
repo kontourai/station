@@ -11,6 +11,11 @@ import {
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
 import { Button } from '../Button';
+import { agentAccentStyle } from '../chat/agent-message/agentSenderAccent';
+import {
+  IncomingAgentHeader,
+  incomingMessageLabel,
+} from '../chat/agent-message/IncomingAgentHeader';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
@@ -98,6 +103,8 @@ export const SessionTranscript = memo(function SessionTranscript({
     }).map((message) => ({
       id: message.id,
       role: message.role,
+      // #3419: another agent's message is shown as that agent's.
+      sender: message.role === 'user' ? message.metadata?.sender : undefined,
       contentParts: message.parts.flatMap(conversationPartToContentParts),
     }));
     if (!failureShownAbove) return projected;
@@ -182,14 +189,27 @@ export const SessionTranscript = memo(function SessionTranscript({
           return (
             <article
               key={message.id}
-              className={`session-transcript__message session-transcript__message--${message.role}`}
+              className={`session-transcript__message session-transcript__message--${message.role}${message.sender ? ' agent-incoming' : ''}`}
               data-testid="session-transcript-message"
               data-role={message.role}
+              data-agent-sender-session={message.sender?.sessionId}
+              aria-label={
+                message.sender
+                  ? incomingMessageLabel(message.sender)
+                  : undefined
+              }
+              style={
+                message.sender ? agentAccentStyle(message.sender) : undefined
+              }
               aria-busy={streaming || undefined}
             >
-              <p className="session-transcript__role">
-                {message.role === 'user' ? 'You' : agentLabel}
-              </p>
+              {message.sender ? (
+                <IncomingAgentHeader sender={message.sender} />
+              ) : (
+                <p className="session-transcript__role">
+                  {message.role === 'user' ? 'You' : agentLabel}
+                </p>
+              )}
               <MessageContent
                 contentParts={message.contentParts}
                 textContent=""

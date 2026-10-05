@@ -8,6 +8,7 @@ import {
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
+import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -128,12 +129,15 @@ export function handleTurnStartedEvent(
     // A steer is more user input on the OPEN turn. It must not reset
     // `streamingMessage` the way a fresh `turn.started` does — that wipe is
     // how a Claude course-correction used to blank the in-flight answer.
-    const prompt = event.prompt?.trim();
+    // #3419: another agent's steer is shown as that agent's words.
+    const input = agentMessageInput(event);
+    const prompt = input.prompt?.trim();
     const messages = [...(currentChat?.messages ?? [])];
     if (prompt) {
       messages.push({
         role: 'user',
         content: prompt,
+        ...(input.sender ? { sender: input.sender } : {}),
         timestamp: Date.parse(event.createdAt) || undefined,
         turnId: event.turnId,
         sessionId: event.threadId,
@@ -154,6 +158,7 @@ export function handleTurnStartedEvent(
   }
 
   let userMessages = currentChat?.messages;
+  const turnInput = agentMessageInput(event);
   if (
     event.prompt &&
     !userMessages?.some(
@@ -181,7 +186,8 @@ export function handleTurnStartedEvent(
         clientId: `event-input:${event.eventId ?? event.turnId}`,
         sourceEventId: event.eventId,
         role: 'user',
-        content: event.prompt,
+        content: turnInput.prompt ?? event.prompt,
+        ...(turnInput.sender ? { sender: turnInput.sender } : {}),
         timestamp: Date.parse(event.createdAt),
         turnId: event.turnId,
         sessionId: event.threadId,

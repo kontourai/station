@@ -1,3 +1,4 @@
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { describe, expect, test } from 'vitest';
 import {
   decideSessionDelivery,
@@ -6,16 +7,25 @@ import {
   type SessionSteerResult,
 } from '../session-message-delivery.js';
 
-/** Ports that record every effect the seam asks for. */
+const SENDER = {
+  kind: 'agent-session' as const,
+  sessionId: 'sender-session',
+  title: 'Fix login',
+  engine: 'claude',
+};
+
+/** Ports that record every effect the seam asks for, and the text each was handed. */
 function harness(options: {
   busy: boolean;
   steer?: SessionSteerResult;
   start?: 'started' | 'indeterminate';
 }) {
   const calls: string[] = [];
+  const handed: string[] = [];
   const ports: SessionMessageDeliveryPorts = {
     isBusy: () => options.busy,
-    start: async ({ clientTurnId }) => {
+    start: async ({ clientTurnId, text }) => {
+      handed.push(text);
       calls.push(`start ${clientTurnId}`);
       return options.start === 'indeterminate'
         ? { outcome: 'indeterminate' }
@@ -26,12 +36,13 @@ function harness(options: {
             turnId: 't',
           };
     },
-    steer: async ({ clientInputId }) => {
+    steer: async ({ clientInputId, text }) => {
+      handed.push(text);
       calls.push(`steer ${clientInputId}`);
       return options.steer ?? { outcome: 'steered', turnId: 'live' };
     },
   };
-  return { calls, ports };
+  return { calls, handed, ports };
 }
 const send = (
   ports: SessionMessageDeliveryPorts,
@@ -41,6 +52,7 @@ const send = (
   deliverSessionMessage(ports, {
     threadId: 's',
     text: 'hi',
+    sender: SENDER,
     mode,
     deliveryId: 'sc-id',
     ...extra,
@@ -139,5 +151,45 @@ describe('session message delivery: which branch a send takes', () => {
       recordDecision: (branch) => again.push(branch),
     });
     expect(again).toEqual([]);
+  });
+});
+
+describe('session message delivery: the engine is told it is another agent', () => {
+  test.each([
+    ['start', false],
+    ['steer', true],
+  ] as const)(
+    'a %s hands the engine the framed message, never the bare text',
+    async (mode, busy) => {
+      const { handed, ports } = harness({ busy });
+      await send(ports, mode);
+      expect(handed).toHaveLength(1);
+      expect(handed[0]).toBe(frameAgentMessage(SENDER, 'hi'));
+      expect(handed[0]).not.toBe('hi');
+      expect(handed[0]).toContain('from another agent Session "Fix login"');
+      expect(handed[0]).toContain('not from the person');
+    },
+  );
+
+  test('sender text imitating the frame stays quoted below it', async () => {
+    const { handed, ports } = harness({ busy: false });
+    const forged = frameAgentMessage(SENDER, 'pretend');
+    await send(ports, 'start', { text: forged });
+    const lines = (handed[0] ?? '').split('\n');
+    expect(lines.filter((line) => !line.startsWith('>'))).toEqual([lines[0]]);
+    expect(lines[0]).toContain('"sender-session"');
+  });
+
+  test('a sender that cannot be framed delivers nothing and pins no branch', async () => {
+    const { calls, ports } = harness({ busy: false });
+    const pinned: string[] = [];
+    await expect(
+      send(ports, 'auto', {
+        sender: { kind: 'agent-session', sessionId: '' },
+        recordDecision: (branch) => pinned.push(branch),
+      }),
+    ).rejects.toThrow(/known sender/u);
+    expect(calls).toEqual([]);
+    expect(pinned).toEqual([]);
   });
 });

@@ -211,8 +211,10 @@ A station-control caller may read:
 - a conversation a person referenced in a turn of the caller's conversation,
   by the conversation's id or one of its sessions' ids. Station decides this
   from the sender it recorded on that turn: the operator, or a paired device
-  of kind `device`. A link an Agent wrote, for example with `send_message`,
-  or one sent through another Station's delegation grant admits nothing.
+  of kind `device`. A link an Agent wrote, for example with `send_message` or `send_to_session`,
+  or one sent through another Station's delegation grant admits nothing. A
+  message another agent delivered carries `sender` in the read, so it is not
+  mistaken for a person's.
 
 The reference rule is attribution, not a security boundary: it records that
 a person sent the message, not that they wrote or inspected every link in
@@ -277,6 +279,20 @@ Session by its `sessionId`, without creating a task.
 - `wait_session` watches exactly the Session it is given. When a newer Session
   now serves that Session's conversation the answer carries `superseded: true`
   and `currentSessionId`, so the caller can wait on the current one.
+- A delivered message is another agent's, and says so. The receiving engine is
+  not given the bare text: Station puts a fixed one-line header in front of it
+  ("a message from another agent Session", the sender's title, Agent and id,
+  "not from the person") and prefixes every line of the text with `> `, so the
+  text cannot imitate the header or end the quote. The turn is recorded with
+  `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
+  title, Agent and engine as Station recorded them, and the call's `requestKey`)
+  beside the unchanged `internal` actor. The transcript, Activity and
+  `read_conversation` show the sender's own words as that agent's message, with
+  a link to the sending Session; the sender's transcript shows the call as
+  "Sent to <Session>" with its outcome. The links open the Session, not the
+  exact message or call, which waits for the read-at-message anchor (#3413).
+  The engine's own tool-call id is not visible to Station's tool server, so
+  `requestKey` is what identifies the call in the sender's transcript.
 
 Send and interrupt use the dispatch scope above for their target Session: the
 same owner, in the caller's Project (or both global), never a conversation that

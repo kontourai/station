@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import {
   type ClientOrigin,
+  clientOriginSender,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -42,6 +43,7 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -843,7 +845,11 @@ function extractDisplayTitle(
     if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
       continue;
     }
-    const normalized = event.prompt
+    // #3419: an agent's message names the Session, not the sender's frame.
+    const prompt = clientOriginSender(event.clientOrigin)
+      ? (unframeAgentMessage(event.prompt) ?? event.prompt)
+      : event.prompt;
+    const normalized = prompt
       .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
       .replace(/\s+/g, ' ')
       .trim();

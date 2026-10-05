@@ -14,6 +14,8 @@
  * `tool-call-groups.ts`'s module doc for the composition.
  */
 
+import { hasStationControlCallRow } from './agent-message/station-control-calls';
+
 /** Minimal duck-typed shape both `ChatMessage['contentParts']` element types
  * (`types.ts` and `contexts/active-chats-state.ts`) already satisfy. */
 export interface ToolCallLike {
@@ -97,6 +99,13 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   };
 
   parts.forEach((part, index) => {
+    // #3419: a message sent to another Session is its own row, never one line
+    // of a collapsed "used 3 tools" summary.
+    if (isToolCallPart(part) && hasStationControlCallRow(part)) {
+      flushRun();
+      blocks.push(buildRun([{ part, index }]));
+      return;
+    }
     if (isToolCallPart(part)) {
       pending.push({ part, index });
       return;

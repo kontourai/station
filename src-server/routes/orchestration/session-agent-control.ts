@@ -28,6 +28,7 @@
  * delivery seam (`session-message-delivery.ts`) decides whether the message
  * starts a turn or steers the running one.
  */
+import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type HostedTenantRegistry,
@@ -182,6 +183,7 @@ export interface SessionAgentControlDeps {
     | 'currentConversationSessionId'
     | 'dispatchWithReceipt'
     | 'hasActiveTurn'
+    | 'sessionSenderIdentity'
   >;
   eventStore: Pick<
     EventStore,
@@ -543,6 +545,26 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         key: body.requestKey,
       };
       const actor = resolveDispatchActor(deps, c);
+      // #3419: who is sending, from the verified caller and Station's own
+      // record of that Session (never the request body). It rides the turn's
+      // `clientOrigin` beside the unchanged `actor`, so the turn stays a
+      // non-person's, and it names the sender in the frame the engine reads.
+      const sender = clientOriginSender({
+        sender: {
+          kind: 'agent-session',
+          sessionId: caller.sessionId,
+          ...deps.orchestrationService.sessionSenderIdentity(caller.sessionId),
+          requestKey: body.requestKey,
+        },
+      });
+      if (!sender)
+        return c.json(
+          {
+            success: false,
+            error: 'Station could not identify the Session that is sending.',
+          },
+          400,
+        );
       const context = {
         userId: actor.userId,
         ...(actor.ownerAttribution
@@ -550,7 +572,10 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           : {}),
         principal: actor.principal,
         tenantExecutionContext: tenantExecutionContextForRequest(c.req.raw),
-        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        clientOrigin: {
+          ...resolveClientOriginForRequest(c.req.raw),
+          sender,
+        },
       };
       let refusedPinned: Response | undefined;
       const outcome = await runWithSessionControlKey<
@@ -640,6 +665,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
             const delivery = await deliverSessionMessage(ports, {
               threadId,
               text: body.text,
+              sender,
               mode: body.mode as SessionSendMode,
               deliveryId: sessionControlDeliveryId(id),
               ...(pinned ? { decided: pinned.branch } : {}),

@@ -1,0 +1,165 @@
+/* #3419: a message another agent sent (incoming) and the call that sent it
+   (outgoing). Three speakers read apart in a transcript: the person (accent
+   fill, right), this Session's own agent (the plain answer), and another agent
+   (this tinted bubble with an accent rail, a header and an inbox icon).
+
+   Colour is a repeat of what the header says, never the only signal. The
+   accent arrives as --agent-accent-light / --agent-accent-dark from the
+   fixed palette in agentSenderAccent.ts, whose every entry is measured in
+   both themes (agentSenderAccent.test.ts): text at 4.5:1 on the tint, the
+   rail at 3:1 on the page. */
+
+.agent-incoming {
+  /* Dark is the default theme: :root and [data-theme="dark"] share values. */
+  --agent-accent: var(--agent-accent-dark, var(--text-secondary));
+}
+
+[data-theme="light"] .agent-incoming {
+  --agent-accent: var(--agent-accent-light, var(--text-secondary));
+}
+
+.message.agent-incoming,
+.session-transcript__message.agent-incoming {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--agent-accent) 12%, var(--bg-tertiary));
+  border: 1px solid
+    color-mix(in srgb, var(--agent-accent) 40%, var(--border-primary));
+  border-left: 4px solid var(--agent-accent);
+  color: var(--text-primary);
+}
+
+.agent-incoming__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--agent-accent);
+  border-radius: 50%;
+  color: var(--agent-accent);
+  font-size: 15px;
+}
+
+.message-row--agent .message-row__avatar {
+  --agent-accent: var(--agent-accent-dark, var(--text-secondary));
+}
+
+[data-theme="light"] .message-row--agent .message-row__avatar {
+  --agent-accent: var(--agent-accent-light, var(--text-secondary));
+}
+
+.agent-incoming__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-md);
+}
+
+.agent-incoming__icon {
+  display: inline-flex;
+  color: var(--agent-accent);
+  font-size: 15px;
+}
+
+.agent-incoming__link {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em;
+  min-height: 28px;
+  color: var(--agent-accent);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-incoming__from {
+  font-weight: var(--weight-regular);
+}
+
+.agent-incoming__agent {
+  font-weight: var(--weight-regular);
+}
+
+.agent-incoming__link:focus-visible,
+.agent-outgoing__link:focus-visible {
+  outline: 2px solid var(--k-focus, var(--accent-primary));
+  outline-offset: 2px;
+}
+
+/* A thumb needs 44px; a pointer reads a 28px line as well. */
+@media (pointer: coarse), (max-width: 640px) {
+  .agent-incoming__link,
+  .agent-outgoing__link {
+    min-height: 44px;
+    padding-block: 0;
+  }
+}
+
+/* The sender's own call, in its own transcript. */
+.agent-outgoing {
+  margin: var(--space-4) 0;
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--border-primary);
+  border-left: 4px solid var(--text-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+}
+
+.agent-outgoing__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-6);
+}
+
+.agent-outgoing__icon {
+  display: inline-flex;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.agent-outgoing__label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em;
+  font-weight: var(--weight-semibold);
+}
+
+.agent-outgoing__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-outgoing__outcome {
+  padding: 1px var(--space-4);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.agent-outgoing--refused .agent-outgoing__outcome {
+  background: var(--error-bg);
+  border-color: transparent;
+  color: var(--error-text);
+}
+
+.agent-outgoing__text {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-6);
+  border-left: 2px solid var(--border-secondary);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}

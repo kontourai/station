@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import {
   act,
   fireEvent,
@@ -525,5 +526,75 @@ describe('conversationPartToContentParts (shared with chat)', () => {
         runtimeErrorCode: 'engine-session-binding-dead',
       }),
     ]);
+  });
+});
+
+describe('another agent’s message in the Activity transcript (#3419)', () => {
+  const sender = {
+    kind: 'agent-session',
+    sessionId: 'sender-session',
+    title: 'Fix login',
+    engine: 'claude',
+  };
+  const fromAgent = (text: string, withSender = true) => ({
+    prompt: frameAgentMessage(sender as never, text),
+    clientOrigin: {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { version: 1, surface: 'unknown', build: null },
+      ...(withSender ? { sender } : {}),
+    },
+  });
+
+  test('is labelled with its sender instead of "You", and keeps the person’s own message as "You"', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'p1',
+          prompt: 'Review it',
+        }),
+      },
+      {
+        sequence: 2,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'a1',
+          ...fromAgent('Please rebase onto main.'),
+        } as never),
+      },
+    ];
+    renderTranscript(false);
+    const rows = screen.getAllByTestId('session-transcript-message');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText('You')).toBeTruthy();
+    expect(rows[0]!.classList.contains('agent-incoming')).toBe(false);
+
+    expect(rows[1]!.classList.contains('agent-incoming')).toBe(true);
+    expect(rows[1]!.getAttribute('aria-label')).toBe(
+      'Message from another agent: Fix login, Claude Code',
+    );
+    expect(rows[1]!.textContent).toContain('From Fix login · Claude Code');
+    expect(rows[1]!.textContent).toContain('Please rebase onto main.');
+    expect(rows[1]!.textContent).not.toContain('[Station:');
+    expect(within(rows[1]!).queryByText('You')).toBeNull();
+  });
+
+  test('without its sender the same turn would read as the person’s, which is what this test pins against', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'a1',
+          ...fromAgent('Please rebase onto main.', false),
+        } as never),
+      },
+    ];
+    renderTranscript(false);
+    const [row] = screen.getAllByTestId('session-transcript-message');
+    expect(row!.classList.contains('agent-incoming')).toBe(false);
+    expect(within(row!).getByText('You')).toBeTruthy();
   });
 });

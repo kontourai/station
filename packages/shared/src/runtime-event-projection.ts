@@ -1,8 +1,10 @@
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { agentMessageInput } from './agent-message-frame.js';
 import type {
   ConversationMessage,
   MessagePart,
@@ -171,6 +173,8 @@ export function projectRuntimeEventsToMessages(
   // events' own `turnId` — never inferred from ordering.
   let turnIdentity: string | undefined;
   let turnAnchorEventId: string | undefined;
+  /** The agent that sent the user row being emitted, when one did (#3419). */
+  let userRowSender: ClientOriginSender | undefined;
   let approvalTargets = new Map<string, MessagePart>();
   // #2316: every card still awaiting its answer, across turns, keyed by the
   // requesting thread AND request id (a lineage window folds several
@@ -332,6 +336,7 @@ export function projectRuntimeEventsToMessages(
     const metadata = {
       ...(turnTimestamp !== undefined ? { timestamp: turnTimestamp } : {}),
       ...(role === 'user' && inputKind ? { inputKind } : {}),
+      ...(role === 'user' && userRowSender ? { sender: userRowSender } : {}),
       ...(role === 'user' && turnAnchorEventId
         ? { sourceEventId: turnAnchorEventId }
         : {}),
@@ -506,7 +511,10 @@ export function projectRuntimeEventsToMessages(
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
           const steerParts: MessagePart[] = [];
-          if (ev.prompt) steerParts.push({ type: 'text', text: ev.prompt });
+          const steerInput = agentMessageInput(ev);
+          userRowSender = steerInput.sender;
+          if (steerInput.prompt)
+            steerParts.push({ type: 'text', text: steerInput.prompt });
           for (const attachment of ev.attachments ?? []) {
             steerParts.push({
               type: 'file',
@@ -522,6 +530,7 @@ export function projectRuntimeEventsToMessages(
           }
           if (steerParts.length > 0) {
             pushMessage('user', steerParts, 'steer');
+            userRowSender = undefined;
             if (ev.steerInterruptedRun) {
               const steerRow = messages[messages.length - 1]!;
               steerRow.metadata = {
@@ -558,7 +567,10 @@ export function projectRuntimeEventsToMessages(
         // sessionReportedModel — it belongs to the prior model generation.
         noteModelGeneration(turnModel, turnReportedModel);
         const userParts: MessagePart[] = [];
-        if (ev.prompt) userParts.push({ type: 'text', text: ev.prompt });
+        const turnInput = agentMessageInput(ev);
+        userRowSender = turnInput.sender;
+        if (turnInput.prompt)
+          userParts.push({ type: 'text', text: turnInput.prompt });
         for (const attachment of ev.attachments ?? []) {
           // `url` is omitted, not empty, when the bytes are not in this read:
           // retention reclaimed the blob, or the caller asked for a bounded
@@ -580,6 +592,7 @@ export function projectRuntimeEventsToMessages(
         }
         if (userParts.length > 0) {
           pushMessage('user', userParts, ev.inputKind);
+          userRowSender = undefined;
         }
         break;
       }

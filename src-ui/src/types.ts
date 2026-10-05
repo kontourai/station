@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
 import type {
   ApprovalMode,
@@ -167,6 +168,12 @@ export interface ChatMessage {
    * step it stopped otherwise reads as cancelled for no reason.
    */
   steerInterruptedRun?: boolean;
+  /**
+   * #3419: the agent that sent this user-role row, from the server's own
+   * record. Its presence is what makes the row an incoming agent message
+   * rather than the person's; `content` is the sender's own words.
+   */
+  sender?: ClientOriginSender;
   fromPrompt?: boolean;
   contentParts?: Array<{
     type:

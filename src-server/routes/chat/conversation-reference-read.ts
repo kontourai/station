@@ -151,6 +151,17 @@ export interface ReadConversationMessage {
   /** Tools the message called, by name. */
   tools?: string[];
   createdAt?: string;
+  /**
+   * #3419: set on a message another agent sent (`send_to_session`), from
+   * Station's own record of who sent it. `text` is that agent's words, not a
+   * person's request.
+   */
+  sender?: {
+    kind: string;
+    sessionId: string;
+    title?: string;
+    agent?: string;
+  };
 }
 
 /** Bytes `value` occupies once serialized as JSON (escapes included). */
@@ -207,10 +218,21 @@ function compactMessage(
     toolBytes += size;
   }
   const timestamp = message.metadata?.timestamp;
+  const sender = message.metadata?.sender;
   return {
     index,
     id: message.id,
     role: message.role,
+    ...(sender
+      ? {
+          sender: {
+            kind: sender.kind,
+            sessionId: sender.sessionId,
+            ...(sender.title ? { title: sender.title } : {}),
+            ...(sender.agent ? { agent: sender.agent } : {}),
+          },
+        }
+      : {}),
     text,
     ...(text.length < fullText.length
       ? { textTruncated: { originalBytes } }

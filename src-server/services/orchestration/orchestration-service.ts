@@ -4779,6 +4779,37 @@ export class OrchestrationService {
    * calls unrelated to the thread that just opened a request.
    */
   resolveSessionProjectSlug(threadId: string): string | undefined {
+    const summary = this.readInternalSessionSummary(threadId);
+    return summary?.delegation?.projectSlug ?? summary?.projectSlug;
+  }
+
+  /**
+   * #3419: how a Session names itself to the Session it messages: its title,
+   * Agent and engine as Station recorded them, read server-side so a sender
+   * can never supply them. Absent for a Session Station has no record of.
+   */
+  sessionSenderIdentity(
+    threadId: string,
+  ): { title?: string; agent?: string; engine: string } | undefined {
+    const summary = this.readInternalSessionSummary(threadId, {
+      conversationTitle: true,
+    });
+    if (!summary) return undefined;
+    const agent =
+      this.options.eventStore?.sessionAgentPresentation(threadId)
+        ?.agentDisplayName ?? summary.assignedAgentSlug;
+    return {
+      ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
+      ...(agent ? { agent } : {}),
+      engine: summary.provider,
+    };
+  }
+
+  /** A summary built only to read one fact from it; nothing is emitted. */
+  private readInternalSessionSummary(
+    threadId: string,
+    options: { conversationTitle?: boolean } = {},
+  ): OrchestrationSessionSummary | undefined {
     const persisted = this.options.eventStore
       ?.readSessions()
       .find((session) => session.threadId === threadId);
@@ -4792,17 +4823,25 @@ export class OrchestrationService {
     // observation it must supply is real but never emitted. That is the
     // required member working as designed — every construction site is
     // enumerated, and an internal one costs two map lookups.
-    const summary = buildOrchestrationSessionSummary({
+    // A continuation child folds only its own events, which start at the
+    // second prompt: its title is the conversation's first one (see `readSession`).
+    const conversationFirstPromptedTurn = options.conversationTitle
+      ? this.options.eventStore?.conversationRootFirstPromptedTurn(threadId)
+          ?.payload
+      : undefined;
+    return buildOrchestrationSessionSummary({
       persisted,
       loaded,
       events,
+      ...(conversationFirstPromptedTurn
+        ? { conversationFirstPromptedTurn }
+        : {}),
       answerability: this.observeAnswerability(
         threadId,
         (loaded ?? persisted)?.provider,
         new Date().toISOString(),
       ),
     });
-    return summary.delegation?.projectSlug ?? summary.projectSlug;
   }
 
   // Event paging & stream replay forwarders (epic archive#4024, archive#4155):

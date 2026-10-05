@@ -1,3 +1,4 @@
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type { ToolRequestSessionGrant } from './tool-request-preview.js';
@@ -133,6 +134,14 @@ export interface ConversationMessage {
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
+    /**
+     * #3419: set on a user-role row another agent sent (`send_to_session`),
+     * from the server's own record of who sent it. Its presence is what makes
+     * a row render and read as a message from another agent, never as the
+     * person's; `text` is the sender's own words, without the frame the
+     * receiving engine was given.
+     */
+    sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
