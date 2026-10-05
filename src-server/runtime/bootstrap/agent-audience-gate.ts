@@ -43,17 +43,16 @@
  * - Continuing an existing orchestration conversation or task: refused with
  *   the same code, because it is also a new member turn.
  * - Answering a pending approval, which steers the turn that asked:
- *   `POST /tool-approval/:id`, the approval inbox's
- *   `POST /notifications/:id/action/:actionId`, `DELETE /notifications/:id`
- *   and the bulk `DELETE /notifications` (an inbox dismissal declines the
- *   approval; these routes are refused whole, so a member also cannot
- *   action or dismiss any other notification),
- *   and a `respondToRequest` sent to `POST /api/orchestration/commands`:
- *   refused with the same code for a `member` caller. Outside hosted mode the
- *   approval registry lets any caller settle an entry, so without this a
- *   member could approve or deny the operator's pending tool call. A
- *   caller-less (`none`) request keeps those routes' own rules here: they
- *   name no Agent, and internal callers may use them. Not decided here:
+ *   `POST /tool-approval/:id` and a `respondToRequest` sent to
+ *   `POST /api/orchestration/commands` are refused with the same code for a
+ *   `member` caller. Outside hosted mode the approval registry lets any
+ *   caller settle an entry, so without this a member could approve or deny
+ *   the operator's pending tool call. The approval inbox's notification
+ *   action and dismissals are decided per row where the notification route
+ *   loads it ({@link memberApprovalGuard}), so a member keeps acting on and
+ *   dismissing ordinary notifications. A caller-less (`none`) request keeps
+ *   those routes' own rules: they name no Agent, and internal callers may
+ *   use them. Not decided here:
  *   `POST /api/orchestration/delegations/:id/respond`, which already admits
  *   only the task's owner holding the Project's `approve` action (#2377).
  *
@@ -174,8 +173,6 @@ const TURN_CONTINUE = [
 /** Routes that answer a pending approval whatever their body says. */
 const APPROVAL_ANSWERS: readonly [string, RegExp][] = [
   ['POST', /^\/tool-approval\/[^/]+$/],
-  ['POST', /^\/notifications\/[^/]+\/action\/[^/]+$/],
-  ['DELETE', /^\/notifications(?:\/(?!activity$)[^/]+)?$/],
 ];
 /** The command route answers an approval only for this command type. */
 const COMMANDS_PATH = '/api/orchestration/commands';
@@ -285,6 +282,22 @@ function memberCatalog(
       ? [memberView(record as AgentAudienceRecord & { project: string })]
       : [],
   );
+}
+
+/**
+ * For the notification routes: when the request acts for a Project member,
+ * which loaded rows it may not action or dismiss (`isLiveApproval`, the
+ * approval inbox's one predicate) and the refusal it gets. `undefined` for
+ * every other caller, whose rows keep the route's own read rule.
+ */
+export async function memberApprovalGuard<Row>(
+  deps: Pick<AgentAudienceGateDeps, 'caller'>,
+  c: GateContext,
+  isLiveApproval: (row: Row) => boolean,
+): Promise<{ withholds(row: Row): boolean; refusal(): Response } | undefined> {
+  const caller = await deps.caller(c);
+  if (caller.kind !== 'member') return undefined;
+  return { withholds: isLiveApproval, refusal: turnsUnavailable };
 }
 
 /** Whether a command body is an approval answer, read from a copy. */

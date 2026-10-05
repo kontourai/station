@@ -40,12 +40,17 @@ import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
+import {
+  ApprovalInboxNotificationProvider,
+  wireApprovalInboxNotifications,
+} from '../../../services/approvals/approval-inbox.js';
 import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
 import {
   DeploymentAuthenticationService,
   deploymentAccountPrincipal,
 } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -68,6 +73,11 @@ import {
 } from '../../mcp/station-control-mcp-token.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
+/** The real notification service and approval inbox each test composes. */
+const support = vi.hoisted(() => ({
+  notifications: undefined as Record<string, unknown> | undefined,
+}));
+
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
@@ -77,6 +87,7 @@ vi.mock('../runtime-route-support.js', () => {
       attentionProjection: stub,
       webPushService: stub,
       webPushEnabled: false,
+      ...support.notifications,
     }),
     createRuntimeSystemRouteDeps: () => stub,
   };
@@ -300,12 +311,30 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       handle: async () => new Response(null, { status: 204 }),
     };
 
-    const approvalRegistry = new ApprovalRegistry({
-      info() {},
-      warn() {},
-      error() {},
-      debug() {},
+    const quiet = { info() {}, warn() {}, error() {}, debug() {} };
+    const eventBus = new EventBus();
+    const approvalRegistry = new ApprovalRegistry(quiet, { eventBus });
+    // The production notification service and approval inbox, wired to the
+    // registry exactly as the runtime support composition wires them.
+    const notificationService = new NotificationService(eventBus, home, 60_000);
+    const approvalInbox = new ApprovalInboxNotificationProvider({
+      approvalRegistry,
+      orchestrationService: orchestration,
     });
+    notificationService.addProvider(approvalInbox);
+    closers.push(
+      wireApprovalInboxNotifications(
+        eventBus,
+        approvalInbox,
+        notificationService,
+        quiet,
+      ),
+      () => notificationService.shutdown(),
+    );
+    support.notifications = {
+      notificationService,
+      approvalInboxProvider: approvalInbox,
+    };
     const app = new Hono();
     const context = deepStub({
       approvalRegistry,
@@ -320,7 +349,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       app,
       port: 4321,
       appConfig: {},
-      eventBus: new EventBus(),
+      eventBus,
       configLoader: {
         getProjectHomeDir: () => home,
         loadAppConfig: () => ({}),
@@ -385,7 +414,14 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
-    return { base, revokeB, home, approvalRegistry, bProject };
+    return {
+      base,
+      revokeB,
+      home,
+      approvalRegistry,
+      bProject,
+      notificationService,
+    };
   }
 
   /** A request exactly as a station-control tool in `session` makes it. */
@@ -783,14 +819,11 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     ).toBe(true);
   });
 
-  test('a member cannot answer a pending approval on any approval route; the operator still can', async () => {
+  test('a member cannot answer a pending approval through the registry route or a respond command; the operator still can', async () => {
     const { base, approvalRegistry } = await setup();
     const pending = approvalRegistry.register('operator-approval', 60_000);
     for (const [method, path, body] of [
       ['POST', '/tool-approval/operator-approval', { approved: true }],
-      ['POST', '/notifications/some-card/action/approve', undefined],
-      ['DELETE', '/notifications/some-card', undefined],
-      ['DELETE', '/notifications', undefined],
       [
         'POST',
         '/api/orchestration/commands',
@@ -827,6 +860,76 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     );
     expect([answered.status, answered.body]).toEqual([200, { success: true }]);
     await expect(pending).resolves.toBe(true);
+  });
+
+  test('notifications: a member acts on and dismisses ordinary rows, is refused a live approval, and bulk clear keeps it; the operator is unchanged', async () => {
+    const { base, approvalRegistry, notificationService } = await setup();
+    const ordinary = (title: string) =>
+      notificationService.schedule('test-source', {
+        category: 'activity',
+        title,
+        actions: [{ id: 'ack', label: 'Acknowledge' }],
+      });
+    const rows = async () =>
+      Object.fromEntries(
+        (await notificationService.list()).map((row) => [row.title, row]),
+      );
+    // A live approval, opened by the registry and carded by the inbox.
+    void approvalRegistry.register('live-approval', 60_000);
+    await expect
+      .poll(async () => (await rows())['Approval needed']?.status)
+      .toBe('delivered');
+    const approval = (await rows())['Approval needed']!;
+    const [acted, dismissed] = [
+      await ordinary('Ordinary to act on'),
+      await ordinary('Ordinary to dismiss'),
+    ];
+
+    const action = await asAccount(
+      base,
+      `/notifications/${acted.id}/action/ack`,
+      send('POST'),
+    );
+    expect([action.status, action.body]).toEqual([200, { success: true }]);
+    const dismiss = await asAccount(
+      base,
+      `/notifications/${dismissed.id}`,
+      send('DELETE'),
+    );
+    expect([dismiss.status, dismiss.body]).toEqual([200, { success: true }]);
+
+    for (const [method, path] of [
+      ['POST', `/notifications/${approval.id}/action/accept`],
+      ['DELETE', `/notifications/${approval.id}`],
+    ] as const) {
+      const refused = await asAccount(base, path, send(method));
+      expect([method, refused.status, refused.body?.code]).toEqual([
+        method,
+        403,
+        'member_agent_turns_unavailable',
+      ]);
+    }
+    expect(approvalRegistry.has('live-approval')).toBe(true);
+
+    // Bulk clear: ordinary rows go, the live approval stays.
+    await ordinary('Ordinary to bulk clear');
+    expect(Object.keys(await rows())).toContain('Ordinary to bulk clear');
+    const cleared = await asAccount(base, '/notifications', send('DELETE'));
+    expect([cleared.status, cleared.body]).toEqual([200, { success: true }]);
+    const after = await rows();
+    // Clearing removes a row from the store.
+    expect(Object.keys(after)).not.toContain('Ordinary to bulk clear');
+    expect(after['Approval needed']?.status).toBe('delivered');
+    expect(approvalRegistry.has('live-approval')).toBe(true);
+
+    // The operator still answers it through the inbox.
+    const answered = await asOperator(
+      base,
+      `/notifications/${approval.id}/action/accept`,
+      send('POST'),
+    );
+    expect([answered.status, answered.body]).toEqual([200, { success: true }]);
+    expect(approvalRegistry.has('live-approval')).toBe(false);
   });
 
   test('an account whose authentication is unavailable is refused before boot or the Agent list answers', async () => {

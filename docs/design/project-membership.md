@@ -255,15 +255,21 @@ handlers:
   `DELETE /agents/:slug` and the tools and workflows edits. The collection
   operations name no Agent, so a 403 reveals nothing the member's list does
   not; a write to a hidden slug is still the uniform 404;
-- answering a pending approval steers the turn that asked, so it is refused
-  with `403 member_agent_turns_unavailable`: `POST /tool-approval/:id`, the
-  approval inbox's `POST /notifications/:id/action/:actionId`,
-  `DELETE /notifications/:id` and `DELETE /notifications` (a dismissal
-  declines the approval, so a member cannot action or dismiss any
-  notification), and a `respondToRequest` sent to
-  `POST /api/orchestration/commands`. Outside hosted mode the approval
+- answering a pending approval steers the turn that asked, so
+  `POST /tool-approval/:id` and a `respondToRequest` sent to
+  `POST /api/orchestration/commands` are refused with
+  `403 member_agent_turns_unavailable`. Outside hosted mode the approval
   registry lets any caller settle an entry, so without this a member could
-  answer the operator's pending tool call.
+  answer the operator's pending tool call. The approval inbox is decided per
+  row by the
+  [notification routes](../../src-server/routes/operations/notifications.ts),
+  after the row passes their read rule: a member gets the same 403 for
+  actioning or dismissing a live approval (still open, or its state cannot
+  be read). The [approval inbox](../../src-server/services/approvals/approval-inbox.ts)
+  `isLiveApproval` predicate decides this. A member's bulk
+  `DELETE /notifications` clears its readable rows and keeps live approvals,
+  because a dismissal declines the approval. Ordinary and settled rows
+  behave as before.
   `POST /api/orchestration/delegations/:id/respond` is not gated here; it
   already admits only the task's owner holding the Project's `approve`
   action.

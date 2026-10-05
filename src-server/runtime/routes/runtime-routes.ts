@@ -644,6 +644,7 @@ import {
   type AgentAudienceGateDeps,
   agentCatalogForCaller,
   installAgentAudienceGate,
+  memberApprovalGuard,
 } from '../bootstrap/agent-audience-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
@@ -6552,6 +6553,13 @@ export function configureRuntimeRoutes(
         context.orchestrationService.canUserReadSession(sessionId, authority),
       // #2584: agents use `notify_user`, never this caller-chosen source.
       isAgentOriginatedRequest,
+      // #3276: a member may not answer a live approval through the inbox.
+      approvalAnswerGuard: (c) =>
+        memberApprovalGuard(
+          agentAudience,
+          c,
+          approvalInboxProvider.isLiveApproval.bind(approvalInboxProvider),
+        ),
     }),
   );
   // #2584 `notify_user`'s REST side. The caller is re-derived from the
