@@ -43,7 +43,10 @@ import type { ProviderSession } from '../adapter-shape.js';
  *   summary, the transcript `output_file` and usage. Both are emitted as
  *   settles; the contract's reducer keeps the first terminal and lets the
  *   second only fill what it lacked, so the result is not lost and nothing
- *   here has to remember which task already settled.
+ *   here has to remember which task already settled. The one exception is
+ *   usage: the first settle carries none, so the child still holds its last
+ *   `task_progress` figure, and the notification's final usage replaces it
+ *   (#3308).
  * - `Query.stopTask` yields `task_updated` `killed` + `task_notification`
  *   `stopped` (captured: `stop-task`).
  * - Closing input sends NO terminal for a running background agent, and the

@@ -133,13 +133,14 @@ async function openComposer(
   return textarea;
 }
 
-// #3201: Home's "New chat" opens a draft. Choosing an Agent selects it for the
-// draft; only Send starts the chat, so no composer exists until then.
+// #3201, then one start composer (owner, 2026-10): Home's composer is the
+// draft. Choosing an Agent on its chip selects it; only Start starts the
+// chat, so no chat composer exists until then.
 for (const [slug, name] of [
   ['claude', 'Claude'],
   ['station', 'Station'],
 ] as const) {
-  test(`the New chat draft starts a ${name} chat only on Send`, async ({
+  test(`Home's start composer starts a ${name} chat only on Start`, async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -180,18 +181,19 @@ for (const [slug, name] of [
     });
     await page.goto('/');
     await dismissSetupLauncher(page);
-    await page
-      .locator('.home-view__goal-actions')
-      .getByRole('button', { name: 'New chat', exact: true })
-      .click();
-    const draft = page.getByRole('form', { name: 'New chat draft' });
+    const draft = page.getByRole('form', { name: 'Start work' });
     await expect(draft).toBeVisible({ timeout: 15_000 });
     await draft.getByRole('button', { name: /^Agent:/ }).click();
-    await page
+    const agents = page.getByRole('dialog', { name: 'Choose agent' });
+    await expect(agents).toBeVisible();
+    await agents
       .locator(`.new-chat-modal__agent[data-agent-slug="${slug}"]`)
       .click();
+    await expect(agents).toHaveCount(0);
     await expect(
-      draft.getByRole('button', { name: `Agent: ${name}`, exact: true }),
+      draft.getByRole('button', {
+        name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
+      }),
     ).toBeVisible();
     // Choosing the Agent did not start anything.
     await expect(
@@ -199,10 +201,10 @@ for (const [slug, name] of [
     ).toHaveCount(0);
     expect(dispatched).toHaveLength(0);
     await draft
-      .getByRole('textbox', { name: 'Message', exact: true })
+      .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('Start from the draft.');
     expect(dispatched).toHaveLength(0);
-    await draft.getByRole('button', { name: 'Send', exact: true }).click();
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await expect.poll(() => dispatched.length).toBe(1);
     const expected = draftChatExecution(slug);
     // The Agent and model the turn was dispatched with are the chosen ones.

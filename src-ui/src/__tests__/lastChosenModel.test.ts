@@ -116,4 +116,38 @@ describe('lastChosenModel', () => {
     act(() => clearLastChosenModel('codexdefault'));
     expect(result.current).toEqual({});
   });
+
+  // #3350 item 2: another tab's write never passes through this tab's
+  // track/clear; it reaches Home only as a `storage` event.
+  test('the live map follows a choice recorded in another tab', async () => {
+    const { act, renderHook } = await import('@testing-library/react');
+    const {
+      buildLastChosenModelBindingKeyFromIdentity,
+      useLastChosenModelMap,
+    } = await import('../hooks/lastChosenModel');
+    const { result } = renderHook(() => useLastChosenModelMap());
+    expect(result.current).toEqual({});
+
+    // The shape trackLastChosenModel writes, landing here the way another
+    // tab's write does: in shared storage, with no in-tab notify.
+    const bindingKey = buildLastChosenModelBindingKeyFromIdentity(
+      'codex',
+      'codexdefault',
+    );
+    const oldValue = localStorage.getItem('station.newChat.lastModelByBinding');
+    const newValue = JSON.stringify({ [bindingKey]: 'gpt-5.4' });
+    localStorage.setItem('station.newChat.lastModelByBinding', newValue);
+    expect(result.current).toEqual({});
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'station.newChat.lastModelByBinding',
+          oldValue,
+          newValue,
+        }),
+      );
+    });
+    expect(result.current).toEqual({ [bindingKey]: 'gpt-5.4' });
+  });
 });

@@ -5,7 +5,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { Button } from '../Button';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { ErrorState, SkeletonList } from '../state';
 
 export function RecentChatList({
   items,
@@ -39,6 +39,9 @@ export function RecentChatList({
     .filter((item) => item.chatSessionId || item.orchestrationThreadId)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 5);
+  // Nothing to continue is not a section: an empty draft shows the
+  // composer alone, not a heading over a placeholder.
+  if (!pending && !error && recent.length === 0) return null;
   return (
     <section className="chat-start__recent" aria-label="Continue working">
       <div className="chat-start__recent-heading">
@@ -59,13 +62,6 @@ export function RecentChatList({
               </Button>
             ) : undefined
           }
-        />
-      )}
-      {!pending && !error && recent.length === 0 && (
-        <Empty
-          variant="compact"
-          label="Start something new"
-          description="Write a message above to begin."
         />
       )}
       <ul>

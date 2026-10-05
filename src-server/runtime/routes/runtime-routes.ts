@@ -306,6 +306,7 @@ import { createOperatingStateRoutes } from '../../routes/orchestration/operating
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
+import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -4362,6 +4363,33 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
     }),
   );
+  // #3160: Station Control's Session tools (send, interrupt, wait). Agent-only
+  // leaves with their own scope check; their own prefix so the dispatch
+  // routes above stay exactly as they are.
+  if (context.orchestrationEventStore) {
+    context.app.route(
+      '/api/orchestration/session-control',
+      createSessionAgentControlRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        eventBus: context.eventBus,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        resolveAgentDispatchActor,
+        hostedTenantRegistry,
+        continueForegroundMessage: stationServerEntry((input) =>
+          continueExecutionTargetMessage(
+            {
+              ...input,
+              readAuthority: readAuthorityForExecution(input.userId),
+            },
+            context.orchestrationService,
+            remoteStations,
+          ),
+        ),
+      }),
+    );
+  }
 
   const runtimeContext = context.buildRuntimeContext();
 

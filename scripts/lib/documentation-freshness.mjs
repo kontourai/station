@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collectDocumentationChanges } from '../documentation-impact.mjs';
@@ -16,6 +16,8 @@ import {
   touchedReviewInputs,
 } from './review-history.mjs';
 import {
+  listReviewNoteFilesAt,
+  REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
   readReviewState,
   readReviewStateAt,
@@ -64,6 +66,19 @@ export function withoutFreshnessEnv(env) {
   );
 }
 const PR_EVENTS = new Set(['pull_request', 'pull_request_target']);
+const NOTES_DIR = `${REVIEW_LEDGER_DIR}/notes`;
+
+/**
+ * Whether this run judges a pull request. Mode selection has already sent
+ * every non-PR GitHub event (merge queue, push, Nightly) to advisory before
+ * any scope is computed, so only PR events and ci:fast reach a scope.
+ */
+export function isPullRequestContext(env) {
+  return (
+    (env.GITHUB_ACTIONS === 'true' && PR_EVENTS.has(env.GITHUB_EVENT_NAME)) ||
+    Boolean(env[CI_FAST_BASE_ENV])
+  );
+}
 
 function git(root, args) {
   return execFileSync('git', args, {
@@ -199,9 +214,38 @@ export function resolveDocumentationFreshness({
     const detail = String(error?.stderr || error?.message || error)
       .trim()
       .split('\n')[0];
+    const strictReason = `cannot compute this change's scope against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`;
+    // Only the version 3 layout has notes to protect.
+    const layout = (ledger ?? readReviewState(root, { history: false }).ledger)
+      ?.layoutVersion;
+    if (layout !== 3)
+      return {
+        mode: 'strict',
+        reason: strictReason,
+        appendOnly: 'not-applicable',
+      };
+    // Strict cannot see a deleted note, so without a merge base the
+    // append-only guard is unverified. A PR must not pass on that.
+    if (isPullRequestContext(env))
+      return {
+        mode: 'strict',
+        reason: strictReason,
+        appendOnly: 'NOT_VERIFIED',
+        sourceDrops: [
+          {
+            kind: 'note',
+            path: NOTES_DIR,
+            inputs: [],
+            changed: [],
+            rule: 'append-only-unverified',
+            problem: `cannot verify that notes are append-only without a merge base against ${base} (${detail}); fetch the base history or set ${DOCS_FRESHNESS_BASE_ENV}`,
+          },
+        ],
+      };
     return {
       mode: 'strict',
-      reason: `cannot compute this change's scope against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`,
+      reason: strictReason,
+      appendOnly: 'NOT_VERIFIED',
     };
   }
   const current = ledger
@@ -276,8 +320,24 @@ export function resolveDocumentationFreshness({
       );
     return commitsAfter.get(from);
   };
-  if (current.ledger?.layoutVersion === 3) {
+  const appendOnlyProblems = [];
+  const layoutV3 = current.ledger?.layoutVersion === 3;
+  if (layoutV3) {
     const baseState = readReviewStateAt(root, base);
+    // Notes are append-only: any note file at the merge base must still exist.
+    // Comparing with the merge base (not the base branch tip) means a note
+    // another PR landed later is never mistaken for this change's deletion.
+    const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
+    for (const file of listReviewNoteFilesAt(root, selection.mergeBase))
+      if (!currentNotes.has(file) || !existsSync(join(root, file)))
+        appendOnlyProblems.push({
+          kind: 'note',
+          path: file,
+          inputs: [],
+          changed: [],
+          rule: 'note-removed',
+          problem: `note file ${file} exists at the merge base but is gone; notes are append-only; re-record instead (npm run docs:review:record -- <doc> --note "<what you checked>")`,
+        });
     for (const [kind, [before, now]] of Object.entries(entries)) {
       const landed = byPath(
         kind === 'review'
@@ -406,7 +466,9 @@ export function resolveDocumentationFreshness({
       review: changedEntries(...entries.review),
       capture: changedEntries(...entries.capture),
     },
+    appendOnly: layoutV3 ? 'verified' : 'not-applicable',
     sourceDrops: [
+      ...appendOnlyProblems,
       ...noteCoverage,
       ...Object.entries(entries).flatMap(([kind, [before, now]]) =>
         unreviewedSourceDrops(kind, before, now, changedPaths, (path) =>

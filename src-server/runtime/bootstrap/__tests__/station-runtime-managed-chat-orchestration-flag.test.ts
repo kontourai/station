@@ -54,7 +54,13 @@ function createRuntime(): any {
   runtime.loadedProviderLaunchabilityRevision = 0;
   runtime.loadedAppConfigLaunchabilityRevision = 0;
   runtime.providerService = { getLaunchabilityRevision: vi.fn(() => 4) };
-  runtime.configLoader = { getLaunchabilityRevision: vi.fn(() => 6) };
+  // Route configuration builds the operator-passkey service (#3319), which
+  // reads the home but opens its store only on first use.
+  runtime.configLoader = {
+    getLaunchabilityRevision: vi.fn(() => 6),
+    getProjectHomeDir: () => '/station-home-never-opened',
+  };
+  runtime.consentChannel = { trustedOrigin: null };
   runtime.logger = { error: vi.fn(), info: vi.fn() };
   runtime.eventBus = { emit: vi.fn() };
   runtime.reloadDefaultAgentFromConfig = vi.fn();
