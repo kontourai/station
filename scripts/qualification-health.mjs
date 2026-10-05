@@ -133,8 +133,7 @@ export async function checkQualificationHealth(
       run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
       run.head_branch === 'main' &&
       run.event === 'workflow_dispatch' &&
-      run.status === 'completed' &&
-      run.conclusion === 'success',
+      run.status === 'completed',
   )) {
     const jobs = await listGithub(
       `actions/runs/${run.id}/jobs`,
@@ -144,8 +143,7 @@ export async function checkQualificationHealth(
     recoveries.push({ run, jobs });
   }
   const successfulDeliveries = [...observed, ...recoveries].filter(
-    (item) =>
-      item.run.status === 'completed' && item.run.conclusion === 'success',
+    (item) => item.run.status === 'completed',
   );
   const pending = [];
   for (const leg of ['native', 'cli']) {

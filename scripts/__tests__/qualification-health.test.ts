@@ -346,6 +346,74 @@ describe('qualification health through the GitHub API', () => {
     );
   });
 
+  it('accepts native terminal recovery from a run whose CLI leg failed', async () => {
+    const { result, writes } = await observe({
+      issues: [
+        {
+          ...issue,
+          body: '<!-- station-qualification-health:{"failures":[{"id":99,"at":"2026-10-01T01:00:00Z","legs":["native"]}]} -->',
+        },
+      ],
+      runs: [run(1, 1, { conclusion: 'failure' })],
+      jobs: {
+        1: [
+          gate(),
+          gate({
+            name: 'nightly / 3 · Publish native cohort / Record ledger and markers',
+          }),
+          gate({
+            name: 'nightly / 3 · Publish CLI to npm nightly',
+            conclusion: 'failure',
+          }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(false);
+    expect(writes[0].body.body).toContain(
+      'cli https://github.com/owner/repo/actions/runs/1',
+    );
+    expect(writes[0].body.body).not.toContain(
+      'native https://github.com/owner/repo/actions/runs/99',
+    );
+  });
+
+  it('accepts CLI terminal recovery from a manual run whose native leg failed', async () => {
+    const { result } = await observe({
+      issues: [
+        {
+          ...issue,
+          body: '<!-- station-qualification-health:{"failures":[{"id":99,"at":"2026-10-01T01:00:00Z","legs":["cli"]}]} -->',
+        },
+      ],
+      manualRuns: [
+        run(2, 1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'workflow_dispatch',
+          conclusion: 'failure',
+        }),
+      ],
+      jobs: {
+        1: [gate()],
+        2: [
+          {
+            ...gate({ name: '3 · Publish CLI to npm nightly' }),
+            steps: [
+              {
+                name: 'Bind the published CLI receipt to npm registry provenance',
+                conclusion: 'success',
+              },
+            ],
+          },
+          gate({
+            name: '3 · Publish native cohort / Record ledger and markers',
+            conclusion: 'failure',
+          }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(true);
+  });
+
   it('ignores foreign repositories and green events outside canonical main', async () => {
     const { result, reads } = await observe({
       runs: [run(2, 1, { head_repository: { full_name: 'fork/repo' } })],
