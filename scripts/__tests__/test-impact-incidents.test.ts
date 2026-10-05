@@ -10,15 +10,13 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { prepareChangedSelection } from '../run-changed-verification.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
@@ -223,33 +221,30 @@ describe('#3170: the SDK client portability scan', () => {
 describe('dependency fan-out limit (#3149 review)', () => {
   // A package imported by more suites than the limit defers to the full lane
   // instead of naming them all; at the limit it still names each suite.
+  const makeTempDir = trackTempDirs();
   function edgesFor(importers: number) {
-    const fixture = mkdtempSync(join(tmpdir(), 'dependency-fanout-'));
-    try {
-      const testFiles = Array.from(
-        { length: importers },
-        (_, index) => `src/__tests__/consumer-${index}.test.ts`,
+    const fixture = makeTempDir('dependency-fanout-');
+    const testFiles = Array.from(
+      { length: importers },
+      (_, index) => `src/__tests__/consumer-${index}.test.ts`,
+    );
+    mkdirSync(join(fixture, 'src', '__tests__'), { recursive: true });
+    for (const file of testFiles)
+      writeFileSync(
+        join(fixture, file),
+        "import { thing } from '@kontourai/fanout-fixture';\n",
       );
-      mkdirSync(join(fixture, 'src', '__tests__'), { recursive: true });
-      for (const file of testFiles)
-        writeFileSync(
-          join(fixture, file),
-          "import { thing } from '@kontourai/fanout-fixture';\n",
-        );
-      const manifest = (version: string) =>
-        JSON.stringify({
-          dependencies: { '@kontourai/fanout-fixture': version },
-        });
-      return dependencyChangeEdges({
-        root: fixture,
-        paths: ['package.json'],
-        readBase: () => manifest('1.0.0'),
-        readHead: () => manifest('1.1.0'),
-        testFiles,
+    const manifest = (version: string) =>
+      JSON.stringify({
+        dependencies: { '@kontourai/fanout-fixture': version },
       });
-    } finally {
-      rmSync(fixture, { recursive: true, force: true });
-    }
+    return dependencyChangeEdges({
+      root: fixture,
+      paths: ['package.json'],
+      readBase: () => manifest('1.0.0'),
+      readHead: () => manifest('1.1.0'),
+      testFiles,
+    });
   }
 
   test('17 importers defer to test-full rather than naming every suite', () => {
