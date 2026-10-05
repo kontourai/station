@@ -12,6 +12,7 @@ const makeTempDir = trackTempDirs();
 
 const secure = vi.hoisted(() => ({
   platform: 'darwin',
+  userInfoFailure: false,
   calls: [] as string[][],
   result: undefined as string | undefined,
   failure: undefined as
@@ -22,7 +23,10 @@ vi.mock('node:os', async (original) => ({
   ...(await original<typeof import('node:os')>()),
   platform: () => secure.platform,
   homedir: () => '/missing',
-  userInfo: () => ({ username: 'fixture-user' }),
+  userInfo: () => {
+    if (secure.userInfoFailure) throw new Error('fixture user lookup failure');
+    return { username: 'fixture-user' };
+  },
 }));
 vi.mock('node:child_process', async (original) => {
   const real = await original<typeof import('node:child_process')>();
@@ -55,6 +59,7 @@ vi.mock('node:child_process', async (original) => {
 
 beforeEach(() => {
   secure.platform = 'darwin';
+  secure.userInfoFailure = false;
   secure.calls = [];
   secure.result = undefined;
   secure.failure = undefined;
@@ -106,6 +111,14 @@ describe('detectClaudeAuthState', () => {
       expect(secure.calls).toEqual([]);
     },
   );
+
+  test('retains an OS username lookup failure as unknown without querying another account', async () => {
+    secure.userInfoFailure = true;
+    await expect(detectClaudeAuthState({}, '/missing')).resolves.toBe(
+      'unknown',
+    );
+    expect(secure.calls).toEqual([]);
+  });
 
   test('uses the secure-store override without borrowing a global credential', async () => {
     await expect(
@@ -404,6 +417,24 @@ describe('detectClaudeAuthState with a login probe (#3303)', () => {
       ),
     ).resolves.toBe('unauthenticated');
     expect(probe).not.toHaveBeenCalled();
+  });
+
+  test('a secure-storage override does not allow a probe to create a missing CLI config directory', async () => {
+    const home = await keychainHome();
+    const config = join(home, 'missing-config');
+    const probe = vi.fn().mockResolvedValue(result('{"loggedIn":true}'));
+    await expect(
+      detectClaudeAuthState(
+        {
+          CLAUDE_CONFIG_DIR: config,
+          CLAUDE_SECURESTORAGE_CONFIG_DIR: join(home, '.claude'),
+        },
+        home,
+        probe,
+      ),
+    ).resolves.toBe('unauthenticated');
+    expect(probe).not.toHaveBeenCalled();
+    expect(await readdir(home)).toEqual(['.claude']);
   });
 
   test('without a probe the answer stays file-only', async () => {

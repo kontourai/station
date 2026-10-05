@@ -33,7 +33,12 @@ async function secureAuthState(
   configDir: string,
   defaultNamespace: boolean,
 ): Promise<CliAuthState | undefined> {
-  const account = env.USER || userInfo().username;
+  let account: string;
+  try {
+    account = env.USER || userInfo().username;
+  } catch {
+    return 'unknown';
+  }
   if (!/^[a-zA-Z0-9._-]+$/.test(account)) return 'unknown';
   const suffix = createHash('sha256')
     .update(configDir.normalize('NFC'))
@@ -163,7 +168,12 @@ export async function detectClaudeAuthState(
       // The CLI itself writes into its config dir even to answer `auth
       // status`, so a dir that does not exist yet is never probed: a login
       // would have created it, and a readiness read must create nothing.
-      if (!probe || !(await isDirectory(storageDir))) return 'unauthenticated';
+      if (
+        !probe ||
+        !(await isDirectory(storageDir)) ||
+        (storageDir !== configDir && !(await isDirectory(configDir)))
+      )
+        return 'unauthenticated';
       return parseClaudeAuthStatus(await probe().catch(() => null));
     }
     return 'unknown';
