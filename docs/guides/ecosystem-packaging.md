@@ -27,7 +27,8 @@ digest, and installs it without a host build. The archive carries Node.js;
 manifest verification uses an adequate host Node.js, the installed archive's
 runtime, or a separately pinned official Node.js download. On Windows,
 `install.ps1` verifies the same way through the shared verifier bundled into
-it, and so far only stages a version (`STATION_INSTALL_STAGE_ONLY=1`).
+it, and installs, upgrades and uninstalls it on a host without a Station
+service.
 
 Schema v1 source archives remain supported for stable/preview and require
 the host toolchain. The former v2 `artifacts.portable` shape is no longer

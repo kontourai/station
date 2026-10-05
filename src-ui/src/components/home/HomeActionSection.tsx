@@ -15,7 +15,7 @@ interface HomeActionSectionProps {
   model: HomeViewModel;
   onNavigate: (view: NavigationView) => void;
   /**
-   * Whether to render the "continue most recent work" card. Kept from
+   * Whether to render the Continue card. Kept from
    * archive#3122, where a host offering its own Resume affordance above the
    * fold would otherwise put the identical item on screen twice. Home passes
    * nothing and gets the card.

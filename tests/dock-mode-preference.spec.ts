@@ -287,11 +287,12 @@ test.describe('Dock Mode Preference', () => {
     await expect(
       page.getByRole('complementary', { name: 'Inbox chats' }),
     ).toHaveCount(0);
-    await page
-      .getByRole('button', { name: 'More dock actions', exact: true })
-      .click();
+    // The toggle is the bar's "Hide inbox" / "Show inbox…" button, the one
+    // `bottom-mode inbox toggle…` above presses. (This used to look for a
+    // `menuitemcheckbox` named "chat list" that nothing renders any more, so
+    // it passed with the toggle on screen; #3312.)
     await expect(
-      page.getByRole('menuitemcheckbox', { name: /chat list/ }),
+      page.getByRole('button', { name: /^(Hide|Show) inbox/ }),
     ).toHaveCount(0);
   });
 
