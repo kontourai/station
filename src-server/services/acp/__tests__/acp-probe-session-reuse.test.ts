@@ -292,7 +292,10 @@ describe('#3411 capability probes do not leak agent sessions', () => {
       sessionCapabilities: { resume: {} },
       _meta: { hangReattach: true },
     });
-    const probe = agent.newProbe({}, 1_500);
+    // The hung resume waits out the whole budget, so it is kept short, but a
+    // healthy spawn and handshake must fit inside it on a loaded host: 1.5s
+    // did not (it failed the healthy probes under CPU pressure).
+    const probe = agent.newProbe({}, 6_000);
     try {
       await probeTimes(probe, 1);
       // The hung session/resume times out within the probe budget...
