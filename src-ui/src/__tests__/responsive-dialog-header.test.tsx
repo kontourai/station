@@ -56,7 +56,6 @@ function readSource(relativePath: string): string {
 // family for the same pattern before inventing a one-off fix").
 const HEADER_CONSUMERS = [
   'components/chat-dock/ChatDockProjectSwitcherSheet.tsx',
-  'components/home/SnoozeMenu.tsx',
   'components/chat-dock/ChatDockMobileOverflowSheet.tsx',
   'components/chat-dock/ComposerActionsMenu.tsx',
   // #2059: `ProjectSidebarStatus` was this family's sidebar member through its

@@ -1,0 +1,7 @@
+{
+  "revision": "af849d12b1c8ea9ac86eb8fe98bdaee5f2049c41",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Generated index gained the remote-execution-preparation entry via npm run docs:index; no hand-written prose changed.","inputs":["docs/design/README.md"]}
+  ]
+}

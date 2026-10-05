@@ -10,7 +10,7 @@
  * `ProjectSidebarReturnFocus.test.tsx`'s mock shape).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
@@ -377,13 +377,21 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       title: 'Finish release notes',
       agentSlug: 'writer',
     };
+    // The chat is not listed under Open chats here (that section is removed),
+    // so its draft is a Drafts row of its own.
+    deviceSettingsStore.set('sidebarSections', {
+      ...deviceSettingsStore.getSnapshot().sidebarSections,
+      openChatsHidden: true,
+    });
     renderSidebar(<ProjectSidebar />);
 
     act(() => chatDraftsStore.set('session-draft', '  Remember migration  '));
     expect(screen.getByText('Drafts')).toBeTruthy();
     const draft = screen.getByRole('button', {
-      name: /finish release notes.*draft.*remember migration/i,
+      name: /finish release notes.*remember migration/i,
     });
+    // The section names what these are; the row does not say "Draft" again.
+    expect(draft.textContent).not.toMatch(/Draft ·/);
     fireEvent.click(draft);
     expect(openChatsStore.focus).toHaveBeenCalledWith({
       sessionId: 'session-draft',
@@ -394,6 +402,71 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 
     act(() => chatDraftsStore.set('session-draft', '   '));
     expect(screen.queryByText('Drafts')).toBeNull();
+  });
+
+  /**
+   * D6: a draft typed in an open chat was listed twice — once as the Open
+   * chats row (with its "Unsent draft" chip) and again under Drafts. One chat,
+   * one row: the Open chats row carries it, and Drafts is not rendered for it.
+   */
+  test('a draft in a chat listed under Open chats is not listed again under Drafts', async () => {
+    resetState();
+    chats['session-draft'] = {
+      title: 'Finish release notes',
+      agentSlug: 'writer',
+    };
+    agents.push({ slug: 'writer', name: 'Writer' });
+    renderSidebar(<ProjectSidebar />);
+
+    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+    expect(await screen.findByText('Finish release notes')).toBeTruthy();
+    expect(screen.getByText('Open chats')).toBeTruthy();
+    expect(screen.queryByText('Drafts')).toBeNull();
+    expect(screen.queryByText('Remember migration')).toBeNull();
+    expect(screen.getAllByText('Finish release notes')).toHaveLength(1);
+    // Not listed twice must not mean not listed: the one row carries the
+    // draft, as its "Unsent draft" chip.
+    const openChats = document.getElementById('sidebar-open-chats');
+    if (!openChats) throw new Error('Open chats section did not render');
+    const row = within(openChats)
+      .getByText('Finish release notes')
+      .closest('.chat-dock-inbox__item') as HTMLElement;
+    expect(row).toBeTruthy();
+    const chip = row.querySelector('[data-chip="draft"]');
+    expect(chip?.textContent).toBe('Unsent draft');
+  });
+
+  /**
+   * D6's one-row rule must not hide a draft: a collapsed Open chats shows no
+   * rows, so its chats' drafts are listed under Drafts until it is expanded.
+   */
+  test('a draft in a chat under a collapsed Open chats is listed under Drafts', async () => {
+    resetState();
+    chats['session-draft'] = {
+      title: 'Finish release notes',
+      agentSlug: 'writer',
+    };
+    agents.push({ slug: 'writer', name: 'Writer' });
+    deviceSettingsStore.set('sidebarSections', {
+      ...deviceSettingsStore.getSnapshot().sidebarSections,
+      openChatsCollapsed: true,
+    });
+    renderSidebar(<ProjectSidebar />);
+
+    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+    const toggle = screen.getByRole('button', { name: 'Open chats' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByText('Drafts')).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: /finish release notes.*remember migration/i,
+      }),
+    ).toBeTruthy();
+
+    // Expanded again, the Open chats row carries it and Drafts lets it go.
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Drafts')).toBeNull();
+    expect(screen.queryByText('Remember migration')).toBeNull();
   });
 });
 
@@ -496,7 +569,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
 
   test('Drafts collapses and removes independently', () => {
     resetState();
-    chats['session-draft'] = { title: 'Draft owner', agentSlug: 'a' };
+    // A draft whose chat is not open in this tab: Drafts is its only row.
     renderSidebar(<ProjectSidebar />);
     act(() => chatDraftsStore.set('session-draft', 'draft text'));
 

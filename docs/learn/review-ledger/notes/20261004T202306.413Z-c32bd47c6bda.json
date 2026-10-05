@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Re-read the start-here bullets against .githooks/pre-push, run-focused-tests.mjs and the transfer gate. They remain accurate: STATION_TRANSFER_CAPTURE_TIMEOUT_MS is still the explicit transfer override and now takes precedence over the host-pressure scale; test:focused additionally resolves the liveness factor and prints one line when it is above 1.","inputs":["AGENTS.md",".githooks/pre-push","scripts/orchestration-transfer-gate.mjs","scripts/run-focused-tests.mjs"]}
+  ]
+}
