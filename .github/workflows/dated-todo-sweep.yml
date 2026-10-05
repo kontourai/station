@@ -1,4 +1,4 @@
-name: Dated TODO sweep
+name: "Repo: Dated TODO sweep"
 
 on:
   schedule:

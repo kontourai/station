@@ -1,4 +1,4 @@
-name: Native store credential preflight
+name: "Tool: Native store preflight"
 
 on:
   workflow_dispatch:

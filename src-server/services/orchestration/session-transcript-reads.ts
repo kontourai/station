@@ -547,7 +547,7 @@ export function usageReceiptsForEventRow(
     conversationId,
     taskId,
     model,
-    processEpoch,
+    costSegment,
     accountKey,
   }: UsageReceiptEventRow,
   stationId: string,
@@ -601,9 +601,14 @@ export function usageReceiptsForEventRow(
       : unpricedTokenReceipt;
   const tokenReceipts = hasTokenMeasurements(usage) ? [tokenReceipt] : [];
   if (!isReportedAmount(usage.reportedCostUsd)) return tokenReceipts;
+  // Figures in one cumulative cost segment restate one running total, so
+  // they share an identity and reconciliation keeps the latest; a resumed
+  // process continues its predecessor's segment (station#3320). A
+  // cumulative figure without a segment (not reachable from the store
+  // today) still shares one thread-wide identity, so it can never be summed.
   const costId =
     providerCostScope(event.provider) === 'engine-process-cumulative'
-      ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
+      ? `usage:${event.threadId}:${event.provider}:cost:${costSegment ?? 'unsegmented'}`
       : `usage:${event.id}:cost`;
   return [
     ...tokenReceipts,

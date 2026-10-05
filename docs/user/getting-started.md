@@ -114,19 +114,82 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-On Home, write what you want done and choose **Start a chat**. Station uses
-working defaults, waits for discovery, and carries your original request into
-the conversation. You do not need to choose an Agent, Model, or provider first;
-Home shows the Agent and Model that **Start a chat** will use. A chat started
-from Home opens in the chat dock's current project (by default, the project
-you last opened), so that project's default Agent and Model apply.
-An already-ready engine can be prepared through the existing idempotent setup
-path; installed, unconnected apps can be connected when needed. Explicitly
-disabled apps remain disabled. A missing account, permission, or working target
-is shown at the point where it is needed, without claiming preparation succeeded.
+Home and the chat dock have one way to start a chat: the start composer. Write
+what you want done and choose **Start**. You do not need to choose anything
+first; the two chips under the text box show what **Start** will use:
 
-**New chat** opens a separate message draft with Agent, Model and Workspace
-controls when you want a different choice. **Explore agents** remains available for deliberate customization.
+- The **Agent** chip shows the Agent's icon, then *Agent · Model*. Open it to
+  list the Agents this project offers, each with its readiness and its setup
+  action. An Agent's Model control opens the Model picker, including runtime
+  options such as reasoning effort. Choosing a Model for an Agent also chooses
+  that Agent and closes the picker; changing the effort leaves it open. Once
+  you have chosen a Model, the picker's reset button names the default it
+  returns to, such as **Use project default**.
+- The **project** chip shows the project's colour and name, or **No
+  project**. Open it to choose a project. The list shows each project's
+  folder, and the folder this chat will run in. A project with no folder
+  can be chosen too. Its chats run in your home folder, or, for an ACP
+  engine, in that engine's own Working Directory or else a private folder
+  Station makes for the chat; the chip and list say which.
+- **⋯** holds **Use a visual skill**.
+
+Choosing on a chip starts nothing, and Station remembers it. The Agent is
+remembered for each project and for **No project** on this browser and
+Station access, and the Model for each Agent. The project is remembered as the
+chat dock's project for new chats, the same setting the dock's project
+switcher changes, so Home and the dock always open on the same choices.
+**No project** clears it.
+Runtime options such as reasoning effort apply to that start only; they are
+not remembered. A choice you make stays on both surfaces for this browser tab,
+even if another chat later runs on a different Model, until you change it or
+choose **Reset**.
+
+Until Station has loaded your projects, the chips show placeholders and
+**Start** waits, so a start never runs in a project Station has guessed. If
+the project list cannot be read, the composer says so instead. A
+chat started from Home opens in the chat dock's current project (by default,
+the project you last opened), so that project's default Agent and Model apply.
+With no Agent ready at all, **Start** still works: Station uses working
+defaults, waits for discovery, and carries your original request into the
+conversation. An already-ready engine can be prepared through the existing
+idempotent setup path; installed, unconnected apps can be connected when
+needed. Explicitly disabled apps remain disabled. A missing account,
+permission, or working target is shown at the point where it is needed,
+without claiming preparation succeeded. If the Agent Home chose cannot start,
+the chat dock says so and shows the composer with your message, rather than
+starting another Agent. If what Home sent cannot be read, or its Model is
+no longer offered, the dock says so and keeps your message for you to choose
+again.
+
+Home keeps your message while you work. **Start** from Home removes the text
+it sent once the chat has started, and keeps anything you typed while it
+started. If you close the dock's draft instead, the message comes back to Home
+as you left it in the dock, the same way as a draft from setup (below). If no
+chat dock is open to take it, Home keeps the message and says so.
+
+In the chat dock, the **New chat** button (the pencil on the collapsed bar),
+**⌘T**, and **New chat** in **Chats and tasks** open the same composer.
+**Explore agents** remains available for deliberate customization.
+
+Setup from Home continues in the chat dock. When you choose **Connect**,
+**Set up**, **Edit agent**, or **Use a visual skill** on Home, your message,
+project, Agent and Model move into the chat dock's composer, which opens the
+setup page or the skills list; Home says your draft moved. If you then close
+that draft or cancel the setup return, the message comes back to Home as you
+left it in the dock. If Home's text box is empty, it goes straight back in.
+If you have typed something new meanwhile, Home keeps your new text and offers
+**Restore your earlier draft** (which swaps the two, so neither is lost) or
+**Discard it**. A draft waiting to come back survives reloading the page,
+but not closing the tab.
+**Enable** prepares an Agent in place on either surface.
+
+Context handed to a new chat, such as a prepared request from a plugin page,
+shows as a chip above the text box; tap it to leave it out. With no message,
+**Start** puts the context in the new chat's composer for you to review and
+send. With a message, Station sends your message, a blank line, then the
+context.
+
+**Fork from here** is not a new start: it keeps its own Agent list.
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
 chat.
@@ -145,20 +208,17 @@ questions add no profile. If saving those answers fails, setup stays open so
 you can retry. Closing setup or navigating back during that save cancels the
 next navigation; answers that already saved remain saved.
 
-**New chat** opens a message draft with Agent and Model controls beside it.
-Opening it or changing either choice starts no conversation or engine; **Send**
-opens the conversation and submits the message once. It remembers your last
-Agent separately for each project and for **No project**, on this browser and
-Station access. With no remembered choice, it uses the project’s **Default
-agent**, then the current layout default or Station’s runnable suggestion.
-A remembered Agent needing repair stays visible; a removed choice asks you to
-choose another. Home’s quick-start path continues to use a runnable suggestion.
+Opening the composer or changing a chip starts no conversation or engine;
+**Start** opens the conversation and submits the message once. With no
+remembered Agent, the composer uses the project’s **Default agent**, then the
+current layout default or Station’s runnable suggestion. A remembered Agent
+needing repair stays visible with its setup action; a removed choice asks you
+to choose another.
 
 **Continue working** shows up to five recent chats from the selected workspace,
 using the inbox’s status and details. Choose one to resume it, or **View all**
 to open the chat inventory. Loading and failed reads are shown separately from
-an empty list. Choosing an Agent opens the expanded picker, where visual skills
-and setup actions remain available. **Take the tour** and **Connect another device** are optional alternatives.
+an empty list. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
 On a phone, use the compose button at the right of the chat bar, or tap the
@@ -189,8 +249,8 @@ neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
 
-Open the Agent control in New chat to browse installed visual skills, including
-when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
+Choose **⋯** then **Use a visual skill** in the start composer to browse
+installed visual skills, including when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
 a card and fill its text or choice inputs, then choose an Agent, Model and
 workspace. This prepares an unsent chat. Attach any required files using the
 ordinary composer, assign files to the named roles when shown, and send
@@ -227,7 +287,7 @@ conversation controls.
 
 ### Finish setup and return
 
-When no selected Agent can respond, New chat shows a setup helper alongside
+When no selected Agent can respond, the composer shows a setup helper alongside
 your message and recent chats. It offers AI app setup, model-account setup,
 and a recheck. Available engine prerequisites include installation steps,
 commands, and links supplied by that engine’s integration. Commands are shown
@@ -239,7 +299,7 @@ other integrations retain their own authorization instructions.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-For explicit Chat options, use **Return to New Chat** when finished, or browser
+From the composer, use **Return to New Chat** when finished, or browser
 Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
 selected agent returns you automatically and resumes the original request after

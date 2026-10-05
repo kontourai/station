@@ -398,7 +398,9 @@
 
     "src-server/analytics/__tests__/usage-observation-projection.test.ts",
 
-    "src-server/adapters/file/memory-adapter-messages.ts"
+    "src-server/adapters/file/memory-adapter-messages.ts",
+
+    "src-server/runtime/bootstrap/agent-audience-gate.ts"
   ],
 
   "checks": [

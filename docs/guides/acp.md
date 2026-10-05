@@ -114,7 +114,10 @@ This is a deliberate, adapter-inherited scope reduction: per-mode virtual agents
 Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker when the connection has modes, and shows nothing when it advertised none. Remaining permission-policy gaps (OpenCode HTTP rulesets, engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
-`engineConnectionType` for engine grouping and connection-method display.
+`engineConnectionType` for engine grouping and connection-method display. For an
+ACP-bound Agent `engineId` is always `acp` and `engineConnectionType` is `acp`,
+read from the connection record even when the live inspection fails, so its
+icon keeps its initials.
 `execution.agentConnectionId` is the persisted binding. The Agent ID remains
 independent of how the connection is implemented; do not use a legacy
 `source: 'acp'` discriminator. Model choices and image support depend on the

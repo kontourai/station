@@ -7,6 +7,7 @@ import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
 import {
+  DiscardGlyph,
   DocumentGlyph,
   EditGlyph,
   PauseGlyph,
@@ -99,6 +100,7 @@ export const KIND_GLYPH: Record<
 > = {
   read: DocumentGlyph,
   write: EditGlyph,
+  delete: DiscardGlyph,
   exec: TerminalGlyph,
   search: SearchGlyph,
   other: PlugGlyph,

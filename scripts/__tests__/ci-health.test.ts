@@ -41,7 +41,7 @@ const job = (id = 1, overrides = {}) => ({
 const run = (id = 1, overrides = {}) => ({
   id,
   run_attempt: 1,
-  name: 'CI',
+  name: 'PR: CI',
   event: 'pull_request',
   status: 'completed',
   conclusion: 'success',
@@ -332,7 +332,7 @@ describe('CI health metrics', () => {
   it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
     const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
       run(i, {
-        name: 'Main qualification',
+        name: i === 0 ? 'Main qualification' : 'Main: Qualification',
         head_branch: 'main',
         event: 'schedule',
         conclusion,
@@ -370,7 +370,7 @@ describe('CI health metrics', () => {
       mergeMetrics(
         [
           run(9, {
-            name: 'Merge integration',
+            name: 'PR: Merge integration',
             event: 'merge_group',
             conclusion: 'success',
             run_started_at: at(0),

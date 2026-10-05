@@ -1,0 +1,7 @@
+{
+  "revision": "1b4d31720887852f077b588e840c417f12f535be",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"#3355: ACP-bound Agents report engineId acp and engineConnectionType acp from the connection record even when live inspection fails; checked against listEngineConnectionIdentities and the route integration test.","inputs":["docs/guides/acp.md"]}
+  ]
+}

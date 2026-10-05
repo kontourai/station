@@ -253,8 +253,11 @@ These restrictions bound the authorized prerequisite work in §5:
   and explicit access approval
 - Replacing the cosmetic `os.userInfo()` alias — display-only; replacing it
   early manufactures a user model with one user
-- Passkeys for pairing — `identity.md:47-74` already rejects them on RP-ID
-  grounds
+- Passkeys for device pairing — `identity.md` ("Where passkeys fit") rejects
+  them on RP-ID grounds. That restriction is about pairing a device only. An
+  operator passkey, rooted in host confirmation, is a separate proposal
+  ([operator-device-access.md](operator-device-access.md)) and is not
+  excluded here
 - User tables, DPoP, an OAuth server — #1098's recorded non-goals
 - Anything added to `DEFAULT_GRANT_PAIRING_SCOPE` (R2)
 

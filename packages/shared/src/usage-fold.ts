@@ -191,15 +191,26 @@ export const CUMULATIVE_USAGE_PROVIDERS: ReadonlySet<string> = new Set<string>(
  *   estimated cost in USD for this `query()` call … each result carries the
  *   running total so far, so read the latest result rather than summing".
  *
- * Station's Claude adapter builds ONE `query()` per session and pushes every
- * turn into its open `AsyncUserMessageQueue`
+ * Station's Claude adapter builds ONE `query()` per engine process and
+ * pushes every turn into its open `AsyncUserMessageQueue`
  * (`claude-adapter.ts`'s `startTrackedSession`), so that running total spans
- * the whole session — until the session is restarted or resumed, which
- * builds a NEW `query()` whose total starts again from zero. That is why the
- * scope is named `engine-process-cumulative` rather than
- * "session-cumulative": the reset boundary is the engine process, and the
- * fold sees it as a `session.started` event. Summing across those restarts
- * (and only across them) is what reconstructs the session's real cost.
+ * the whole process. What happens at the NEXT process depends on how it
+ * started (station#3320, Agent SDK 0.3.278 `total_cost_usd` docs, confirmed
+ * by a live probe):
+ *
+ * - A process started WITHOUT `resume` begins a new transcript, and its
+ *   total starts again from zero, so the previous process's final figure is
+ *   banked and summed.
+ * - A process started WITH `resume` (idle parking, server restart, adoption)
+ *   "continues from the total its transcript saved, when it has one": its
+ *   first result already includes the earlier spend, so it SUPERSEDES the
+ *   previous figure rather than adding to it. The adapter records this on
+ *   `session.started` (see {@link sessionStartedResumedNativeSession}).
+ *
+ * The scope is named `engine-process-cumulative` because the reset boundary
+ * is a non-resumed engine process start, never a turn. See
+ * {@link CumulativeCostSegments} for the one derivation the session fold and
+ * the usage receipts share.
  *
  * An unlisted provider defaults to `per-turn` (sum), matching
  * {@link PROVIDER_USAGE_SCOPE}'s fail-safe: the error direction is a total
@@ -215,6 +226,101 @@ export function providerCostScope(
   provider: string,
 ): ProviderCostScope | undefined {
   return PROVIDER_COST_SCOPE.get(provider);
+}
+
+/**
+ * `session.started` metadata key the Claude adapter sets to `true` when the
+ * engine process was started by resuming an existing native transcript (the
+ * SDK `resume` option). Its presence is a recorded fact, not an inference.
+ */
+export const NATIVE_SESSION_RESUMED_METADATA_KEY = 'nativeSessionResumed';
+
+/**
+ * Whether a `session.started` event records a resumed native transcript.
+ *
+ * Only an explicit `true` counts. Events written before station#3320 carry
+ * no marker and read as NOT resumed, so their processes keep the earlier
+ * per-process sum. That over-reports a resumed session's cost exactly as
+ * before (a visible, too-high total) rather than guessing a continuation
+ * and silently dropping a fresh process's spend.
+ */
+export function sessionStartedResumedNativeSession(event: {
+  metadata?: Record<string, unknown>;
+}): boolean {
+  return event.metadata?.[NATIVE_SESSION_RESUMED_METADATA_KEY] === true;
+}
+
+/**
+ * Splits one thread's `engine-process-cumulative` cost figures into
+ * segments, each of which is ONE running total: the segment's latest figure
+ * is its cost, and the session's cost is the sum over segments.
+ *
+ * A new segment opens when:
+ *
+ * - a `session.started` is NOT a resume — the new process starts from zero;
+ * - a figure is LOWER than the running figure it would replace. A running
+ *   total never decreases, so a lower figure cannot be a continuation: it is
+ *   a reset (`/clear`), a resume whose transcript saved no total, or the
+ *   zeroed figure a crashed or startup-error result carries (a resume of a
+ *   missing transcript reports `0`, confirmed live). Banking the earlier
+ *   figure keeps that spend instead of overwriting it with less.
+ *
+ * A resumed `session.started` opens nothing: the resumed process's figures
+ * continue the previous running total (and are checked against it by the
+ * rule above). An EQUAL figure stays in the segment: a resume handshake
+ * result (`num_turns: 0`) restates the saved total unchanged.
+ *
+ * Known blind spots of this heuristic (the SDK reports no starting total):
+ *
+ * - A reset (`/clear`, or a resume whose transcript saved no total) whose
+ *   FIRST figure is already above the previous running total reads as a
+ *   continuation, so the spend before the reset is undercounted.
+ * - A restated total slightly LOWER than the last live figure (a transcript
+ *   that saved an earlier total than the one last reported) opens a new
+ *   segment, so the restated part is overcounted.
+ *
+ * Shared by `foldUsageEvents` and the usage receipt reader
+ * (`EventStore.listUsageReceiptEvents`), so the session total and the
+ * receipt rollup can never disagree about which figures supersede which.
+ * The segment key keeps the pre-station#3320 receipt identity (the count of
+ * non-resumed process starts) when no reset was observed.
+ */
+export class CumulativeCostSegments {
+  private epoch = 0;
+  private resets = 0;
+  private banked: number | undefined;
+  private running: number | undefined;
+
+  /** Records a `session.started`; `resumed` is the adapter's marker. */
+  sessionStarted(resumed: boolean): void {
+    if (resumed) return;
+    this.bank();
+    this.epoch += 1;
+    this.resets = 0;
+  }
+
+  /** Records one usable figure and returns the key of its segment. */
+  observe(figure: number): string {
+    if (this.running !== undefined && figure < this.running) {
+      this.bank();
+      this.resets += 1;
+    }
+    this.running = figure;
+    return this.resets === 0 ? `${this.epoch}` : `${this.epoch}.${this.resets}`;
+  }
+
+  /** Sum of every segment's latest figure; `undefined` when none observed. */
+  total(): number | undefined {
+    if (this.banked === undefined && this.running === undefined)
+      return undefined;
+    return (this.banked ?? 0) + (this.running ?? 0);
+  }
+
+  private bank(): void {
+    if (this.running === undefined) return;
+    this.banked = addOptional(this.banked, this.running);
+    this.running = undefined;
+  }
 }
 
 /**
@@ -396,7 +502,7 @@ export function cacheInclusiveTotalTokens(
  * A negative or non-finite value is a broken observation, not a measurement
  * of zero, so it is dropped rather than folded in as `0`.
  */
-function isUsableCost(value: unknown): value is number {
+export function isUsableCost(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
@@ -685,10 +791,12 @@ export function foldUsageObservationProjection(
  *   nothing else, so an ACP session honestly has no in/out/total figure.
  * - `reportedCostUsd` carries the provider's own cost verbatim, folded
  *   under `PROVIDER_COST_SCOPE` (which is NOT the token scope — see there).
- *   A cumulative reporter's running total is committed at each
- *   `session.started`, so a session that was restarted or resumed sums one
- *   final figure per engine process instead of double-counting restatements
- *   within a process or discarding an earlier process's spend.
+ *   A cumulative reporter's figures are split by
+ *   {@link CumulativeCostSegments}: a non-resumed restart sums one final
+ *   figure per engine process, while a resumed process's figures supersede
+ *   the running total they continue (station#3320), so neither a
+ *   restatement nor a resumed process's carried-over spend is counted
+ *   twice, and no earlier process's spend is discarded.
  * - `turns` counts `turn.completed` events (a turn that is aborted or
  *   errors before completing is not counted — mirrors what the legacy
  *   memory-store hook counted).
@@ -722,10 +830,10 @@ function foldUsageEventsInner(
   observations?: UsageObservationCollector,
 ): SessionUsageAggregate {
   const aggregate = emptyAggregate();
-  /** Cost committed by engine processes that have already been superseded. */
-  let committedCostUsd: number | undefined;
-  /** Cost reported by the engine process currently being folded. */
-  let currentProcessCostUsd: number | undefined;
+  /** Running totals from `engine-process-cumulative` cost reporters. */
+  const cumulativeCost = new CumulativeCostSegments();
+  /** Sum of every `per-turn` (or undeclared) provider's reported cost. */
+  let perTurnCostUsd: number | undefined;
 
   for (const event of events) {
     if (event.provider) aggregate.provider = event.provider;
@@ -839,10 +947,10 @@ function foldUsageEventsInner(
             : addOptional(aggregate.cacheWriteTokens, cacheWriteTokens);
         }
         if (isUsableCost(event.reportedCostUsd)) {
-          currentProcessCostUsd =
-            providerCostScope(event.provider) === 'engine-process-cumulative'
-              ? event.reportedCostUsd
-              : addOptional(currentProcessCostUsd, event.reportedCostUsd);
+          if (providerCostScope(event.provider) === 'engine-process-cumulative')
+            cumulativeCost.observe(event.reportedCostUsd);
+          else
+            perTurnCostUsd = addOptional(perTurnCostUsd, event.reportedCostUsd);
         }
         if (
           isValidContextObservation(
@@ -873,16 +981,12 @@ function foldUsageEventsInner(
         break;
       }
       case 'session.started': {
-        // A new engine process: a cumulative reporter's running cost total
-        // restarts from zero here, so bank what the previous process
-        // reported before the next event overwrites it.
-        if (currentProcessCostUsd !== undefined) {
-          committedCostUsd = addOptional(
-            committedCostUsd,
-            currentProcessCostUsd,
-          );
-          currentProcessCostUsd = undefined;
-        }
+        // A new engine process. Unless it resumed its native transcript,
+        // a cumulative reporter's running cost total restarts from zero
+        // here, so the previous process's figure is banked.
+        cumulativeCost.sessionStarted(
+          sessionStartedResumedNativeSession(event),
+        );
         break;
       }
       case 'turn.completed': {
@@ -916,9 +1020,10 @@ function foldUsageEventsInner(
     }
   }
 
-  if (committedCostUsd !== undefined || currentProcessCostUsd !== undefined) {
+  const cumulativeCostUsd = cumulativeCost.total();
+  if (cumulativeCostUsd !== undefined || perTurnCostUsd !== undefined) {
     aggregate.reportedCostUsd =
-      (committedCostUsd ?? 0) + (currentProcessCostUsd ?? 0);
+      (cumulativeCostUsd ?? 0) + (perTurnCostUsd ?? 0);
   }
 
   return aggregate;
