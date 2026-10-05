@@ -478,7 +478,7 @@ continue:
 - A conversation under **No project** continues as a **No project** chat
   confined to its own folder, after you confirm that choice. Station refuses
   this for a folder too broad to confine an agent to: the file system root, a
-  top-level folder such as `/tmp`, your home folder or a folder containing it,
+  folder directly under it, your home folder or a folder containing it,
   the system temporary folder, and Station's own data folder. To continue it
   under a Project instead, add a Project for that folder or its repository
   first. Station does not move a conversation into another Project's folder,
