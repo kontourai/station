@@ -137,6 +137,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={OPTIONS}
         selectedContext={GLOBAL_CONTEXT}
         onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     const filter = screen.getByPlaceholderText('Filter...');
@@ -155,6 +156,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={OPTIONS}
         selectedContext={GLOBAL_CONTEXT}
         onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     expect(document.activeElement).toBe(
@@ -172,6 +174,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={OPTIONS}
         selectedContext="station"
         onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     const stationButton = screen.getByRole('button', { name: /Station/ });
@@ -182,12 +185,42 @@ describe('ContextPickerOptions', () => {
     expect(noCwdButton.querySelector('.new-chat-modal__no-cwd-badge')).not.toBe(
       null,
     );
+    expect(
+      noCwdButton
+        .querySelector('.new-chat-modal__no-cwd-badge')
+        ?.getAttribute('title'),
+    ).toBe('Runs in your home folder (~)');
     // The global sentinel never gets the "no cwd" badge even without a
     // working directory.
     const globalButton = screen.getByRole('button', { name: /No workspace/ });
     expect(globalButton.querySelector('.new-chat-modal__no-cwd-badge')).toBe(
       null,
     );
+  });
+
+  // Review L4: an ACP engine with no folder of its own runs a folderless
+  // project in a private Station-managed workspace, not home; the row must
+  // not claim home.
+  test('a folderless row names where it runs for an ACP engine, never home', () => {
+    render(
+      <ContextPickerOptions
+        contextSearch=""
+        onContextSearchChange={vi.fn()}
+        autoFocusFilter={false}
+        onEscape={vi.fn()}
+        filteredContextOptions={OPTIONS}
+        selectedContext="station"
+        onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'managed' }}
+      />,
+    );
+    const badge = screen
+      .getByRole('button', { name: /No CWD Project/ })
+      .querySelector('.new-chat-modal__no-cwd-badge');
+    expect(badge?.getAttribute('title')).toBe(
+      'Runs in a private folder Station makes for this chat',
+    );
+    expect(badge?.textContent).not.toContain('~');
   });
 
   test('reports the selected value on click and closes on Escape without changing selection', () => {
@@ -203,6 +236,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={[OPTIONS[1]]}
         selectedContext={GLOBAL_CONTEXT}
         onSelectContext={onSelectContext}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Station/ }));

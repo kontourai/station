@@ -13,8 +13,10 @@ import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
   type NewChatModalContextOption,
+  type NewChatWorkspaceHint,
   resolveNewChatAgentEnable,
   scheduleSelectedAgentVisibility,
+  workspaceHintText,
 } from '../modals/new-chat-modal-utils';
 import {
   ResponsiveDialogHeader,
@@ -220,6 +222,7 @@ export function StartProjectMenu({
   options,
   selectedContext,
   workspaceHint,
+  folderlessHint,
   onChoose,
   onClose,
 }: {
@@ -227,9 +230,9 @@ export function StartProjectMenu({
   layer: MenuLayer;
   options: NewChatModalContextOption[];
   selectedContext: string;
-  workspaceHint:
-    | { kind: 'project' | 'connection'; path: string }
-    | { kind: 'home' };
+  workspaceHint: NewChatWorkspaceHint;
+  /** Where a project with no folder runs with the chosen Agent. */
+  folderlessHint: NewChatWorkspaceHint;
   onChoose: (context: string) => void;
   onClose: () => void;
 }) {
@@ -265,16 +268,17 @@ export function StartProjectMenu({
         onClose={onClose}
       />
       <p className="start-menu__hint">
-        {workspaceHint.kind === 'home' ? (
-          'Runs in your home folder (~)'
-        ) : (
+        {'path' in workspaceHint ? (
           <>
             Runs in <CwdBreadcrumb path={workspaceHint.path} />
           </>
+        ) : (
+          workspaceHintText(workspaceHint)
         )}
       </p>
       <div className="start-menu__list">
         <ContextPickerOptions
+          folderlessHint={folderlessHint}
           contextSearch={search}
           onContextSearchChange={setSearch}
           autoFocusFilter={false}

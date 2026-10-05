@@ -86,6 +86,7 @@ import {
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
   scheduleSelectedAgentVisibility,
+  workspaceHintText,
 } from './new-chat-modal-utils';
 import {
   type NewChatSetupAuthority,
@@ -540,6 +541,12 @@ export function NewChatModal({
   const workspaceHint = resolveNewChatWorkspaceHint({
     agent: showStart ? draftAgent : flatList[selectedAgentIndex],
     project: selectedProject,
+    acpConnections,
+  });
+  // Where a project with no folder would run with this Agent.
+  const folderlessHint = resolveNewChatWorkspaceHint({
+    agent: showStart ? draftAgent : flatList[selectedAgentIndex],
+    project: undefined,
     acpConnections,
   });
   // Close context dropdown on outside click
@@ -1219,10 +1226,7 @@ export function NewChatModal({
           (isGlobal ? NO_PROJECT_LABEL : selectedContext),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(selectedContext),
-        folder:
-          workspaceHint.kind === 'home'
-            ? 'Runs in your home folder (~)'
-            : `Runs in ${workspaceHint.path}`,
+        folder: workspaceHintText(workspaceHint),
       };
   const contextSelected = Boolean(
     draftContext?.items.some((item) =>
@@ -1484,7 +1488,7 @@ export function NewChatModal({
               <span className="new-chat-modal__context-label">
                 {currentContextOption?.label || 'Select project'}
               </span>
-              {workspaceHint.kind !== 'home' && (
+              {'path' in workspaceHint && (
                 <>
                   <ContextLabelSeparator />
                   <span className="new-chat-modal__context-dir">
@@ -1511,6 +1515,7 @@ export function NewChatModal({
             {contextOpen && !isMobile && (
               <div className="new-chat-modal__dropdown">
                 <ContextPickerOptions
+                  folderlessHint={folderlessHint}
                   contextSearch={contextSearch}
                   onContextSearchChange={setContextSearch}
                   autoFocusFilter
@@ -1552,6 +1557,7 @@ export function NewChatModal({
                 >
                   <div className="new-chat-modal__context-sheet-list">
                     <ContextPickerOptions
+                      folderlessHint={folderlessHint}
                       contextSearch={contextSearch}
                       onContextSearchChange={setContextSearch}
                       autoFocusFilter={false}
@@ -2015,6 +2021,7 @@ export function NewChatModal({
               options={viewModel.contextOptions ?? filteredContextOptions}
               selectedContext={selectedContext}
               workspaceHint={workspaceHint}
+              folderlessHint={folderlessHint}
               onChoose={(value) => {
                 chooseContext(value);
                 setChipMenu(null);

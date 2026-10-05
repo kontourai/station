@@ -10,7 +10,9 @@ import { LayoutIcon } from '../icons/LayoutIcon';
 import {
   GLOBAL_CONTEXT,
   type NewChatModalContextOption,
+  type NewChatWorkspaceHint,
   splitCwdBreadcrumb,
+  workspaceHintText,
 } from '../modals/new-chat-modal-utils';
 
 /**
@@ -26,6 +28,7 @@ export function ContextPickerOptions({
   filteredContextOptions,
   selectedContext,
   onSelectContext,
+  folderlessHint,
 }: {
   contextSearch: string;
   onContextSearchChange: (value: string) => void;
@@ -34,6 +37,11 @@ export function ContextPickerOptions({
   filteredContextOptions: NewChatModalContextOption[];
   selectedContext: string;
   onSelectContext: (value: string) => void;
+  /**
+   * Where a project with no folder runs with the chosen Agent: home for most
+   * engines, but an ACP engine's own folder or a private one.
+   */
+  folderlessHint: NewChatWorkspaceHint;
 }) {
   const filterRef = useRef<HTMLInputElement>(null);
 
@@ -88,9 +96,9 @@ export function ContextPickerOptions({
             {folderless && (
               <span
                 className="new-chat-modal__no-cwd-badge"
-                title="Runs in your home folder"
+                title={workspaceHintText(folderlessHint)}
               >
-                ~/
+                {folderlessHint.kind === 'home' ? '~/' : 'No folder'}
               </span>
             )}
           </button>

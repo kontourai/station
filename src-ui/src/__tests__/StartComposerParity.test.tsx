@@ -155,9 +155,11 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   activeChatsStore: { getSnapshot: () => ({}) },
 }));
 
-const { HomeStartComposer, resetHeldHomeDraftsForTests } = await import(
-  '../components/home/HomeStartComposer'
-);
+const {
+  HomeStartComposer,
+  reloadHeldHomeDraftsForTests,
+  resetHeldHomeDraftsForTests,
+} = await import('../components/home/HomeStartComposer');
 const { NewChatModal } = await import('../components/modals/NewChatModal');
 
 const CLAUDE = {
@@ -198,6 +200,7 @@ beforeAll(() => {
 beforeEach(() => {
   resetStartChoicesForTests();
   localStorage.clear();
+  sessionStorage.clear();
   deviceSettingsStore.set('chatDockProjectSlug', null);
   state.agents = [CLAUDE, CODEX];
   state.projects = [STATION];
@@ -695,7 +698,7 @@ describe('Home and the dock start the same way', () => {
       notes
         .querySelector('.new-chat-modal__no-cwd-badge')
         ?.getAttribute('title'),
-    ).toBe('Runs in your home folder');
+    ).toBe('Runs in your home folder (~)');
     fireEvent.click(notes);
     expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
     await waitFor(() =>
@@ -757,6 +760,54 @@ describe('Home and the dock start the same way', () => {
   });
 
   // Review HIGH-1/HIGH-2: Home's draft is never lost.
+  // Review L5: a folderless project is what both surfaces actually send.
+  test('a folderless project is the sent target on both surfaces', async () => {
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '' },
+    ];
+    deviceSettingsStore.set('chatDockProjectSlug', 'notes');
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('aria-label')).toBe(
+        'Project: Notes',
+      ),
+    );
+    fireEvent.change(
+      within(formOf(home)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Ship it' } },
+    );
+    await waitFor(() =>
+      expect(
+        (
+          within(formOf(home)).getByRole('button', {
+            name: 'Start',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(
+      within(formOf(home)).getByRole('button', { name: 'Start' }),
+    );
+    expect(ui.starts.at(-1)!.detail.selection.context).toBe('notes');
+    const dock = ui.dock();
+    fireEvent.change(
+      within(formOf(dock)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Ship it' } },
+    );
+    fireEvent.click(
+      within(formOf(dock)).getByRole('button', { name: 'Start' }),
+    );
+    await waitFor(() => expect(ui.dockSelect).toHaveBeenCalledTimes(1));
+    expect(ui.dockSelect.mock.calls[0][1]).toBe('notes');
+    ui.cleanupListener();
+  }, 30_000);
+
   describe("Home's draft survives every way a start or hand-off can end", () => {
     function renderHome() {
       return render(
@@ -918,6 +969,170 @@ describe('Home and the dock start the same way', () => {
       // The started text leaves the field and A takes it back.
       expect(field().value).toBe('Draft A');
       expect(screen.queryByRole('group', { name: 'Earlier draft' })).toBeNull();
+    });
+
+    // A dock that, like useChatDockOverlays, dismisses the open request
+    // (with its draft) inside the dispatch, before taking the new one.
+    function dismissingDock() {
+      const taken: CustomEvent[] = [];
+      const closed = new Set<CustomEvent>();
+      window.addEventListener('station:open-new-chat', (event) => {
+        event.preventDefault();
+        const prev = taken.at(-1);
+        if (prev && !closed.has(prev)) {
+          closed.add(prev);
+          prev.detail.onClosed?.('dismissed', prev.detail.initialPrompt);
+        }
+        taken.push(event as CustomEvent);
+      });
+      return { taken, closed };
+    }
+    const earlier = () =>
+      screen.queryByRole('group', { name: 'Earlier draft' });
+
+    // Review round 3 H1: a hand-off from the EMPTY field dismisses A in the
+    // dock; A comes back during the dispatch and the emptying must not
+    // overwrite it.
+    test('a hand-off from an empty field brings the open draft back, not blank', async () => {
+      dismissingDock();
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Draft A' } });
+      await handOffSkills();
+      expect(field().value).toBe('');
+      await handOffSkills();
+      expect(field().value).toBe('Draft A');
+    });
+
+    // Review round 3 M1: a dismissed Start whose field moved on keeps the
+    // dock's draft behind Restore.
+    test('a dismissed Start while new text was typed holds the dock draft', async () => {
+      const { taken, closed } = dismissingDock();
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Start A' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      fireEvent.change(field(), { target: { value: 'Typed B' } });
+      const last = taken.at(-1)!;
+      closed.add(last);
+      act(() => last.detail.onClosed('dismissed', 'Start A, edited in dock'));
+      expect(field().value).toBe('Typed B');
+      expect(earlier()?.textContent).toContain('Start A, edited in dock');
+    });
+
+    test('a dismissed Start with the field untouched takes the dock edits', async () => {
+      const { taken, closed } = dismissingDock();
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'Start A' } });
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      const last = taken.at(-1)!;
+      closed.add(last);
+      act(() => last.detail.onClosed('dismissed', 'Start A, edited in dock'));
+      expect(field().value).toBe('Start A, edited in dock');
+      expect(earlier()).toBeNull();
+    });
+
+    test('Restore swaps back and forth without losing either text', async () => {
+      const { taken, closed } = dismissingDock();
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'A' } });
+      await handOffSkills();
+      fireEvent.change(field(), { target: { value: 'B' } });
+      const last = taken.at(-1)!;
+      closed.add(last);
+      act(() => last.detail.onClosed('dismissed', 'A2'));
+      const restore = () =>
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Restore your earlier draft' }),
+        );
+      restore();
+      expect(field().value).toBe('A2');
+      expect(earlier()?.textContent).toContain('B');
+      restore();
+      expect(field().value).toBe('B');
+      expect(earlier()?.textContent).toContain('A2');
+    });
+
+    test('A then B handed off: A returns to the field, B waits when dismissed', async () => {
+      const { taken } = dismissingDock();
+      renderHome();
+      fireEvent.change(field(), { target: { value: 'A' } });
+      await handOffSkills();
+      fireEvent.change(field(), { target: { value: 'B' } });
+      await handOffSkills();
+      expect(field().value).toBe('A');
+      act(() => taken.at(-1)!.detail.onClosed('dismissed', 'B'));
+      expect(field().value).toBe('A');
+      expect(earlier()?.textContent).toContain('B');
+    });
+
+    // Review round 3 L1: a reload keeps held drafts (this tab's storage).
+    test('a held draft survives a reload and comes back on the next Home', async () => {
+      const { taken } = dismissingDock();
+      const first = renderHome();
+      fireEvent.change(field(), { target: { value: 'Before reload' } });
+      await handOffSkills();
+      first.unmount();
+      act(() => taken.at(-1)!.detail.onClosed('dismissed', 'Before reload'));
+      expect(window.sessionStorage.getItem('station-home-held-drafts-v1')).toBe(
+        JSON.stringify(['Before reload']),
+      );
+      reloadHeldHomeDraftsForTests();
+      renderHome();
+      expect(field().value).toBe('Before reload');
+      expect(
+        window.sessionStorage.getItem('station-home-held-drafts-v1'),
+      ).toBeNull();
+    });
+
+    test('unreadable stored drafts are ignored, not restored', () => {
+      window.sessionStorage.setItem(
+        'station-home-held-drafts-v1',
+        JSON.stringify([1, { text: 'x' }]),
+      );
+      reloadHeldHomeDraftsForTests();
+      renderHome();
+      expect(field().value).toBe('');
+      expect(earlier()).toBeNull();
+    });
+
+    // Review round 3 L2: focus never falls to the page when the group goes,
+    // and a draft arriving while someone types is announced.
+    test.each(['Restore your earlier draft', 'Discard it'])(
+      '%s on the last earlier draft puts focus in the text box',
+      async (action) => {
+        const { taken, closed } = dismissingDock();
+        renderHome();
+        fireEvent.change(field(), { target: { value: 'Old' } });
+        await handOffSkills();
+        fireEvent.change(field(), { target: { value: 'New' } });
+        const last = taken.at(-1)!;
+        closed.add(last);
+        act(() => last.detail.onClosed('dismissed', 'Old'));
+        // Cleared since: Restore has nothing to swap back, so the group goes.
+        fireEvent.change(field(), { target: { value: '' } });
+        const button = screen.getByRole('button', { name: action });
+        button.focus();
+        fireEvent.click(button);
+        expect(earlier()).toBeNull();
+        expect(document.activeElement).toBe(field());
+      },
+    );
+
+    test('a draft that comes back while typing is announced politely', async () => {
+      const { taken, closed } = dismissingDock();
+      const { container } = renderHome();
+      fireEvent.change(field(), { target: { value: 'Old' } });
+      await handOffSkills();
+      fireEvent.change(field(), { target: { value: 'Typing now' } });
+      const live = container.querySelector('[aria-live="polite"]');
+      expect(live?.textContent).toBe('');
+      const last = taken.at(-1)!;
+      closed.add(last);
+      act(() => last.detail.onClosed('dismissed', 'Old'));
+      expect(live?.textContent).toMatch(/earlier draft came back/);
+      fireEvent.click(screen.getByRole('button', { name: 'Discard it' }));
+      expect(live?.textContent).toBe('');
     });
 
     // Only the text that was sent leaves the field: words typed while the

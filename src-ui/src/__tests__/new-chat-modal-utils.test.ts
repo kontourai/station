@@ -22,6 +22,7 @@ import {
   resolveNewChatWorkspaceHint,
   scheduleSelectedAgentVisibility,
   splitCwdBreadcrumb,
+  workspaceHintText,
 } from '../components/modals/new-chat-modal-utils';
 
 describe('new-chat-modal-utils', () => {
@@ -1740,6 +1741,36 @@ describe('new-chat-modal-utils', () => {
           acpConnections,
         }),
       ).toEqual({ kind: 'home' });
+    });
+
+    // Review L4: the server never defaults an ACP engine to home; with no
+    // directory anywhere its adapter makes a private Station-managed
+    // workspace (orchestration-service, managed-acp-workspace).
+    test('an ACP engine with no directory anywhere runs in its managed workspace, not home', () => {
+      const acpAgent = (connectionId: string) =>
+        ({
+          slug: connectionId,
+          engineConnectionType: 'acp',
+          execution: { agentConnectionId: connectionId },
+        }) as any;
+      expect(
+        resolveNewChatWorkspaceHint({
+          agent: acpAgent('oc-none'),
+          project: { slug: 'scope-only', name: 'Scope Only' } as any,
+          acpConnections,
+        }),
+      ).toEqual({ kind: 'managed' });
+      expect(workspaceHintText({ kind: 'managed' })).toBe(
+        'Runs in a private folder Station makes for this chat',
+      );
+      // Its connection's own directory still wins.
+      expect(
+        resolveNewChatWorkspaceHint({
+          agent: acpAgent('oc-elsewhere'),
+          project: undefined,
+          acpConnections,
+        }),
+      ).toEqual({ kind: 'connection', path: '/tmp/s1089-elsewhere' });
     });
   });
 });

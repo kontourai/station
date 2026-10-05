@@ -49,16 +49,33 @@ export const NO_PROJECT_LABEL = 'No project';
  *
  * The precedence below is a mirror of the server's, not a second opinion:
  * `orchestration-service.ts`'s `resolveStartSessionCwd` turns a project's
- * `workingDirectory` into the session's `cwd`, and `acp-adapter.ts` then
- * resolves `input.cwd || connectionCwd || safeHomeDirectory`. So a project
- * directory outranks a connection default (verified live: project `bound`
- * + connection `oc-elsewhere` → `/tmp/s1089-project`), and a connection
- * default outranks `$HOME`.
+ * `workingDirectory` into the session's `cwd`. With none, a non-ACP engine
+ * gets the home folder there (`project_without_directory` /
+ * `unbound_chat`), while ACP is left to `acp-adapter.ts`, which resolves
+ * `input.cwd || connectionCwd`, else a private Station-managed workspace
+ * for the session (`managed-acp-workspace.ts`, archive#1403) — never home.
+ * So a project directory outranks a connection default (verified live:
+ * project `bound` + connection `oc-elsewhere` → `/tmp/s1089-project`), a
+ * connection default outranks the fallback, and the fallback depends on
+ * the engine: `'home'` or `'managed'`.
  */
-type NewChatWorkspaceHint =
+export type NewChatWorkspaceHint =
   | { kind: 'project'; path: string }
   | { kind: 'connection'; path: string }
-  | { kind: 'home' };
+  | { kind: 'home' }
+  | { kind: 'managed' };
+
+/** The hint as one sentence, for a chip's folder line and the menu. */
+export function workspaceHintText(hint: NewChatWorkspaceHint): string {
+  switch (hint.kind) {
+    case 'home':
+      return 'Runs in your home folder (~)';
+    case 'managed':
+      return 'Runs in a private folder Station makes for this chat';
+    default:
+      return `Runs in ${hint.path}`;
+  }
+}
 
 /** Spoken when the server refused a row without saying why. */
 export const NEW_CHAT_AGENT_UNAVAILABLE_FALLBACK =
@@ -174,6 +191,9 @@ export function resolveNewChatWorkspaceHint({
   if (connectionDirectory) {
     return { kind: 'connection', path: connectionDirectory };
   }
+  // The server leaves an ACP engine's fallback to its adapter, which makes a
+  // private workspace rather than using home.
+  if (agent?.engineConnectionType === 'acp') return { kind: 'managed' };
 
   return { kind: 'home' };
 }
