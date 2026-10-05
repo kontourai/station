@@ -89,6 +89,7 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
   state.error = new StationHttpError(403, 'denied');
   view.rerender(<StationUsagePanel />);
   expect(screen.queryByRole('table')).toBeNull();
+  expect(screen.queryByText('Conversations')).toBeNull();
   expect(
     screen.queryByRole('list', { name: 'Recorded activity breakdown' }),
   ).toBeNull();
@@ -97,6 +98,7 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
   state.current = false;
   view.rerender(<StationUsagePanel />);
   expect(screen.queryByRole('table')).toBeNull();
+  expect(screen.queryByText('Conversations')).toBeNull();
   expect(
     screen.queryByRole('list', { name: 'Recorded activity breakdown' }),
   ).toBeNull();
