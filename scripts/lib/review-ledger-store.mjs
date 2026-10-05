@@ -740,7 +740,7 @@ export function listNoteArchiveFilesAt(root, ref) {
  * @param {string} root
  * @param {string} ref
  */
-export function listCommittedNoteFilesAt(root, ref) {
+function listCommittedNoteFilesAt(root, ref) {
   const archives = listNoteArchiveFilesAt(root, ref);
   const blobs = readGitObjects(
     root,
