@@ -27,6 +27,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
+| [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -1200,6 +1201,51 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+## SessionDigest
+
+An agent deciding whether a peer Session is worth a full transcript read needs
+a cheap account of it, and that account must be what Station recorded, not a
+model's summary. [SessionDigest](../../src-server/services/orchestration/session-digest.ts)
+folds the recorded facts of a conversation's turns into that account for Station
+Control's `get_session_digest`, and the
+[route](../../src-server/routes/orchestration/session-project-activity.ts) that
+serves it also serves `list_project_activity`.
+
+**Interface.** `EventStore.readTurnDigestFacts(threadIds, { beforeGlobalSequence,
+turnLimit })` selects and aggregates in SQLite the facts of a window of turns,
+newest first: the turn's `turn.started` (a steer is not a turn) with a bounded
+prompt prefix, its last terminal event, a count of `tool.started` by tool name,
+the path argument of a successful call whose own `tool.completed` reported an
+`edit`, `delete` or `move` kind, and the `pull-request` rows the turn declared.
+`digestTurn(facts, children)` bounds each field and `fitDigestPage(turns)` takes
+the longest prefix under 8 KiB, throwing rather than serving a turn that alone
+exceeds it. `encodeDigestCursor` and `decodeDigestCursor` carry the paging
+position, the oldest returned turn's `turn.started` global sequence.
+
+**Invariants.** Nothing is summarized and nothing is named that nothing
+computes: a fact that was not recorded is absent (no files for an engine that
+reports no tool kind), and a turn with no terminal event is `open`, not
+guessed. Each field is bounded and says when it was collapsed, so a page ends
+for the byte cap, never by cutting a turn, and paging covers each turn once.
+Delegated children are the Sessions Station derived as launched from the
+conversation (`listSessionsNamingParents`, `stationDerived`), placed in the turn
+during which they started, and a child the caller may not see is not counted.
+
+**Composition and evidence.** The route decides authority per Session before
+reading anything: the owner-scoped read model, the shared scope rule
+(`stationControlScopeRefusal` with the owner's Project `view` action), and no
+remote host. A Session out of scope reads as not found. The status word is
+`sessionLadderWord` in the
+[session-attention contract](../../packages/contracts/src/session-attention.ts),
+the derivation the UI's status ladder also reads. The
+[mounted matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts)
+drives every caller kind against same-Project, other-Project, global, other-owner
+and remote targets over real events, and the
+[fold tests](../../src-server/services/orchestration/__tests__/session-digest.test.ts)
+pin the bounds. Their presence is not an executed receipt against a real engine.
+See [agent configuration](../guides/self-configuring-agent.md#project-activity)
+for the tool-level behavior.
 
 ## ConversationSessionLineage
 

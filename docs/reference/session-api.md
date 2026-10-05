@@ -91,7 +91,11 @@ request returns the same typed `403` and no engine starts.
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
-`/api/orchestration/session-control` rather than the routes above.
+`/api/orchestration/session-control` rather than the routes above. Its
+read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-activity` (see
+[Station Control Project Activity](api.md#station-control-project-activity)) and
+read as the calling Session's owner within the caller's Project.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the

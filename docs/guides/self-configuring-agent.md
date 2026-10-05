@@ -26,7 +26,8 @@ example does not grant one implicitly.
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
 - `read_conversation` to page through a conversation a person referenced in a
-  message to the Agent
+  message to the Agent, or to start at a `search_sessions` hit
+  (`aroundMessageId`)
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a
@@ -63,6 +64,9 @@ example does not grant one implicitly.
 - `send_to_session`, `interrupt_session`, and `wait_session` to message,
   interrupt, and wait on another Session in the caller's Project
   ([Session control](#session-control))
+- `list_project_activity` and `get_session_digest` to see which Sessions are
+  active in the caller's Project and what has happened in one of them
+  ([Project activity](#project-activity))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -233,6 +237,26 @@ defines the rule.
 `get_conversation_messages` is separate. It reads any conversation the
 session's owner owns, keyed by Agent, and is not limited by references.
 
+#### Starting at a search hit
+
+A `search_sessions` hit carries the `sessionId` and the `messageId` of the
+matched message. Pass them to `read_conversation` as `sessionId` and
+`aroundMessageId` (not together with `cursor`) to read the page that contains
+that message, with up to half a page before it, instead of paging from the
+start. The page has a `prevCursor` and a `nextCursor`; pass either back as
+`cursor` to walk older or newer, and each page ends exactly where the last one
+began. The same limits apply (50 messages, 64 KB, 16 KB per message), and the
+byte cap moves the page forward, never past the anchor.
+
+The ids `read_conversation` returns for user messages are the stable form a hit
+names (`<turn start event>:user`), not the projection's positional `proj-<n>`
+ids, so a message read on one page can be named again. A message id that is not
+in the conversation (stale, or another conversation's) is refused with
+`conversation_read_anchor_not_found`, and nothing is read; `aroundMessageId`
+beside `cursor` is `conversation_read_anchor_with_cursor`. The anchor is decided
+after admission, so it never widens what may be read and tells a caller nothing
+about a conversation it may not read.
+
 ### Session control
 
 `send_to_session`, `interrupt_session`, and `wait_session` act on an existing
@@ -289,6 +313,59 @@ do. A request without a verified station-control caller is refused. The
 [route](../../src-server/routes/orchestration/session-agent-control.ts) and the
 [delivery seam](../../src-server/services/orchestration/session-message-delivery.ts)
 own these rules.
+
+### Project activity
+
+`list_project_activity` and `get_session_digest` let an agent working in a
+Project learn which other Sessions are active there and what has happened in
+one of them, without paging a transcript. Both are read-only and take strict
+inputs: nothing names a Project, an owner, or a host.
+
+- `list_project_activity` lists the Sessions of the caller's own Project (or the
+  global space, for a Session with no Project), newest activity first, one row
+  per conversation. A row has `sessionId`, `title`, `engine` and `agent`,
+  `status`, `turnRunning`, `lastActivityAt`, and `worktree` (`path` and
+  `branch`) when the Session's start recorded one, `workingDirectory`, and
+  `self` for the caller's own Session. `status` is the status ladder's word, the
+  one the Station UI shows for the row, derived by one function shared with
+  the UI. The list is the Session's summary alone, so the ladder's Running rung
+  does not carry the sub-agent count or the no-progress marker, which need UI
+  facts. A page is at most 50 rows (`limit` above 50 is refused, never cut); pass
+  `nextCursor` back as `cursor`. A branch Station did not record is absent: it is
+  not read from the folder.
+- `get_session_digest` summarizes one Session from what the event store
+  recorded. No model summarizes, and a fact that was not recorded is absent.
+  The `session` has `title`, `projectSlug`, `engine`, `agent`, `status`, and
+  `turnCount`. Turns come newest first; each has the first non-empty line of the
+  request (clipped, with `requestClipped` when cut), the `outcome` read from the
+  turn's last terminal event (`completed`, `failed` for a `runtime.error`,
+  `interrupted` for an abort or a `cancelled` finish, or `open` when none is
+  recorded), tool calls by name (`otherTools` counts the names beyond the first
+  eight), `files` (only a successful call whose engine reported an edit, delete
+  or move kind and a path argument, so an engine that reports no tool kind shows
+  none, and a path is never guessed from a tool's name), `pullRequests` declared
+  in the turn (`declare_pull_request` or `declare_output`), and
+  `delegatedChildren`, the Sessions Station itself derived as launched from this
+  conversation, placed in the turn during which they started. A page ends at
+  `turnLimit` turns (default 10, at most 25; more is refused) or at 8 KiB of
+  serialized turns, whichever comes first, and `nextCursor` continues with older
+  turns, so every turn arrives once; each field is bounded so one turn always
+  fits.
+
+Both leaves hold every Session to the dispatch scope above with the owner's
+Project `view` action, and read as the calling Session's owner. A caller that is
+not a bound operator sees only its own Project (or the global space), never a
+Session that runs unconfined, and a Session outside that reads as not found,
+the same answer as one that does not exist. A bound operator keeps the
+operator's reach for a digest, as for `read_conversation`, but the list is the
+caller's own Project for every caller. A Session on another Station, in a saved
+Environment, or an Activity record of a paired Station's work is never listed or
+summarized, and a delegated child the caller may not see is left out of a digest.
+A request without a verified station-control caller is refused. There is no
+`claim` field: claiming work is separate. The
+[route](../../src-server/routes/orchestration/session-project-activity.ts) and
+the [digest fold](../../src-server/services/orchestration/session-digest.ts) own
+these rules.
 
 ## Recommended setup pattern
 
