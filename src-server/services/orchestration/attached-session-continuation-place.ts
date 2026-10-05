@@ -23,9 +23,9 @@
  *   `own-folder`: a No project chat confined to that folder, and only in a
  *   folder {@link noProjectFolderRefusal} allows.
  */
-import { realpathSync, statSync } from 'node:fs';
+import { lstatSync, realpathSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import type { AdoptSessionTarget } from '@kontourai/station-contracts/orchestration';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import {
@@ -122,6 +122,29 @@ export function noProjectFolderRefusal(folder: string): string | undefined {
 }
 
 /**
+ * Whether reaching `recorded` (absolute, lexically resolved) goes through a
+ * symbolic link: one of its components, from the root down, is a link.
+ * `lstat` looks each component up the way the file system does, so a
+ * spelling that differs only by case or Unicode normalization finds the
+ * same entry and is not a link. A component that cannot be read counts as a
+ * link: the caller then refuses.
+ */
+function recordedPathFollowsLink(recorded: string): boolean {
+  const { root } = parse(recorded);
+  let current = root;
+  for (const component of recorded.slice(root.length).split(sep)) {
+    if (!component) continue;
+    current = join(current, component);
+    try {
+      if (lstatSync(current).isSymbolicLink()) return true;
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * The place a continuation of an attached session whose recorded folder is
  * `cwd` runs. Throws an error whose message a person can act on when
  * Station refuses.
@@ -193,9 +216,11 @@ export async function resolveContinuationPlace(input: {
   // The person confirmed the folder Activity showed them, which is the one
   // the conversation recorded. A No project chat runs only there: when that
   // path reaches another folder through a symbolic link, refuse rather than
-  // run somewhere they did not see.
+  // run somewhere they did not see. A path that differs from the folder's
+  // own spelling only by letter case or Unicode normalization (a shell's
+  // spelling on a file system that ignores both) is the same folder.
   const recorded = resolve(expandTilde(input.cwd));
-  if (recorded !== folder)
+  if (recorded !== folder && recordedPathFollowsLink(recorded))
     throw new Error(
       `The conversation's folder ${recorded} leads to ${folder} through a symbolic link. Station will not continue it as a No project chat in a folder other than the one it shows. Add a project for ${folder}, or keep working in the original app.`,
     );

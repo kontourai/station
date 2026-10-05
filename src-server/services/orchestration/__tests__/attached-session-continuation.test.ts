@@ -8,6 +8,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   realpathSync,
   rmSync,
@@ -474,6 +475,27 @@ describe('a conversation no project claims (#3386)', () => {
     ).rejects.toThrow(reason);
     expect(adapter.adoptions).toHaveLength(0);
   });
+
+  // Transcripts record the folder as the shell spelled it. On a file system
+  // that ignores letter case or Unicode normalization, another spelling of
+  // the same folder is that folder, not a link to somewhere else.
+  const sameFolderSpellings = [
+    ['letter case', 'code/app', 'Code/App'],
+    ['Unicode normalization', 'caf\u00e9', 'cafe\u0301'],
+  ] as const;
+  test.each(sameFolderSpellings)(
+    'a recorded folder spelled with a different %s is the same folder',
+    async (_label, onDisk, spelled) => {
+      const folder = inHome(...onDisk.split('/'));
+      const recorded = join(dir, 'home', ...spelled.split('/'));
+      // Only meaningful where the file system resolves that spelling.
+      if (!existsSync(recorded)) return;
+      await adopt(attached(recorded), { kind: 'own-folder' });
+      expect(adapter.adoptions.map((input) => input.cwd)).toEqual([
+        realpathSync.native(folder),
+      ]);
+    },
+  );
 
   test('refuses a No project chat whose recorded folder leads elsewhere in the home folder', async () => {
     const real = inHome('code', 'real');
