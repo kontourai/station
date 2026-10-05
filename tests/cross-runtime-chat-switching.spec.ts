@@ -1000,9 +1000,10 @@ async function seedCrossRuntimeRoutes(
 }
 
 async function openNewChatModal(page: Page) {
+  // The dock bar has one New and no Open (design round 2026-10, B1).
   const newChatButton = page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .nth(1);
+    .locator('.chat-dock__tab-actions')
+    .getByRole('button', { name: 'New chat', exact: true });
   await expect(newChatButton).toBeVisible({ timeout: 10_000 });
   await newChatButton.click();
   await expect(page.locator('.new-chat-modal')).toBeVisible({ timeout: 5_000 });
@@ -1045,7 +1046,7 @@ async function selectInventoryConversation(
   }: { title: string; runtimeName: string; project?: string },
 ) {
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-  await chatList.getByRole('button', { name: 'Conversation history' }).click();
+  await chatList.getByRole('button', { name: 'History', exact: true }).click();
   await page
     .locator('.conversation-history .session-item__content', {
       hasText: title,
@@ -1294,7 +1295,7 @@ async function assertConversationHistory(
   page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
-  await chatList.getByRole('button', { name: 'Conversation history' }).click();
+  await chatList.getByRole('button', { name: 'History', exact: true }).click();
   const history = page.locator('.conversation-history');
   await expect(history).toContainText('Claude Alpha Chat');
   await expect(history).toContainText('Codex Beta Chat');
@@ -1331,7 +1332,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await page.goto('/');
     await expect(
       page
-        .getByRole('button', { name: 'Continue most recent work' })
+        .getByRole('button', { name: /^Continue/ })
         .getByText(LONG_HOME_TITLE),
     ).toBeVisible();
     const bounds = await page.evaluate(() => ({

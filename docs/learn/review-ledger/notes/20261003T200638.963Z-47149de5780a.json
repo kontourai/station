@@ -1,7 +1,0 @@
-{
-  "revision": "41f711c8218fa9bfb2e117f7553c2f17e3e23f5d",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Inspected the formatter-only collapse of the private search registration signature; registrations, schemas, access checks and callbacks are unchanged."}
-  ]
-}

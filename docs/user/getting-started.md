@@ -116,7 +116,10 @@ Choose the simplest path for what you want to do:
 
 On Home, write what you want done and choose **Start a chat**. Station uses
 working defaults, waits for discovery, and carries your original request into
-the conversation. You do not need to choose an Agent, Model, or provider first.
+the conversation. You do not need to choose an Agent, Model, or provider first;
+Home shows the Agent and Model that **Start a chat** will use. A chat started
+from Home opens in the chat dock's current project (by default, the project
+you last opened), so that project's default Agent and Model apply.
 An already-ready engine can be prepared through the existing idempotent setup
 path; installed, unconnected apps can be connected when needed. Explicitly
 disabled apps remain disabled. A missing account, permission, or working target
@@ -451,6 +454,11 @@ permission has recorded request evidence, **Inspect request** opens its current
 details. Choose **Approve once** or **Deny** only after reviewing the request.
 You can expand **Request identity** for its exact record or open the Session for
 more context.
+
+For a task that runs on a paired Station, the card shows **Allow** and **Deny**
+for that Station's approval when your access here permits it. The paired Station
+checks that the request is still open and makes the decision. Its questions are
+answered on that Station.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

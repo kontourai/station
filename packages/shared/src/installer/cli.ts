@@ -5,14 +5,11 @@
  * private temporary directory and runs `node <core> install`. Required as a
  * module (the golden-vector and install tests do), it only exports.
  */
-import { runInstaller } from './install.js';
+import { runInstaller } from './run.js';
 
-export {
-  isAbsoluteRoot,
-  runInstaller,
-  windowsInstallRootRefusal,
-} from './install.js';
+export { isAbsoluteRoot, windowsInstallRootRefusal } from './install.js';
 export { verifyInstallManifest } from './manifest.js';
+export { runInstaller } from './run.js';
 
 if (typeof require !== 'undefined' && require.main === module) {
   runInstaller(process.argv.slice(2), process.env, {

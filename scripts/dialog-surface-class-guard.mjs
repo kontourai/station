@@ -43,7 +43,8 @@
 //    resolve, and guessing would be noise too.
 // 3. A prop VALUE with more than one class is a violation only when NONE of
 //    its tokens are defined — not when any single token in it lacks a rule.
-//    `SnoozeMenu.tsx`'s `overlayClassName="composer-popover-overlay
+//    The inbox row's snooze choice (`ChatDockInboxRows.tsx`) has
+//    `overlayClassName="composer-popover-overlay
 //    composer-popover-overlay--start"` pairs a fully-styled base
 //    (`.composer-popover-overlay`: `position: fixed; inset: 0; …`,
 //    chat.css) with a horizontal-alignment modifier that need not exist on
@@ -104,7 +105,9 @@ export const EXEMPT = [
 /**
  * Files with a DIRECT `<ResponsiveDialogSurface>` `overlayClassName`/
  * `panelClassName` when this gate was written, covering a plain literal, a
- * multi-class string (`SnoozeMenu.tsx`), and — deliberately — `Dialog.tsx`
+ * multi-class string (the inbox row's snooze choice in
+ * `ChatDockInboxRows.tsx`, formerly `SnoozeMenu.tsx`), and — deliberately —
+ * `Dialog.tsx`
  * itself, whose own internal `<ResponsiveDialogSurface>` call is where
  * `station-dialog__overlay`/`station-dialog` genuinely are the direct props
  * (every `<Dialog>` CALLER is out of scope; the wrapper's own definition is
@@ -115,7 +118,7 @@ export const SCOPE_SENTINELS = [
   'src-ui/src/components/acp-connections/ACPAddConnectionModal.tsx',
   'src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx',
   'src-ui/src/components/Dialog.tsx',
-  'src-ui/src/components/home/SnoozeMenu.tsx',
+  'src-ui/src/components/chat-dock/ChatDockInboxRows.tsx',
 ];
 
 /**
