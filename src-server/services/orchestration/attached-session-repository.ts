@@ -1,8 +1,8 @@
 /**
  * #3386 Phase A: which git repository an attached session's folder belongs
  * to, so a session that runs in a worktree OUTSIDE a project's folder (a
- * sibling `../<repo>-worktrees/<lane>`, or another tool's worktree root such
- * as `~/.t3/worktrees/<repo>/<name>`) can still be attributed to the project
+ * sibling `../<repo>-worktrees/<lane>`, or a worktree root another tool keeps
+ * under the home directory) can still be attributed to the project
  * whose folder is a checkout of the same repository.
  *
  * Found the way git finds it, by reading the `.git` entry and its
