@@ -6,12 +6,13 @@ import {
 import {
   useDeleteProjectMutation,
   useModelConnectionsQuery,
+  useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
-import { LayoutIcon } from '../components/icons/LayoutIcon';
+import { ProjectIcon } from '../components/icons/ProjectIcon';
 import { ModelSelector } from '../components/ModelSelector';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import {
@@ -21,6 +22,10 @@ import {
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
 import { PathAutocomplete } from '../components/PathAutocomplete';
+import {
+  ProjectIconPicker,
+  projectIconInputProblem,
+} from '../components/project-icon/ProjectIconPicker';
 import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
@@ -220,6 +225,15 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
   const saveMutation = useUpdateProjectMutation();
 
+  // The icon picker reads the project's SAVED folder for artwork, and only
+  // while it is open: discovery is a filesystem scan, and suggestions are
+  // offered, never applied.
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const iconCandidates = useProjectIconCandidatesQuery(
+    project?.workingDirectory,
+    { enabled: iconPickerOpen },
+  );
+
   const deleteMutation = useDeleteProjectMutation();
 
   const isDirty =
@@ -275,6 +289,14 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     ? workingDirectory.slice(0, -workingDirectoryLeaf.length)
     : workingDirectory;
 
+  // Only a CHANGED icon can block Save: a stored value the icon rule now
+  // refuses (a legacy remote URL) is not re-sent by an unrelated edit — see
+  // `buildProjectSavePayload` — so it must not block one either.
+  const iconProblem =
+    form.icon !== savedForm?.icon
+      ? projectIconInputProblem(form.icon ?? '')
+      : undefined;
+
   function setField<K extends keyof ProjectForm>(
     key: K,
     value: ProjectForm[K],
@@ -288,7 +310,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     try {
       const saved = await saveMutation.mutateAsync({
         slug,
-        ...buildProjectSavePayload(form, workingDirectory),
+        ...buildProjectSavePayload(form, workingDirectory, savedForm),
       });
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
@@ -314,7 +336,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     <div className="page page--full">
       {/* Header */}
       <DetailHeader
-        title={`${form.icon || project?.icon || ''} ${form.name}`.trim()}
+        title={form.name}
         badge={
           isDirty
             ? { label: 'unsaved', variant: 'warning' as const }
@@ -331,7 +353,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <button
           type="button"
           className="editor-btn editor-btn--primary"
-          disabled={saveMutation.isPending || !form.name}
+          disabled={saveMutation.isPending || !form.name || !!iconProblem}
           onClick={() => void saveProject()}
         >
           {saveMutation.isPending ? 'Saving…' : 'Save'}
@@ -369,9 +391,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           description="Keep the project pointed at the folder you actually work in. Name and icon stay editable, but the directory is the first thing surfaced here."
           actions={
             <div className="project-settings__identity-preview">
-              <LayoutIcon
-                layout={{ name: form.name, icon: form.icon || project?.icon }}
+              <ProjectIcon
+                project={{ name: form.name, icon: form.icon }}
                 size={46}
+                fallback="initials"
               />
               <div className="project-settings__identity-copy">
                 <div className="project-settings__identity-name">
@@ -453,15 +476,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 Name *
               </label>
               <div className="project-settings__name-row">
-                <input
-                  className="editor-input project-settings__icon-input"
-                  type="text"
-                  value={form.icon ?? ''}
-                  placeholder="—"
-                  aria-label="Project icon"
-                  title="Optional project icon"
-                  onChange={(e) => setField('icon', e.target.value)}
-                />
+                <button
+                  type="button"
+                  className="project-settings__icon-button"
+                  aria-label="Choose project icon"
+                  aria-expanded={iconPickerOpen}
+                  onClick={() => setIconPickerOpen((open) => !open)}
+                >
+                  <ProjectIcon
+                    project={{ name: form.name, icon: form.icon }}
+                    size={40}
+                    fallback="initials"
+                  />
+                </button>
                 <input
                   id="project-name"
                   className="editor-input project-settings__name-input"
@@ -470,6 +497,16 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   onChange={(e) => setField('name', e.target.value)}
                 />
               </div>
+              {iconPickerOpen && (
+                <ProjectIconPicker
+                  idPrefix="project-settings-icon"
+                  name={form.name}
+                  value={form.icon ?? ''}
+                  onChange={(icon) => setField('icon', icon)}
+                  candidates={iconCandidates.data ?? []}
+                  fetching={iconCandidates.isFetching}
+                />
+              )}
             </div>
           </div>
           <div className="editor-field">
