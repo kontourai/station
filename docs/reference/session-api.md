@@ -462,8 +462,12 @@ as `unattributed` (which never replaces a recorded attribution), and a
 Project whose directory is unread is not matched. A folder that does not
 exist is different: it keeps its path as written. The folder the process was
 stuck on is not read again for 60 seconds, nor while that process is still
-alive; at most four killed helpers may still be alive before no new one
-starts. The next poll that reads the folder corrects a new transcript's
+alive. At most four killed helpers may still be alive before no new one
+starts; until one exits, which is logged, only folders under one they hung on
+are unread, and every other folder is matched as a missing folder is. A
+transcript in an unread folder that the log already files under a Project is
+still followed under it even where unattributed transcripts are not. The next
+poll that reads the folder corrects a new transcript's
 attribution. `adoptSession` still resolves its folder with a synchronous
 `realpath` on the main thread
 ([`attached-session-adoption.ts`](../../src-server/services/orchestration/attached-session-adoption.ts)),
