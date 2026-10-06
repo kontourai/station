@@ -325,7 +325,11 @@ export const AUTOMATION_EXECUTION_LIMITS = {
   deliveryRetentionMs: 7 * 24 * 60 * 60 * 1000,
   /** Signed events older than this are refused as `stale_event`. */
   maxEventAgeMs: 72 * 60 * 60 * 1000,
-  /** Retained delivery rows; the oldest beyond this are pruned. */
+  /**
+   * Retained delivery rows outside the semantic-dedupe outcomes (refused,
+   * received, duplicate); the oldest beyond this are pruned. Accepted rows
+   * are bounded only by `deliveryRetentionMs`.
+   */
   maxRetainedDeliveries: 50_000,
   /** Closed episodes older than this are pruned. */
   closedEpisodeRetentionMs: 31 * 24 * 60 * 60 * 1000,

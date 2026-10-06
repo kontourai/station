@@ -23,6 +23,24 @@
  *
  * A rule without an episode policy is expected to use a per-delivery episode
  * (its semantic key, one attempt), so every action goes through a claim.
+ *
+ * Retention: rows that take part in semantic dedupe
+ * (`AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES`) require an authenticated delivery,
+ * so they are bounded only by the retention window. The row ceiling applies
+ * to every other row (refused, received, duplicate), which an
+ * unauthenticated sender can create; a flood of refusals therefore can never
+ * evict the row that makes a genuine redelivery a duplicate.
+ *
+ * Accepted residuals:
+ * - A redelivery that races the first delivery across two processes while
+ *   the first row is still `received` is not a semantic duplicate. Station
+ *   runs one process per home, so the race needs a second server on the
+ *   same home.
+ * - An indeterminate per-delivery episode closes on settle, so only its
+ *   delivery row (outcome `indeterminate`) blocks a replay. That row
+ *   outlives the 72-hour freshness bound (`maxEventAgeMs`) because
+ *   retention is seven days and accepted rows are not row-capped, so a
+ *   replay old enough to escape it is refused as stale.
  */
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -412,9 +430,13 @@ class SqliteAutomationLedger implements AutomationLedger {
       exact: exactProcessIdentity,
       probe: probeExactProcessIdentity,
     };
-    this.maxRetainedDeliveries =
+    const cap =
       options.maxRetainedDeliveries ??
       AUTOMATION_EXECUTION_LIMITS.maxRetainedDeliveries;
+    if (!Number.isInteger(cap) || cap < 1) {
+      throw new RangeError('maxRetainedDeliveries must be a positive integer');
+    }
+    this.maxRetainedDeliveries = cap;
     const exact = this.identity.exact(process.pid);
     this.owner = {
       id: randomUUID(),
@@ -560,7 +582,8 @@ class SqliteAutomationLedger implements AutomationLedger {
   /**
    * Retention, run inside each delivery write and bounded to
    * {@link PRUNE_BATCH} rows per table: deliveries past the retention
-   * window, deliveries beyond the row ceiling (oldest first), and closed
+   * window, non-dedupe deliveries beyond the row ceiling (oldest first;
+   * accepted rows are never row-capped), and closed
    * episodes past their retention. Open, exhausted and indeterminate
    * episodes are kept: they still decide whether work may start.
    */
@@ -577,6 +600,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       .prepare(
         `DELETE FROM automation_deliveries WHERE rowid IN (
            SELECT rowid FROM automation_deliveries
+            WHERE outcome NOT IN (${SEMANTIC_OUTCOMES_SQL})
             ORDER BY received_ms DESC, rowid DESC LIMIT ? OFFSET ?)`,
       )
       .run(PRUNE_BATCH, this.maxRetainedDeliveries - 1);

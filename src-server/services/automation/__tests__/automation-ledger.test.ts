@@ -157,10 +157,46 @@ describe('AutomationLedger', () => {
       expect(delivery(store, 'guid-b')).toMatchObject({ kind: 'recorded' });
     });
 
+    test('a refusal flood cannot evict an accepted row inside the window', () => {
+      const store = ledger(3);
+      const genuine = delivery(store, 'guid-genuine', undefined, {
+        outcome: 'started',
+      });
+      expect(genuine.kind).toBe('recorded');
+      for (let index = 0; index < 6; index += 1) {
+        delivery(
+          store,
+          `forged-${index}`,
+          `workflow_run:${index}:1:completed`,
+          {
+            outcome: 'refused',
+            reason: 'invalid_signature',
+            receivedAt: T0 + 1 + index,
+          },
+        );
+      }
+      expect(
+        store.listDeliveries().filter(({ outcome }) => outcome === 'refused'),
+      ).toHaveLength(3);
+      expect(store.listDeliveries().map(({ outcome }) => outcome)).toContain(
+        'started',
+      );
+      expect(
+        delivery(store, 'guid-fresh', undefined, { receivedAt: T0 + 10 }),
+      ).toMatchObject({ kind: 'duplicate', layer: 'semantic' });
+    });
+
+    test('an invalid row ceiling is refused', () => {
+      expect(() =>
+        createAutomationLedger({ directory, maxRetainedDeliveries: 0 }),
+      ).toThrow(RangeError);
+    });
+
     test('the row ceiling drops the oldest deliveries on the write path', () => {
       const store = ledger(3);
       for (let index = 0; index < 5; index += 1) {
         delivery(store, `guid-${index}`, `workflow_run:${index}:1:completed`, {
+          outcome: 'received',
           receivedAt: T0 + index,
         });
       }
