@@ -5,6 +5,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -316,6 +317,55 @@ describe('machine-bound production residual acceptance', () => {
       expect(f.evaluate().ok).toBe(true);
     },
   );
+
+  it('refuses a Node-resolvable formatter file shadow and restores acceptance after removal', () => {
+    const f = fixture();
+    const caller = 'node_modules/argparse/lib/help/formatter.js';
+    const shadow = 'node_modules/argparse/lib/help/node_modules/sprintf-js.js';
+    f.write(caller, 'module.exports = require("sprintf-js");');
+    f.write(
+      shadow,
+      'module.exports = { sprintf: (format, value) => value.toFixed(101) };',
+    );
+    expect(createRequire(join(f.root, caller)).resolve('sprintf-js')).toBe(
+      realpathSync(join(f.root, shadow)),
+    );
+    expect(f.evaluate().ok).toBe(false);
+    rmSync(join(f.root, shadow));
+    expect(f.evaluate().ok).toBe(true);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses a formatter file symlink shadow at the real caller lookup',
+    () => {
+      const f = fixture();
+      const caller = 'node_modules/argparse/lib/help/formatter.js';
+      const target = 'node_modules/argparse/lib/unpatched.js';
+      const shadow = 'node_modules/argparse/lib/help/node_modules/sprintf-js';
+      f.write(caller, 'module.exports = require("sprintf-js");');
+      f.write(
+        target,
+        'module.exports = { sprintf: (format, value) => value.toFixed(101) };',
+      );
+      mkdirSync(join(f.root, shadow, '..'), { recursive: true });
+      symlinkSync(join(f.root, target), join(f.root, shadow), 'file');
+      expect(createRequire(join(f.root, caller)).resolve('sprintf-js')).toBe(
+        realpathSync(join(f.root, target)),
+      );
+      expect(f.evaluate().ok).toBe(false);
+      rmSync(join(f.root, shadow));
+      expect(f.evaluate().ok).toBe(true);
+    },
+  );
+
+  it('traverses unrelated manifestless module directories without hiding formatter copies', () => {
+    const f = fixture();
+    f.write(
+      'node_modules/argparse/lib/node_modules/@types/fixture/index.d.ts',
+      'export type Name = string;',
+    );
+    expect(f.evaluate().ok).toBe(true);
+  });
 
   it('does not accept another advisory on the same installed package', () => {
     const f = fixture();

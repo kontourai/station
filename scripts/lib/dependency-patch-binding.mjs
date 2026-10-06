@@ -142,6 +142,14 @@ function installedInstances(root, lock, name, version) {
       if (++entries > 500000)
         refuse('installed inventory entry bound exceeded');
       const child = join(directory, entry.name);
+      if (
+        modules &&
+        [name, `${name}.js`, `${name}.json`, `${name}.node`].includes(
+          entry.name.toLowerCase(),
+        ) &&
+        !entry.isDirectory()
+      )
+        refuse('unaccounted module file shadow');
       if (entry.isSymbolicLink()) {
         const target = realpathSync(child);
         if (
@@ -161,9 +169,17 @@ function installedInstances(root, lock, name, version) {
         continue;
       }
       if (modules && !entry.name.startsWith('.')) {
-        const manifest = json(root, join(child, 'package.json'));
+        let manifest;
+        try {
+          manifest = json(root, join(child, 'package.json'));
+        } catch (error) {
+          if (error.code !== 'ENOENT' || entry.name.toLowerCase() === name)
+            throw error;
+          scan(child, false, depth + 1);
+          continue;
+        }
         if (
-          entry.name === name &&
+          entry.name.toLowerCase() === name &&
           (manifest.name !== name || manifest.version !== version)
         )
           refuse('installed package identity changed');
