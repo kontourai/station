@@ -4131,6 +4131,13 @@ and does not share another person's usage statistics.
 
 ### Station operator usage queries
 
+Usage and provenance consumers can import provider scope, context validation,
+and cache-inclusive token helpers from
+`@kontourai/station-shared/usage-semantics`. The
+[shared leaf](../../packages/shared/src/usage-semantics.ts) owns these bindings;
+`usage-fold` re-exports them for existing consumers and retains event accounting
+and observation allocation.
+
 For a lazy view, import `useStationUsageQuery` from
 `@kontourai/station-sdk/station-usage-query`. The
 [owning module](../../packages/sdk/src/query-domains/stationUsage.ts) keeps the
