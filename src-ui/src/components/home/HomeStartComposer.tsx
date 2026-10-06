@@ -643,7 +643,6 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               modelConnections={modelConnections}
               choice={start.modelChoiceFor(chipMenuAgent)}
               defaultModel={defaultEffectiveModelForAgent(chipMenuAgent)}
-              defaultSourceLabel={start.modelFor(chipMenuAgent).source}
               onSelect={(model) => start.chooseModel(chipMenuAgent, model)}
               onReset={() => start.resetModel(chipMenuAgent)}
               onRuntimeOptionChange={(key, value) =>

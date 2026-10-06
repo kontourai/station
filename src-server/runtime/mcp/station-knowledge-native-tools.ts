@@ -100,10 +100,15 @@ function registerNativeKnowledgeTools(
   );
   return stationKnowledgeToolCatalog().map((tool) => ({
     id: tool.name,
-    type: 'user-defined' as const,
-    isClientSide: () => false,
     name: tool.name,
     description: tool.description,
+    // Plain JSON Schema, like every other MCP tool's `parameters`: Strands
+    // hands it to `FunctionTool` as-is, and `toVoltAgentTool` marks it with
+    // the AI SDK's `jsonSchema()` on the VoltAgent side. These tools must NOT
+    // claim `type: 'user-defined'` — that sends them to the AI SDK untouched,
+    // where the catalog's `z.toJSONSchema()` output (which carries zod's
+    // hidden `~standard` marker) is misread as a zod v3 schema ("reading
+    // 'typeName'") and every turn of an agent holding them fails.
     parameters: tool.inputSchema,
     execute: (input: Record<string, unknown>) => {
       const correlation = currentAuthorizedTurnCorrelation();

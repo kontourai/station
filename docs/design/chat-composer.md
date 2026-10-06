@@ -180,6 +180,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   selection source, and any unavailable reason. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
+- Choosing or resetting a Model closes the picker, in a chat, in the start
+  composer and in a fork's Agent list; changing a runtime option such as
+  effort keeps it open. The reset names the default it restores by its source
+  (**Use project default**, **Use agent default**), or **Use source turn** for
+  a fork's own Agent, never the choice it clears.
 - Search spans all ready Providers. A compact rail exposes Favorites, All, and
   each Provider without teaching internal connection categories.
 - Unavailable Providers explain their status and are disabled. They can never

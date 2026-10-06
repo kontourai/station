@@ -1,0 +1,7 @@
+{
+  "revision": "dd265ce982c284adc0e0cde3d8d78a1ef6a14ac1",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the native caller bridge paragraph against station-knowledge-native-tools.ts: the fix only marks each native tool's existing JSON schema with the AI SDK's jsonSchema() so agents holding the tools can send turns again; session-scoped HTTP custody and turn authorization are unchanged, so no prose change.","inputs":["docs/guides/knowledge.md","src-server/runtime/mcp/station-knowledge-native-tools.ts"]}
+  ]
+}

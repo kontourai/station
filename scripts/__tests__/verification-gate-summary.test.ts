@@ -258,7 +258,7 @@ describe('verification gate summary', () => {
 
     expect(status).toBe(0);
     expect(errorAnnotations(stdout)).toEqual([]);
-    expect(summary).toContain('Hosted full regression');
+    expect(summary).toContain('Main: Full qualification');
     expect(summary).toContain('✅ passed');
     expect(summary).toContain('Terminal status: `completed`');
     expect(summary).toContain('| passed | 4213 |');

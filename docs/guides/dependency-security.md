@@ -208,7 +208,7 @@ dependency-touching pull request from the moment the registry publishes it — w
 attribute it to, and outside what the expiry warning above can see. The
 scheduled run scans on its own cadence, and a failure files or updates one
 tracking issue through `.github/workflows/main-health.yml`, titled
-`Main pipeline red: Scheduled dependency advisory floor`. The next green
+`Main pipeline red: Repo: Dependency advisory`. The next green
 scheduled run closes it. Renew or remediate the ledger against that tracker
 rather than against whichever pull request happened to gate next.
 

@@ -2,6 +2,10 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import {
+  type EffectiveModelSource,
+  modelSourceLabel,
+} from '../../utils/execution';
 import type {
   NewChatModelChoice,
   SelectableModel,
@@ -325,7 +329,6 @@ export function StartModelPicker({
   modelConnections,
   choice,
   defaultModel,
-  defaultSourceLabel,
   onSelect,
   onReset,
   onRuntimeOptionChange,
@@ -337,8 +340,11 @@ export function StartModelPicker({
   loading: boolean;
   modelConnections: ConnectionConfig[];
   choice?: NewChatModelChoice;
-  defaultModel?: { id?: string | null; providerId?: string };
-  defaultSourceLabel: string;
+  defaultModel?: {
+    id?: string | null;
+    providerId?: string;
+    source?: EffectiveModelSource;
+  };
   onSelect: (model: SelectableModel) => void;
   onReset: () => void;
   onRuntimeOptionChange: (key: string, value: unknown) => void;
@@ -372,10 +378,25 @@ export function StartModelPicker({
             currentProviderId={choice?.providerId ?? defaultModel?.providerId}
             currentModel={choice?.modelId}
             defaultModel={defaultModel?.id ?? undefined}
-            defaultSourceLabel={defaultSourceLabel}
+            // The reset names where the default comes from, never the
+            // current choice: with a Model chosen that is always the
+            // override itself ("Use session override").
+            defaultSourceLabel={
+              (defaultModel?.source &&
+                modelSourceLabel(defaultModel.source).toLowerCase()) ||
+              'default model'
+            }
             runtimeOptions={choice?.providerOptions}
-            onSelect={onSelect}
-            onReset={onReset}
+            // Choosing or resetting a Model finishes the picker, as it does
+            // in a chat's composer; effort changes keep it open.
+            onSelect={(model) => {
+              onSelect(model);
+              onClose();
+            }}
+            onReset={() => {
+              onReset();
+              onClose();
+            }}
             onRuntimeOptionChange={onRuntimeOptionChange}
             onClose={onClose}
           />

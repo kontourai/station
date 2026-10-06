@@ -1113,6 +1113,22 @@ export interface StationCapabilityFlags {
    * before the wire with a typed code.
    */
   executionPreparation?: boolean;
+  /**
+   * This build understands the opt-in `expectedInputRequest` field on
+   * `POST /api/orchestration/delegations/:taskId/continue`: it delivers the
+   * follow-up only as the answer to that exact open input request on the
+   * task's current Session (same `threadId`, `requestId` and
+   * `requestEventId`), re-checked when the engine is invoked, and refuses
+   * with `input_request_changed` when that request is gone or replaced. Its
+   * delegated-task snapshot's `pendingRequest` then also carries `eventId`,
+   * the presented `body` and, for an authenticated read, `callerCanRespond`.
+   *
+   * A sender MUST gate sending `expectedInputRequest` on this flag: an older
+   * receiver's schema silently drops the unknown field and would deliver the
+   * text as an ordinary, unbound follow-up turn. A STATIC protocol fact
+   * about this build, never a statement that any request is open.
+   */
+  delegatedInputAnswers?: boolean;
 }
 
 export interface PublicStationHandshake {

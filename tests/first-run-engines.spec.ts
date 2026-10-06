@@ -396,6 +396,21 @@ async function passEngineRoleStep(page: Page) {
   }
 }
 
+/**
+ * Home is intent-first (#3082, `<FirstRunHomeChapter intentFirst />`): once
+ * nothing is left to disclose, the run never opens over the task on its own.
+ * It waits behind the Home card's explicit "Personalize Station". Asserting
+ * the absence after the card is up is what keeps a chapter that starts
+ * auto-opening again from passing here unnoticed.
+ */
+async function openRunFromHomeCard(page: Page) {
+  const card = page.getByTestId('first-run-home-card');
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
+  await expect(page.locator('.responsive-surface-overlay')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Personalize Station' }).click();
+}
+
 function disclosureInventory(acknowledged: boolean, telemetryEnabled = true) {
   return {
     acknowledged,
@@ -912,7 +927,11 @@ test.describe('First-run engines chapter (station#3027)', () => {
     });
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
     await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
+    // Answering the launcher hands Home back to the task; the run is one
+    // explicit step away rather than a second interruption.
+    await openRunFromHomeCard(page);
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await expect(engineRow(page, 'claude-code')).toHaveAttribute(
@@ -1006,12 +1025,11 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // The receipt is written through the same endpoint the modal uses, and
     // only then does the run move on.
     await expect.poll(() => acknowledgements.length).toBe(1);
+    // Intent-first Home (#3082): the decision returns the reader to the task
+    // instead of walking on into the engines step.
+    await expect(disclosureStep(page)).toHaveCount(0);
+    await openRunFromHomeCard(page);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await page
-      .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
-      .click();
     await expect(page.getByText('Step 1 of 3')).toBeVisible();
     await expect(disclosureStep(page)).toHaveCount(0);
     await expect(standaloneModal(page)).toHaveCount(0);
@@ -1060,15 +1078,21 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       .poll(() => settingWrites)
       .toEqual([{ telemetryEnabled: false }]);
     await expect.poll(() => acknowledgements.length).toBe(1);
+    await expect(disclosureStep(page)).toHaveCount(0);
+    // Deciding the disclosure is not COMPLETING the run. Intent-first Home
+    // (#3082) returns to the task by deferring it — the same resumable
+    // `skipped` snooze the chapter's own "Not now" records — and never
+    // records `completed`.
+    await expect
+      .poll(() => firstRunWrites(configWrites).map((record) => record.status))
+      .toEqual(['skipped']);
+    await openRunFromHomeCard(page);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await page
-      .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
-      .click();
     await expect(page.getByText('Step 1 of 3')).toBeVisible();
-    // Deciding the disclosure is not deciding the RUN.
-    expect(firstRunWrites(configWrites)).toEqual([]);
+    // Resuming from the card is not a second decision.
+    expect(firstRunWrites(configWrites).map((record) => record.status)).toEqual(
+      ['skipped'],
+    );
   });
 
   test('closing the run over the disclosure decides nothing (#765 B1)', async ({
@@ -1227,10 +1251,11 @@ for (const viewport of [
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
     // This fixture has no ready engine: explicitly leave the prerequisite
-    // launcher before the independent first-run chapter can open.
+    // launcher before Home's card can open the first-run chapter.
     await page
       .getByRole('button', { name: 'Continue Without Setup', exact: true })
       .click();
+    await openRunFromHomeCard(page);
     const engines = page.getByTestId('first-run-engines');
     await expect(engines).toBeVisible({ timeout: 20_000 });
     await engines

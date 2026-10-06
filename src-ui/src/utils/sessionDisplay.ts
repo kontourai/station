@@ -298,6 +298,10 @@ export interface SessionIconAgent {
   icon?: string;
   slug?: string;
   iconUrl?: string;
+  /** The engine connection the agent is bound to, when the catalog says. */
+  execution?: { agentConnectionId?: string };
+  /** `'acp'` for an ACP-bound agent; see `inboxRowIconAgent`. */
+  engineConnectionType?: string;
 }
 
 /**
@@ -372,7 +376,10 @@ export function displayProvider(session: OrchestrationSessionSummary): string {
     return `${delegationTargetLabel(session)} · ${identity}`;
   }
   const engineLabel = engineDisplayLabel(session.provider);
-  return engineLabel ?? `Station agent · ${session.provider}`;
+  const label = engineLabel ?? `Station agent · ${session.provider}`;
+  return session.modelRoute
+    ? `${label} · via ${session.modelRoute.label}`
+    : label;
 }
 
 export function displayEnvironment(

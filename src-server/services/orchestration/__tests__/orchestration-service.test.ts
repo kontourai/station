@@ -18035,6 +18035,35 @@ describe('OrchestrationService', () => {
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });
 
+  // #3386: Activity lists a session under No project; continuing it refuses
+  // by saying what is missing, not that a project went away.
+  test('refuses to adopt an attached source in a folder inside no project, naming the folder', async () => {
+    const sourceThreadId = 'external:claude:no-project-source';
+    const scratch = join(tmp, 'scratch');
+    mkdirSync(scratch, { recursive: true });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: scratch,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'vendor-no-project',
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+
+    await expect(
+      service.dispatch({ type: 'adoptSession', sourceThreadId }),
+    ).rejects.toThrow(
+      `The attached session folder ${scratch} is not inside a project folder.`,
+    );
+    expect(claude.adoptSession).not.toHaveBeenCalled();
+  });
+
   // Station #90 lane D (R1): an adoption an unverified agent requested
   // starts its child marked, like every other start.
   test('an adoption whose dispatch context marks it unattributed stamps the child start', async () => {

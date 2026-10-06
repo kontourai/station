@@ -69,6 +69,30 @@ Consequences:
   A detected row is still only a suggestion: it creates no Station connection until the
   user takes its explicit action.
 
+## Connect an engine through a saved proxy
+
+In **Connections → Engines**, Claude Code and Codex offer **Connect through**. Choose
+**Your account** or an enabled OpenAI-compatible connection already saved under **Models**.
+The saved model connection owns the address and key; the engine stores only its connection
+reference. Choosing a route explicitly replaces custom connection environment/config-home
+overrides. Station never edits the user's global CLI configuration.
+
+Save the connection to discover its models, choose a **Default model**, and use **Check
+connection**. The check sends one short, potentially billable message. It can retry an old
+authentication failure, but cannot bypass missing binaries or other prerequisites. A failed
+or timed-out check leaves failure evidence; only a proven successful turn restores runtime
+health. **Refresh models** re-reads the connection catalog and does not send a chat turn.
+
+Claude uses the proxy's Messages root. Codex uses child-process provider overrides and its
+native model catalog, preserving the existing config home and resume history. A selected
+proxy that is missing, disabled, or lacks a key refuses launch rather than falling back to
+the direct account. Credential rotation is read from the saved model connection on the next
+launch and invalidates the prior connection-check receipt.
+
+New execution sessions capture a safe route label and endpoint. Chat headers, engine
+choices and work lists show **via <proxy name>**; later configuration changes do not rename
+an idle session's recorded route. A relaunched execution records the route it actually uses. Older sessions without a captured route keep their existing labels.
+
 ## 1.1 Engine config ownership: the overlay model
 
 Shipped: the audit that grounds the overlay model, the global-config refusal guard, and the
@@ -129,7 +153,7 @@ copies only when the caller sets `includeCredentials: true` (a separate, explici
 in the UI) — on macOS, Claude Code's OAuth credentials actually live in the system
 Keychain. Current saved-profile launches and enrolment bind its secure-store
 namespace to the profile config directory; file absence alone does not establish
-authentication. The engine-account page asks the CLI for status. Always refused, never on any allowlist: `projects/`, `todos/`,
+authentication. The engine-account page asks the CLI for status. Connection readiness does too (#3303): with no API-key env and no `.credentials.json`, and only when the config dir exists, it runs the installed CLI's `auth status --json` (only on an installed Claude CLI of 2.1.41 or newer, where the command exists) under the connection env; a failed, timed-out or unparseable probe is `unknown` (the login prerequisite then reports an error, which still blocks), never authenticated. Always refused, never on any allowlist: `projects/`, `todos/`,
 `statsig/`, `shell-snapshots/`, anything not listed above, any symlink anywhere in a
 copied tree (refuse, never follow — same posture as the skills-materialization module
 below), and a file whose opened descriptor reports more than 5 MiB before reading.

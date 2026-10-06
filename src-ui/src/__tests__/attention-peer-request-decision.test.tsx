@@ -30,6 +30,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  */
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 const respond = vi.fn();
+const continueTask = vi.fn();
 const scope = {
   apiBase: 'http://station.test',
   authorityKey: 'operator',
@@ -39,6 +40,7 @@ const scope = {
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   respondToDelegatedTaskRequest: (...args: unknown[]) => respond(...args),
+  continueDelegatedTask: (...args: unknown[]) => continueTask(...args),
 }));
 const sendTurn = vi.fn();
 
@@ -128,6 +130,8 @@ function card(): HTMLElement {
 }
 
 beforeEach(() => {
+  continueTask.mockReset();
+  continueTask.mockResolvedValue({ status: 'dispatched' });
   respond.mockReset();
   respond.mockResolvedValue({ status: 'resolved', requestId: 'req-peer-1' });
   attention = { items: [peerApproval()], pendingCount: 1 };
@@ -190,7 +194,7 @@ describe('Notifications inbox: a paired-Station approval', () => {
     expect(
       within(card()).getByTestId('attention-peer-elsewhere').textContent,
     ).toBe(
-      "Your access to this Station doesn't allow deciding paired-Station requests from here. Answer this on Station B, the paired Station that runs the task.",
+      "Your access to this Station doesn't allow answering paired-Station requests from here. Answer this on Station B, the paired Station that runs the task.",
     );
   });
 
@@ -258,5 +262,151 @@ describe('Activity detail: the same decision on a paired record', () => {
         expect.anything(),
       ),
     );
+  });
+});
+
+function peerQuestion(
+  reference: Partial<
+    NonNullable<ReviewPendingAttentionItem['peerRequestReference']>
+  > = {},
+  overrides: Partial<ReviewPendingAttentionItem> = {},
+): ReviewPendingAttentionItem {
+  return peerApproval({
+    title: 'Which bucket?',
+    body: 'The release needs a destination bucket.',
+    peerRequestReference: {
+      environmentId: 'environment-peer',
+      taskId: 'task-peer',
+      requestId: 'req-question',
+      requestType: 'input',
+      threadId: 'peer-session',
+      requestEventId: 'evt-question',
+      callerCanRespond: true,
+      ...reference,
+    },
+    ...overrides,
+  });
+}
+
+function questionCard(): HTMLElement {
+  const match = screen
+    .getAllByTestId('attention-item')
+    .find((row) => within(row).queryByText('Which bucket?') !== null);
+  if (!match) throw new Error('No peer question card');
+  return match;
+}
+
+describe('Notifications inbox: a paired-Station input question (bound answers)', () => {
+  test('the answer posts to continue bound to exactly that request', async () => {
+    attention = { items: [peerQuestion()], pendingCount: 1 };
+    renderPage();
+    fireEvent.change(
+      within(questionCard()).getByLabelText('Answer on the paired Station'),
+      { target: { value: 'Use staging' } },
+    );
+    fireEvent.click(
+      within(questionCard()).getByRole('button', { name: 'Send answer' }),
+    );
+    await waitFor(() => expect(continueTask).toHaveBeenCalledTimes(1));
+    expect(continueTask).toHaveBeenCalledWith(
+      'http://station.test',
+      'task-peer',
+      {
+        message: 'Use staging',
+        environmentId: 'environment-peer',
+        expectedInputRequest: {
+          threadId: 'peer-session',
+          requestId: 'req-question',
+          requestEventId: 'evt-question',
+        },
+      },
+      { requestScope: scope },
+    );
+  });
+
+  test('without the binding (an older paired Station) there is no answer box', () => {
+    attention = {
+      items: [peerQuestion({ threadId: undefined, requestEventId: undefined })],
+      pendingCount: 1,
+    };
+    renderPage();
+    expect(within(questionCard()).queryByRole('textbox')).toBeNull();
+    expect(
+      within(questionCard()).getByTestId('attention-peer-elsewhere'),
+    ).toBeTruthy();
+  });
+
+  test('the paired Station saying it would refuse shows the note, not a box', () => {
+    attention = {
+      items: [peerQuestion({ callerCanRespond: false })],
+      pendingCount: 1,
+    };
+    renderPage();
+    expect(within(questionCard()).queryByRole('textbox')).toBeNull();
+    expect(
+      within(questionCard()).getByTestId('attention-peer-elsewhere')
+        .textContent,
+    ).toContain(
+      "The paired Station doesn't allow this Station to answer its requests.",
+    );
+  });
+
+  test('an absent paired-Station check still offers the answer (refusal shown if it comes)', () => {
+    attention = {
+      items: [peerQuestion({ callerCanRespond: undefined })],
+      pendingCount: 1,
+    };
+    renderPage();
+    expect(
+      within(questionCard()).getByLabelText('Answer on the paired Station'),
+    ).toBeTruthy();
+  });
+
+  test('this Station withholding the grant shows the note', () => {
+    attention = {
+      items: [peerQuestion({}, { viewerCanRespond: false })],
+      pendingCount: 1,
+    };
+    renderPage();
+    expect(within(questionCard()).queryByRole('textbox')).toBeNull();
+  });
+
+  test('a changed request comes back as a visible refusal', async () => {
+    continueTask.mockRejectedValue(
+      new Error(
+        'The input request changed or was answered. Refresh and answer the current request.',
+      ),
+    );
+    attention = { items: [peerQuestion()], pendingCount: 1 };
+    renderPage();
+    fireEvent.change(
+      within(questionCard()).getByLabelText('Answer on the paired Station'),
+      { target: { value: 'Use staging' } },
+    );
+    fireEvent.click(
+      within(questionCard()).getByRole('button', { name: 'Send answer' }),
+    );
+    expect(
+      (await within(questionCard()).findByRole('alert')).textContent,
+    ).toContain('The input request changed');
+  });
+
+  test('a paired-Station refusal flag also withholds Allow/Deny', () => {
+    attention = {
+      items: [
+        peerApproval({
+          peerRequestReference: {
+            environmentId: 'environment-peer',
+            taskId: 'task-peer',
+            requestId: 'req-peer-1',
+            requestType: 'approval',
+            callerCanRespond: false,
+          },
+        }),
+      ],
+      pendingCount: 1,
+    };
+    renderPage();
+    expect(within(card()).queryByRole('button', { name: 'Allow' })).toBeNull();
   });
 });

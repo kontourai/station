@@ -1,0 +1,7 @@
+{
+  "revision": "2f1c4a004590c12a9a9599c9cdcc76edeb3984b9",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Its only metrics claim is that the generated metric catalog prevents declaration drift; the catalog was regenerated for one new counter and that claim still holds.","inputs":["docs/architecture/module-map.md","docs/guides/documentation.md","docs/guides/keyboard-shortcuts.md","docs/reference/cli.md","docs/reference/config.md","docs/reference/metrics.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-service-bootstrap.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
