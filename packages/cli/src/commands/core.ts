@@ -1194,6 +1194,7 @@ async function runChat(
     throw new Error('Use --project or --cwd, not both.');
   }
   const onRequest = resolveOnRequestMode(parsed);
+  const environment = executionEnvironment(parsed);
   if (parsed.flags.title !== undefined) {
     throw new Error(
       '--title is not supported by canonical foreground execution yet.',
@@ -1203,7 +1204,7 @@ async function runChat(
   await sendExecutionTargetChat(
     apiBase,
     {
-      environment: executionEnvironment(parsed),
+      environment,
       agent: selectedAgent,
       ...(model || modelOptions
         ? {
@@ -1222,12 +1223,17 @@ async function runChat(
                 cwd: process.cwd(),
               },
             }
-          : {
-              workspace: {
-                kind: 'directory' as const,
-                cwd: cwd ?? process.cwd(),
-              },
-            }
+          : cwd !== undefined || environment.kind === 'current'
+            ? {
+                workspace: {
+                  kind: 'directory' as const,
+                  cwd: cwd ?? process.cwd(),
+                },
+              }
+            : // This machine's folder means nothing on another Station, and
+              // naming one there takes command authority; an explicit --cwd
+              // is still sent.
+              {}
         : {}),
     },
     {

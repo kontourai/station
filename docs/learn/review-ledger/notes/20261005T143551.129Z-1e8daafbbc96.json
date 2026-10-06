@@ -1,0 +1,7 @@
+{
+  "revision": "a5f5c0af85d7242115b9ca6567b2ad0c4f3e5078",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"Historical ACP chat proposal; checked it makes no claim about connection id validation or engine attribution, so the new reserved-id rule in the ACP guide does not contradict it. No prose change.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

@@ -131,6 +131,7 @@ malformed identity never produce verified provenance.
 | `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
 | Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
 | HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
+| Pairing-scoped routes and the pairing request, access-request, and exchange, declaring (or, absent the header, read as) a client protocol below `minClientProtocol` | `426 client_protocol_unsupported`, before any credential check; a malformed `X-Station-Client-Protocol` is `400` ([admission](#client-api-protocol-admission-2962)) | Same | Same |
 | Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
 | Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
@@ -172,7 +173,7 @@ commit or executable identity. Its schema is:
     "serverVersion": "<station package version>",
     "protocolVersion": 1,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -180,6 +181,83 @@ commit or executable identity. Its schema is:
 
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
+
+### Client API protocol admission (#2962)
+
+A client states the client API protocol it was built against in
+`X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
+`packages/contracts/src/environment-security.ts`). Like the client-origin
+header, it is a compatibility signal and never authority. The host enforces
+the same `compatibility` block the handshake advertises, before any
+credential check:
+
+| Request | Answer |
+| --- | --- |
+| Header at or above `minClientProtocol`, including a protocol newer than the host's | Admitted; whether a newer client can use this host is the client's own check |
+| Header absent | Read as protocol 1, so admitted while `minClientProtocol` is 1 and refused once it rises |
+| Header below `minClientProtocol` | `426` with `error.code` `client_protocol_unsupported`, `minClientProtocol`, `serverVersion`, and a sentence telling the reader to update the app |
+| Header present but not one integer from 1 to 9999 (empty, signed, zero-padded, repeated, or larger) | `400` with `error.code` `client_protocol_invalid` |
+
+The check covers every paired-scope route and the public pairing request,
+access-request, and exchange routes, so an outdated client is refused before
+it pairs. It does not cover the public handshake and proof, which an outdated
+client must still reach to learn why; liveness and the direct-loopback
+owner-secret routes, whose callers are launchers governed by the launcher
+protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
+account-authentication routes, which have their own callers; or Station's own
+attested loopback consumer. The navigation-reached landing page, `/doc`, `/ui`,
+and integration icons are also exempt: browser navigation, iframe/link loads,
+and image elements cannot attach a custom request header. The exemption is
+these declared route IDs, not every route an element might load; attachment,
+MCP UI resource and preview reads through the SDK remain covered.
+
+Both protocol refusals emit `station.auth.failure` within a separate direct-peer
+protocol audit budget (default: 10 audits per 60-second window), with outcome
+`denied` and the refusal code as reason. An unsupported protocol records its
+parsed integer; a malformed value is never copied into the audit. The owner is
+[`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
+The audit limiter reuses `RuntimeAuthFailureLimiter` with its 1,024-peer cap,
+keyed by the direct socket address. The cap evicts live entries, so an
+attacker holding more than 1,024 distinct socket sources can reset a peer's
+count and exceed 10 audits per window; the bound is per peer only while fewer
+peers are tracked, and memory stays bounded. Exhaustion suppresses only audits: every
+refusal still receives 400/426. Protocol refusals neither consult nor consume
+the authentication budget, so clients sharing a proxy or NAT can correct their
+header and authenticate without being locked out by protocol refusals.
+
+Terminal and voice WebSockets are not covered yet, deliberately. Their
+upgrades never pass the HTTP boundary that runs this check (each socket
+server listens on its own port with its own `verifyClient`), and a browser
+`WebSocket` cannot set a request header, so carriage would need a query
+parameter or subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
+the browser fail the connection, so a newer client would lose every older
+host. A query parameter is harmless to older hosts and is the planned
+carriage, added together with the check on each socket's own upgrade path.
+
+Clients send the header from the SDK request seam (which the CLI uses), the
+pairing client, and the connection health probe. The CORS preflight allow-list
+includes it. Same-origin browser requests, Node callers, and host-owned native
+or encrypted relay transports can send it without preflight negotiation.
+Cross-origin browser requests send it only after the host's public handshake
+advertises `compatibility.capabilities.clientProtocolHeader >= 1`. The
+[shared policy](../../packages/shared/src/client-protocol.ts) remembers this
+per origin in process memory and removes the observation when the capability
+is no longer advertised. The UI clears the prior observation when a handshake
+starts. Across both UI
+callers, only the latest-started handshake per origin may restore acceptance;
+its non-OK response, invalid JSON or transport error leaves acceptance cleared.
+An older overlapping success cannot restore it. Older or unobserved hosts
+receive no header and read the request as protocol 1.
+
+The native pairing exchange, which Rust builds itself, remains undeclared.
+Direct `fetch` callers that bypass the SDK seam also remain undeclared, including
+the notification action and local UI identity requests in `src-ui` and the
+`station operate` event stream in the CLI. The ratchet in
+[`client-protocol-admission.test.ts`](../../src-server/runtime/__tests__/client-protocol-admission.test.ts)
+blocks raising `minClientProtocol` above 1 while these four known callers remain
+on its list. Removing an entry requires carriage evidence; the test is not an
+automatic discovery of every caller. Terminal and voice admission needs its
+separate implementation before a raised minimum covers those listeners.
 
 ## Separate native relay pilot
 
@@ -704,6 +782,125 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   read by both gates). Anyone else gets `403 working-directory-not-granted`
   and nothing is saved; an update that sends the folder the Project already
   has is not a change, and every other Project edit keeps its operate tier.
+  The same rule is applied, as a separate check per route, to these routes and
+  to no others
+  ([`working-directory-authority.ts`](../../src-server/routes/working-directory-authority.ts),
+  reading `mayChooseWorkingDirectory` beside the Project gate); a paired
+  device that lacks `coding:exec` gets the same `403
+  working-directory-not-granted` and nothing happens:
+  - a session start whose `target.workspace` is `{ kind: 'directory' }`:
+    `POST /api/orchestration/chat`, `/chat/delegated`, `/chat/background`,
+    `/conversations/:id/handoff` and `/delegations`;
+  - `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
+    (`start-task`) with a `runtimeConfig.cwd` other than the folder of the
+    Task's own Project (naming that folder is not a choice, and the Project
+    page sends it);
+  - `POST /api/projects/attach` with a `workingDirectory`, and `PUT
+    /api/projects/:slug/identity/execution-root` setting a path (clearing it
+    is not a choice).
+
+  The check fails closed: a request is refused unless it is Station's own
+  server code or the operator in person or a device holding `coding:exec`, so
+  a kind of caller added later is refused until it is decided. `terminal:operate`
+  is not the authority: a `delegation` device and a `standard` device alike
+  need the grant. A `kind: 'project'` target is already confined to that
+  Project's folder and is unchanged, and a station-control tool call is
+  confined by `scopeDispatch`. Not a folder choice, so unchanged: the
+  Project-confined coding routes and the Task `workspaceBinding` paths (below).
+
+  Choosing a command, or code Station will run, takes the same authority,
+  decided by the same check (`refusesWorkingDirectoryChoice`), with its own
+  code, `command-not-granted`, and nothing saved or run. It covers exactly:
+  - `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`,
+    `args` or `cwd` change (an empty `args` or `cwd` is the same as none;
+    renaming, toggling, listing, removing and reconnecting are unchanged;
+    reconnect re-probes the stored command and cannot change it);
+  - `POST /integrations` and `PUT /integrations/:id` when `command` or `args`
+    are set or change, when a record that holds a command but did not launch it
+    (a URL transport) is changed to launch it, and when any value is submitted
+    for `env` or `secretEnv` on a command-launching (stdio) server. The child
+    receives `env` and the resolved secret env as its environment
+    (`mcp-manager.ts` `withResolvedMCPEnvironment`, then the stdio transport),
+    and any variable can steer a launched program (`NODE_OPTIONS`, `PATH`,
+    `BASH_ENV`, `PYTHONPATH`, `LD_PRELOAD`), so there is no key list. Removing a
+    stored key (`removeSecretEnvKeys`) and an empty `env` are not refused, and
+    `env` on a server that launches nothing (a URL transport) is allowed;
+  - `POST /api/plugins/install`, `POST /api/plugins/:name/recover`,
+    `POST /api/plugins/:name/update`, `POST /api/registry/plugins/install` (also
+    reached through `POST /api/registry/agents/install` for a plugin id) and
+    `POST /api/registry/integrations/install` (a marketplace manifest names the
+    command it stores). The existing person-only gate stays; the check is in
+    addition;
+  - `POST /api/projects/:slug/flow/runs/:runId/evidence/command`, which runs the
+    command line the body names;
+  - `PUT /config/app` when `terminalShell` changes. An agent's station-control
+    call (the Station-internal principal, otherwise exempt) may not change it,
+    in the tool (`update_config`) and in the route, as it may not raise the
+    default approval mode to full access;
+  - `/api/secret-bindings`, which the default grant reaches (it includes
+    `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
+    `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias
+    `POST /:id/migrate-stored-env`, and `PUT /:id` for a binding that is
+    already bound to a server, when that server launches a command (the same
+    inference as above; a server that cannot be read counts as launching one).
+    A bound value becomes the launched command's environment, so attaching one
+    or changing the value of one that is attached chooses that environment.
+    Unbind, revoke, create, list and get are not refused, and a binding to a URL
+    server or an ACP provider header is not either. A bind is checked before the binding
+    is read, for a missing or hidden binding too (a binding created between the
+    route's read and the service's would otherwise attach unchecked), so a caller
+    without the grant gets `command-not-granted` for a missing, hidden or visible
+    instance binding alike, and one with it gets the service's 404. A bind of a
+    person-owned binding is the one skip: it still gets the service's 400 (it
+    can never be granted to a shared integration, and an owner never changes),
+    because nothing can attach. There is no
+    exemption for a person's own token on a command-launching server: person-owned
+    bindings cannot be created or granted today, and an integration definition
+    declares no per-principal environment variable name (`credentialOwnership` is
+    a flag for per-person OAuth tokens on URL servers, with no env name; a stdio
+    server's `env` keys are instance-level) One device cannot hold both
+    `access:manage` and `coding:exec` (a scope edit cannot re-grant
+    `access:manage`), so in practice only the operator passes these;
+  - `POST /api/registry/agents/install` when the id is not a plugin the plugin
+    resolver knows: the agent face delegates to the same provider `install`
+    that copies a plugin tree into the plugins directory
+    (`json-manifest-registry.ts` `install`, `agentRegistry().install`), which
+    startup and `/api/plugins/reload` would then load, so it takes the same
+    authority as a plugin install.
+
+  The accepted cost: entering an API key for a command-launching tool server
+  from a paired device without `coding:exec` now needs the grant, or the
+  operator on the host. A secret binding is not a way around it.
+
+  Checked and not run-new-code or a command choice: the ACP registry install
+  (the command comes from the built-in registry or an installed plugin), ACP
+  provider settings (a URL and headers), `/api/connections` and `/api/providers`
+  (their `config` names no executable that is read; Claude's executable is the
+  installed copy), scheduler jobs (a prompt for an Agent), Agent definitions
+  (they reference tool servers by id), Skill `command` (a slash-command word),
+  marketplace source management and `POST /api/plugins/preview` (they list
+  and fetch and read a manifest; nothing is executed until an install, which is
+  guarded), `POST /api/projects/:slug/plugin-draft/lease` (it starts a bundler
+  build of the Project folder: the build is Station's own esbuild run in a
+  disposable child (`plugin-draft-build-process.ts`, `plugin-draft-build-child.ts`)
+  with a minimal environment (`PATH`, temp and Windows basics), a Station-owned
+  plugin list and the tsconfig parsed rather than run (`packages/shared/src/build.ts`),
+  so no script, config or package hook from the folder is executed; the bundle is
+  only served, and runs when a viewer's tab loads it), `POST /api/plugins/reload` (reconciles plugins already installed),
+  plugin grants, settings and command effects (they act on already-installed
+  code), and the Agent and skill registry installs (prompts and text). Task
+  `workspaceBinding` paths are not a folder choice either: Task creation
+  (including the starter launch's task) derives the binding from the Project and
+  refuses a contradicting path (`task-graph-service.ts`, pinned by its test), so
+  the folder the Task output reader later reads is always the Project's.
+
+  A saved SSH Environment's dispatch that names no Project is pinned by the
+  sender to a `{ kind: 'directory' }` workspace at the verified project path and
+  travels with this Station's outbound peer credential. The sender cannot know
+  whether the receiver's operator granted that device `coding:exec`, so the
+  folder is still sent, which keeps the granted path working, and a receiver's
+  `403 working-directory-not-granted` is answered here with a fixed sentence
+  (the receiver's own text is never relayed) naming a Project or the grant.
 
 The same owner also gates elevation to the `never` approval posture through
 `mayGrantFullAccess`: an Agent cannot grant full access to itself or another
@@ -733,6 +930,12 @@ What this does not close, stated so nobody assumes it does:
   skip there; junctions stand in for links), git other than 2.50.1,
   hard-linked object stores, Git LFS, reftable repositories as linked
   worktrees (refused), a Project that is a submodule's checkout.
+- **Accepted, and the only thing this rule leaves open at the
+  `orchestration:operate` tier**: enabling, reconnecting or starting a tool
+  server or engine connection whose command was chosen earlier (by the operator
+  or by a granted device). A device can start what was already stored, and
+  cannot change the command, its arguments, its folder or its environment. It
+  runs no code that was not chosen under the authority above.
 - `terminal:operate` (in the `standard` preset) already opens an interactive
   shell on this host. A `standard` device therefore runs commands whatever the
   Run commands switch says: the switch narrows only devices without the

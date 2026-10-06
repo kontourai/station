@@ -75,6 +75,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { refuseUngrantedCommandChoice } from '../working-directory-authority.js';
 import {
   operatorOnly,
   type PluginPrincipalResolution,
@@ -149,6 +150,18 @@ function stripDisplayNameQualifiers(value: string): string {
   }
   parts.push(value.slice(textStart));
   return parts.join('').trim();
+}
+
+/**
+ * Who may install a plugin from the registry: a person (not Station's own
+ * agent tools or another Station), and, because installing runs the package's
+ * code, one with the authority to run commands.
+ */
+function refusePluginInstallCaller(c: Context): Response | undefined {
+  return (
+    refuseInternalControlCaller(c, 'install a plugin') ??
+    refuseUngrantedCommandChoice(c)
+  );
 }
 
 export function createRegistryRoutes(
@@ -566,6 +579,12 @@ export function createRegistryRoutes(
         }
       }
 
+      // This provider's install copies a plugin tree into the plugins
+      // directory (`json-manifest-registry.ts` `install`, which the agent
+      // face delegates to), so it is code Station will load: the same
+      // authority as installing a plugin.
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears
@@ -698,6 +717,10 @@ export function createRegistryRoutes(
     '/integrations/install',
     validate(registryInstallSchema),
     async (c) => {
+      // A registry entry is stored as a tool server with the command its
+      // manifest names (a marketplace source can be a device's choice).
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
@@ -1213,7 +1236,7 @@ export function createRegistryRoutes(
   ) => {
     // #2323 S5: the plugin install path for both catalog faces, so the
     // person-only refusal lives here rather than on each route.
-    const refused = refuseInternalControlCaller(c, 'install a plugin');
+    const refused = refusePluginInstallCaller(c);
     if (refused) return refused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {

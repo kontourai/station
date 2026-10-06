@@ -42,8 +42,12 @@ import {
 } from './core-api.js';
 import {
   type DeviceAccessOperatorChannel,
+  parseDeviceRemovalArgs,
   parseDeviceScopeArgs,
   renderGrantableScopes,
+  requireDeviceRemovalApproval,
+  runDeviceRemoveCommand,
+  runDeviceRevokeCommand,
   runDeviceScopeCommand,
   runDevicesCommand,
 } from './device-access.js';
@@ -236,6 +240,8 @@ const USAGE = `Usage:
   station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
   station environment access scopes [--json]
+  station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+  station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
@@ -1072,6 +1078,8 @@ function suggestDirectAccessInvocation(
 ): string {
   const base = `station environment access ${action} --api-base=${apiBase}`;
   if (action === 'list') return `${base}.`;
+  if (action === 'revoke' || action === 'remove')
+    return `${base} <device>. Interactively this prompts for confirmation; pass --force only for non-interactive/scripted use.`;
   return (
     `${base} <request-id>. Interactively this prompts for confirmation; ` +
     'pass --force only for non-interactive/scripted use.'
@@ -1487,11 +1495,11 @@ async function openLocalOperatorChannel(
     throw new Error(
       targetProfile
         ? `Station "${targetProfile.name}" targets ${apiBase}, which is not a loopback address. ` +
-            'Environment-security commands (access list/approve/deny/devices/scope) operate only on a Station ' +
+            'Environment-security commands (access list/approve/deny/devices/scope/revoke/remove) operate only on a Station ' +
             'running on this same machine, so a script can never approve device access on a Station ' +
             "it merely has network reach to. Run this command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Operator access commands (access list/approve/deny/devices/scope) require a loopback --api-base, but this resolved to ${apiBase}. ` +
+        : `Operator access commands (access list/approve/deny/devices/scope/revoke/remove) require a loopback --api-base, but this resolved to ${apiBase}. ` +
             'Run this command on the Station host or over SSH, and pass an explicit ' +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
@@ -1843,9 +1851,16 @@ async function runLocalAccessCommand(
 
   const action = parsed.positionals[1];
   if (
-    !['list', 'approve', 'deny', 'devices', 'scope', 'scopes'].includes(
-      action ?? '',
-    )
+    ![
+      'list',
+      'approve',
+      'deny',
+      'devices',
+      'scope',
+      'scopes',
+      'revoke',
+      'remove',
+    ].includes(action ?? '')
   ) {
     throw usageError();
   }
@@ -1860,6 +1875,34 @@ async function runLocalAccessCommand(
     // Needs no Station: the vocabulary is this build's own.
     (dependencies.stdout ?? console.log)(
       renderGrantableScopes({ json: parsed.flags.json === true }),
+    );
+    return true;
+  }
+  if (action === 'revoke' || action === 'remove') {
+    const removalArgs = parseDeviceRemovalArgs(parsed, usageError);
+    // A person at a terminal confirms after the device is resolved (so the
+    // question names it); with no terminal and no --force, refuse now.
+    const confirm =
+      dependencies.isInteractive && dependencies.confirm
+        ? dependencies.confirm
+        : null;
+    requireDeviceRemovalApproval(removalArgs, action, confirm);
+    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
+      parsed,
+      action,
+      dependencies,
+    );
+    const channel: DeviceAccessOperatorChannel = {
+      request: requestOperatorJson,
+      target: describeResolvedTargetForHuman(resolved),
+    };
+    await (action === 'revoke'
+      ? runDeviceRevokeCommand
+      : runDeviceRemoveCommand)(
+      channel,
+      removalArgs,
+      confirm,
+      dependencies.stdout ?? console.log,
     );
     return true;
   }

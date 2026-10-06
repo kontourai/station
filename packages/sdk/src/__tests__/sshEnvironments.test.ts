@@ -39,10 +39,10 @@ describe('SSH environments SDK domain', () => {
 
     mockJsonResponse({
       success: true,
-      data: { hosts: [{ alias: 'brian-media' }], unavailableAliases: [] },
+      data: { hosts: [{ alias: 'home-media' }], unavailableAliases: [] },
     });
     await expect(fetchOpenSshHosts()).resolves.toEqual({
-      hosts: [{ alias: 'brian-media' }],
+      hosts: [{ alias: 'home-media' }],
       unavailableAliases: [],
     });
     expect(fetch).toHaveBeenCalledWith(
@@ -64,7 +64,7 @@ describe('SSH environments SDK domain', () => {
         environments: [
           {
             environmentId: 'env-1',
-            environmentName: 'Brian media',
+            environmentName: 'Home media',
             sessions: [{ threadId: 'thread-1' }],
           },
         ],
@@ -88,7 +88,7 @@ describe('SSH environments SDK domain', () => {
       environments: [
         {
           environmentId: 'env-1',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [
             { threadId: 'thread-1', answerability: { answerable: true } },
           ],

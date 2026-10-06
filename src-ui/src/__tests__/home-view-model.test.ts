@@ -888,7 +888,7 @@ describe('buildHomeWorkItems', () => {
 });
 
 describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
-  // Shape copied from a live read-model row on the brian-media dogfood
+  // Shape copied from a live read-model row on the media-server dogfood
   // instance, where 13 of 24 sessions rendered "Running" indefinitely.
   const attachedButIdle = {
     threadId: 'codex:1784515865925',
@@ -1386,7 +1386,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1399,7 +1399,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       kind: 'remote-session',
       kindLabel: 'Remote session',
       environmentId: 'env-a',
-      environmentLabel: 'Brian media',
+      environmentLabel: 'Home media',
     });
     // The local item is untouched by the merge — no provenance fields leak
     // onto it.
@@ -1416,7 +1416,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           // Deliberately the SAME threadId as LOCAL_SESSION.
           sessions: [{ ...LOCAL_SESSION }] as any,
         },
