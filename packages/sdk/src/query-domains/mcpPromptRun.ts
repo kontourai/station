@@ -1,8 +1,8 @@
 import type { AgentMcpPromptRun } from '@kontourai/station-contracts/mcp-prompts';
 import { _getApiBase } from '../api';
-import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from './http';
-import { unlessDeadline } from './request-deadline';
+import { envelopeError } from '../client/api-error-message';
+import { authenticatedFetch } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';
 
 /**
  * #3284: `POST /agents/:slug/mcp-prompts/run` — read one prompt with its
@@ -31,6 +31,6 @@ export async function runAgentMcpPrompt(
   // generic failure below.
   const result = await response.json().catch(unlessDeadline(() => ({})));
   if (!response.ok || !result.success)
-    throw new Error(apiErrorMessage(result, 'Failed to run the MCP prompt'));
+    throw envelopeError(response, result, 'Failed to run the MCP prompt');
   return result.data as AgentMcpPromptRun;
 }
