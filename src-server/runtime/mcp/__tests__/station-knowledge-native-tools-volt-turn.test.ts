@@ -69,9 +69,10 @@ test('a VoltAgent turn calls a knowledge tool without its purpose field and read
   startNativeKnowledgeSession(SESSION);
   beginNativeKnowledgeTurn(SESSION, 'turn-1', new AbortController().signal);
 
+  let step = 0;
   const model = new MockLanguageModelV3({
     doGenerate: async () =>
-      model.doGenerateCalls.length === 1
+      ++step === 1
         ? {
             content: [
               {
