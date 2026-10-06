@@ -36,6 +36,7 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
 import {
   type AttachedPathProbe,
+  type AttachedPollPaths,
   sharedAttachedPathProbe,
 } from './attached-session-path-probe.js';
 import { PollSessionSnapshot } from './attached-session-poll-snapshot.js';
@@ -428,7 +429,12 @@ export class AttachedSessionFollowService {
         source: sourceLabel(source),
         outcome: discovered.outcome,
       });
-      await paths.prepare(discovered.sessions.map((observed) => observed.cwd));
+      await prepareSessionFolders(
+        paths,
+        repositories,
+        discovered.sessions,
+        projectRoots,
+      );
       let followedSessions = 0;
       for (const observed of discovered.sessions) {
         if (
@@ -1211,6 +1217,38 @@ export async function resolveAttachedSessionProject(
     }
   }
   return attributionFrom(canonicalCwd, workingDirectory, candidates);
+}
+
+/**
+ * #3406: read every folder a source's sessions will be matched by before
+ * matching them one at a time: each session's real path, then the
+ * repository of each session no project folder contains and of every
+ * project. They are asked all at once, so the probe's child answers them
+ * back to back rather than one IPC round trip per session; the matching
+ * below then finds them in the poll's lookup.
+ */
+async function prepareSessionFolders(
+  paths: AttachedPollPaths,
+  repositories: RepositoryLookup,
+  sessions: readonly { cwd: string }[],
+  projects: AttachedProjectRoot[],
+): Promise<void> {
+  await paths.prepare(sessions.map((session) => session.cwd));
+  const outside = sessions.filter(
+    (session) =>
+      resolveAttachedProjectRoot(session.cwd, projects, paths.canonical)
+        .state === 'unattributed',
+  );
+  if (outside.length === 0) return;
+  await Promise.all(
+    [
+      ...outside.map((session) => session.cwd),
+      ...projects.map((project) => project.workingDirectory),
+    ].map((folder) => {
+      const canonical = folder ? paths.canonical(folder) : undefined;
+      return canonical ? repositories(canonical) : undefined;
+    }),
+  );
 }
 
 function attributionFrom(
