@@ -10,6 +10,7 @@
  */
 import { join } from 'node:path';
 import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_PRESETS,
   type PairingScopePreset,
@@ -29,7 +30,9 @@ import { createFlowRunRoutes } from '../evidence/flow-runs.js';
 import { TEST_OPERATOR_PRINCIPAL } from '../plugins/__tests__/plugin-visibility-test-support.js';
 import { createPluginRoutes } from '../plugins/plugins.js';
 import { createRegistryRoutes } from '../plugins/registry.js';
+import { createSecretBindingRoutes } from '../secret-bindings.js';
 import { createConfigRoutes } from '../system/config.js';
+import { launchesCommand } from '../working-directory-authority.js';
 
 const makeTempDir = trackTempDirs();
 afterEach(() => vi.unstubAllEnvs());
@@ -41,10 +44,16 @@ async function fixture() {
     homeDir: join(root, 'home'),
   });
   const operator = await security.initialize();
-  const pair = (preset: PairingScopePreset, extra: string[] = []) => {
+  const pair = (
+    preset: PairingScopePreset | 'default-grant',
+    extra: string[] = [],
+  ) => {
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: pairingScopePresetString(preset),
+      scope:
+        preset === 'default-grant'
+          ? DEFAULT_GRANT_PAIRING_SCOPE
+          : pairingScopePresetString(preset),
     });
     const requested = security.devicePairing.requestPairing({
       requesterPosition: 'off-box',
@@ -63,7 +72,12 @@ async function fixture() {
     if (extra.length > 0)
       security.devicePairing.setDeviceScope(
         paired.device.id,
-        [...PAIRING_SCOPE_PRESETS[preset], ...(extra as never[])],
+        [
+          ...(preset === 'default-grant'
+            ? (DEFAULT_GRANT_PAIRING_SCOPE.split(' ') as never[])
+            : PAIRING_SCOPE_PRESETS[preset]),
+          ...(extra as never[]),
+        ],
         { kind: 'presented-credential' },
       );
     return paired.credential;
@@ -198,6 +212,80 @@ async function fixture() {
       } as never,
     ),
   );
+  const binding = {
+    id: 'b-1',
+    name: 'B',
+    authRef: { env: 'X' },
+    revision: 1,
+    grants: [],
+    createdAt: '2026-08-24T00:00:00.000Z',
+    updatedAt: '2026-08-24T00:00:00.000Z',
+  };
+  const boundToStdio = {
+    ...binding,
+    id: 'b-stdio',
+    grants: [
+      {
+        kind: 'mcp-integration-env',
+        integrationId: 'tool-1',
+        envName: 'TOKEN',
+      },
+    ],
+  };
+  const boundToUrl = {
+    ...binding,
+    id: 'b-url',
+    grants: [
+      {
+        kind: 'mcp-integration-env',
+        integrationId: 'url-tool',
+        envName: 'TOKEN',
+      },
+    ],
+  };
+  const bindConsumer = vi.fn(async () => ({
+    outcome: 'complete' as const,
+    binding,
+    integrationId: 'x',
+    envName: 'TOKEN',
+  }));
+  const unbindConsumer = vi.fn(async () => ({
+    outcome: 'complete' as const,
+    binding,
+    integrationId: 'x',
+    envName: 'TOKEN',
+  }));
+  const replaceBinding = vi.fn(async () => binding);
+  const migrateStoredEnv = vi.fn(async () => ({
+    outcome: 'migrated' as const,
+    migratedEnvNames: ['TOKEN'],
+  }));
+  app.route(
+    '/api/secret-bindings',
+    createSecretBindingRoutes(
+      {
+        list: async () => [binding],
+        get: async (id: string) =>
+          id === 'b-stdio'
+            ? boundToStdio
+            : id === 'b-url'
+              ? boundToUrl
+              : binding,
+        create: async () => binding,
+        replace: replaceBinding,
+        grant: async () => binding,
+        ungrant: async () => binding,
+        revoke: async () => binding,
+      } as never,
+      {
+        getIntegrationBindings: async () => ({}),
+        bind: bindConsumer,
+        unbind: unbindConsumer,
+      } as never,
+      { migrateStoredEnv },
+      async (id) => launchesCommand(await mcpService.getIntegration(id)),
+    ),
+  );
   const pluginHome = join(root, 'plugin-home');
   app.route(
     '/api/plugins',
@@ -261,6 +349,10 @@ async function fixture() {
       saveIntegration,
       attachCommandEvidence,
       updateAppConfig,
+      bindConsumer,
+      unbindConsumer,
+      replaceBinding,
+      migrateStoredEnv,
     },
     acpCtx,
   };
@@ -573,6 +665,12 @@ const CODE_ROUTES = [
     body: { id: 'demo' },
   },
   {
+    name: 'POST /api/registry/agents/install (the provider install, which copies a plugin tree)',
+    method: 'POST',
+    path: '/api/registry/agents/install',
+    body: { id: 'demo' },
+  },
+  {
     name: 'POST /api/registry/integrations/install',
     method: 'POST',
     path: '/api/registry/integrations/install',
@@ -637,5 +735,138 @@ describe('an agent changing the terminal shell (Station-internal principal)', ()
     expect(((await refused.json()) as { code: string }).code).toBe(CODE);
     expect(f.recorders.updateAppConfig).not.toHaveBeenCalled();
     expect((await send({ defaultModel: 'm' })).status).toBeLessThan(300);
+  });
+});
+
+describe("/api/secret-bindings: a bound value is a launched command's environment", () => {
+  const bind = (integrationId: string) =>
+    [
+      'POST',
+      '/api/secret-bindings/b-1/bind',
+      { integrationId, envName: 'NODE_OPTIONS', expectedRevision: 1 },
+    ] as const;
+
+  test('a default-grant device (access:manage, no coding:exec) is refused binding to a command-launching server, and bind runs nothing', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    const [m, p, b] = bind('tool-1');
+    const res = await f.send(device, m, p, b);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(CODE);
+    expect(f.recorders.bindConsumer).not.toHaveBeenCalled();
+  });
+
+  test('the operator is admitted (one device cannot hold both access:manage and coding:exec: a scope edit cannot re-grant access:manage)', async () => {
+    const f = await fixture();
+    const [m, p, b] = bind('tool-1');
+    expect((await f.send(f.operator.credential, m, p, b)).status).toBe(200);
+    expect(f.recorders.bindConsumer).toHaveBeenCalledTimes(1);
+  });
+
+  test('binding to a server that launches nothing, and an ACP provider header grant, stay allowed', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    const [m, p, b] = bind('url-tool');
+    expect((await f.send(device, m, p, b)).status).toBe(200);
+    const header = await f.send(
+      device,
+      'POST',
+      '/api/secret-bindings/b-1/bind',
+      {
+        kind: 'acp-provider-header',
+        connectionId: 'existing',
+        providerId: 'p',
+        headerName: 'x-key',
+        expectedRevision: 1,
+      },
+    );
+    expect(header.status).toBe(200);
+  });
+
+  test('an integration that cannot be read counts as launching one', async () => {
+    const f = await fixture();
+    const [m, p, b] = bind('no-such-tool');
+    const res = await f.send(f.pair('default-grant'), m, p, b);
+    expect(res.status).toBe(403);
+  });
+
+  test('migrate-stored-env, on both its routes, is refused for a launching server and allowed for a URL one', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    const body = {
+      bindings: { TOKEN: { bindingId: 'b-1', expectedRevision: 1 } },
+    };
+    for (const prefix of [
+      '/api/secret-bindings/integrations',
+      '/api/secret-bindings',
+    ]) {
+      const refused = await f.send(
+        device,
+        'POST',
+        `${prefix}/tool-1/migrate-stored-env`,
+        body,
+      );
+      expect(refused.status).toBe(403);
+      expect(refused.body.code).toBe(CODE);
+      const allowed = await f.send(
+        device,
+        'POST',
+        `${prefix}/url-tool/migrate-stored-env`,
+        body,
+      );
+      expect(allowed.status).toBe(200);
+    }
+    expect(f.recorders.migrateStoredEnv).toHaveBeenCalledTimes(2);
+  });
+
+  test('replacing a binding already bound to a launching server is refused; one bound elsewhere, or nowhere, is not', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    const put = (id: string) =>
+      f.send(device, 'PUT', `/api/secret-bindings/${id}`, {
+        name: 'N',
+        authRef: { env: 'OTHER' },
+        expectedRevision: 1,
+      });
+    const refused = await put('b-stdio');
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe(CODE);
+    expect(f.recorders.replaceBinding).not.toHaveBeenCalled();
+    expect((await put('b-url')).status).toBe(200);
+    expect((await put('b-1')).status).toBe(200);
+    expect(
+      (
+        await f.send(
+          f.operator.credential,
+          'PUT',
+          '/api/secret-bindings/b-stdio',
+          {
+            name: 'N',
+            authRef: { env: 'OTHER' },
+            expectedRevision: 1,
+          },
+        )
+      ).status,
+    ).toBe(200);
+  });
+
+  test('unbind, list and get stay allowed for a launching server', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    expect(
+      (
+        await f.send(device, 'POST', '/api/secret-bindings/b-stdio/unbind', {
+          integrationId: 'tool-1',
+          envName: 'TOKEN',
+          expectedRevision: 1,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await f.send(device, 'GET', '/api/secret-bindings')).status).toBe(
+      200,
+    );
+    expect(
+      (await f.send(device, 'GET', '/api/secret-bindings/b-stdio')).status,
+    ).toBe(200);
   });
 });

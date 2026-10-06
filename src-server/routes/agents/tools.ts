@@ -53,6 +53,7 @@ import {
 } from '../schemas/schemas.js';
 import {
   changesAny,
+  launchesCommand,
   refuseUngrantedCommandChoice,
   submitsAnyEntry,
 } from '../working-directory-authority.js';
@@ -198,17 +199,6 @@ function integrationReadProjection(
 
 /** The fields whose values reach a launched tool server's environment. */
 const ENV_FIELDS = ['env', 'secretEnv'] as const;
-
-/** Whether a tool server record launches its `command` (stdio). */
-function launchesCommand(def: {
-  transport?: string;
-  command?: string;
-}): boolean {
-  return (
-    def.transport === 'stdio' ||
-    (def.transport === undefined && Boolean(def.command))
-  );
-}
 
 export function createToolRoutes(
   mcpService: MCPService,

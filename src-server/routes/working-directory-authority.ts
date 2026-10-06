@@ -157,3 +157,14 @@ export const commandChoiceOnly: MiddlewareHandler = async (c, next) => {
   if (refused) return refused;
   await next();
 };
+
+/** Whether a tool server record launches its `command` (stdio). */
+export function launchesCommand(def: {
+  transport?: string;
+  command?: string;
+}): boolean {
+  return (
+    def.transport === 'stdio' ||
+    (def.transport === undefined && Boolean(def.command))
+  );
+}

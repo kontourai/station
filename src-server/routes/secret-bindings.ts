@@ -1,5 +1,5 @@
 import type { SecretBindingGrant } from '@kontourai/station-contracts/secret-binding';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type {
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
@@ -9,6 +9,7 @@ import {
   SECRET_BINDING_CONFLICT_MESSAGE,
   SecretBindingConflictError,
 } from '../services/secrets/secret-binding-administration.js';
+import { refuseUngrantedCommandChoice } from './working-directory-authority.js';
 
 /** Operator-only mount; runtime composition owns its access:manage gate. */
 export function createSecretBindingRoutes(
@@ -20,7 +21,27 @@ export function createSecretBindingRoutes(
       bindings: Record<string, { bindingId: string; expectedRevision: number }>;
     }): Promise<{ outcome: 'migrated'; migratedEnvNames: string[] }>;
   },
+  /**
+   * Whether an integration launches a command (stdio). A binding's value
+   * becomes that command's environment, so attaching one, or changing the
+   * value of one that is attached, is choosing a command. Absent or failing,
+   * an integration counts as launching one.
+   */
+  integrationLaunches?: (integrationId: string) => Promise<boolean>,
 ) {
+  const launches = async (integrationId: unknown): Promise<boolean> =>
+    typeof integrationId === 'string' &&
+    (integrationLaunches
+      ? await integrationLaunches(integrationId).catch(() => true)
+      : true);
+  /** A 403 when the integration launches a command and the caller may not choose one. */
+  const refuseIfLaunching = async (
+    c: Context,
+    integrationId: unknown,
+  ): Promise<Response | undefined> =>
+    (await launches(integrationId))
+      ? refuseUngrantedCommandChoice(c)
+      : undefined;
   const app = new Hono();
   app.get('/integrations/:integrationId', async (c) => {
     if (!consumers)
@@ -58,14 +79,21 @@ export function createSecretBindingRoutes(
       201,
     ),
   );
-  app.put('/:id', async (c) =>
-    respond(c, async () =>
+  app.put('/:id', async (c) => {
+    // Replacing a binding changes the value every command it is bound to
+    // receives, so it is gated when any of them launches one.
+    const current = await service.get(c.req.param('id')).catch(() => null);
+    for (const grant of current?.grants ?? []) {
+      const refused = await refuseIfLaunching(c, grant.integrationId);
+      if (refused) return refused;
+    }
+    return respond(c, async () =>
       service.replace({
         ...(await body(c)),
         id: c.req.param('id'),
       } as Parameters<SecretBindingAdministration['replace']>[0]),
-    ),
-  );
+    );
+  });
   app.post('/:id/revoke', async (c) =>
     respond(c, async () =>
       service.revoke({
@@ -75,10 +103,24 @@ export function createSecretBindingRoutes(
     ),
   );
   app.post('/:id/bind', async (c) =>
-    respondBindingMutation(c, service, consumers, 'bind', c.req.param('id')),
+    respondBindingMutation(
+      c,
+      service,
+      consumers,
+      'bind',
+      c.req.param('id'),
+      refuseIfLaunching,
+    ),
   );
   app.post('/:id/unbind', async (c) =>
-    respondBindingMutation(c, service, consumers, 'unbind', c.req.param('id')),
+    respondBindingMutation(
+      c,
+      service,
+      consumers,
+      'unbind',
+      c.req.param('id'),
+      refuseIfLaunching,
+    ),
   );
   const migrateStoredEnv = async (c: any, integrationId: string) => {
     if (!migration)
@@ -86,6 +128,10 @@ export function createSecretBindingRoutes(
         { success: false, error: 'Secret binding migration unavailable.' },
         503,
       );
+    // Migrating moves stored env into bindings on that integration: the same
+    // attach, gated by the same decision.
+    const refused = await refuseIfLaunching(c, integrationId);
+    if (refused) return refused;
     return respond(c, async () => {
       const input = await body(c);
       return migration.migrateStoredEnv({
@@ -115,6 +161,10 @@ async function respondBindingMutation(
   consumers: SecretBindingIntegrationAdministration | undefined,
   operation: 'bind' | 'unbind',
   id: string,
+  refuseIfLaunching: (
+    c: Context,
+    integrationId: unknown,
+  ) => Promise<Response | undefined>,
 ) {
   let input: Record<string, unknown>;
   try {
@@ -125,6 +175,12 @@ async function respondBindingMutation(
     });
   }
   if (input.kind !== 'acp-provider-header') {
+    // Attaching a value to a command's environment chooses that command's
+    // environment; detaching one only removes it.
+    if (operation === 'bind') {
+      const refused = await refuseIfLaunching(c, input.integrationId);
+      if (refused) return refused;
+    }
     return respondConsumer(c, consumers, operation, id, input);
   }
   const grant: SecretBindingGrant = {

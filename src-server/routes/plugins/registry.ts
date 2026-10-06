@@ -579,6 +579,12 @@ export function createRegistryRoutes(
         }
       }
 
+      // This provider's install copies a plugin tree into the plugins
+      // directory (`json-manifest-registry.ts` `install`, which the agent
+      // face delegates to), so it is code Station will load: the same
+      // authority as installing a plugin.
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears
