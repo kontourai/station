@@ -660,7 +660,16 @@ describe('approval governance refusal (acp_approval_governance_refused, #3290)',
     });
     expect(translated.title).toBe("Station's approval mode wasn't applied");
     expect(translated.body).toContain('for bash in the build agent');
-    expect(translated.body).toMatch(/Nothing was sent\.$/);
+    // The server's sentence already says nothing started; it is not repeated.
+    expect(translated.body).not.toContain('Nothing was sent');
+    expect(
+      translateChatError({
+        status: 400,
+        code: 'acp_approval_governance_refused',
+        message:
+          "Station's approval modes cover OpenCode's build and plan agents only; the helper agent keeps its own permission rules.",
+      }).body,
+    ).toMatch(/permission rules\. Nothing was sent\.$/);
     expect(translated.hint).toBe(
       "Change the OpenCode setting named above, or pick Default to keep using OpenCode's own settings.",
     );

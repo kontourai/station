@@ -391,7 +391,9 @@ export function translateChatError(
   if (code === ACP_APPROVAL_GOVERNANCE_REFUSED_CODE) {
     return {
       title: "Station's approval mode wasn't applied",
-      body: `${text || "Station couldn't apply its approval mode to this engine."} Nothing was sent.`,
+      body: /not (sent|started)/.test(text)
+        ? text
+        : `${text || "Station couldn't apply its approval mode to this engine."} Nothing was sent.`,
       hint: "Change the OpenCode setting named above, or pick Default to keep using OpenCode's own settings.",
       retryable: false,
     };
