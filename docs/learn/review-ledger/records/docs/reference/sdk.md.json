@@ -552,7 +552,13 @@
 
     "src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx",
 
-    "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx"
+    "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
+
+    "packages/sdk/src/query-domains/stationUsage.ts",
+
+    "packages/sdk/src/query-domains/usageRollup.ts",
+
+    "packages/sdk/src/client/station-usage.ts"
   ],
 
   "checks": [

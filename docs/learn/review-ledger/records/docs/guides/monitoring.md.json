@@ -86,7 +86,13 @@
 
     "src-server/adapters/file/memory-adapter-messages.ts",
 
-    "src-server/services/orchestration/session-transcript-reads.ts"
+    "src-server/services/orchestration/session-transcript-reads.ts",
+
+    "packages/sdk/src/query-domains/stationUsage.ts",
+
+    "packages/sdk/src/query-domains/usageRollup.ts",
+
+    "packages/sdk/src/client/station-usage.ts"
   ],
 
   "checks": [
