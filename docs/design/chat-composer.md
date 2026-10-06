@@ -202,8 +202,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   OpenCode's own settings decide until a mode is picked (the chip's name reads
   "Default — OpenCode's own settings"), and "Default — Ask first" after
   Station has taken over. A pick the engine could not be switched to is never
-  shown as applied: the chip shows what still runs, marked pending, and its
-  name says the pick was not applied. Any other ACP engine
+  shown as applied: the chip shows what still runs, marked pending, with text
+  that differs from Default ("Own settings", or "Ask · kept"), and its name
+  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
   offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
   is a separate picker beside it, never a replacement for it.
