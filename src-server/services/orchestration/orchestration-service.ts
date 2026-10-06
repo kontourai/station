@@ -207,6 +207,7 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -245,6 +246,7 @@ import {
 } from '../projects/project-resource-shadow.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
+import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import {
   ApprovalPosture,
@@ -255,6 +257,7 @@ import {
   type AdoptionConfinement,
   AttachedSessionAdoption,
 } from './attached-session-adoption.js';
+import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
@@ -738,7 +741,10 @@ class DraftDiscardedError extends Error {
   }
 }
 
-export { AdoptionContinuationInProgressError } from './attached-session-adoption.js';
+export {
+  AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
+} from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
 /**
@@ -829,6 +835,12 @@ interface OrchestrationServiceOptions {
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment a continued attached conversation runs
+   * as (`adopted-child-execution-binding.ts`). Absent, a continuation has no
+   * Agent and the dock cannot open it.
+   */
+  resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
@@ -2252,6 +2264,12 @@ export class OrchestrationService {
         ? { flowRunService: options.flowRunService }
         : {}),
       ...(options.listProjects ? { listProjects: options.listProjects } : {}),
+      ...(options.resolveAdoptedChildExecutionBinding
+        ? {
+            resolveExecutionBinding:
+              options.resolveAdoptedChildExecutionBinding,
+          }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -4398,6 +4416,42 @@ export class OrchestrationService {
   }
 
   /**
+   * #3412: the Project and directory one Session is bound to, for a reader
+   * allowed to read it, without materializing its transcript: the Project
+   * its start stamped (`firstStartedMetadataOfThread`, which later sparse
+   * reconfiguration cannot shadow) and the loaded or persisted row's `cwd`.
+   * `null` when the authority may not read the Session or Station has no
+   * record of it. A read-only attached Session names no Project here: its
+   * attribution is a correctable later statement, which only the full read
+   * model folds.
+   */
+  readSessionWorkspaceBinding(
+    threadId: string,
+    authority: SessionReadScope,
+  ): { projectSlug?: string; cwd?: string } | null {
+    this.initialize();
+    if (
+      this.isEphemeralSession(threadId) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const session =
+      this.sessionReadModel.get(threadId) ??
+      this.options.eventStore?.readSessionByThread(threadId);
+    if (!session) return null;
+    const projectSlug =
+      session.controlMode === 'read-only-attached'
+        ? undefined
+        : this.firstStartedMetadataOfThread(threadId)?.projectSlug;
+    return {
+      ...(typeof projectSlug === 'string' && projectSlug.length > 0
+        ? { projectSlug }
+        : {}),
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+    };
+  }
+
+  /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
    */
@@ -5889,6 +5943,11 @@ export class OrchestrationService {
             confinement: _untrustedConfinement,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
+          const admittedStartWorkspace =
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+            readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+            internal?.receiverExecutionAdmission?.admitted ??
+            (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
               withoutDispatchCanonicalCwd(
@@ -5903,10 +5962,11 @@ export class OrchestrationService {
             // bound resource path (outside the compat project default) is
             // admitted rather than re-derived, and never forged: the
             // coordinate arrives only via internal options, and the effect
-            // closure below verifies the prepared input against it.
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            // closure below verifies the prepared input against it. #3429:
+            // an adopted child's successor is admitted to the folder its
+            // conversation recorded, re-verified now (see
+            // `adoptedChildAdmittedWorkspace`).
+            admittedStartWorkspace,
             this.options.resolveProjectSessionDirectory,
           );
           // Station #90 lane D (D5): record the Project's local id beside its
@@ -5914,9 +5974,7 @@ export class OrchestrationService {
           startInput = withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            admittedStartWorkspace,
           );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start
@@ -8865,6 +8923,49 @@ export class OrchestrationService {
     const recorded = recordedDispatchCanonicalCwd(input.metadata);
     const current = admission.recheck(...binding);
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
+  }
+
+  /**
+   * #3429: a later session of a conversation Continue in Station created
+   * (its root Session records `continuationSourceThreadId`, written only by
+   * adoption) may start in the folder that conversation was admitted into,
+   * even when that folder is a worktree outside the Project folder. Only
+   * when the start names that exact folder and Project, the conversation
+   * recorded it as `dispatchCanonicalCwd` (server-written), the folder still
+   * resolves to that record, and it still passes adoption's own check (the
+   * Project folder or a genuine worktree of its repository) right now.
+   * Anything else gets no coordinate and meets the ordinary rule.
+   */
+  private async adoptedChildAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const store = this.options.eventStore;
+    const projectSlug = input.metadata?.projectSlug;
+    if (!store || !input.cwd || typeof projectSlug !== 'string' || !projectSlug)
+      return undefined;
+    const cwd = resolve(expandTilde(input.cwd));
+    const conversationId =
+      store.conversationForSession(input.threadId)?.conversationId ??
+      input.threadId;
+    if (!store.readSessionByThread(conversationId)?.continuationSourceThreadId)
+      return undefined;
+    const recorded = this.inheritedDispatchCanonicalCwd({ ...input, cwd });
+    if (recorded === undefined) return undefined;
+    try {
+      if (canonicalPath(cwd) !== recorded) return undefined;
+      const place = await resolveContinuationPlace({
+        cwd: recorded,
+        projects: this.options.listProjects?.() ?? [],
+        hosted: this.options.requireTenantExecutionContext?.() === true,
+      });
+      if (place.cwd !== recorded || place.project?.slug !== projectSlug)
+        return undefined;
+    } catch {
+      return undefined;
+    }
+    return { threadId: input.threadId, projectSlug, cwd };
   }
 
   /**

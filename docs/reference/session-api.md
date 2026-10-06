@@ -450,7 +450,29 @@ attribution names is no longer configured while the project set is non-empty
 directory is missing, is not treated as a deletion). A repository match counts only a
 genuine checkout: a real `.git` directory that is its own common directory, or
 a linked worktree whose git-written `gitdir` back-pointer names that `.git`.
-A symlinked `.git` or a submodule's `.git` file matches by folder only. The
+A symlinked `.git` or a submodule's `.git` file matches by folder only.
+Discovery reads these folders (the real path of each cwd and Project
+directory, and the repository walk) in one helper process
+([`attached-session-path-probe.ts`](../../src-server/services/orchestration/attached-session-path-probe.ts)),
+never on the server's main thread. When that process answers nothing for
+1.5 seconds, as on a network or FUSE mount that has stopped responding, it is
+killed and replaced, and every folder it still owed is unread for that poll.
+An unread folder takes no part in matching: a transcript in one is followed
+as `unattributed` (which never replaces a recorded attribution), and a
+Project whose directory is unread is not matched. A folder that does not
+exist is different: it keeps its path as written. The folder the process was
+stuck on is not read again for 60 seconds, nor while that process is still
+alive. At most four killed helpers may still be alive before no new one
+starts; until one exits, which is logged, only folders under one they hung on
+are unread, and every other folder is matched as a missing folder is. A
+transcript in an unread folder that the log already files under a Project is
+still followed under it even where unattributed transcripts are not. The next
+poll that reads the folder corrects a new transcript's
+attribution. `adoptSession` still resolves its folder, and walks to its
+repository, with synchronous `realpath` and `lstat` calls on the main thread
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)),
+so adopting a transcript whose folder is on a hung mount can still block the
+server. The
 local operator owns every attached transcript whatever its attribution, so the
 operator's paired devices with `orchestration:read` can read it through
 `personalConversationAccess`. Imported turns enter the owner-scoped message
@@ -496,11 +518,34 @@ Every adopted child records its resolved folder as
 recovery) refuses a folder that no longer resolves there
 (`assertDispatchCwdUnmoved`).
 
+An adopted child also records the execution binding a chat started from the
+dock records: the engine's own Agent (`agentSlug`, `targetKind: 'agent'`,
+`targetId`, `connectionId`, found by the rule New Chat's Enable uses, never
+created by adoption), this Station's `environmentId`, and itself as its
+`conversationId`. A child in a Project also records
+`workspaceIsolation: { mode: 'shared' }`. `GET /api/conversations/:id/open`
+then resolves it, and a `POST /api/orchestration/chat` follow-up whose
+workspace names only the child's Project continues it in its recorded
+`dispatchCanonicalCwd` (the Project folder, a folder inside it, or a
+worktree), never the Project folder instead. A follow-up that names a folder
+or an isolation meets the ordinary exact checks. A later Session of the
+conversation, started after the child's engine exited, starts in that same
+recorded folder, even a worktree outside the Project folder, only while the
+folder still resolves to the record and still passes adoption's check (the
+Project folder or a genuine worktree of its repository); otherwise it is
+refused as outside the Project. When the engine has no Agent
+on this Station, the child is created without a binding: Activity continues
+it, and the dock reports why it cannot open it.
+
 A refusal of the folder or Project answers 400 with
 `code: 'continuation_place_refused'` and `retryable: false`: the same request
 is refused again until the folder or the Projects change, so clients show the
 reason and offer no retry. The Starter Work launch reports it with
-`retrySafe: false`. Other adoption failures keep their retryable answers.
+`retrySafe: false`. An engine that fails its readiness check before
+anything is created answers 400 with `code: 'continuation_engine_not_ready'`,
+`retryable: true` and the engine's readiness report in `error`; the Starter
+Work launch settles it as `failed` with `retrySafe: true`. Other adoption
+failures keep their retryable answers.
 
 `target` accepts only these two shapes; any other field, such as a path, is
 refused at the route. The Starter Work `continue-session` launch accepts the

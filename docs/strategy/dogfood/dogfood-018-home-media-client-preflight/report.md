@@ -1,11 +1,13 @@
-# Flow Report: dogfood-018-brian-media-client-preflight
+# Flow Report: dogfood-018-home-media-client-preflight
 
 - Definition: station-delivery v1
-- Subject: dogfood-018-brian-media-client-preflight
+- Subject: dogfood-018-home-media-client-preflight
 - Status: completed
 - Current step: readiness
 - Next action: run complete; no further action required
 - Continuation: resume from readiness, not chat memory
+
+> Provenance: this run id was renamed on 2026-10-06 to remove a private hostname; git history holds the original id. The rename touches only the id; the gates, evidence ids and digests below are unchanged.
 
 ## Gates
 

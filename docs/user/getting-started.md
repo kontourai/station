@@ -464,6 +464,12 @@ is deleted while other Projects remain, it moves to **No project**. A conversati
 of a worktree outside the Project folder also lands in **No project**: Station
 follows the submodule's own `.git`, which belongs to a different repository.
 
+If a conversation ran in a folder on a network drive that has stopped
+responding, Station can't tell which Project it belongs to. A conversation
+Station has already filed keeps its Project. A new one is listed under
+**No project**, and Station tries the folder again about once a minute. Once
+the drive responds, the conversation moves to its Project.
+
 Station copies what it reads into its own history and search index, so a
 conversation stays in Activity and in search after the original transcript is
 gone. You can open these conversations, and so can every device you have
@@ -515,6 +521,14 @@ An attached Session remains read only. Continuing opens a Station-owned child.
 If Station cannot confirm the result, use the offered retry for that same
 operation. Engine and configuration problems appear with their setup reason.
 A continuation receipt confirms admission, not completion of the work.
+
+The continuation runs as the engine's own Agent on this Station, the one New
+Chat sets up for Claude Code or Codex. That is what lets it open as a chat in
+the dock and take your next messages there. Those messages keep working in
+the conversation's own folder, including a folder inside the Project or a
+worktree, never the Project folder instead. If Station has no Agent for that
+engine, the continuation is still created and you continue it from
+**Activity**; the dock says why it cannot open it.
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
 

@@ -8,6 +8,11 @@ import { describe, expect, test, vi } from 'vitest';
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
 
 const adoptOrchestrationSession = vi.hoisted(() => vi.fn());
+/** #3429: the first continuation launches through Starter Work. */
+const starter = vi.hoisted(() => ({
+  unbound: false,
+  launch: vi.fn(),
+}));
 /**
  * `importOriginal`, not a bare factory. A factory mock makes every unlisted
  * export a hard throw, so this file went red the moment the component reached
@@ -29,19 +34,23 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // `adoptOrchestrationSession`, which is the call every test below drives.
   // Answered here rather than stood up: no server exists in this file, and a
   // real read would only decide which continuation path runs.
-  getStarterWork: async () => ({
-    state: 'bound' as const,
-    binding: {
-      schemaVersion: 1 as const,
-      starterId: 'continue-session',
-      targetRef: {
-        kind: 'session' as const,
-        id: 'external:claude:raw-thread-id',
-      },
-      operationId: 'starter-session:test',
-      boundAt: '2026-06-27T00:00:00.000Z',
-    },
-  }),
+  launchContinueSessionStarter: starter.launch,
+  getStarterWork: async () =>
+    starter.unbound
+      ? { state: 'unbound' as const }
+      : {
+          state: 'bound' as const,
+          binding: {
+            schemaVersion: 1 as const,
+            starterId: 'continue-session',
+            targetRef: {
+              kind: 'session' as const,
+              id: 'external:claude:raw-thread-id',
+            },
+            operationId: 'starter-session:test',
+            boundAt: '2026-06-27T00:00:00.000Z',
+          },
+        },
 }));
 
 import { AdoptSessionError } from '@kontourai/station-sdk';
@@ -774,5 +783,62 @@ describe('a conversation no project claims (#3386)', () => {
     expect(action.disabled).toBe(true);
     fireEvent.click(action);
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #3429: an engine that is not set up refused the continuation with a certain,
+// retryable reason, and the dialog still said Station was not responding.
+describe('a continuation Station settled as not created', () => {
+  test('shows the reason Station gave and keeps the retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // The browser's continuation reservation: real store, real storage, and
+    // a lock that grants immediately (jsdom has no Web Locks).
+    window.localStorage.clear();
+    Object.defineProperty(window.navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: async (
+          _name: string,
+          _options: unknown,
+          callback: () => Promise<unknown>,
+        ) => callback(),
+      },
+    });
+    starter.unbound = true;
+    const reason =
+      "Claude Code isn't ready, so no continuation was created (claude prerequisites missing: Claude login). Set up Claude Code, then try again.";
+    starter.launch.mockResolvedValueOnce({
+      state: 'failed',
+      source: { kind: 'session', id: 'external:claude:raw-thread-id' },
+      reason,
+      retrySafe: true,
+    });
+    try {
+      renderAttached({ presentation: 'chat' });
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+        target: { value: 'carry on' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue and send' }),
+      );
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toBe(
+        `Couldn't start the continuation. ${reason}`,
+      );
+      expect(screen.queryByText(/isn't responding right now/)).toBeNull();
+      expect(screen.queryByText(/Retry safely/)).toBeNull();
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Continue and send',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+      expect(starter.launch).toHaveBeenCalledOnce();
+    } finally {
+      starter.unbound = false;
+      vi.restoreAllMocks();
+    }
   });
 });
