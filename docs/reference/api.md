@@ -2374,7 +2374,9 @@ provider's available catalog.
 
 `POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
-Otherwise it calls the Agent registry provider and returns its result. A
+Otherwise it calls the Agent registry provider (which copies a plugin tree into
+the plugins directory, so a paired device needs the `coding:exec` grant here
+too) and returns its result. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 
