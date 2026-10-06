@@ -97,7 +97,12 @@ export function readyEngineOptions(input: {
     if (matrix.engineId === 'station') continue;
     options.push({
       connectionId: connection.id,
-      name: connection.name,
+      name:
+        connection.config.modelRoute &&
+        typeof connection.config.modelRoute === 'object' &&
+        'label' in connection.config.modelRoute
+          ? `${connection.name} · via ${String(connection.config.modelRoute.label)}`
+          : connection.name,
       // archive#1549: subject-aware. For every engine whose cell declares a
       // static mechanism this is byte-identical to the pre-archive#1549 call; only
       // an observation-based cell reads the second argument.

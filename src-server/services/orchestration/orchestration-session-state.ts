@@ -387,6 +387,7 @@ export function projectOrchestrationEventToReadModel(options: {
     case 'session.configured':
       nextSession = {
         ...baseSession,
+        modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
         // resurrected to 'ready' by a stray/late configured event either —
@@ -527,6 +528,15 @@ export function buildOrchestrationSessionSummary(options: {
         ...(delegation.title ? { title: delegation.title } : {}),
       }
     : undefined;
+  const configuredRouteEvent = [...events]
+    .reverse()
+    .find((event) => event.method === 'session.configured');
+  const modelRoute =
+    options.loaded && Object.hasOwn(options.loaded, 'modelRoute')
+      ? readModelRoute(options.loaded.modelRoute)
+      : configuredRouteEvent
+        ? readModelRoute(configuredRouteEvent.metadata?.modelRoute)
+        : readModelRoute(base.modelRoute);
   const effectiveSelection = extractEffectiveModelSelection(events);
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
@@ -605,6 +615,7 @@ export function buildOrchestrationSessionSummary(options: {
       observedBy: options.answerability.observedBy,
       observedAt: options.answerability.observedAt,
     }),
+    ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     ...(base.resumeCursor !== undefined
@@ -1139,6 +1150,19 @@ export function extractPeerPendingRequestObservation(
         : {}),
       ...(typeof record.title === 'string' && record.title.trim()
         ? { title: record.title }
+        : {}),
+      // The binding pair is read only whole.
+      ...(typeof record.eventId === 'string' &&
+      record.eventId &&
+      typeof record.threadId === 'string' &&
+      record.threadId
+        ? { eventId: record.eventId, threadId: record.threadId }
+        : {}),
+      ...(typeof record.body === 'string' && record.body.trim()
+        ? { body: record.body }
+        : {}),
+      ...(typeof record.callerCanRespond === 'boolean'
+        ? { callerCanRespond: record.callerCanRespond }
         : {}),
       observedAt,
     };
@@ -2235,4 +2259,31 @@ function findTerminalFailureEvent(
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
   return lastFailure;
+}
+
+function readModelRoute(value: unknown): ProviderSession['modelRoute'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const route = value as Record<string, unknown>;
+  if (
+    typeof route.connectionId !== 'string' ||
+    typeof route.label !== 'string' ||
+    typeof route.endpoint !== 'string'
+  )
+    return undefined;
+  try {
+    const url = new URL(route.endpoint);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return undefined;
+    return {
+      connectionId: route.connectionId,
+      label: route.label.slice(0, 200),
+      endpoint: url.origin,
+    };
+  } catch {
+    return undefined;
+  }
 }

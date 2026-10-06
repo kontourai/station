@@ -1,0 +1,7 @@
+{
+  "revision": "1b4d31720887852f077b588e840c417f12f535be",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3355: added the static engineId source and the inboxRowIconAgent provider fallback (bundled mark only, never ACP-bound, unbound or unresolved Agents); checked against enriched-agents.ts, ChatDockInboxRows.tsx and their tests.","inputs":["docs/guides/agents.md"]}
+  ]
+}

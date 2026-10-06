@@ -318,7 +318,10 @@ GET /api/agents
 The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
 persisted definitions, registry defaults, and runtime observations. Rows can
 include execution binding, availability/validation findings, and activation
-failures; inclusion in the list is not proof that a chat can launch. The example
+failures; inclusion in the list is not proof that a chat can launch. A bound
+row's `engineId` and `engineConnectionType` come from the connection record and
+its Adapter, so they survive a failed or timed-out runtime inspection;
+`engineDisplayName` and availability still need that live read. The example
 below is a field excerpt, not a fixed response for every Agent.
 
 
@@ -352,6 +355,20 @@ below is a field excerpt, not a fixed response for every Agent.
 }
 ```
 
+A request acting for a deployment account (a Project member) never receives
+this shape. The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+answers `GET /agents`, `GET /api/agents` and `GET /api/agents/:slug` for it
+with `station.member-agent/v1` views of Agents whose
+[audience](config.md#audience) admits it; `/api/boot`'s `agents` section
+carries the same views. Any other or unknown Agent slug, in a path or as an
+orchestration `target.agent`, returns `404 Agent not found`. A turn on an
+admitted Agent returns `403 member_agent_turns_unavailable`. Creating or
+materializing an Agent, and updating, deleting or editing the tools or
+workflows of an admitted one, returns `403 member_agent_catalog_read_only`
+(a hidden slug stays `404`). All of these gate
+responses are `no-store`. See
+[Agent audience](../design/project-membership.md#agent-audience).
 
 ---
 
@@ -551,6 +568,31 @@ values; clients use the returned metadata when editing. A failed lookup returns
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
 service refuses changes that would create a shadow copy.
+
+### Connected accounts (#3279)
+
+An integration whose definition sets `credentialOwnership: {owner: "principal"}`
+uses each person's own account instead of the shared Station credential. A turn
+uses only the credential of the principal it runs as (a credential narrowed to the
+Agent's Project first, then the person's own). A person without one gets a
+"connect your account" refusal; the shared credential is used only when
+`allowInstanceFallback` is `true`. The owner is the request's resolved human
+`PrincipalRef.id`; a paired device without a person, a non-human principal, and a
+hosted request cannot own an account.
+
+`POST /integrations/:id/oauth/authorize` and `POST /integrations/:id/oauth/callback`
+accept optional `owner` (`"self"` or, when fallback is allowed, `"instance"`) and
+`projectSlug`. A person's consent flow is keyed by the principal who started it, so
+only that principal's callback can complete it, and it never changes the
+integration's shared `probe.authorization`. A successful first connection records
+the tool catalog Agents load that integration's tools from.
+
+`GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+owner and availability only, never a token. `DELETE /integrations/:id/account`
+removes the caller's own credential; the next call that needs it refuses.
+
+MCP Apps reads and calls are not available yet for these integrations.
 
 ### Delete Integration
 
@@ -997,6 +1039,11 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
+Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
+OpenAI-compatible Model connection; its current address/key are resolved at
+launch. `config.modelRoute` is a secret-free discovery projection, not an
+editable credential. Selecting a missing/disabled proxy refuses launch.
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.
@@ -1342,8 +1389,10 @@ adds bounded `aggregateReceipts` for leaf Station transfer, after logical
 replacement/deduplication. Context occupancy alone does not produce a token
 receipt or consumed-usage coverage.
 
-Cumulative token identities survive engine-process restarts; cumulative cost
-identities follow the declared cost-process epochs. `sourceSequence` orders
+Cumulative token identities survive engine-process restarts. A cumulative cost
+identity spans one running total: a resumed Claude process continues its
+predecessor's total, while a restart without resume or a lower figure starts
+another. `sourceSequence` orders
 same-Station/thread observations when ingestion timestamps tie. Sparse
 cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
@@ -2799,9 +2848,15 @@ POST /tool-approval/:approvalId
 ```
 
 Resolve a pending tool call using the request-bound Session read authority and
-client origin. Knowing an approval ID alone is not sufficient. The
-[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
-cannot resolve an authorized pending request.
+client origin. The [approval handler](../../src-server/routes/agents/invoke.ts)
+returns 404 when it cannot resolve an authorized pending request. In hosted
+mode the entry must be bound to a session of the caller's tenant. Outside
+hosted mode the
+[registry](../../src-server/services/approvals/approval-registry.ts) lets any
+caller that reaches this route settle a pending entry by its ID. The exception
+is a request acting for a Project member: the
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+refuses it with `403 member_agent_turns_unavailable`.
 
 The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
 uses orchestration for parts carrying an approval thread ID, including the exact

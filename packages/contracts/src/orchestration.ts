@@ -584,6 +584,22 @@ export interface OrchestrationPeerPendingRequest {
   type?: CanonicalRequestType;
   /** The paired Station's request title, bounded. */
   title?: string;
+  /**
+   * `delegatedInputAnswers`: the request's own `request.opened` event id and
+   * the paired Station's Session it is open on (its `currentSessionId`), so
+   * an answer can be bound to exactly this request. Present only when the
+   * paired Station reported them.
+   */
+  eventId?: string;
+  threadId?: string;
+  /** The question as the paired Station presents it, bounded. */
+  body?: string;
+  /**
+   * The paired Station's own check of THIS Station's credential on the
+   * route that answers the request. Absent when it did not report one (an
+   * older Station).
+   */
+  callerCanRespond?: boolean;
   /** When this Station observed it on the paired Station's status read. */
   observedAt: string;
 }

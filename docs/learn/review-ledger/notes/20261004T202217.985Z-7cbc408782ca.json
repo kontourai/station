@@ -1,0 +1,7 @@
+{
+  "revision": "93180f2be6aa8c10649cbcc28c45b4692a5e99dc",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Added the #3303 readiness sentence beside the existing Keychain/CLI-status claim; checked against detectClaudeAuthState and the adapter probe.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/auth/claude-auth.ts"]}
+  ]
+}

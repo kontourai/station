@@ -6,7 +6,10 @@ import type {
   BrowserPaneAccessView,
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import type { WorkspaceFilePreview } from '@kontourai/station-contracts/workspace-file-preview';
+import type {
+  WorkspaceFileChanges,
+  WorkspaceFilePreview,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
@@ -291,6 +294,32 @@ async function mockTaskFirstHome(
         content: 'export function App() {}\n',
       };
       await route.fulfill(json(preview));
+      return;
+    }
+    // The pane then reads that file's changes against HEAD (#3365): the file
+    // came from the active-work changed-files list, so it has a patch, in the
+    // `{ success, data }` envelope the real route uses
+    // (src-server/routes/projects/workspace-pane-previews.ts). Only the
+    // previewed file's own read is declared; any other body falls through to
+    // the fixture audit and fails the test by name.
+    if (
+      path === '/api/projects/station/file-preview/changes' &&
+      route.request().method() === 'POST' &&
+      route.request().postData() ===
+        JSON.stringify({ path: 'src-ui/src/App.tsx' })
+    ) {
+      const changes: WorkspaceFileChanges = {
+        state: 'changed',
+        base: 'HEAD',
+        patch:
+          'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx\n' +
+          'index e69de29..8b7a6f1 100644\n' +
+          '--- a/src-ui/src/App.tsx\n' +
+          '+++ b/src-ui/src/App.tsx\n' +
+          '@@ -0,0 +1 @@\n' +
+          '+export function App() {}\n',
+      };
+      await route.fulfill(json(changes));
       return;
     }
     if (path === '/api/projects/station/layouts') {
@@ -1158,13 +1187,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
         await filter.click();
       return picker;
     };
-    // Unlike the dock's picker, the draft's stays open after a choice; its
-    // Close button is how the user returns to the draft, and focus returns to
-    // the Agent chip (the Agent list closed for the picker; the first opening
-    // also loads the picker chunk behind a loading frame, which must not take
-    // the return target with it).
-    const closePicker = async (picker: Locator) => {
-      await picker.getByRole('button', { name: 'Close model picker' }).click();
+    // Choosing or resetting a Model closes the draft's picker, as the dock's
+    // in-chat picker does, and focus returns to the Agent chip (the Agent
+    // list closed for the picker; the first opening also loads the picker
+    // chunk behind a loading frame, which must not take the return target
+    // with it).
+    const expectPickerClosed = async (picker: Locator) => {
       await expect(picker).toHaveCount(0);
       await expect(
         draft.getByRole('button', { name: /^Agent: / }),
@@ -1184,11 +1212,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       'false',
     );
     await bedrockOption(picker).click();
-    await expect(bedrockOption(picker)).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await closePicker(picker);
+    await expectPickerClosed(picker);
     expect(commands).toEqual([]);
 
     const chosen = await openPicker();
@@ -1196,15 +1220,20 @@ test.describe('Task-first Home (#332, mocked)', () => {
       'aria-selected',
       'true',
     );
-    // The draft's reset button is named after the source of the current choice
-    // ("Use session override"), not the default it restores.
-    await chosen.getByRole('button', { name: /^Use / }).click();
-    await expect(bedrockOption(chosen)).toHaveAttribute(
+    // The reset names the default it restores, never the choice it clears
+    // ("Use session override"): here, the Agent's default.
+    await chosen
+      .getByRole('button', { name: 'Use agent default', exact: true })
+      .click();
+    await expectPickerClosed(chosen);
+
+    const cleared = await openPicker();
+    await expect(bedrockOption(cleared)).toHaveAttribute(
       'aria-selected',
       'false',
     );
-    await bedrockOption(chosen).click();
-    await closePicker(chosen);
+    await bedrockOption(cleared).click();
+    await expectPickerClosed(cleared);
 
     // A Model chosen on the chip is remembered (owner decision): the chip
     // still names it after the picker closed.
@@ -1730,6 +1759,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await actionsMenuTrigger.click();
     await expect(menu).toBeVisible();
     await filesTrigger.click();
+    // The opened file's pane reads its changes against HEAD (#3365). Wait
+    // for that read so the test, not teardown timing, decides it ran.
+    const changesRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          '/api/projects/station/file-preview/changes' &&
+        response.request().method() === 'POST',
+    );
     await page
       .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
       .click();
@@ -1739,6 +1776,18 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
+    const changes = await changesRead;
+    expect(changes.status()).toBe(200);
+    // The pane asked for the file it opened.
+    expect(changes.request().postDataJSON()).toMatchObject({
+      path: 'src-ui/src/App.tsx',
+    });
+    // The opened preview shows the file and consumed the read: the Changes
+    // toggle counts the declared patch's one changed line.
+    await expect(page.getByText('export function App() {}')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
+    ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();

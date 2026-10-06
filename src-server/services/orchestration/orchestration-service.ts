@@ -9,10 +9,11 @@ import {
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AttentionInputReplyContext,
-  AttentionRequestInspection,
-  AttentionRequestReference,
+import {
+  ATTENTION_REQUEST_ID_MAX_CHARS,
+  type AttentionInputReplyContext,
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
@@ -40,6 +41,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -1062,10 +1064,56 @@ export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
  * can tell it was shortened; the request id carries identity, not the title.
  */
 function boundedPeerRequestTitle(title: string): string {
-  const characters = Array.from(title);
-  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
-    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
-    : title;
+  return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
+}
+
+function boundedPeerText(text: string, max: number): string {
+  const characters = Array.from(text);
+  return characters.length > max
+    ? `${characters.slice(0, max - 1).join('')}…`
+    : text;
+}
+
+/** Only the request types the canonical vocabulary names are stored. */
+function isPeerRequestType(
+  type: string | undefined,
+): type is NonNullable<OrchestrationPeerPendingRequest['type']> {
+  return (
+    type === 'approval' ||
+    type === 'permission' ||
+    type === 'confirmation' ||
+    type === 'input'
+  );
+}
+
+/** Bound on the paired Station's presented question text. */
+export const PEER_PENDING_REQUEST_BODY_MAX_CHARS = 4_000;
+
+/** Every reported field except the local observation time. */
+function samePeerPendingRequest(
+  a: OrchestrationPeerPendingRequest,
+  b: OrchestrationPeerPendingRequest,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.title === b.title &&
+    a.eventId === b.eventId &&
+    a.threadId === b.threadId &&
+    a.body === b.body &&
+    a.callerCanRespond === b.callerCanRespond
+  );
+}
+
+/** What the paired Station's status read reported about its open request. */
+export interface PeerReportedPendingRequest {
+  id: string;
+  type?: string;
+  title?: string;
+  eventId?: string;
+  threadId?: string;
+  body?: string;
+  callerCanRespond?: boolean;
 }
 
 function peerDelegationActivityThreadId(
@@ -3786,7 +3834,7 @@ export class OrchestrationService {
   recordPeerDelegationPendingRequest(input: {
     taskId: string;
     environmentId: string;
-    pendingRequest: { id: string; type?: string; title?: string } | null;
+    pendingRequest: PeerReportedPendingRequest | null;
     /**
      * Set when the paired Station has just answered `respond` for this
      * request id: clear the observation only if it still names that request,
@@ -3825,23 +3873,45 @@ export class OrchestrationService {
         { threadId, length: rawId.length },
       );
     const id = idRefused ? undefined : rawId;
-    const title = input.pendingRequest?.title?.trim();
+    const reported = input.pendingRequest;
+    const title = reported?.title?.trim();
+    const body = reported?.body?.trim();
+    // The binding pair is stored only whole and within bounds; a cut id
+    // would name another request, so an over-long one leaves no binding
+    // (the inbox then keeps the note rather than offering an answer).
+    const binding =
+      reported?.eventId &&
+      reported.threadId &&
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
+        ? { eventId: reported.eventId, threadId: reported.threadId }
+        : undefined;
     const next = id
       ? {
           id,
-          ...(input.pendingRequest?.type
-            ? { type: input.pendingRequest.type }
-            : {}),
+          ...(isPeerRequestType(reported?.type) ? { type: reported.type } : {}),
           ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          ...(binding ?? {}),
+          ...(body
+            ? {
+                body: boundedPeerText(
+                  body,
+                  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+                ),
+              }
+            : {}),
+          ...(typeof reported?.callerCanRespond === 'boolean'
+            ? { callerCanRespond: reported.callerCanRespond }
+            : {}),
           observedAt: new Date().toISOString(),
         }
       : null;
     if (
       next === null
         ? current === null || current === undefined
-        : current?.id === next.id &&
-          current.type === next.type &&
-          current.title === next.title
+        : current !== null &&
+          current !== undefined &&
+          samePeerPendingRequest(current, next)
     )
       return false;
     this.projectAndPublishEvent({

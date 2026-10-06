@@ -127,11 +127,13 @@ describe('qualification repair lifecycle', () => {
       mergeable_state: 'clean',
     };
     expect(eligibleLanding(pr, run, 'owner/repo')).toBe(true);
+    expect(eligibleLanding({ ...pr, auto_merge: {} }, run, 'owner/repo')).toBe(
+      true,
+    );
     for (const change of [
       { labels: [] },
       { draft: true },
       { mergeable_state: 'dirty' },
-      { auto_merge: {} },
       { head: { sha: 'b'.repeat(40), repo: { full_name: 'owner/repo' } } },
     ])
       expect(eligibleLanding({ ...pr, ...change }, run, 'owner/repo')).toBe(
@@ -163,6 +165,7 @@ describe('qualification repair lifecycle', () => {
     async () => {
       const root = makeTempDir('station-landing-label-');
       let green = false;
+      let alreadyArmed = false;
       const pr = {
         number: 7,
         state: 'open',
@@ -192,7 +195,12 @@ describe('qualification repair lifecycle', () => {
                     },
                   ],
                 }
-              : pr,
+              : {
+                  ...pr,
+                  auto_merge: alreadyArmed
+                    ? { enabled_by: { login: 'station-automation' } }
+                    : null,
+                },
           ),
         );
       });
@@ -206,7 +214,50 @@ describe('qualification repair lifecycle', () => {
       mkdirSync(bin);
       writeFileSync(
         join(bin, 'gh'),
-        '#!/bin/sh\nprintf "%s\n" "$*" > "$ARM_MARKER"\n',
+        `#!/bin/sh
+if [ "$1" = api ]; then
+  node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.QUERY_HEAD || (armed ? process.env.MUTATION_HEAD : process.env.EXPECTED_HEAD),isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:(armed && process.env.QUEUE_RESULT === "armed") || process.env.PRE_ARMED === "1" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
+else
+  arguments="$*"
+  if [ "$1" != pr ] || [ "$2" != merge ] || [ "$3" != 7 ]; then
+    echo 'unexpected landing command or pull request' >&2
+    exit 1
+  fi
+  shift 3
+  expected=""
+  repository=""
+  automatic=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --repo)
+        shift
+        repository="$1"
+        ;;
+      --auto)
+        automatic=1
+        ;;
+      --match-head-commit)
+        shift
+        expected="$1"
+        ;;
+      *)
+        echo 'unexpected landing option' >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+  if [ "$repository" != owner/repo ] || [ "$automatic" != 1 ]; then
+    echo 'wrong repository or missing auto-merge intent' >&2
+    exit 1
+  fi
+  if [ -n "$expected" ] && [ "$expected" != "$MUTATION_HEAD" ]; then
+    echo 'head changed before arm mutation' >&2
+    exit 1
+  fi
+  printf "%s\n" "$arguments" >> "$ARM_MARKER"
+fi
+`,
       );
       chmodSync(join(bin, 'gh'), 0o755);
       const marker = join(root, 'armed');
@@ -214,6 +265,9 @@ describe('qualification repair lifecycle', () => {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
         ARM_MARKER: marker,
+        EXPECTED_HEAD: run.head_sha,
+        MUTATION_HEAD: run.head_sha,
+        QUEUE_RESULT: 'queued',
         GITHUB_EVENT_PATH: event,
         GITHUB_REPOSITORY: 'owner/repo',
         GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
@@ -232,9 +286,69 @@ describe('qualification repair lifecycle', () => {
           env,
           windowsHide: true,
         });
-        expect(readFileSync(marker, 'utf8')).toBe(
-          'pr merge 7 --repo owner/repo --auto\n',
-        );
+        const initialArms = readFileSync(marker, 'utf8');
+        expect(initialArms.trim().split('\n')).toHaveLength(1);
+        // Already queued is a no-op, not another arming attempt.
+        await exec(process.execPath, [landing], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        expect(readFileSync(marker, 'utf8')).toBe(initialArms);
+        // The actual stall starts armed, not queued. Fresh arming must still
+        // run once with the reviewed head when an old request already exists.
+        alreadyArmed = true;
+        const stalledMarker = join(root, 'stalled-arm');
+        const repaired = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, ARM_MARKER: stalledMarker, PRE_ARMED: '1' },
+          windowsHide: true,
+        });
+        expect(repaired.stdout).toContain('queued');
+        expect(
+          readFileSync(stalledMarker, 'utf8').trim().split('\n'),
+        ).toHaveLength(1);
+        const refusedMarker = join(root, 'refused-arm');
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              QUERY_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('changed head');
+        expect(() => readFileSync(refusedMarker)).toThrow();
+        // A push between a good precheck and mutation cannot arm the new head.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              MUTATION_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow();
+        expect(() => readFileSync(refusedMarker)).toThrow();
+
+        // A green CLI exit alone must not claim successful admission.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: { ...env, QUEUE_RESULT: 'none' },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('neither armed nor queued');
+        const waiting = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, QUEUE_RESULT: 'armed' },
+          windowsHide: true,
+        });
+        expect(waiting.stdout).toContain('armed_waiting_for_queue');
       } finally {
         await new Promise<void>((done) => server.close(() => done()));
       }
