@@ -603,6 +603,49 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('returns the actual proxy route with the same environment sent to the SDK', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const route = {
+      connectionId: 'proxy-home',
+      label: 'brian-media',
+      endpoint: 'https://proxy.example',
+    };
+    const adapter = new ClaudeAdapter({
+      getConnectionLaunch: async () => ({
+        env: {
+          ANTHROPIC_BASE_URL: route.endpoint,
+          ANTHROPIC_AUTH_TOKEN: 'private-proxy-key',
+        },
+        args: [],
+        route,
+      }),
+    });
+    const session = await adapter.startSession({
+      provider: 'claude',
+      threadId: 'proxy-route-return',
+      cwd: '/tmp',
+      metadata: { modelRoute: { label: 'spoofed' } },
+    });
+    expect(session.modelRoute).toEqual(route);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          env: expect.objectContaining({
+            ANTHROPIC_AUTH_TOKEN: 'private-proxy-key',
+          }),
+        }),
+      }),
+    );
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    await events.next();
+    const configured = await events.next();
+    expect(configured.value).toMatchObject({
+      method: 'session.configured',
+      metadata: { modelRoute: route },
+    });
+    await events.return?.();
+  });
+
   test('deletes a fork when starting its query throws', async () => {
     mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
     mockQuery.mockImplementation(() => {

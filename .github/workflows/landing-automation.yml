@@ -43,6 +43,7 @@ jobs:
           repositories: station
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write
       - name: Arm explicitly opted-in PRs once
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
@@ -83,6 +84,7 @@ jobs:
           repositories: station
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write
       - name: Explain the removal once
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}

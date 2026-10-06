@@ -1,0 +1,21 @@
+{
+  "revision": "b871f8101f71ab624ea76696bb59f2b7092fd2c5",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"#3394 delta follow-up: removed the dated 316 / 1,038 first-advance measurement (it goes in the PR body) and kept the mechanism: notes count by file name, so a note a later migration rewrote under a new name stays loose until a baseline at or after that rewrite is the previous one; checked against planNoteCompaction (loose notes intersected with the note names in the tree at the previous baseline). Rewrapped the paragraph.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#3394 delta follow-up: ci-health ledgerMetrics now reads git log --name-status --no-renames (LEDGER_LOG_FORMAT) and leaves out only the archive file and deleted loose notes; notes the same squash merge adds still count. Re-checked the measurement row ('counts only its non-note files' became added-notes-aware) against the real-repo test.","inputs":["docs/guides/testing.md","docs/guides/documentation.md","scripts/__tests__/ci-health.test.ts","scripts/ci-health.mjs"]},
+
+    {"path":".veritas/README.md","note":"#3394 delta follow-up: documentation.md lost only a dated measurement; the freshness and evidence claims here are unchanged.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"#3394 delta follow-up: documentation.md lost only a dated measurement; this map's route stays accurate.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3394 delta follow-up: documentation.md lost only a dated measurement; the linked follow-through anchor is unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3394 delta follow-up: documentation.md lost only a dated measurement; freshness scoping claims unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"#3394 delta follow-up: documentation.md lost only a dated measurement; links unaffected.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3394 delta follow-up: documentation.md lost only a dated measurement; the routed workflow is unchanged.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]}
+  ]
+}

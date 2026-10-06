@@ -1,0 +1,7 @@
+{
+  "revision": "e1349bbabdf24604d9174813d6eb5dffb6d11b6d",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the paragraph on opening a paired-Station record in Activity from Home, the dock inbox, the mobile switcher, Sessions and project live work; checked against work-item-open-policy (navigate for delegationEnvironmentKind peer), home-view-model, ProjectLiveWorkSection and SessionsView, and the workspace Home projection record and HomeRolePane fallback.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

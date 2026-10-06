@@ -1037,6 +1037,11 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
+Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
+OpenAI-compatible Model connection; its current address/key are resolved at
+launch. `config.modelRoute` is a secret-free discovery projection, not an
+editable credential. Selecting a missing/disabled proxy refuses launch.
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.
