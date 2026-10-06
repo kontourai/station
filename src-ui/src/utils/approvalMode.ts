@@ -398,8 +398,7 @@ export function approvalPickUpdate(
   mode: ApprovalMode,
 ): Partial<ApprovalPostureState> | undefined {
   if (chat?.queuedApprovalMode === mode) return undefined;
-  // #3290: a new pick is not the one the engine failed to take.
-  return { queuedApprovalMode: mode, approvalTakeoverFailed: undefined };
+  return { queuedApprovalMode: mode };
 }
 
 /**
