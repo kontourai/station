@@ -110,7 +110,9 @@
 
     "src-ui/src/core/PluginRegistry.ts",
 
-    "src-ui/src/core/pluginSharedRuntime.ts"
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "packages/shared/src/usage-semantics.ts"
   ],
 
   "checks": [

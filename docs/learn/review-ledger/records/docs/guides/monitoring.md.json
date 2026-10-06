@@ -92,7 +92,9 @@
 
     "packages/sdk/src/query-domains/usageRollup.ts",
 
-    "packages/sdk/src/client/station-usage.ts"
+    "packages/sdk/src/client/station-usage.ts",
+
+    "packages/shared/src/usage-semantics.ts"
   ],
 
   "checks": [
