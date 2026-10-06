@@ -265,12 +265,14 @@ async function fixture() {
     createSecretBindingRoutes(
       {
         list: async () => [binding],
-        get: async (id: string) =>
-          id === 'b-stdio'
+        get: async (id: string) => {
+          if (id === 'b-unreadable') throw new Error('store unreadable');
+          return id === 'b-stdio'
             ? boundToStdio
             : id === 'b-url'
               ? boundToUrl
-              : binding,
+              : binding;
+        },
         create: async () => binding,
         replace: replaceBinding,
         grant: async () => binding,
@@ -848,6 +850,38 @@ describe("/api/secret-bindings: a bound value is a launched command's environmen
         )
       ).status,
     ).toBe(200);
+  });
+
+  test('a binding whose grants cannot be read is refused replacement, not treated as bound nowhere', async () => {
+    const f = await fixture();
+    const res = await f.send(
+      f.pair('default-grant'),
+      'PUT',
+      '/api/secret-bindings/b-unreadable',
+      { name: 'N', authRef: { env: 'OTHER' }, expectedRevision: 1 },
+    );
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(CODE);
+    expect(f.recorders.replaceBinding).not.toHaveBeenCalled();
+  });
+
+  test('a bind whose integration id is missing or not a string counts as launching one', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    for (const integrationId of [undefined, 42, ['tool-1']]) {
+      const res = await f.send(
+        device,
+        'POST',
+        '/api/secret-bindings/b-1/bind',
+        {
+          integrationId,
+          envName: 'NODE_OPTIONS',
+          expectedRevision: 1,
+        },
+      );
+      expect(res.status).toBe(403);
+    }
+    expect(f.recorders.bindConsumer).not.toHaveBeenCalled();
   });
 
   test('unbind, list and get stay allowed for a launching server', async () => {

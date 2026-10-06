@@ -29,8 +29,10 @@ export function createSecretBindingRoutes(
    */
   integrationLaunches?: (integrationId: string) => Promise<boolean>,
 ) {
+  // Fails closed: a missing or malformed id, an unreadable integration or an
+  // unwired lookup all count as launching a command.
   const launches = async (integrationId: unknown): Promise<boolean> =>
-    typeof integrationId === 'string' &&
+    typeof integrationId !== 'string' ||
     (integrationLaunches
       ? await integrationLaunches(integrationId).catch(() => true)
       : true);
@@ -82,7 +84,15 @@ export function createSecretBindingRoutes(
   app.put('/:id', async (c) => {
     // Replacing a binding changes the value every command it is bound to
     // receives, so it is gated when any of them launches one.
-    const current = await service.get(c.req.param('id')).catch(() => null);
+    let current: Awaited<ReturnType<SecretBindingAdministration['get']>>;
+    try {
+      current = await service.get(c.req.param('id'));
+    } catch {
+      // Unreadable grants can't be checked, so refuse an ungranted caller.
+      const refused = refuseUngrantedCommandChoice(c);
+      if (refused) return refused;
+      current = null;
+    }
     for (const grant of current?.grants ?? []) {
       const refused = await refuseIfLaunching(c, grant.integrationId);
       if (refused) return refused;
