@@ -1,0 +1,7 @@
+{
+  "revision": "be3bf00a988573d6e71fe01ac57e601905d78d92",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"#3284 adds an import and the MCP prompt route mount to runtime-routes.ts, shifting later lines by 2 and 11. This document's runtime-routes.ts line citations (1345-1352, 8301-8326, 8627-8641 and others) already did not point at the cited handlers on origin/main af493ce84b before this branch; the route claims themselves (pairing device routes, scopes) are untouched by this change. No prose change; the stale line anchors predate this branch.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

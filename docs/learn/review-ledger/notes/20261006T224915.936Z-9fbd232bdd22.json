@@ -1,0 +1,7 @@
+{
+  "revision": "22342a71f6a0720b8bfd2b3b9cdc87c33d4dd96f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed SDK helper/root-query claims against moving runAgentMcpPrompt from agentAdmin into client/mcp-prompts. Root SDK and query exports preserve its arguments and return contract; authenticated POST and deadline/refusal handling are unchanged. No route, principal, API scope, or credential-binding behavior changes. This is bundle composition only.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/agentAdmin.ts"]}
+  ]
+}

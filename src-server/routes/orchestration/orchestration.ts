@@ -464,6 +464,19 @@ const respondToRequestCommandSchema = z.object({
         .strict(),
     )
     .optional(),
+  // #3284: shape only. Whether it fits the open form is decided by the
+  // service against the form itself; nothing here coerces or cuts values.
+  elicitationContent: z
+    .record(
+      z.string().min(1).max(128),
+      z.union([
+        z.string().max(12000),
+        z.number(),
+        z.boolean(),
+        z.array(z.string().max(512)).max(64),
+      ]),
+    )
+    .optional(),
 });
 
 const stopSessionCommandSchema = z.object({
