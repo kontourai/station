@@ -11,6 +11,7 @@ import {
 } from '../event-store.js';
 import {
   type DigestTurn,
+  DigestTurnTooLargeError,
   decodeDigestCursor,
   digestTurn,
   digestTurnOutcome,
@@ -24,6 +25,7 @@ const facts = (overrides: Partial<TurnDigestFacts> = {}): TurnDigestFacts => ({
   startedAt: '2026-10-05T10:00:00.000Z',
   startSequence: 10,
   toolCalls: [],
+  toolKindsReported: false,
   filesTotal: 0,
   files: [],
   declaredPullRequests: [],
@@ -129,6 +131,44 @@ describe('digestTurn', () => {
   });
 });
 
+describe('digestTurn: files and pull-request bounds', () => {
+  test('an absent files list is unknown, not none, when tools ran and no kind was reported', () => {
+    const calls = [{ toolName: 'Edit', calls: 2 }];
+    expect(digestTurn(facts({ toolCalls: calls }), []).filesReported).toBe(
+      false,
+    );
+    // Kinds reported: absent files then really means none.
+    expect(
+      digestTurn(facts({ toolCalls: calls, toolKindsReported: true }), [])
+        .filesReported,
+    ).toBeUndefined();
+    // No tool calls at all: nothing is unknown.
+    expect(digestTurn(facts(), []).filesReported).toBeUndefined();
+  });
+
+  test('a declared pull request’s host, repository and ref are clipped', () => {
+    const turn = digestTurn(
+      facts({
+        declaredPullRequests: [
+          {
+            kind: 'pull-request',
+            provider: 'github',
+            host: 'h'.repeat(5000),
+            repository: { owner: 'o'.repeat(3000), name: 'r'.repeat(3000) },
+            ref: '1'.repeat(5000),
+            nativeId: 'x',
+          },
+        ],
+      }),
+      [],
+    );
+    const [pullRequest] = turn.pullRequests!;
+    expect(pullRequest!.host.length).toBeLessThanOrEqual(128);
+    expect(pullRequest!.repository.length).toBeLessThanOrEqual(200);
+    expect(pullRequest!.ref.length).toBeLessThanOrEqual(64);
+  });
+});
+
 describe('fitDigestPage', () => {
   const turn = (n: number, request: string): DigestTurn => ({
     turnId: `turn-${n}`,
@@ -157,7 +197,7 @@ describe('fitDigestPage', () => {
 
   test('a single turn over the cap is an error, never a cut answer', () => {
     expect(() => fitDigestPage([turn(1, 'r'.repeat(9000))])).toThrow(
-      /exceeds the page byte cap/,
+      DigestTurnTooLargeError,
     );
   });
 });

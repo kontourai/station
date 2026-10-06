@@ -522,6 +522,17 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
 
 /** How much of a turn's prompt the digest read keeps (the first line is clipped from it). */
 export const TURN_DIGEST_PROMPT_PREFIX_CHARS = 1024;
+/** The most Sessions one conversation lineage the digest reads may name. */
+const TURN_DIGEST_LINEAGE_MAX = 500;
+
+/** The digest read's lineage is past what it reads; refused, never cut. */
+export class TurnDigestLineageTooLongError extends Error {
+  readonly code = 'session_digest_lineage_too_long';
+  constructor() {
+    super('The Session lineage is longer than the digest reads.');
+    this.name = 'TurnDigestLineageTooLongError';
+  }
+}
 const TURN_DIGEST_FILES_READ = 50;
 const TURN_DIGEST_PULL_REQUESTS_READ = 50;
 
@@ -542,6 +553,12 @@ export interface TurnDigestFacts {
   providerTriggered?: true;
   terminal?: { method: TurnDigestTerminalMethod; finishReason?: string };
   toolCalls: Array<{ toolName: string; calls: number }>;
+  /**
+   * Whether any `tool.completed` of the turn carried an engine-reported
+   * `toolKind`. Without one, an absent `files` says nothing about what the
+   * turn touched: the engine never says.
+   */
+  toolKindsReported: boolean;
   /** Distinct recorded file paths (all of them), and the first few. */
   filesTotal: number;
   files: string[];
@@ -4647,6 +4664,38 @@ export class EventStore {
   }
 
   /**
+   * station#3413 (`list_project_activity`): the threads that COULD be in one
+   * Project's scope, selected from their `session.started` records by the
+   * `localProjectId` the start stamped (a SEEK on `idx_events_method`), so a
+   * call can narrow before it folds anything. `projectId` names a Project: its
+   * own Sessions and every Session whose start names none; absent means the
+   * global space: only Sessions whose start names none.
+   *
+   * A candidate list, never the check. A Session with no Project can still be
+   * scoped to a Project by its folder, and one with a Project of another
+   * Project's name is excluded here; the caller decides each Session's scope
+   * with `stationControlScopeRefusal` and the scope owner, not from this.
+   * Every `session.started` of a thread counts, so a thread is left out only
+   * when ALL of its starts name another Project.
+   */
+  // Called by the Project activity route through a `Pick<EventStore>`
+  // parameter, which the dead-code audit cannot trace to this class.
+  // fallow-ignore-next-line unused-class-member
+  listThreadIdsStartedIn(projectId: string | undefined): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT thread_id FROM orchestration_events
+          WHERE method = 'session.started' AND json_valid(payload)
+            AND (json_extract(payload, '$.metadata.localProjectId') IS NULL
+              ${projectId === undefined ? '' : "OR json_extract(payload, '$.metadata.localProjectId') = ?"})`,
+      )
+      .all(...(projectId === undefined ? [] : [projectId])) as Array<{
+      thread_id: string;
+    }>;
+    return rows.map((row) => row.thread_id);
+  }
+
+  /**
    * station#3413 (`get_session_digest`): the recorded facts of a window of a
    * conversation's turns, newest first, selected and aggregated in SQLite so
    * the digest never replays a transcript or reads a tool's (unbounded)
@@ -4682,8 +4731,9 @@ export class EventStore {
     newerTurnStartedAt?: string;
   } {
     const ids = [...new Set(threadIds)];
-    if (ids.length === 0 || ids.length > EVENT_STORE_BATCH_CHUNK_SIZE)
-      throw new Error('Turn digest lineage is invalid');
+    if (ids.length > TURN_DIGEST_LINEAGE_MAX)
+      throw new TurnDigestLineageTooLongError();
+    if (ids.length === 0) throw new Error('Turn digest lineage is invalid');
     if (
       !Number.isInteger(options.turnLimit) ||
       options.turnLimit < 1 ||
@@ -4738,6 +4788,12 @@ export class EventStore {
         WHERE thread_id = ? AND turn_id = ? AND method = 'tool.started'
           AND json_valid(payload)
         GROUP BY tool_name ORDER BY calls DESC, tool_name ASC`,
+    );
+    const kinded = this.db.prepare(
+      `SELECT COUNT(*) AS total FROM orchestration_events
+        WHERE thread_id = ? AND turn_id = ? AND method = 'tool.completed'
+          AND json_valid(payload)
+          AND json_extract(payload, '$.toolKind') IS NOT NULL`,
     );
     const fileRows = `FROM orchestration_events done
          JOIN orchestration_events call
@@ -4815,6 +4871,11 @@ export class EventStore {
             typeof row.tool_name === 'string' ? row.tool_name : '(unnamed)',
           calls: Number(row.calls),
         })),
+        toolKindsReported:
+          Number(
+            (kinded.get(start.thread_id, start.turn_id) as { total: number })
+              .total,
+          ) > 0,
         filesTotal: Number(files.total),
         files: (
           fileList.all(start.thread_id, start.turn_id) as Array<{

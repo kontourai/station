@@ -42,10 +42,14 @@ import { getTenantRequestContext } from '../../runtime/bootstrap/runtime-tenant-
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
-import type { EventStore } from '../../services/orchestration/event-store.js';
+import {
+  type EventStore,
+  TurnDigestLineageTooLongError,
+} from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   type DigestDelegatedChild,
+  DigestTurnTooLargeError,
   decodeDigestCursor,
   digestTurn,
   encodeDigestCursor,
@@ -88,6 +92,7 @@ export interface SessionProjectActivityDeps {
     | 'conversationSessions'
     | 'conversationTitle'
     | 'listSessionsNamingParents'
+    | 'listThreadIdsStartedIn'
     | 'readTurnDigestFacts'
   >;
   stationControlDispatchScope?: StationControlDispatchScope;
@@ -140,6 +145,10 @@ const sessionNotFound = (c: Context) =>
     { success: false, code: 'session_not_found', error: 'Session not found' },
     404,
   );
+
+/** A read that is past what this route reads: refused, typed, never cut. */
+const tooLarge = (c: Context, code: string, error: string) =>
+  c.json({ success: false, code, error }, 422);
 
 const invalid = (c: Context, error: string, code = 'invalid_request') =>
   c.json({ success: false, code, error }, 400);
@@ -268,9 +277,12 @@ export function createSessionProjectActivityRoutes(
       );
 
   /**
-   * The scope rule is decided lazily, newest first, so a page costs the rows it
-   * walks and not the whole inventory. Every caller, bound or not, sees only
-   * its own Project (or the global space).
+   * The scope rule is decided per row, newest first, over the candidates the
+   * caller's Project selected BEFORE the fold (`listThreadIdsStartedIn`), so a
+   * call costs its own Project's Sessions (plus those that name none), not the
+   * Station's. That narrowing is an optimization and never the check: every
+   * row still passes `visibleToCaller` and the caller's own scope here. Every
+   * caller, bound or not, sees only its own Project (or the global space).
    */
   const visibleRowsPage = (
     caller: StationControlCaller,
@@ -347,9 +359,22 @@ export function createSessionProjectActivityRoutes(
         'project_activity_cursor_invalid',
       );
 
-    const sessions = await deps.orchestrationService.listSessionReadModel(
-      readAuthorityFor(c),
-    );
+    // A caller whose own scope cannot be read matches no Session (the rule
+    // refuses it), so there is nothing to fold.
+    const callerScope = stationControlSessionScope(caller);
+    const candidates =
+      callerScope.kind === 'unreadable'
+        ? []
+        : deps.eventStore.listThreadIdsStartedIn(
+            callerScope.kind === 'project' ? callerScope.id : undefined,
+          );
+    const sessions =
+      candidates.length === 0
+        ? []
+        : await deps.orchestrationService.listSessionReadModel(
+            readAuthorityFor(c),
+            { threadIds: candidates },
+          );
     const { page, more } = visibleRowsPage(
       caller,
       activityRows(sessions),
@@ -456,14 +481,28 @@ export function createSessionProjectActivityRoutes(
     const currentId =
       deps.orchestrationService.currentConversationSessionId(conversationId);
     const subjectId = lineage.includes(currentId) ? currentId : requestedId;
-    // The conversation as a whole: its newest started Session decides the
-    // scope, and `host` is read across every Session of it.
-    const target = deps.stationControlDispatchScope?.target(
-      { kind: 'conversation', conversationId, remote: false },
-      'view',
-    );
-    if (!target || stationControlScopeRefusal(caller, target)) return undefined;
+    // A caller reads the digest of its OWN conversation whatever its scope, as
+    // `read_conversation` reads its own: a Session whose Project cannot be
+    // confirmed is still its own.
+    const own =
+      lineage.includes(caller.sessionId) ||
+      (caller.conversationId !== undefined &&
+        caller.conversationId === conversationId) ||
+      deps.eventStore.conversationForSession(caller.sessionId)
+        ?.conversationId === conversationId;
+    if (!own) {
+      // The conversation as a whole: its newest started Session decides the
+      // scope, and `host` is read across every Session of it.
+      const target = deps.stationControlDispatchScope?.target(
+        { kind: 'conversation', conversationId, remote: false },
+        'view',
+      );
+      if (!target || stationControlScopeRefusal(caller, target))
+        return undefined;
+    }
     const authority = readAuthorityFor(c);
+    // Defense in depth: the read model below applies the same owner check, so
+    // this only keeps an unreadable Session from reaching the fold at all.
     if (!deps.orchestrationService.canUserReadSession(subjectId, authority))
       return undefined;
     const [summary] = await deps.orchestrationService.listSessionReadModel(
@@ -507,17 +546,31 @@ export function createSessionProjectActivityRoutes(
         'session_digest_cursor_invalid',
       );
 
-    const read = deps.eventStore.readTurnDigestFacts(lineage, {
-      ...(cursor ? { beforeGlobalSequence: cursor.before } : {}),
-      turnLimit,
-    });
+    let read: ReturnType<EventStore['readTurnDigestFacts']>;
+    try {
+      read = deps.eventStore.readTurnDigestFacts(lineage, {
+        ...(cursor ? { beforeGlobalSequence: cursor.before } : {}),
+        turnLimit,
+      });
+    } catch (error) {
+      if (error instanceof TurnDigestLineageTooLongError)
+        return tooLarge(c, error.code, error.message);
+      throw error;
+    }
     const { children, incomplete } = await delegatedChildren(
       caller,
       authority,
       conversationId,
     );
     const turns = digestTurns(read, children);
-    const fitted = fitDigestPage(turns);
+    let fitted: ReturnType<typeof fitDigestPage>;
+    try {
+      fitted = fitDigestPage(turns);
+    } catch (error) {
+      if (error instanceof DigestTurnTooLargeError)
+        return tooLarge(c, error.code, error.message);
+      throw error;
+    }
     // The turns that fit end the page; the rest wait behind the cursor, so a
     // page that fills early loses nothing.
     const lastIncluded = read.turns[fitted.turns.length - 1];

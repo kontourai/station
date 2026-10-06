@@ -327,12 +327,17 @@ inputs: nothing names a Project, an owner, or a host.
   `status`, `turnRunning`, `lastActivityAt`, and `worktree` (`path` and
   `branch`) when the Session's start recorded one, `workingDirectory`, and
   `self` for the caller's own Session. `status` is the status ladder's word, the
-  one the Station UI shows for the row, derived by one function shared with
-  the UI. The list is the Session's summary alone, so the ladder's Running rung
+  one the Station UI shows for the row. The fold that picks the state and the
+  word table are shared with the UI (both live in the contracts package), and
+  the two `switch`es that map a state to a word, `sessionLadderWord` here and
+  the UI's `rungFor`, are kept equal by a parity test. The list is the Session's summary alone, so the ladder's Running rung
   does not carry the sub-agent count or the no-progress marker, which need UI
   facts. A page is at most 50 rows (`limit` above 50 is refused, never cut); pass
   `nextCursor` back as `cursor`. A branch Station did not record is absent: it is
-  not read from the folder.
+  not read from the folder. The call narrows to the caller's Project BEFORE it
+  folds anything (candidates come from the Sessions' recorded start Project), so
+  its cost follows that Project and not the Station; every row is still held to
+  the scope rule, which narrowing never replaces.
 - `get_session_digest` summarizes one Session from what the event store
   recorded. No model summarizes, and a fact that was not recorded is absent.
   The `session` has `title`, `projectSlug`, `engine`, `agent`, `status`, and
@@ -342,21 +347,28 @@ inputs: nothing names a Project, an owner, or a host.
   `interrupted` for an abort or a `cancelled` finish, or `open` when none is
   recorded), tool calls by name (`otherTools` counts the names beyond the first
   eight), `files` (only a successful call whose engine reported an edit, delete
-  or move kind and a path argument, so an engine that reports no tool kind shows
-  none, and a path is never guessed from a tool's name), `pullRequests` declared
+  or move kind and a path argument, and a path is never guessed from a tool's
+  name), `filesReported: false` on a turn that called tools none of which carried
+  an engine-reported tool kind (a missing `files` there means unknown, not none;
+  Claude Code and Codex report no tool kinds today), `pullRequests` declared
   in the turn (`declare_pull_request` or `declare_output`), and
   `delegatedChildren`, the Sessions Station itself derived as launched from this
-  conversation, placed in the turn during which they started. A page ends at
+  conversation that started within the turn's window (after it began, before
+  the next turn did): Station records the parent per conversation, not per turn. A page ends at
   `turnLimit` turns (default 10, at most 25; more is refused) or at 8 KiB of
   serialized turns, whichever comes first, and `nextCursor` continues with older
   turns, so every turn arrives once; each field is bounded so one turn always
-  fits.
+  fits. A lineage of more than 500 Sessions answers `422`
+`session_digest_lineage_too_long`, and a single turn that cannot fit a page
+`422` `session_digest_turn_too_large`; both are refusals, never a cut page.
 
 Both leaves hold every Session to the dispatch scope above with the owner's
 Project `view` action, and read as the calling Session's owner. A caller that is
 not a bound operator sees only its own Project (or the global space), never a
 Session that runs unconfined, and a Session outside that reads as not found,
-the same answer as one that does not exist. A bound operator keeps the
+the same answer as one that does not exist. A caller always reads the digest of
+its own conversation, whatever its scope, as it reads its own with
+`read_conversation`. A bound operator keeps the
 operator's reach for a digest, as for `read_conversation`, but the list is the
 caller's own Project for every caller. A Session on another Station, in a saved
 Environment, or an Activity record of a paired Station's work is never listed or

@@ -2898,9 +2898,15 @@ folded from recorded events only: `session` is `{sessionId, conversationId, titl
 projectSlug?, engine, agent?, status, turnCount, worktree?}`, and each turn (newest
 first) has `turnId`, `startedAt`, `request?`, `outcome` (`completed`, `failed`,
 `interrupted` or `open`), `toolCalls`, and, when recorded, `files`,
-`pullRequests` and `delegatedChildren` with their totals. A page holds at most
+`pullRequests` and `delegatedChildren` (Sessions that started within the turn's
+window) with their totals. `filesReported: false` marks a turn that called tools
+none of which carried an engine tool kind: its absent `files` is unknown, not
+none. A page holds at most
 `turnLimit` turns (1 to 25, default 10; more is
-`session_digest_limit_out_of_range`) and at most 8 KiB of serialized turns.
+`session_digest_limit_out_of_range`) and at most 8 KiB of serialized turns. A
+lineage of more than 500 Sessions is `422` `session_digest_lineage_too_long`; a
+single turn over the page cap is `422` `session_digest_turn_too_large`. A
+caller reads the digest of its own conversation whatever its scope.
 
 A Session the caller may not see (another Project, another person, an unconfined
 Session for a caller that is not a bound operator, another Station) answers `404`

@@ -3935,6 +3935,7 @@ export class OrchestrationService {
     authority: SessionReadScope,
     options?: { threadIds?: readonly string[] },
   ): Promise<OrchestrationSessionSummary[]> {
+    const only = options?.threadIds ? new Set(options.threadIds) : undefined;
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
     this.evictCollidingAttachedAliases();
@@ -3954,7 +3955,7 @@ export class OrchestrationService {
     const observedAt = new Date().toISOString();
     const readableThreadIds = [...threadIds].filter(
       (threadId) =>
-        (!options?.threadIds || options.threadIds.includes(threadId)) &&
+        (!only || only.has(threadId)) &&
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );

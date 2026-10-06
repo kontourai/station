@@ -17,12 +17,15 @@ most 50 Sessions and a larger limit is refused. `get_session_digest` summarizes
 one Session from recorded events only, with no model summarizing: its title,
 Project, engine, status and turn count, and per turn (newest first) the
 request's first line, how it ended, tool calls by name, files an engine
-reported editing, pull requests declared, and Sessions delegated during it. A
+reported editing, pull requests declared, and Sessions Station launched from it that started within its window. A turn that called tools none of which carried an engine tool kind (Claude Code and Codex report none) says `filesReported: false`, so a missing `files` there means unknown, not none. A
 page holds at most 25 turns and 8 KiB, and a cursor pages to older turns; more is
 refused. Both read as the calling Session's owner, and a caller that is not a
 bound operator sees only its own Project (or the global space): another
 Project's, another person's, another Station's and an unconfined Session read as
-not found.
+not found. The list never widens for a bound operator: it is the caller's own
+Project for every caller. Only a digest does, for a bound operator, as
+`read_conversation` does. The list narrows to the caller's Project before it
+folds, so its cost follows that Project and not the Station.
 
 `read_conversation` gains `aroundMessageId`: pass a `search_sessions` hit's
 `messageId` to read the page that contains that message, with `prevCursor` and

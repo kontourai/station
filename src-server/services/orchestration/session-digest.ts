@@ -32,6 +32,9 @@ const TOOL_NAME_MAX_BYTES = 64;
 const FILES_PER_TURN = 8;
 const FILE_PATH_MAX_BYTES = 200;
 const PULL_REQUESTS_PER_TURN = 5;
+const PULL_REQUEST_HOST_MAX_BYTES = 128;
+const PULL_REQUEST_REPOSITORY_MAX_BYTES = 200;
+const PULL_REQUEST_REF_MAX_BYTES = 64;
 const CHILDREN_PER_TURN = 5;
 const CHILD_TITLE_MAX_BYTES = 80;
 
@@ -68,6 +71,12 @@ export interface DigestTurn {
   otherTools?: { names: number; calls: number };
   /** Files an engine reported editing, deleting or moving, when it reported any. */
   files?: string[];
+  /**
+   * `false` when the turn called tools and none of them carried an
+   * engine-reported tool kind: an absent `files` then means "this engine does
+   * not say what it touched", not "nothing". Absent otherwise.
+   */
+  filesReported?: false;
   filesTotal?: number;
   pullRequests?: DigestPullRequest[];
   pullRequestsTotal?: number;
@@ -118,10 +127,14 @@ function pullRequestOf(descriptor: unknown): DigestPullRequest | undefined {
     typeof value.repository.name !== 'string'
   )
     return undefined;
+  // Recorded text, so each part is bounded like every other digest field.
   return {
-    host: value.host,
-    repository: `${value.repository.owner}/${value.repository.name}`,
-    ref: value.ref,
+    host: clipSerialized(value.host, PULL_REQUEST_HOST_MAX_BYTES),
+    repository: clipSerialized(
+      `${value.repository.owner}/${value.repository.name}`,
+      PULL_REQUEST_REPOSITORY_MAX_BYTES,
+    ),
+    ref: clipSerialized(value.ref, PULL_REQUEST_REF_MAX_BYTES),
   };
 }
 
@@ -157,6 +170,8 @@ export function digestTurn(
       names: otherTools.length,
       calls: otherTools.reduce((sum, entry) => sum + entry.calls, 0),
     };
+  if (!facts.toolKindsReported && facts.toolCalls.length > 0)
+    turn.filesReported = false;
   if (facts.filesTotal > 0) {
     turn.files = facts.files
       .slice(0, FILES_PER_TURN)
@@ -187,6 +202,15 @@ export function digestTurn(
  * while any remain, which is why every turn field is bounded; a first turn
  * that still does not fit is an error, never a truncated answer.
  */
+/** One turn alone does not fit a page: refused, never served cut. */
+export class DigestTurnTooLargeError extends Error {
+  readonly code = 'session_digest_turn_too_large';
+  constructor() {
+    super('A digest turn exceeds the page byte cap.');
+    this.name = 'DigestTurnTooLargeError';
+  }
+}
+
 export function fitDigestPage(turns: readonly DigestTurn[]): {
   turns: DigestTurn[];
   bytes: number;
@@ -197,7 +221,7 @@ export function fitDigestPage(turns: readonly DigestTurn[]): {
     const size = serializedBytes(turn) + 1;
     if (bytes + size > SESSION_DIGEST_PAGE_MAX_BYTES) {
       if (page.length > 0) break;
-      throw new Error('A digest turn exceeds the page byte cap.');
+      throw new DigestTurnTooLargeError();
     }
     page.push(turn);
     bytes += size;

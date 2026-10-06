@@ -140,7 +140,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(options: { filler?: number } = {}) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-project-activity-');
     const storage = new FileStorageAdapter(home);
@@ -220,6 +220,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       end: 'completed' | 'failed' | 'aborted' | 'cancelled' | 'open';
       answer?: string;
       pullRequests?: Array<{ owner: string; name: string; ref: string }>;
+      /** A message steered into the running turn (the same turn id, `inputKind: 'steer'`). */
+      steer?: string;
     }
     const writeTurn = (threadId: string, n: number, options: TurnOptions) => {
       const turnId = `${threadId}-turn-${n}`;
@@ -231,6 +233,15 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         createdAt: at(),
         prompt: options.prompt ?? `${threadId} request ${n}`,
       } as never);
+      if (options.steer !== undefined)
+        store.appendEvent({
+          ...base,
+          eventId: `${turnId}:steer`,
+          method: 'turn.started',
+          createdAt: at(),
+          inputKind: 'steer',
+          prompt: options.steer,
+        } as never);
       (options.tools ?? []).forEach((tool, index) => {
         const toolCallId = `${turnId}:call-${index}`;
         store.appendEvent({
@@ -328,6 +339,11 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     startSession('g-caller', A, undefined);
     startSession('a-global', A, undefined);
     startSession('carol-p1', CAROL, p1);
+    // A Session whose Project cannot be confirmed (a slug with no recorded
+    // Project id): its own scope is unreadable, so it matches nothing.
+    startSession('u-caller', A, undefined, {
+      metadata: { projectSlug: 'project-1' },
+    });
 
     writeTurn('a-caller', 1, { end: 'completed', prompt: 'CALLER-WORK' });
     writeTurn('a-host', 1, { end: 'completed', prompt: 'HOST-SECRET' });
@@ -344,6 +360,12 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     writeTurn('a-global', 1, { end: 'completed', prompt: 'GLOBAL-SECRET' });
     writeTurn('g-caller', 1, { end: 'completed', prompt: 'G-CALLER-WORK' });
     writeTurn('carol-p1', 1, { end: 'completed', prompt: 'CAROL-SECRET' });
+    // Filler: other Projects' Sessions (two turns each), for the scale checks.
+    for (let n = 0; n < (options.filler ?? 0); n += 1) {
+      startSession(`f-${n}`, A, p2);
+      writeTurn(`f-${n}`, 1, { end: 'completed' });
+      writeTurn(`f-${n}`, 2, { end: 'completed' });
+    }
 
     // The rich Session: every kind of turn, in order.
     writeTurn('a-peer', 1, {
@@ -369,6 +391,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         },
       ],
       pullRequests: [{ owner: 'kontourai', name: 'station', ref: '3413' }],
+      steer: 'STEER-NOT-A-TURN please also check the docs',
     });
     // The turn during which two children are delegated (below).
     writeTurn('a-peer', 2, {
@@ -595,6 +618,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     const OWNER: Record<string, string | undefined> = {
       'a-caller': A,
       'g-caller': A,
+      'u-caller': A,
       'carol-p1': CAROL,
     };
     /** A station-control tool call, as the engine's MCP client makes it. */
@@ -661,6 +685,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
 
     return {
       store,
+      orchestration,
       tool,
       asTool,
       rawRequest,
@@ -746,6 +771,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       // Carol's session has no recorded Project membership, so she may be
       // refused or see only her own; she never sees the operator's.
       expect(JSON.stringify(listed.body)).not.toMatch(/a-peer|CALLER-WORK/);
+      // Her own Session is there: the check above is not vacuous.
+      expect(ids(listed.body)).toEqual(['carol-p1']);
     });
 
     test('says what each Session is: the ladder word, whether a turn runs, engine, agent, activity, worktree and self', async () => {
@@ -845,6 +872,42 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         isError: true,
         body: { code: 'project_activity_cursor_invalid' },
       });
+    });
+
+    test('a Project-narrowed call folds and walks only its own Project’s Sessions', async () => {
+      const { tool, orchestration } = await setup({ filler: 150 });
+      const fold = vi.spyOn(orchestration, 'listSessionReadModel');
+      const listed = await tool(
+        bearer('a-caller'),
+        'list_project_activity',
+        {},
+      );
+      expect(ids(listed.body)).toEqual([...PROJECT_1_SESSIONS]);
+      // The read model was asked for the candidates of the caller's Project
+      // only: none of the 150 other-Project Sessions was folded.
+      const folded = fold.mock.calls.flatMap(
+        ([, options]) => options?.threadIds ?? ['(whole inventory)'],
+      );
+      expect(folded.length).toBeGreaterThan(0);
+      expect(folded.filter((id) => id.startsWith('f-'))).toEqual([]);
+      expect(folded).not.toContain('(whole inventory)');
+      // A global caller's candidates exclude every Project's Sessions too.
+      fold.mockClear();
+      const global = await tool(
+        bearer('g-caller'),
+        'list_project_activity',
+        {},
+      );
+      expect(ids(global.body)).toEqual(['a-global', 'g-caller']);
+      const globalFolded = fold.mock.calls.flatMap(
+        ([, options]) => options?.threadIds ?? ['(whole inventory)'],
+      );
+      expect(globalFolded).not.toContain('(whole inventory)');
+      expect(
+        globalFolded.filter(
+          (id) => id.startsWith('f-') || id.startsWith('a-p'),
+        ),
+      ).toEqual([]);
     });
 
     test('a raw token and a pooled child carry no caller: both leaves refuse', async () => {
@@ -982,6 +1045,14 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         'a-peer-turn-2',
         'a-peer-turn-1',
       ]);
+      // A steer into a running turn shares its turn id: it is not a turn, so
+      // it neither adds one nor changes the request or the count.
+      expect(JSON.stringify(first.body)).not.toContain('STEER-NOT-A-TURN');
+      expect(
+        store
+          .listEvents('a-peer')
+          .filter((event) => (event.payload as any).inputKind === 'steer'),
+      ).toHaveLength(1);
       const byId = new Map<string, any>(
         turns.map((turn: any) => [turn.turnId, turn]),
       );
@@ -1015,6 +1086,12 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       ]);
       // A turn that had none says nothing: no empty placeholders.
       const two = byId.get('a-peer-turn-2');
+      // A turn that called tools none of which carried an engine tool kind says
+      // so: an absent `files` there is unknown, not none. A turn whose engine
+      // did report kinds, and a turn with no tool calls, carry no marker.
+      expect(two.filesReported).toBe(false);
+      expect(one.filesReported).toBeUndefined();
+      expect(byId.get('a-peer-turn-3').filesReported).toBeUndefined();
       expect(two.files).toBeUndefined();
       expect(two.pullRequests).toBeUndefined();
       // A long single line is clipped, and says so.
@@ -1073,6 +1150,36 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         toolCalls: [{ tool: 'NewTool', calls: 1 }],
         outcome: 'completed',
       });
+    });
+
+    test('a caller whose own scope cannot be read still reads its OWN digest, and nothing else', async () => {
+      const { tool } = await setup();
+      for (const caller of [bearer('u-caller'), delegated('u-caller')]) {
+        const own = await tool(caller, 'get_session_digest', {
+          sessionId: 'u-caller',
+        });
+        expect([
+          caller.channel,
+          own.isError,
+          own.body.data?.session?.sessionId,
+        ]).toEqual([caller.channel, false, 'u-caller']);
+        // The rule refuses every other Session to it: absent, and an empty list.
+        for (const target of ['a-peer', 'a-global', 'g-caller']) {
+          const other = await tool(caller, 'get_session_digest', {
+            sessionId: target,
+          });
+          expect([caller.channel, target, other.body.code]).toEqual([
+            caller.channel,
+            target,
+            'session_not_found',
+          ]);
+        }
+        const listed = await tool(caller, 'list_project_activity', {});
+        expect([caller.channel, ids(listed.body)]).toEqual([
+          caller.channel,
+          [],
+        ]);
+      }
     });
 
     test('a bound operator also sees a delegated child in another Project; a scoped caller does not', async () => {

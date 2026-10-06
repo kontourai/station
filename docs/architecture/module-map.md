@@ -1217,20 +1217,26 @@ turnLimit })` selects and aggregates in SQLite the facts of a window of turns,
 newest first: the turn's `turn.started` (a steer is not a turn) with a bounded
 prompt prefix, its last terminal event, a count of `tool.started` by tool name,
 the path argument of a successful call whose own `tool.completed` reported an
-`edit`, `delete` or `move` kind, and the `pull-request` rows the turn declared.
+`edit`, `delete` or `move` kind (and whether any call of the turn reported a
+kind at all), and the `pull-request` rows the turn declared.
+`EventStore.listThreadIdsStartedIn(projectId)` selects the threads that could
+be in one Project's scope from their start records, so the list narrows before
+it folds; it is a candidate list, never the check.
 `digestTurn(facts, children)` bounds each field and `fitDigestPage(turns)` takes
-the longest prefix under 8 KiB, throwing rather than serving a turn that alone
-exceeds it. `encodeDigestCursor` and `decodeDigestCursor` carry the paging
+the longest prefix under 8 KiB, refusing (`DigestTurnTooLargeError`) rather
+than serving a turn that alone exceeds it; a lineage past 500 Sessions is
+refused the same way (`TurnDigestLineageTooLongError`). `encodeDigestCursor` and `decodeDigestCursor` carry the paging
 position, the oldest returned turn's `turn.started` global sequence.
 
 **Invariants.** Nothing is summarized and nothing is named that nothing
-computes: a fact that was not recorded is absent (no files for an engine that
-reports no tool kind), and a turn with no terminal event is `open`, not
+computes: a fact that was not recorded is absent, and a turn whose engine
+reports no tool kinds says `filesReported: false` instead of implying no files;
+and a turn with no terminal event is `open`, not
 guessed. Each field is bounded and says when it was collapsed, so a page ends
 for the byte cap, never by cutting a turn, and paging covers each turn once.
 Delegated children are the Sessions Station derived as launched from the
-conversation (`listSessionsNamingParents`, `stationDerived`), placed in the turn
-during which they started, and a child the caller may not see is not counted.
+conversation (`listSessionsNamingParents`, `stationDerived`) that started within
+a turn's window (the parent is recorded per conversation, not per turn), and a child the caller may not see is not counted.
 
 **Composition and evidence.** The route decides authority per Session before
 reading anything: the owner-scoped read model, the shared scope rule
