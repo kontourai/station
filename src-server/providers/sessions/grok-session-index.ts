@@ -191,14 +191,26 @@ export class GrokSessionIndex {
       );
     }
     const inspected = new Set<string>();
-    // The backlog's order is admission order because it needs no sort. It
-    // does not decide what is found: the admission gate (see `admit`) keeps
-    // the backlog to about one poll of inspections once the index is full,
-    // so any order drains it within a poll or two. No test pins this order on
-    // its own for that reason; with the gate removed, it is what keeps the
-    // backlog draining (the full-ratio test fails without both).
+    // The backlog splits the rest of the budget: up to half goes to its most
+    // recently changed folders, so an active session is not queued behind a
+    // large cold backlog (folder mtime tracks activity; group mtimes can tie,
+    // as Linux stamps a burst of new folders alike), and the rest goes in
+    // admission order, so the backlog always drains even while new folders
+    // keep arriving. Once the index is full, the admission gate (see `admit`)
+    // also keeps the backlog to about one poll of work.
+    const newest = new NewestHeap(Math.ceil(this.options.maxInspections / 2));
+    for (const path of this.uninspected) {
+      await this.tick();
+      const modifiedAt = this.entries.get(path)?.modifiedAt;
+      if (modifiedAt !== undefined) newest.offer(path, modifiedAt);
+    }
     let inspections = 0;
-    for (const path of chain([admitted, changed, this.uninspected])) {
+    for (const path of chain([
+      admitted,
+      changed,
+      newest.drainNewestFirst(),
+      this.uninspected,
+    ])) {
       const entry = this.entries.get(path);
       if (
         !entry ||
@@ -478,11 +490,11 @@ export class GrokSessionIndex {
     this.unstatted.delete(path);
     if (entry.inspectedAt !== entry.modifiedAt) {
       this.uninspected.add(path);
-      // Activity since it was last seen: ahead of the never-inspected backlog.
-      if (
-        entry.inspection ||
-        (previous !== undefined && previous !== info.mtimeMs)
-      ) {
+      // Activity since it was last seen: ahead of the backlog. A folder that
+      // is only waiting to settle (same mtime as last seen) is not activity;
+      // counting it would let a burst of unsettled folders take every
+      // inspection ahead of the rest.
+      if (previous !== undefined && previous !== info.mtimeMs) {
         this.changed.add(path);
       }
       // Changed since inspected: it may have gained a prompt, so keep it.
@@ -537,6 +549,49 @@ export class GrokSessionIndex {
       this.drop(path);
     }
     this.groups.delete(groupPath);
+  }
+}
+
+/** Keeps the `capacity` items with the greatest key (a min-heap on key). */
+class NewestHeap {
+  private readonly items: Array<{ path: string; key: number }> = [];
+
+  constructor(private readonly capacity: number) {}
+
+  offer(path: string, key: number): void {
+    const items = this.items;
+    if (items.length < this.capacity) {
+      items.push({ path, key });
+      let index = items.length - 1;
+      while (index > 0) {
+        const parent = (index - 1) >> 1;
+        if (items[parent]!.key <= items[index]!.key) break;
+        [items[parent], items[index]] = [items[index]!, items[parent]!];
+        index = parent;
+      }
+      return;
+    }
+    if (items.length === 0 || key <= items[0]!.key) return;
+    items[0] = { path, key };
+    let index = 0;
+    for (;;) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      let smallest = index;
+      if (left < items.length && items[left]!.key < items[smallest]!.key)
+        smallest = left;
+      if (right < items.length && items[right]!.key < items[smallest]!.key)
+        smallest = right;
+      if (smallest === index) break;
+      [items[smallest], items[index]] = [items[index]!, items[smallest]!];
+      index = smallest;
+    }
+  }
+
+  drainNewestFirst(): string[] {
+    return this.items
+      .sort((left, right) => right.key - left.key)
+      .map((item) => item.path);
   }
 }
 
