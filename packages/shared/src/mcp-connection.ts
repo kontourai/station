@@ -92,7 +92,8 @@ export interface MCPConnection {
    * while one of its requests is in flight. Present on owned connections.
    * A connection is shared across turns and callers, and the client cannot
    * tell which in-flight request an elicitation belongs to, so the connection
-   * counts every request in flight on it, bridged or not: an elicitation is
+   * counts every request in flight on it that could elicit, bridged or not
+   * (see `NON_ELICITING_METHODS_2026` for the ones that cannot): an elicitation is
    * routed only when exactly one request is in flight and that request has a
    * route, and is refused otherwise rather than shown to a person who may not
    * own it.
@@ -149,6 +150,47 @@ export interface MCPManagerOptions {
   ) => void;
   /** Called after version negotiation and before tool discovery. */
   onNegotiated?: (serverId: string, negotiation: MCPNegotiation) => void;
+}
+
+/**
+ * Requests that cannot lead to an elicitation on the 2026-07-28 revision,
+ * where only `tools/call`, `prompts/get` and `resources/read` may answer
+ * `input_required` and a server can no longer send `elicitation/create` as
+ * a request of its own. They are not counted as in flight, so a catalog
+ * read does not make a turn's form ambiguous. The 2025 era sets no such
+ * limit (a server may send a request during any client request, and stdio
+ * does not say which), so there every request counts.
+ */
+const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
+  'tools/list',
+  'prompts/list',
+  'resources/list',
+  'resources/templates/list',
+  'ping',
+  'completion/complete',
+]);
+
+/** The client helpers that send one of those methods. */
+const CLIENT_HELPER_METHODS: Readonly<Record<string, string>> = {
+  listTools: 'tools/list',
+  listPrompts: 'prompts/list',
+  listResources: 'resources/list',
+  listResourceTemplates: 'resources/templates/list',
+  ping: 'ping',
+  complete: 'completion/complete',
+};
+
+/** The JSON-RPC method a guarded client call sends, when it can be read. */
+function clientRequestMethod(
+  property: string | symbol,
+  args: readonly unknown[],
+): string | undefined {
+  if (typeof property !== 'string') return undefined;
+  if (Object.hasOwn(CLIENT_HELPER_METHODS, property))
+    return CLIENT_HELPER_METHODS[property];
+  if (property === 'request' && isRecord(args[0]))
+    return typeof args[0].method === 'string' ? args[0].method : undefined;
+  return undefined;
 }
 
 const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
@@ -406,8 +448,14 @@ export function prepareMCPConnection(
                   assertCurrent();
                   if (phase !== 'connected')
                     throw new Error('MCP local connection is unavailable');
+                  const run = () => Reflect.apply(value, target, args);
                   return track(() =>
-                    inFlightRequest(() => Reflect.apply(value, target, args)),
+                    negotiation.era === 'modern' &&
+                    NON_ELICITING_METHODS_2026.has(
+                      clientRequestMethod(property, args) ?? '',
+                    )
+                      ? run()
+                      : inFlightRequest(run),
                   );
                 };
               },

@@ -17,6 +17,22 @@ import {
 import { z } from 'zod';
 
 const legacy = process.env.STATION_MCP_FIXTURE_ERA === 'legacy';
+// STATION_MCP_FIXTURE_HOLD_LIST=1 holds every `prompts/list` response until
+// an eliciting tool has reported its result (or 10s pass), so a test can keep
+// a catalog read in flight across a tool call's elicitation.
+const holdList = process.env.STATION_MCP_FIXTURE_HOLD_LIST === '1';
+let reported;
+const toolReported = new Promise((resolve) => {
+  reported = resolve;
+});
+
+const AGAIN_REQUEST = {
+  message: 'Anything else for the report?',
+  requestedSchema: {
+    type: 'object',
+    properties: { note: { type: 'string', title: 'Note' } },
+  },
+};
 
 const DETAILS_REQUEST = {
   message: 'Who should the report be addressed to?',
@@ -40,6 +56,7 @@ const DETAILS_REQUEST = {
 };
 
 function report(action, content) {
+  reported();
   return {
     content: [
       {
@@ -103,6 +120,74 @@ function createServer() {
       return report(view.action, view.content);
     },
   );
+
+  // Asks twice in one call: once for details, then once more.
+  server.registerTool(
+    'ask_twice',
+    {
+      title: 'Ask twice',
+      description: 'Ask for details, then for a note.',
+      inputSchema: {},
+    },
+    async (_args, ctx) => {
+      if (legacy) {
+        const first = await ctx.mcpReq.elicitInput({
+          mode: 'form',
+          ...DETAILS_REQUEST,
+        });
+        const again = await ctx.mcpReq.elicitInput({
+          mode: 'form',
+          ...AGAIN_REQUEST,
+        });
+        return report(again.action, {
+          first: first.content ?? null,
+          again: again.content ?? null,
+        });
+      }
+      const again = inputResponse(ctx.mcpReq.inputResponses, 'again');
+      if (again.kind === 'elicit')
+        return report(again.action, { again: again.content ?? null });
+      const first = inputResponse(ctx.mcpReq.inputResponses, 'details');
+      if (first.kind === 'missing')
+        return inputRequired({
+          inputRequests: { details: inputRequired.elicit(DETAILS_REQUEST) },
+        });
+      return inputRequired({
+        inputRequests: { again: inputRequired.elicit(AGAIN_REQUEST) },
+      });
+    },
+  );
+
+  if (holdList) {
+    // Same listing as the registered prompt; only its timing differs.
+    server.server.setRequestHandler('prompts/list', async () => {
+      await Promise.race([
+        toolReported,
+        new Promise((resolve) => setTimeout(resolve, 10_000)),
+      ]);
+      return {
+        prompts: [
+          {
+            name: 'summarize',
+            title: 'Summarize',
+            description: 'Summarize a topic in a chosen tone.',
+            arguments: [
+              {
+                name: 'topic',
+                description: 'What to summarize',
+                required: true,
+              },
+              {
+                name: 'tone',
+                description: 'How it should sound',
+                required: false,
+              },
+            ],
+          },
+        ],
+      };
+    });
+  }
 
   return server;
 }

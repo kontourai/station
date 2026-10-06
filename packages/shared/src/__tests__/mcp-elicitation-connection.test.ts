@@ -16,14 +16,20 @@ afterEach(async () => {
   await Promise.allSettled(open.splice(0).map((item) => item.close()));
 });
 
-async function connect(era: 'modern' | 'legacy') {
+async function connect(
+  era: 'modern' | 'legacy',
+  env: Record<string, string> = {},
+) {
   const connection = await connectMCP({
     id: 'fixture',
     kind: 'mcp',
     transport: 'stdio',
     command: process.execPath,
     args: [FIXTURE],
-    ...(era === 'legacy' ? { env: { STATION_MCP_FIXTURE_ERA: 'legacy' } } : {}),
+    env: {
+      ...env,
+      ...(era === 'legacy' ? { STATION_MCP_FIXTURE_ERA: 'legacy' } : {}),
+    },
   });
   open.push(connection);
   expect(connection.negotiation.era).toBe(era);
@@ -34,9 +40,9 @@ async function connect(era: 'modern' | 'legacy') {
 async function askDetails(
   connection: MCPConnection,
   route?: MCPElicitationRoute,
+  tool = 'ask_details',
 ): Promise<unknown> {
-  const call = () =>
-    connection.client.callTool({ name: 'ask_details', arguments: {} });
+  const call = () => connection.client.callTool({ name: tool, arguments: {} });
   const result = route
     ? await connection.withElicitationRoute!(route, call)
     : await call();
@@ -191,5 +197,116 @@ describe.each(['modern', 'legacy'] as const)(
       expect(JSON.stringify(b)).toMatch(/several concurrent requests/);
       expect(JSON.stringify(b)).not.toMatch(/A-private|"action":"accept"/);
     });
+  },
+);
+
+/** A route that records each form it is shown and answers `content`. */
+function recordingRoute(content: Record<string, unknown>) {
+  const forms: string[] = [];
+  const route: MCPElicitationRoute = async (request) => {
+    forms.push((request.params as { message: string }).message);
+    return { action: 'accept', content };
+  };
+  return { forms, route };
+}
+
+describe.each(['modern', 'legacy'] as const)(
+  'two turns’ calls on one connection (%s era)',
+  (era) => {
+    test('both in flight: refused as ambiguous; once one settles, the other’s form reaches its own turn', async () => {
+      const connection = await connect(era);
+      // Turn A: a call that asks twice. Its first form stays open until
+      // turn B's call has come and gone.
+      let releaseA!: () => void;
+      const released = new Promise<void>((resolve) => {
+        releaseA = resolve;
+      });
+      let firstFormOpen!: () => void;
+      const opened = new Promise<void>((resolve) => {
+        firstFormOpen = resolve;
+      });
+      const formsA: string[] = [];
+      const a = askDetails(
+        connection,
+        async (request) => {
+          formsA.push((request.params as { message: string }).message);
+          if (formsA.length === 1) {
+            firstFormOpen();
+            await released;
+            return { action: 'accept', content: { name: 'A-first' } };
+          }
+          return { action: 'accept', content: { note: 'A-again' } };
+        },
+        'ask_twice',
+      );
+      await opened;
+      // Turn B: its own call elicits while A's is in flight.
+      const b = recordingRoute({ name: 'B-private' });
+      const outcomeB = await settle(askDetails(connection, b.route));
+      expect(JSON.stringify(outcomeB)).toMatch(/several concurrent requests/);
+      expect(b.forms).toEqual([]);
+      // B has settled. A's second form arrives with only A in flight and
+      // reaches A, answered by A.
+      releaseA();
+      const outcomeA = await a;
+      expect(formsA).toEqual([
+        'Who should the report be addressed to?',
+        'Anything else for the report?',
+      ]);
+      expect(JSON.stringify(outcomeA)).toMatch(/A-again/);
+      expect(JSON.stringify(outcomeA)).not.toMatch(/B-private/);
+    });
+
+    test('an idle route with nothing in flight does not make a form ambiguous', async () => {
+      const connection = await connect(era);
+      let releaseIdle!: () => void;
+      const idle = connection.withElicitationRoute!(
+        async () => ({ action: 'accept', content: { name: 'idle' } }),
+        () =>
+          new Promise<void>((resolve) => {
+            releaseIdle = resolve;
+          }),
+      );
+      const own = recordingRoute({ name: 'Ada' });
+      expect(await askDetails(connection, own.route)).toEqual({
+        action: 'accept',
+        content: { name: 'Ada' },
+      });
+      expect(own.forms).toHaveLength(1);
+      releaseIdle();
+      await idle;
+    });
+  },
+);
+
+describe.each(['modern', 'legacy'] as const)(
+  'a catalog read in flight during a turn’s form (%s era)',
+  (era) => {
+    test(
+      era === 'modern'
+        ? 'a prompt listing cannot elicit, so the form still reaches the turn'
+        : 'the 2025 era sets no limit on which request a form belongs to, so the form is refused',
+      async () => {
+        const connection = await connect(era, {
+          STATION_MCP_FIXTURE_HOLD_LIST: '1',
+        });
+        // Held by the fixture until the tool below has reported.
+        const listing = connection.client.listPrompts();
+        const own = recordingRoute({ name: 'Ada' });
+        const outcome = await settle(askDetails(connection, own.route));
+        await listing;
+        if (era === 'modern') {
+          expect(outcome).toEqual({
+            value: { action: 'accept', content: { name: 'Ada' } },
+          });
+          expect(own.forms).toHaveLength(1);
+        } else {
+          expect(JSON.stringify(outcome)).toMatch(
+            /several concurrent requests/,
+          );
+          expect(own.forms).toEqual([]);
+        }
+      },
+    );
   },
 );
