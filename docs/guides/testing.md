@@ -668,7 +668,11 @@ The floor also runs the [Windows resource-staging keeper](../../scripts/__tests_
 executes the workflow's PowerShell staging body in a temporary directory and
 checks the configured resource-source directories at the Cargo boundary,
 including bundled examples. This proves directory staging, not Rust compilation
-or bundled file contents. A repair to this base-controlled workflow must land
+or bundled file contents. The same focused step runs the
+[Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
+checking real installed npm/local Tauri versions and explicit missing
+prerequisites on Windows. These tooling checks do not establish native app
+startup, packaging or device behavior. A repair to this base-controlled workflow must land
 on `main` before a dependent PR's head can use it.
 
 The hosted Windows floor always uploads its existing redacted verification
