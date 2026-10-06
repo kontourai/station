@@ -395,6 +395,9 @@ describe('phone transcript: fold review fixes', () => {
       ...call('t1', 'c1', 'read_file', { path: 'src/a.ts' }),
       say('t1', 'BETWEEN: now the second file.'),
       ...call('t1', 'c2', 'read_file', { path: 'src/b.ts' }),
+      // Text after the last pre-steer call, so the last-words rule cannot be
+      // what keeps BETWEEN visible: only the live guard can.
+      say('t1', 'TAIL: both files read.'),
       runtimeEvent({
         method: 'turn.started',
         turnId: 't1',
