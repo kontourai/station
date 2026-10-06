@@ -4014,9 +4014,16 @@ export class OrchestrationService {
     return true;
   }
 
+  /**
+   * `options.threadIds` narrows the read to those sessions (station#3413: the
+   * digest of ONE Session must not fold the whole inventory). Each is still
+   * held to the same readability and ephemeral checks as the full read.
+   */
   async listSessionReadModel(
     authority: SessionReadScope,
+    options?: { threadIds?: readonly string[] },
   ): Promise<OrchestrationSessionSummary[]> {
+    const only = options?.threadIds ? new Set(options.threadIds) : undefined;
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
     this.evictCollidingAttachedAliases();
@@ -4036,6 +4043,7 @@ export class OrchestrationService {
     const observedAt = new Date().toISOString();
     const readableThreadIds = [...threadIds].filter(
       (threadId) =>
+        (!only || only.has(threadId)) &&
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
