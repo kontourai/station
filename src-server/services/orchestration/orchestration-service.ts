@@ -4398,6 +4398,42 @@ export class OrchestrationService {
   }
 
   /**
+   * #3412: the Project and directory one Session is bound to, for a reader
+   * allowed to read it, without materializing its transcript: the Project
+   * its start stamped (`firstStartedMetadataOfThread`, which later sparse
+   * reconfiguration cannot shadow) and the loaded or persisted row's `cwd`.
+   * `null` when the authority may not read the Session or Station has no
+   * record of it. A read-only attached Session names no Project here: its
+   * attribution is a correctable later statement, which only the full read
+   * model folds.
+   */
+  readSessionWorkspaceBinding(
+    threadId: string,
+    authority: SessionReadScope,
+  ): { projectSlug?: string; cwd?: string } | null {
+    this.initialize();
+    if (
+      this.isEphemeralSession(threadId) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const session =
+      this.sessionReadModel.get(threadId) ??
+      this.options.eventStore?.readSessionByThread(threadId);
+    if (!session) return null;
+    const projectSlug =
+      session.controlMode === 'read-only-attached'
+        ? undefined
+        : this.firstStartedMetadataOfThread(threadId)?.projectSlug;
+    return {
+      ...(typeof projectSlug === 'string' && projectSlug.length > 0
+        ? { projectSlug }
+        : {}),
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+    };
+  }
+
+  /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
    */

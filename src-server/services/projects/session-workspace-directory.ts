@@ -4,7 +4,6 @@ import { expandTilde } from '../../utils/paths.js';
 import { listVerifiedWorktrees } from './verified-worktrees.js';
 
 interface SessionRecord {
-  threadId: string;
   projectSlug?: string;
   cwd?: string;
 }
@@ -46,7 +45,12 @@ function isWithinOrSame(root: string, target: string): boolean {
 export async function sessionWorkspaceDirectoryFor(
   deps: {
     canRead: (thread: string) => boolean;
-    listSessions: () => Promise<readonly SessionRecord[]>;
+    /**
+     * The session's recorded binding (#3412): its project comes from what the
+     * session recorded at its start, for every engine — a provider's live
+     * session list carries no project.
+     */
+    readSession: (thread: string) => Promise<SessionRecord | null | undefined>;
     projectDirectory: (projectSlug: string) => Promise<string | undefined>;
     worktrees?: (projectDirectory: string) => Promise<readonly string[]>;
   },
@@ -54,11 +58,8 @@ export async function sessionWorkspaceDirectoryFor(
   thread: string,
 ): Promise<string | undefined | null> {
   if (!deps.canRead(thread)) return null;
-  const session = (await deps.listSessions()).find(
-    (candidate) =>
-      candidate.threadId === thread && candidate.projectSlug === projectSlug,
-  );
-  if (!session) return null;
+  const session = await deps.readSession(thread);
+  if (!session || session.projectSlug !== projectSlug) return null;
   const configured = await deps.projectDirectory(projectSlug);
   const project = configured ? canonical(configured) : undefined;
   if (!project) return null;
@@ -72,4 +73,51 @@ export async function sessionWorkspaceDirectoryFor(
     ((root: string) => listVerifiedWorktrees(root, WORKTREE_LIST_TIMEOUT_MS))
   )(project);
   return worktrees.some((worktree) => canonical(worktree) === cwd) ? cwd : null;
+}
+
+/**
+ * The production composition of `sessionWorkspaceDirectoryFor` over the
+ * orchestration service. The binding is read with the REQUEST's authority,
+ * so it refuses a session the caller may not read even past the `canRead`
+ * check, and it reads only the session's start binding and row — never its
+ * event history, which a preview request must not pay for.
+ */
+export function orchestrationSessionWorkspaceDirectory<Authority>(source: {
+  sessions: {
+    canUserReadSession(threadId: string, authority: Authority): boolean;
+    readSessionWorkspaceBinding(
+      threadId: string,
+      authority: Authority,
+    ): SessionRecord | null;
+  };
+  authorityFor: (request: Request) => Authority;
+  projects: { getProject(slug: string): { workingDirectory?: string } };
+}): (
+  request: Request,
+  projectSlug: string,
+  thread: string,
+) => Promise<string | undefined | null> {
+  return (request, projectSlug, thread) =>
+    sessionWorkspaceDirectoryFor(
+      {
+        canRead: (id) =>
+          source.sessions.canUserReadSession(id, source.authorityFor(request)),
+        readSession: async (id) =>
+          source.sessions.readSessionWorkspaceBinding(
+            id,
+            source.authorityFor(request),
+          ),
+        projectDirectory: async (slug) => {
+          try {
+            const configured =
+              source.projects.getProject(slug).workingDirectory;
+            return configured ? resolve(expandTilde(configured)) : undefined;
+          } catch {
+            return undefined;
+          }
+        },
+      },
+      projectSlug,
+      thread,
+    );
 }
