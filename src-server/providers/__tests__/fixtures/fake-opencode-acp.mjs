@@ -212,7 +212,9 @@ const ACTIONS = {
 
 let callCounter = 0;
 async function prompt(sessionId, text) {
-  const match = /^(run|edit|fetch|task):\s*(.+)$/s.exec(text.trim());
+  // The action is the last `<verb>: <target>` line: Station may put its own
+  // context ahead of the typed text.
+  const match = [...text.matchAll(/^(run|edit|fetch|task):\s*(.+)$/gm)].at(-1);
   if (!match) return { stopReason: 'end_turn' };
   const action = ACTIONS[match[1]];
   const target = match[2].trim();
