@@ -53,18 +53,46 @@ delegation and legacy YAML library/CLI controls passed. These are dependency
 behavior observations, not production reachability or full browser/native
 qualification.
 
-The actual advisory scan at that revision remained red for high-severity
-`source-map-js` and the version-reported, untracked production `sprintf-js`
-1.0.3 advisory. The `proxy-addr` and `fast-copy` findings were absent. Production
-closure means the package is in the installed dependency graph; it does not
-prove an attacker can supply a format string to a Station request path. A
-locally patched version still needs an explicit maintainer disposition before
-the version-based floor can be considered resolved. No disposition is granted
-by these probes or this guide. No advisory exception, residual, baseline, or trust
-policy is changed by these repairs. The separate
-[source-map advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) is not
-addressed here. Remove the local formatter patch only after a compatible
-upstream release passes the same numeric, formatter, YAML, and CLI controls.
+That historical scan remained red for high-severity `source-map-js` and the
+version-reported production `sprintf-js` advisory. The composed graph now
+inherits `source-map-js` 1.2.2 from the existing Dependabot change. Managed
+installation and verification observed that version and the exact patched
+formatter bytes on Node 24.19.0; this does not establish hosted qualification.
+
+Brian approved an exact root production `sprintf-js` 1.0.3 residual for
+GHSA-hp3w-g68c-fv3c through **2026-10-13**, conditional on drift/restoration
+proof, independent review, and installed binding verification. The
+[residual record](../../scripts/dependency-advisory-exceptions.json) retains
+that expiry and has no automatic renewal. It accepts the version-reported
+finding for the reviewed local patch; it does not claim upstream remediation
+or absence of attacker-controlled Station format strings.
+
+The [policy evaluator](../../scripts/dependency-advisory-policy.mjs) directly
+calls the [patch-binding verifier](../../scripts/lib/dependency-patch-binding.mjs)
+before accepting this residual. Its optional structured `patchBinding`
+preserves the twelve required legacy string fields. For this exact formatter
+identity, deleting the binding fails; there is no identity-only fallback.
+The verifier checks Node 24, parsed workspace and lock references, the patch
+SHA-256, production graph presence, and the source and minified bytes of every
+accounted installed formatter instance. Missing evidence, drift, unaccounted
+copies, or caller-directory/file/symlink/case-equivalent module shadows fail
+closed. The guard is a check of the current installed tree, not continuous
+protection against a same-user writer changing files after verification.
+
+The guard's 109 real-file, CLI, and legacy controls passed, including named
+bad cases and exact restoration. Disabling only the production verification
+call caused 17 failures; restoration returned all 109 tests to PASS.
+Independent review passed at `e319df1a89`. These guard controls complement the
+six-entrypoint formatter proof above; neither establishes a production request
+path or whole-source qualification. The actual audit owns the current floor
+verdict and remains separate from these proofs.
+
+Recheck before expiry, on dependency, patch, source/minified bytes, Node runtime,
+or entrypoint changes, and when untrusted production format control is found.
+Withdraw acceptance on mismatch. Remove the residual and local formatter patch
+when a compatible upstream release passes the same numeric, formatter, YAML,
+and CLI controls. No unrelated exception, baseline, severity, or proxy trust
+policy is changed.
 
 ## Lifecycle scripts are reviewed capabilities
 
