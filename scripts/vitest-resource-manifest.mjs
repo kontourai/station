@@ -895,6 +895,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3386: continues attached sessions from real Git worktrees (execFileSync
   // git) through the real OrchestrationService.
   'src-server/services/orchestration/__tests__/attached-session-continuation.test.ts',
+  // #3429: continues adopted children from real Git worktrees (execFileSync
+  // git) through the real orchestration and conversation routes.
+  'src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
   // under the four-worker ordinary corpus. Keep their feedback deterministic.
