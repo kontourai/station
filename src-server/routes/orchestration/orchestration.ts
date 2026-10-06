@@ -120,6 +120,7 @@ import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
   OrchestrationCommandDispatchError,
 } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -4923,6 +4924,11 @@ export function createOrchestrationRoutes(
             // request is refused again, so clients offer no retry.
             ...(error instanceof ContinuationPlaceRefusedError
               ? { code: error.code, retryable: false }
+              : {}),
+            // #3429: the engine was not ready and nothing was created; the
+            // reason is shown and the same request may be retried.
+            ...(error instanceof AdoptionEngineNotReadyError
+              ? { code: error.code, retryable: error.retryable }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError
               ? {
