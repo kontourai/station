@@ -302,6 +302,10 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { ModelCatalogHttpError } from '../../../providers/registries/catalog-http.js';
 import { credentialProfileApplication } from '../../../telemetry/metrics.js';
@@ -980,6 +984,133 @@ describe('ConnectionService', () => {
     ]);
     // Static: no Adapter probe ran.
     expect(getPrerequisites).not.toHaveBeenCalled();
+  });
+
+  test('names the Adapter whose identity threw, at debug level (#3355)', async () => {
+    const captured = captureLoggerLines('debug');
+    try {
+      const broken = { provider: 'muse' };
+      Object.defineProperty(broken, 'metadata', {
+        get: () => {
+          throw new Error('plugin metadata unavailable');
+        },
+      });
+      const service = createConnectionServiceForTest(
+        {
+          listProviderConnections: vi.fn(() => []),
+          saveProviderConnection: vi.fn(),
+          deleteProviderConnection: vi.fn(),
+          checkHealth: vi.fn(),
+        } as any,
+        () => [broken] as any,
+        async () => [],
+        () => ({ connections: [] }),
+        async () => ({}) as any,
+        vi.fn(),
+      );
+
+      await expect(service.listEngineConnectionIdentities()).resolves.toEqual(
+        [],
+      );
+      const lines = captured
+        .at('debug')
+        .filter((line) => line.adapter === 'muse');
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.msg).toContain('Engine identity unavailable');
+      expect(String(lines[0]?.error)).toContain('plugin metadata unavailable');
+    } finally {
+      stopLoggerCaptures();
+    }
+  });
+
+  /**
+   * #3355: an ACP connection stored with a native engine's id (before the ACP
+   * routes refused it) resolves to the native engine's public connection. The
+   * native engine keeps the id — otherwise every native Agent read as `acp` —
+   * the read still succeeds, and the collision is logged once per id.
+   */
+  test('keeps the native engine when a stored ACP connection shares its id (#3355)', async () => {
+    const captured = captureLoggerLines();
+    try {
+      const registry: AgentRegistry = {
+        version: 2,
+        revision: 0,
+        engineConnections: ['codex', 'kiro'].map((id) => ({
+          id: engineConnectionId(id),
+        })),
+        defaultAgents: [],
+      };
+      const service = createConnectionServiceForTest(
+        {
+          listProviderConnections: vi.fn(() => []),
+          saveProviderConnection: vi.fn(),
+          deleteProviderConnection: vi.fn(),
+          checkHealth: vi.fn(),
+        } as any,
+        () =>
+          [
+            {
+              provider: 'codex',
+              metadata: {
+                displayName: 'Codex',
+                description: 'runtime',
+                capabilities: ['agent-runtime'],
+                connectionId: 'codex',
+                engineId: 'codex',
+              },
+            },
+          ] as any,
+        // The normalized shape the ACP routes persist (`normalizeACPConnection`).
+        async () => [
+          {
+            id: 'codex',
+            name: 'Codex bridge',
+            command: 'codex-acp',
+            args: [],
+            icon: '🔌',
+            enabled: true,
+          },
+          {
+            id: 'kiro',
+            name: 'Kiro',
+            command: 'kiro-cli',
+            args: ['acp'],
+            icon: 'K',
+            enabled: true,
+          },
+        ],
+        () => ({ connections: [] }),
+        async () => ({}) as any,
+        vi.fn(),
+        undefined,
+        undefined,
+        [],
+        undefined,
+        { load: async () => registry, register: vi.fn(), unregister: vi.fn() },
+      );
+
+      const expected = [
+        { id: 'codex', engineId: 'codex', type: 'codex' },
+        { id: 'kiro', engineId: 'acp', type: 'acp' },
+      ];
+      await expect(service.listEngineConnectionIdentities()).resolves.toEqual(
+        expected,
+      );
+      await expect(service.listEngineConnectionIdentities()).resolves.toEqual(
+        expected,
+      );
+      const warnings = captured
+        .at('warn')
+        .filter((line) => line.connectionId === 'codex');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.msg).toContain('shares its id with a native engine');
+      // No rename exists (an update pins the id), so the advice is delete-and-re-add.
+      expect(warnings[0]?.msg).toContain(
+        'Delete the ACP connection and add it again under a different id',
+      );
+    } finally {
+      stopLoggerCaptures();
+    }
   });
 
   test('reports the active launchable inventory without exposing connection secrets', async () => {
