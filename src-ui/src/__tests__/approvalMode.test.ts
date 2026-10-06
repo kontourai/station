@@ -6,7 +6,6 @@ import {
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
-  approvalPickUpdate,
   foldApprovalPosture,
   resolveEffectiveApprovalMode,
   sessionApprovalOverride,
