@@ -22,7 +22,10 @@ function workflowPath(path: string): string {
   if (process.platform !== 'win32') return path;
   return path
     .replaceAll('\\', '/')
-    .replace(/^([a-z]):/i, (_match, drive: string) => `/${drive.toLowerCase()}`);
+    .replace(
+      /^([a-z]):/i,
+      (_match, drive: string) => `/${drive.toLowerCase()}`,
+    );
 }
 
 /** Execute the workflow bytes with host tools, without inherited CI context. */
