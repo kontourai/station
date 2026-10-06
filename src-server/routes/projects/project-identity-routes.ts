@@ -14,6 +14,7 @@ import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import type { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
 import { createLogger } from '../../utils/logger.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
+import { refuseUngrantedWorkingDirectory } from '../working-directory-authority.js';
 
 const logger = createLogger({ name: 'project-identity-routes' });
 const attachSchema = z
@@ -134,6 +135,12 @@ export function createProjectIdentityRoutes(
     validate(executionRootMutationSchema),
     (c) => {
       const input: z.infer<typeof executionRootMutationSchema> = getBody(c);
+      // Setting a path chooses a folder; clearing the root does not.
+      const refused =
+        input.executionRoot === null
+          ? undefined
+          : refuseUngrantedWorkingDirectory(c, 'saved');
+      if (refused) return refused;
       return run(c, (owner) =>
         owner.updateExecutionRoot(param(c, 'slug'), input),
       );
@@ -141,6 +148,13 @@ export function createProjectIdentityRoutes(
   );
   app.post('/attach', validate(attachSchema), (c) => {
     const input: z.infer<typeof attachSchema> = getBody(c);
+    // Naming a checkout folder chooses one; omitting it takes the default.
+    // Presence check only: the path itself is expanded where the service reads it.
+    const refused =
+      input.workingDirectory === undefined
+        ? undefined
+        : refuseUngrantedWorkingDirectory(c, 'saved');
+    if (refused) return refused;
     return run(c, (owner) =>
       owner.attach({ ...input, identity: input.identity }),
     );

@@ -1,0 +1,7 @@
+{
+  "revision": "92d7e8ed802362c72136e0072b5d16c4a4bf84b4",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delta review for #2962: checked protocol refusal response codes and separate direct-socket audit budget against runtime-http.ts and RuntimeAuthFailureLimiter; corrected clients reach deployment-account verification after 12 malformed requests, and 100 refusals produce 10 audits in executed focused tests. Admission and CORS coverage unchanged. This is a review of the protocol delta; unrelated API contracts, hosted CI and release NOT_VERIFIED."}
+  ]
+}

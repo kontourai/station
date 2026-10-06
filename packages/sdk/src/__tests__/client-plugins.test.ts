@@ -15,10 +15,12 @@ describe('client plugin collection', () => {
     await expect(listPlugins('https://station.example')).resolves.toEqual([
       { name: 'demo', version: '1.0.0' },
     ]);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       'https://station.example/api/plugins',
-      { method: 'GET' },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('fails closed on a malformed successful collection', async () => {

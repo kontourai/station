@@ -259,6 +259,60 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(screen.queryByText('Failed')).toBe(null);
   });
 
+  // A plain failure: the command ran and exited non-zero. The row takes the
+  // completed tense beside its Failed badge — the same rule the batch summary
+  // applies ("ran 2 commands · 1 failed") — so a sheet never lists "Run X"
+  // under a title that says it ran. Shape: the projection's `tool.completed`
+  // with `status: 'error'` (state, output and error all set).
+  test('a failed command reads "Ran", with the Failed badge as the disclosure', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't-failed',
+          toolName: 'bash',
+          args: { command: 'npm run typecheck:ui' },
+          state: 'error',
+          output: 'error TS2339: Property missing',
+          error: 'exit 2',
+        }}
+      />,
+    );
+
+    expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+      'Ran npm run typecheck:ui',
+    );
+    expect(screen.getByText('Failed')).toBeTruthy();
+  });
+
+  // A failed write or delete may have landed nothing: the completed verb
+  // would claim the change happened. Only non-mutating kinds keep it.
+  test.each([
+    ['write_file', { path: '/repo/a.ts', content: 'x' }, 'Edit a.ts'],
+    ['delete_file', { path: '/repo/a.ts' }, 'Delete a.ts'],
+  ])(
+    'a failed %s keeps the bare verb beside its Failed badge',
+    (toolName, args, label) => {
+      render(
+        <ToolCallDisplay
+          toolCall={{
+            type: 'tool-invocation',
+            toolCallId: `t-${toolName}`,
+            toolName,
+            args,
+            state: 'error',
+            output: 'EACCES',
+            error: 'EACCES',
+          }}
+        />,
+      );
+      expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+        label,
+      );
+      expect(screen.getByText('Failed')).toBeTruthy();
+    },
+  );
+
   // The two claims the old `done` fallback made, each using `write_file` so
   // past tense and infinitive differ — a denial must never borrow the
   // completed verb.

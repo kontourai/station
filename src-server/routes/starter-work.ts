@@ -12,12 +12,14 @@ import {
   StarterWorkConflictError,
   StarterWorkUnavailableError,
 } from '../services/starter-work/starter-work-module.js';
+import { adoptSessionTargetSchema } from './orchestration/adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   refuseUngrantedFullAccess,
   requestedApprovalMode,
 } from './orchestration/approval-authority.js';
 import { getBody, validate } from './schemas/schemas.js';
+import { refuseUngrantedRuntimeCwd } from './working-directory-authority.js';
 
 const taskReferenceSchema = z
   .object({
@@ -93,6 +95,7 @@ const continueSessionLaunchSchema = z
     starterId: z.literal('continue-session'),
     operationId: z.string().min(1).max(160),
     sourceSessionId: z.string().min(1).max(4096),
+    target: adoptSessionTargetSchema.optional(),
   })
   .strict();
 const inspectApprovalLaunchSchema = z
@@ -180,6 +183,8 @@ export function createStarterWorkRoutes(
      * resolved throws here and never launches.
      */
     ownerForRequest: (c: Context) => SessionOwnerStamp;
+    /** A Project's own folder, as stored; naming it is not a folder choice. */
+    projectFolder?: (projectId: string) => string | undefined;
   },
 ) {
   const app = new Hono();
@@ -255,6 +260,15 @@ export function createStarterWorkRoutes(
           ),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        // A folder other than the Task Project's own takes the authority to
+        // choose a working folder, decided before the Task is created.
+        const startTask = body as z.infer<typeof startTaskLaunchSchema>;
+        const cwdRefused = refuseUngrantedRuntimeCwd(
+          c,
+          startTask.dispatch?.runtimeConfig?.cwd,
+          options.projectFolder?.(startTask.task.projectId),
+        );
+        if (cwdRefused) return cwdRefused;
       }
       const result =
         starterId === 'continue-session'

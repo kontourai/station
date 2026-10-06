@@ -105,7 +105,12 @@ describe('systemRuntimeRequests', () => {
       welcomeMessage: null,
     });
 
-    expect(fetch).toHaveBeenCalledWith('http://example.test/api/branding');
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://example.test/api/branding',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a branding error answer instead of reporting "no theme"', async () => {
@@ -160,9 +165,12 @@ describe('systemRuntimeRequests', () => {
 
     await expect(fetchMonitoringMetrics('week')).resolves.toEqual([]);
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/monitoring/metrics?range=week',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('uses the provided API base for system status and rejects non-ok responses', async () => {
@@ -278,10 +286,12 @@ describe('systemRuntimeRequests', () => {
 
     await expect(applyCoreUpdate('http://custom.test')).rejects.toThrow('boom');
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://custom.test/api/system/core-update',
-      { method: 'POST' },
+      { method: 'POST', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an accepted restart that omits its watchdog correlation', async () => {
@@ -317,10 +327,15 @@ describe('systemRuntimeRequests', () => {
       deadlineAt: '2026-08-09T12:01:35.000Z',
       resolvedAt: '2026-08-09T12:00:12.000Z',
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://custom.test/api/system/core-update/restart-status',
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        headers: { 'X-Station-Client-Protocol': '1' },
+      },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a malformed restart-status rather than treating it as verified', async () => {
@@ -754,10 +769,15 @@ describe('systemRuntimeRequests', () => {
       } as Response);
 
       await requestCoreUpdateStatus('http://custom.test', controller.signal);
-      expect(fetch).toHaveBeenCalledWith(
+      expect(fetch).toHaveBeenNthCalledWith(
+        1,
         'http://custom.test/api/system/core-update',
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          headers: { 'X-Station-Client-Protocol': '1' },
+        },
       );
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
 
     it('still throws on a genuine error field, before any status is read', async () => {
@@ -842,10 +862,15 @@ describe('systemRuntimeRequests', () => {
         shaSource: 'checkout',
         devicePresentation: { deviceClass: 'paired', hostName: 'kontour' },
       });
-      expect(fetch).toHaveBeenCalledWith(
+      expect(fetch).toHaveBeenNthCalledWith(
+        1,
         'http://custom.test/api/system/identity',
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          headers: { 'X-Station-Client-Protocol': '1' },
+        },
       );
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
 
     it('accepts an older server that omits the optional presentation', async () => {
@@ -991,9 +1016,12 @@ describe('systemRuntimeRequests', () => {
     } as Response);
 
     await expect(fetchServerCapabilities()).resolves.toEqual(capabilities);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/system/capabilities',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('treats absent or malformed deployment facts as unknown', () => {

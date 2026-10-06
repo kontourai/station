@@ -1,0 +1,7 @@
+{
+  "revision": "0f606ae5436cf587240ba3ff0908e3d245f0bb80",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed verification-command and hosted qualification boundaries for the Windows staging prerequisite. Exact-file test:focused/default worker, maintained dependency verification and process classification are preserved; no raw install or native launch. Windows keeper runs at the staging consumer with Cargo stub only; ordinary CI, normal hooks, main-first base workflow landing and exact-main qualification remain separate. No prose change to this guide is needed.","inputs":["docs/guides/development.md",".github/workflows/windows-pr-verification.yml"]}
+  ]
+}

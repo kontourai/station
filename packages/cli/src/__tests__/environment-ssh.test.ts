@@ -33,7 +33,7 @@ describe('SSH environment CLI commands', () => {
       [
         'add',
         '--ssh',
-        'brian-media',
+        'home-media',
         '--project',
         '~/dev/github/kontourai/station',
         '--name',
@@ -48,7 +48,7 @@ describe('SSH environment CLI commands', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          hostAlias: 'brian-media',
+          hostAlias: 'home-media',
           remoteProjectPath: '~/dev/github/kontourai/station',
           name: 'Media',
         }),
@@ -68,7 +68,7 @@ describe('SSH environment CLI commands', () => {
       [
         'add',
         '--ssh',
-        'brian-media',
+        'home-media',
         '--project',
         '~/dev/github/kontourai/station',
         '--managed',
@@ -82,7 +82,7 @@ describe('SSH environment CLI commands', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          hostAlias: 'brian-media',
+          hostAlias: 'home-media',
           remoteProjectPath: '~/dev/github/kontourai/station',
           launchMode: 'managed',
         }),

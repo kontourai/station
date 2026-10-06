@@ -52,12 +52,13 @@ function deps(
 ) {
   return {
     canRead: vi.fn(() => readable),
-    listSessions: vi.fn(async () =>
-      Object.entries(cwdByThread).map(([threadId, cwd]) => ({
-        threadId,
-        projectSlug: threadId === 'other-project' ? 'beta' : 'alpha',
-        ...(cwd ? { cwd } : {}),
-      })),
+    readSession: vi.fn(async (thread: string) =>
+      thread in cwdByThread
+        ? {
+            projectSlug: thread === 'other-project' ? 'beta' : 'alpha',
+            ...(cwdByThread[thread] ? { cwd: cwdByThread[thread] } : {}),
+          }
+        : null,
     ),
     projectDirectory: vi.fn(async () => checkout),
   };
@@ -142,7 +143,7 @@ describe('which directory a file read for a session targets (#2476)', () => {
     await expect(
       sessionWorkspaceDirectoryFor(d, 'alpha', 'lane'),
     ).resolves.toBeNull();
-    expect(d.listSessions).not.toHaveBeenCalled();
+    expect(d.readSession).not.toHaveBeenCalled();
   });
 
   test('another project’s session, or an unknown one, is refused', async () => {

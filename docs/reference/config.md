@@ -9,6 +9,12 @@ For usage context, see [docs/guides/agents.md](../guides/agents.md).
 
 ---
 
+Claude Code and Codex engine connections can set
+`agentConnections.<engine>.config.proxyConnectionId` to a saved OpenAI-compatible
+Model connection. The UI exposes this as **Connect through**. The engine uses the
+current saved address/key at launch, without copying credentials or changing the
+global CLI configuration. See [proxy setup](../guides/connections.md#route-an-engine-through-a-model-proxy).
+
 ## app.json
 
 **Location:** `<STATION_HOME>/config/app.json`
@@ -57,7 +63,8 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultEmbeddingProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
-| `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`) |
+| `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
+| `attachedSessionsOutsideProjects` | boolean | `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
 ### templateVariables

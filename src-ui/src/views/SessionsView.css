@@ -507,6 +507,22 @@
   font-size: 0.8rem;
 }
 
+/* #3386: the No project explanation names a folder path, which has no break
+   points of its own; let it wrap and let the action drop below it rather than
+   push the panel wider than its pane. */
+.sessions-detail__adoption {
+  flex-wrap: wrap;
+}
+
+.sessions-detail__adoption > div {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.sessions-detail__adoption-folder {
+  overflow-wrap: anywhere;
+}
+
 .sessions-detail__adoption .button {
   min-height: 44px;
   flex: 0 0 auto;

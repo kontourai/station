@@ -315,9 +315,10 @@ install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is a Nightly started by a passing main qualification run for
-the commit it qualified, at most about once a day, or the scheduled Nightly
-build, which fires daily at 06:43 UTC. Either uses its run's workflow event
-SHA, never stages a source its published markers already contain, and skips
+the commit it qualified, at most about once a day. Nightly has no independent
+schedule; manual dispatch remains available for recovery and requires
+exact-source qualification. Both entry points use their workflow event SHA,
+never stage a source their published markers already contain, and skip
 native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior

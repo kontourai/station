@@ -77,6 +77,7 @@ import {
 } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import { refuseUngrantedRuntimeCwd } from '../working-directory-authority.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusal,
@@ -527,6 +528,28 @@ export function createTaskRoutes(
     hostedRequest(request)
       ? options.taskGraphServiceForRequest?.(request)
       : taskGraphService;
+  // A folder other than the Task Project's own takes the authority to choose
+  // a working folder, decided before any side effect.
+  const refuseDispatchCwd = (
+    c: Context,
+    taskId: string,
+    cwd: string | undefined,
+  ): Response | undefined => {
+    if (cwd === undefined) return undefined;
+    let projectFolder: string | undefined;
+    try {
+      const projectId = serviceForRequest(c.req.raw)?.readTask(
+        taskId,
+      )?.projectId;
+      projectFolder =
+        projectId === undefined
+          ? undefined
+          : options.resolveProjectWorkspace?.(projectId);
+    } catch {
+      projectFolder = undefined;
+    }
+    return refuseUngrantedRuntimeCwd(c, cwd, projectFolder);
+  };
   const dispatcherForRequest = (request: Request) =>
     hostedRequest(request)
       ? options.taskDispatcherForRequest?.(request)
@@ -1956,6 +1979,12 @@ export function createTaskRoutes(
       ),
     ]);
     if (fullAccessRefused) return fullAccessRefused;
+    const cwdRefused = refuseDispatchCwd(
+      c,
+      param(c, 'taskId'),
+      (getBody(c) as z.infer<typeof taskDispatchSchema>).runtimeConfig?.cwd,
+    );
+    if (cwdRefused) return cwdRefused;
     try {
       const dispatcher = dispatcherForRequest(c.req.raw);
       if (!dispatcher) return hostedNotFound(c);
