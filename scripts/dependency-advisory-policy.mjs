@@ -10,6 +10,11 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import {
+  requiresDependencyPatchBinding,
+  validateDependencyPatchBinding,
+  verifyDependencyPatchBinding,
+} from './lib/dependency-patch-binding.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
@@ -408,7 +413,7 @@ function validateExceptions(input, scopes, now) {
     }
     const residual = rawResidual;
     const unknown = Object.keys(residual).filter(
-      (field) => !RESIDUAL_FIELDS.has(field),
+      (field) => !RESIDUAL_FIELDS.has(field) && field !== 'patchBinding',
     );
     if (unknown.length > 0)
       errors.push(`${label} has unknown field: ${unknown.join(', ')}`);
@@ -441,6 +446,16 @@ function validateExceptions(input, scopes, now) {
         warnings,
         `${residual.package} ${residual.advisory}`,
       );
+    if (
+      Object.hasOwn(residual, 'patchBinding') ||
+      requiresDependencyPatchBinding(residual)
+    ) {
+      try {
+        validateDependencyPatchBinding(residual);
+      } catch (error) {
+        errors.push(`${label} ${error.message}`);
+      }
+    }
     const key = residualKey(residual);
     if (residualKeys.has(key))
       errors.push(
@@ -541,6 +556,23 @@ export function evaluateAuditPolicy(
         );
         untrackedResiduals.push(finding);
         continue;
+      }
+      if (
+        Object.hasOwn(matchingResidual, 'patchBinding') ||
+        requiresDependencyPatchBinding(matchingResidual)
+      ) {
+        try {
+          verifyDependencyPatchBinding(
+            options.root ?? REPO_ROOT,
+            matchingResidual,
+          );
+        } catch (error) {
+          exceptionErrors.push(
+            `${finding.scope}:${finding.package}: ${error.message}`,
+          );
+          untrackedResiduals.push(finding);
+          continue;
+        }
       }
       trackedResiduals.push(finding);
       continue;
@@ -1035,6 +1067,7 @@ export async function runPolicyCli({
   decide = dependencyAuditDecision,
   runAudits = collectAudits,
   env = process.env,
+  root = REPO_ROOT,
 } = {}) {
   const decision = decide();
   if (!decision.required) {
@@ -1061,10 +1094,10 @@ export async function runPolicyCli({
   );
   const audits = await runAudits(scopes);
   const exceptions = readJson(
-    path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),
+    path.join(root, 'scripts/dependency-advisory-exceptions.json'),
     'exception config',
   );
-  const result = evaluateAuditPolicy(audits, exceptions);
+  const result = evaluateAuditPolicy(audits, exceptions, { root });
   console.log(formatPolicyReport(result));
   for (const annotation of formatExpiryAnnotations(result, env))
     console.log(annotation);
