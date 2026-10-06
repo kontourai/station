@@ -192,10 +192,16 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
-  naturally and truncate when needed; Model does not stretch into unused space.
+  naturally and truncate with an ellipsis before the chevron, never under it;
+  Model does not stretch into unused space. On a phone, Agent and Model keep a
+  readable minimum (88px and 112px) and the rail scrolls instead, its
+  trailing edge faded until scrolled to the end.
 - On an ACP engine the approval control says who decides which actions ask
   (#3290). OpenCode, whose rules Station sets at launch, offers Station's
-  approval modes, with OpenCode-specific descriptions. Any other ACP engine
+  approval modes, with OpenCode-specific descriptions. Its Default says
+  OpenCode's own settings decide until a mode is picked (the chip's name reads
+  "Default — OpenCode's own settings"), and "Default — Ask first" after
+  Station has taken over. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
   offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
   is a separate picker beside it, never a replacement for it.
