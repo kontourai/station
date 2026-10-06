@@ -26,7 +26,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { AttachedSessionFollowService } from '../attached-session-follow-service.js';
-import { AttachedPathProbe } from '../attached-session-path-probe.js';
+import {
+  AttachedPathProbe,
+  closeSharedAttachedPathProbe,
+  sharedAttachedPathProbe,
+} from '../attached-session-path-probe.js';
 import { locateRepository } from '../attached-session-repository.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -337,6 +341,48 @@ describe.skipIf(process.platform === 'win32')(
       expect(await reader.canonical(hung)).toBe(hung);
       expect(spawned).toHaveLength(2);
     });
+
+    test('at the stuck-helper limit only folders under a stuck one are unread; others read by their path as written, never their real path', async () => {
+      const spawned: ChildProcess[] = [];
+      const reader = probe({
+        maxStuckChildren: 1,
+        killChild: () => {},
+        onSpawn: (child) => spawned.push(child),
+      });
+      const hung = hungFolder(join(dir, 'hung'));
+      mkdirSync(join(hung, 'sub'));
+      mkdirSync(join(dir, 'target'));
+      const link = join(dir, 'link');
+      symlinkSync(join(dir, 'target'), link);
+      expect(await reader.canonical(hung)).toBeUndefined();
+
+      const paths = reader.forPoll();
+      await paths.prepare([join(hung, 'sub'), link, join(dir, 'elsewhere')]);
+      expect(paths.canonical(join(hung, 'sub'))).toBeUndefined();
+      expect(paths.canonical(link)).toBe(link);
+      expect(paths.canonical(join(dir, 'elsewhere'))).toBe(
+        join(dir, 'elsewhere'),
+      );
+      expect(await paths.repository(dir)).toBeUndefined();
+      expect(spawned).toHaveLength(1);
+    });
+
+    test('a closed probe answers unread and starts no helper, even for a request already in flight', async () => {
+      const spawned: ChildProcess[] = [];
+      const reader = probe({ onSpawn: (child) => spawned.push(child) });
+      const inFlight = reader.canonical(dir);
+      reader.close();
+      expect(await inFlight).toBeUndefined();
+      expect(await reader.canonical(dir)).toBeUndefined();
+      expect(spawned.length).toBeLessThanOrEqual(1);
+
+      const before = sharedAttachedPathProbe();
+      closeSharedAttachedPathProbe();
+      expect(await before.canonical(dir)).toBeUndefined();
+      const after = sharedAttachedPathProbe();
+      expect(after).not.toBe(before);
+      closeSharedAttachedPathProbe();
+    });
   },
 );
 
@@ -492,6 +538,56 @@ describe.skipIf(process.platform === 'win32')(
       expect(projectOf(underUnreadRoot.threadId)).toBeUndefined();
       // Matching the session by its path as written would say 'alpha'.
       expect(projectOf(unreadInAlpha.threadId)).toBeUndefined();
+    }, 60_000);
+
+    test('with sessions outside projects not followed, a session whose folder turns unreadable keeps its project and keeps importing', async () => {
+      const alpha = join(dir, 'alpha');
+      const cwd = join(alpha, 'work');
+      mkdirSync(cwd, { recursive: true });
+      const session = sessionIn('kept', cwd);
+      let written = 1;
+      const source: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+        read: vi.fn().mockImplementation(async (_session, cursor) => {
+          const from = typeof cursor === 'number' ? cursor : 0;
+          return {
+            outcome: 'ok',
+            cursor: written,
+            events: Array.from({ length: written - from }, (_, index) => ({
+              eventId: `kept-event-${from + index + 1}`,
+              provider: 'claude',
+              threadId: session.threadId,
+              createdAt: `2026-07-22T00:00:0${from + index + 1}.000Z`,
+              method: 'content.text-delta',
+              itemId: `item-${from + index + 1}`,
+              delta: 'hello',
+            })),
+          };
+        }),
+      };
+      const service = new AttachedSessionFollowService({
+        sources: [source],
+        eventStore: store,
+        eventBus: new EventBus(),
+        listProjects: () => [{ slug: 'alpha', workingDirectory: alpha }],
+        pathProbe: probe(),
+        followUnattributed: false,
+      });
+      await service.pollNow();
+      expect(projectOf(session.threadId)).toBe('alpha');
+
+      // The folder stops answering, and the transcript grows.
+      hungFolder(cwd);
+      written = 2;
+      await service.pollNow();
+      expect(projectOf(session.threadId)).toBe('alpha');
+      expect(
+        store.listEvents(session.threadId).map((event) => event.id),
+      ).toContain('kept-event-2');
     }, 60_000);
   },
 );

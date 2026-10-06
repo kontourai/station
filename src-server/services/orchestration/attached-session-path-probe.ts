@@ -52,7 +52,7 @@
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -83,7 +83,9 @@ const DEFAULT_BACKOFF_MS = 60_000;
  * How many killed helpers may still be alive before no new one starts. On a
  * hard NFS mount a process in an uninterruptible read ignores even SIGKILL
  * until the mount answers, so each new hung folder could otherwise leave one
- * more process behind, without bound.
+ * more process behind, without bound. At the limit (logged once when
+ * reached and once when it clears) only folders under one a stuck helper
+ * hung on read as unread; every other folder reads as a missing folder does.
  */
 const DEFAULT_MAX_STUCK_CHILDREN = 4;
 /** How long a starting child may take to say it is ready (a dev `tsx` start is slow). */
@@ -245,6 +247,9 @@ export class AttachedPathProbe {
   /** A child that would not start is not respawned for every request. */
   private unavailableUntil = 0;
   private nextId = 0;
+  private closed = false;
+  /** Whether the stuck-helper limit was reached and logged, and not yet cleared. */
+  private atStuckLimit = false;
 
   constructor(options: AttachedPathProbeOptions = {}) {
     this.childEntry = options.childEntry ?? CHILD_ENTRY;
@@ -308,21 +313,32 @@ export class AttachedPathProbe {
   }
 
   /**
-   * Kills the helper, and again any killed one not yet seen to exit. A later
-   * request starts a new helper.
+   * Kills the helper, and again any killed one not yet seen to exit. Final:
+   * a poll still in flight at shutdown gets unread answers and starts no new
+   * helper afterwards.
    */
   close(): void {
+    this.closed = true;
     if (this.child) this.abandon(this.child);
     for (const stuck of this.stuck) this.killChild(stuck);
   }
 
   private async request(op: ProbeOperation, path: string): Promise<Answer> {
+    if (this.closed) return UNREAD;
     const backedOff = this.backoff.get(path);
     if (backedOff) {
       // Not while the helper stuck on it is alive: the folder still hangs.
       if (this.now() < backedOff.until || this.stuck.has(backedOff.stuck))
         return UNREAD;
       this.backoff.delete(path);
+    }
+    if (!this.child && this.stuck.size >= this.maxStuckChildren) {
+      // #3406 delta D2: no helper can be started, possibly for good on a dead
+      // hard mount. Only folders under one the stuck helpers hung on stay
+      // unread; any other folder reads as a missing folder does, by its path
+      // as written and with no repository, never by its real path.
+      this.noteStuckLimit();
+      return this.underStuckFolder(path) ? UNREAD : null;
     }
     const child = this.ensureChild();
     if (!child || !(await child.ready) || this.child !== child) return UNREAD;
@@ -345,7 +361,8 @@ export class AttachedPathProbe {
   private ensureChild(): RunningChild | undefined {
     if (this.child) return this.child;
     if (this.now() < this.unavailableUntil) return undefined;
-    if (this.stuck.size >= this.maxStuckChildren) return undefined;
+    if (this.closed || this.stuck.size >= this.maxStuckChildren)
+      return undefined;
     let spawned: ChildProcess;
     try {
       // `spawn` with an IPC slot rather than `fork`: only spawn's options
@@ -419,6 +436,12 @@ export class AttachedPathProbe {
         if (!started) this.unavailableUntil = this.now() + this.backoffMs;
         this.abandon(child);
         this.stuck.delete(spawned);
+        if (this.atStuckLimit && this.stuck.size < this.maxStuckChildren) {
+          this.atStuckLimit = false;
+          logger.info('Attached-session path reader can start again', {
+            stuckHelpers: this.stuck.size,
+          });
+        }
         done(false);
       });
     });
@@ -457,6 +480,32 @@ export class AttachedPathProbe {
         this.declareHung(child);
       });
     }, this.deadlineMs);
+  }
+
+  private noteStuckLimit(): void {
+    if (this.atStuckLimit) return;
+    this.atStuckLimit = true;
+    logger.warn(
+      'Attached-session path reader stopped: too many helpers are stuck on folders that do not answer',
+      {
+        stuckHelpers: this.stuck.size,
+        stuckFolders: this.stuckFolders(),
+      },
+    );
+  }
+
+  /** The folders a still-alive stuck helper hung on. */
+  private stuckFolders(): string[] {
+    const folders: string[] = [];
+    for (const [path, { stuck }] of this.backoff)
+      if (this.stuck.has(stuck)) folders.push(path);
+    return folders;
+  }
+
+  private underStuckFolder(path: string): boolean {
+    return this.stuckFolders().some(
+      (folder) => path === folder || path.startsWith(`${folder}${sep}`),
+    );
   }
 
   private declareHung(child: RunningChild): void {
@@ -563,7 +612,12 @@ export function sharedAttachedPathProbe(): AttachedPathProbe {
   return shared;
 }
 
-/** Station shutdown: kills the shared probe's helpers (`runtime-shutdown.ts`). */
+/**
+ * Station shutdown (`runtime-shutdown.ts`): closes the shared probe, which a
+ * poll still in flight may hold, and forgets it, so a runtime started later
+ * in this process gets a new one.
+ */
 export function closeSharedAttachedPathProbe(): void {
   shared?.close();
+  shared = undefined;
 }

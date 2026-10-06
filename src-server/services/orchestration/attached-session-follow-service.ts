@@ -474,17 +474,26 @@ export class AttachedSessionFollowService {
         // does NOT get is a slug it hasn't earned (archive#1462). The same
         // holds for an unattributed one (#3386), except on a hosted Station
         // or when the operator turned it off.
+        // #3406 delta D1: a session whose folder could not be read this poll
+        // is unattributed only for want of an answer. If the log already
+        // names its project it is still followed, and `follow()` keeps that
+        // project; anything else outside every project is skipped as before.
+        let onlyWithStoredProject = false;
         if (
           attribution.state === 'unattributed' &&
           !(await followOutsideProjects())
-        )
-          continue;
+        ) {
+          if (!session.cwd || paths.canonical(session.cwd) !== undefined)
+            continue;
+          onlyWithStoredProject = true;
+        }
         await this.follow(
           source,
           session,
           attribution,
           sessions(),
           projectSlugs,
+          onlyWithStoredProject,
         );
         followedSessions += 1;
         // `follow()` performs synchronous EventStore reads and writes. Its
@@ -504,6 +513,7 @@ export class AttachedSessionFollowService {
     attribution: AttachedProjectAttribution,
     snapshot: PollSessionSnapshot,
     projectSlugs: ReadonlySet<string>,
+    onlyWithStoredProject = false,
   ): Promise<void> {
     const persisted = snapshot.get(descriptor.threadId);
     // A stable Station thread id may outlive the configured source home (Claude
@@ -546,6 +556,13 @@ export class AttachedSessionFollowService {
       state.storedAttribution !== undefined &&
       (projectSlugs.size === 0 ||
         storedProjectsStillExist(state.storedAttribution, projectSlugs));
+    // #3406 delta D1: with sessions outside projects not followed, an
+    // unreadable folder's session continues only under the project it has.
+    if (
+      onlyWithStoredProject &&
+      !(keepsStoredAttribution && state.storedAttribution !== 'unattributed')
+    )
+      return;
     if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
       for (const event of attachedSessionEnvelope(
