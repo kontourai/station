@@ -1231,7 +1231,7 @@ describe('toolRequestPreview — display form (#3382)', () => {
 describe('revealHiddenCharacters (#3382)', () => {
   test('tokens every hidden character and leaves LF, tab and text as written', async () => {
     const { revealHiddenCharactersText, hasHiddenCharacters } = await import(
-      '../display-text.js'
+      '../display-reveal.js'
     );
     const open = String.fromCodePoint(0xab);
     const close = String.fromCodePoint(0xbb);
@@ -1332,7 +1332,7 @@ describe('display form strips more invisible characters (#3382)', () => {
   });
 
   test('a ZWJ between two emoji is left alone; one between letters is revealed', async () => {
-    const { revealHiddenCharactersText } = await import('../display-text.js');
+    const { revealHiddenCharactersText } = await import('../display-reveal.js');
     const zwj = String.fromCodePoint(0x200d);
     const emoji = String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb);
     expect(revealHiddenCharactersText(emoji)).toBe(emoji);

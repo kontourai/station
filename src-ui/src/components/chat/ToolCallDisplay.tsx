@@ -1,7 +1,7 @@
 import {
   hasHiddenCharacters,
   revealHiddenCharacters,
-} from '@kontourai/station-shared/display-text';
+} from '@kontourai/station-shared/display-reveal';
 import {
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
