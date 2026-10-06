@@ -84,7 +84,9 @@
 
     "src-ui/src/components/chat/SanitizedHtml.tsx",
 
-    "src-ui/src/core/pluginSharedRuntime.ts"
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "scripts/lib/dependency-patch-binding.mjs"
   ],
 
   "checks": [
