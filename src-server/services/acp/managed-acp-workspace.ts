@@ -9,7 +9,7 @@ const WORKSPACE_KINDS: ReadonlySet<string> = new Set(['session', 'probe']);
 const WORKSPACE_DIGEST = /^[0-9a-f]{64}$/;
 
 /** The directory under a Station home that holds every managed ACP workspace. */
-export function managedAcpWorkspaceRoot(
+function managedAcpWorkspaceRoot(
   stationHome: string = resolveHomeDir(),
 ): string {
   return join(resolve(stationHome), 'runtime', 'acp-workspaces');
