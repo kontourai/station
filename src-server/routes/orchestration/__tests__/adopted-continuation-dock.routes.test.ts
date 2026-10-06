@@ -11,7 +11,13 @@
  * the start metadata, as the real adapters do.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync } from 'node:fs';
+import {
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -36,6 +42,7 @@ import { createAdoptedChildExecutionBindingResolver } from '../../../services/or
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createStarterSessionOwner } from '../../../services/starter-work/starter-session-owner.js';
 import { createLogger } from '../../../utils/logger.js';
@@ -245,6 +252,18 @@ class AdoptingEngine implements ProviderAdapterShape {
   async stopSession(threadId: string): Promise<void> {
     this.sessions.delete(threadId);
   }
+
+  /** The engine process ends on its own, as a real one does when it exits. */
+  exit(threadId: string): void {
+    this.sessions.delete(threadId);
+    this.events.push({
+      eventId: `${threadId}:exited:${this.starts.length}`,
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    } as CanonicalRuntimeEvent);
+  }
   async listSessions(): Promise<ProviderSession[]> {
     return [...this.sessions.values()];
   }
@@ -301,7 +320,11 @@ async function fixture(options: { engineAgent: boolean }) {
   git(project, 'worktree', 'add', '-q', '-b', 'lane', worktree);
   const ownFolder = join(userHome, 'code', 'scratch');
   mkdirSync(ownFolder, { recursive: true });
-  const projects = () => [{ slug: 'station', workingDirectory: project }];
+  const otherProject = repository(join(userHome, 'dev', 'other'));
+  const projects = () => [
+    { slug: 'station', workingDirectory: project },
+    { slug: 'other', workingDirectory: otherProject },
+  ];
   installStationDiscovery(loader, security, projects);
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
@@ -321,6 +344,13 @@ async function fixture(options: { engineAgent: boolean }) {
     eventStore: store,
     adoptionLedger: store.createAdoptionLedger(),
     listProjects: projects,
+    // The production session-agent resolver (`runtime-initialize.ts`) over
+    // the real Agent store: a fresh engine start runs as an authored Agent.
+    resolveSessionAgent: createSessionAgentResolver({
+      loadAgentSpec: (slug) => loader.loadAgent(slug).catch(() => null),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    }),
     // The production composition (`runtime-initialize.ts`).
     resolveAdoptedChildExecutionBinding:
       createAdoptedChildExecutionBindingResolver({
@@ -593,6 +623,115 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       expect(f.engines[other].starts).toEqual([]);
     },
   );
+
+  test('a project-only follow-up that names another project is refused', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.folder));
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'other', 'elsewhere'),
+    );
+    expect(followUp.status).not.toBe(200);
+    expect(followUp.body).toMatchObject({
+      code: 'continuation_workspace_different_project',
+    });
+    expect(f.engines.claude.turns).toEqual([]);
+  });
+
+  test('a follow-up after the folder was swapped for a link is refused', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.folder));
+    // The recorded folder now leads somewhere else: the real folder moved
+    // aside and a link took its name.
+    renameSync(f.folder, `${f.folder}-moved`);
+    symlinkSync(`${f.folder}-moved`, f.folder);
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'station', 'still there?'),
+    );
+    expect(followUp.status).not.toBe(200);
+    expect(followUp.body).toMatchObject({
+      code: 'continuation_workspace_direct_mismatch',
+    });
+    expect(f.engines.claude.turns).toEqual([]);
+  });
+
+  test.each([['worktree'], ['folder inside the project']] as const)(
+    'a stopped %s child resumes in its own folder on the next dock follow-up',
+    async (kind) => {
+      const f = await fixture({ engineAgent: true });
+      const cwd = kind === 'worktree' ? f.worktree : f.folder;
+      const child = await f.adopt(f.attached('claude', cwd));
+      const stopped = await f.request('/api/orchestration/commands', {
+        type: 'stopSession',
+        threadId: child,
+      });
+      expect(stopped.status, stopped.text).toBe(200);
+      const followUp = await f.request(
+        '/api/orchestration/chat',
+        dockFollowUp('claude', child, 'station', 'pick it up'),
+      );
+      expect(followUp.status, followUp.text).toBe(200);
+      // The same session's engine was started again, in the child's folder.
+      expect(f.engines.claude.starts).toEqual([
+        { threadId: child, cwd },
+        { threadId: child, cwd },
+      ]);
+      expect(f.engines.claude.turns).toEqual([
+        { threadId: child, input: 'pick it up' },
+      ]);
+    },
+  );
+
+  test.each([['worktree'], ['folder inside the project']] as const)(
+    'a %s child whose engine exited continues in a successor in its own folder',
+    async (kind) => {
+      const f = await fixture({ engineAgent: true });
+      const cwd = kind === 'worktree' ? f.worktree : f.folder;
+      const child = await f.adopt(f.attached('claude', cwd));
+      f.engines.claude.exit(child);
+      await vi.waitFor(async () => {
+        const read = await f.request(
+          `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+        );
+        expect(read.body.data.session.status).toBe('closed');
+      });
+      const followUp = await f.request(
+        '/api/orchestration/chat',
+        dockFollowUp('claude', child, 'station', 'pick it up'),
+      );
+      expect(followUp.status, followUp.text).toBe(200);
+      const successor = f.engines.claude.starts.at(-1)!;
+      expect(f.engines.claude.starts).toHaveLength(2);
+      expect(successor.threadId).not.toBe(child);
+      expect(successor.cwd).toBe(cwd);
+      expect(f.engines.claude.turns).toEqual([
+        { threadId: successor.threadId, input: 'pick it up' },
+      ]);
+    },
+  );
+
+  test('a successor is refused once the worktree is no longer a checkout of the project', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    // The folder stays, but it no longer leads back to the project.
+    rmSync(join(f.worktree, '.git'));
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'station', 'pick it up'),
+    );
+    expect(followUp.status).not.toBe(200);
+    expect(followUp.text).toMatch(/outside project 'station'/);
+    expect(f.engines.claude.starts).toHaveLength(1);
+    expect(f.engines.claude.turns).toEqual([]);
+  });
 
   test('a follow-up that names another folder of the project is still refused', async () => {
     const f = await fixture({ engineAgent: true });

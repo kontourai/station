@@ -38,6 +38,7 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
@@ -1156,9 +1157,11 @@ function validateContinuationWorkspace(
         'continuation_workspace_different_project',
         'This conversation belongs to a different project.',
       );
+    // `admittedCwd` is already canonical; the bound folder must still
+    // resolve to exactly it (a folder swapped for a link does not).
     if (
       binding.cwd === undefined ||
-      !sameRealPath(binding.cwd, binding.admittedCwd)
+      canonicalPathOrUndefined(binding.cwd) !== binding.admittedCwd
     )
       throw new ContinuationWorkspaceError(
         'continuation_workspace_direct_mismatch',
@@ -1254,6 +1257,14 @@ function validateContinuationWorkspace(
       'continuation_workspace_direct_mismatch',
       'This conversation belongs to a different workspace directory.',
     );
+  }
+}
+
+function canonicalPathOrUndefined(path: string): string | undefined {
+  try {
+    return canonicalPath(path);
+  } catch {
+    return undefined;
   }
 }
 

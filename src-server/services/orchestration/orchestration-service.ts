@@ -207,6 +207,7 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -256,6 +257,7 @@ import {
   type AdoptionConfinement,
   AttachedSessionAdoption,
 } from './attached-session-adoption.js';
+import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
@@ -5905,6 +5907,11 @@ export class OrchestrationService {
             confinement: _untrustedConfinement,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
+          const admittedStartWorkspace =
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+            readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+            internal?.receiverExecutionAdmission?.admitted ??
+            (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
               withoutDispatchCanonicalCwd(
@@ -5919,10 +5926,11 @@ export class OrchestrationService {
             // bound resource path (outside the compat project default) is
             // admitted rather than re-derived, and never forged: the
             // coordinate arrives only via internal options, and the effect
-            // closure below verifies the prepared input against it.
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            // closure below verifies the prepared input against it. #3429:
+            // an adopted child's successor is admitted to the folder its
+            // conversation recorded, re-verified now (see
+            // `adoptedChildAdmittedWorkspace`).
+            admittedStartWorkspace,
             this.options.resolveProjectSessionDirectory,
           );
           // Station #90 lane D (D5): record the Project's local id beside its
@@ -5930,9 +5938,7 @@ export class OrchestrationService {
           startInput = withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            admittedStartWorkspace,
           );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start
@@ -8889,6 +8895,49 @@ export class OrchestrationService {
    * child, or the same thread started again). The newest session with a
    * start record decides; a different folder carries nothing forward.
    */
+  /**
+   * #3429: a later session of a conversation Continue in Station created
+   * (its root Session records `continuationSourceThreadId`, written only by
+   * adoption) may start in the folder that conversation was admitted into,
+   * even when that folder is a worktree outside the Project folder. Only
+   * when the start names that exact folder and Project, the conversation
+   * recorded it as `dispatchCanonicalCwd` (server-written), the folder still
+   * resolves to that record, and it still passes adoption's own check (the
+   * Project folder or a genuine worktree of its repository) right now.
+   * Anything else gets no coordinate and meets the ordinary rule.
+   */
+  private async adoptedChildAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const store = this.options.eventStore;
+    const projectSlug = input.metadata?.projectSlug;
+    if (!store || !input.cwd || typeof projectSlug !== 'string' || !projectSlug)
+      return undefined;
+    const cwd = resolve(expandTilde(input.cwd));
+    const conversationId =
+      store.conversationForSession(input.threadId)?.conversationId ??
+      input.threadId;
+    if (!store.readSessionByThread(conversationId)?.continuationSourceThreadId)
+      return undefined;
+    const recorded = this.inheritedDispatchCanonicalCwd({ ...input, cwd });
+    if (recorded === undefined) return undefined;
+    try {
+      if (canonicalPath(cwd) !== recorded) return undefined;
+      const place = await resolveContinuationPlace({
+        cwd: recorded,
+        projects: this.options.listProjects?.() ?? [],
+        hosted: this.options.requireTenantExecutionContext?.() === true,
+      });
+      if (place.cwd !== recorded || place.project?.slug !== projectSlug)
+        return undefined;
+    } catch {
+      return undefined;
+    }
+    return { threadId: input.threadId, projectSlug, cwd };
+  }
+
   private inheritedDispatchCanonicalCwd(
     input: ProviderSessionStartInput,
   ): string | undefined {
