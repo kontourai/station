@@ -450,7 +450,16 @@ attribution names is no longer configured while the project set is non-empty
 directory is missing, is not treated as a deletion). A repository match counts only a
 genuine checkout: a real `.git` directory that is its own common directory, or
 a linked worktree whose git-written `gitdir` back-pointer names that `.git`.
-A symlinked `.git` or a submodule's `.git` file matches by folder only. The
+A symlinked `.git` or a submodule's `.git` file matches by folder only.
+Discovery reads these folders (the real path of each cwd and Project
+directory, and the repository walk) in one helper process
+([`attached-session-path-probe.ts`](../../src-server/services/orchestration/attached-session-path-probe.ts)),
+never on the server's main thread. When that process answers nothing for
+1.5 seconds, as on a network or FUSE mount that has stopped responding, it is
+replaced, and every folder it still owed reads as missing for that poll: its
+path as written, with no repository. The oldest of them, the one it was stuck
+on, is not read again for 60 seconds. Its transcript can therefore be followed as `unattributed` until the
+folder answers, and the next poll that reads it corrects the attribution. The
 local operator owns every attached transcript whatever its attribution, so the
 operator's paired devices with `orchestration:read` can read it through
 `personalConversationAccess`. Imported turns enter the owner-scoped message
