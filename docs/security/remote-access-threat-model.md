@@ -758,11 +758,29 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   - `PUT /config/app` when `terminalShell` changes. An agent's station-control
     call (the Station-internal principal, otherwise exempt) may not change it,
     in the tool (`update_config`) and in the route, as it may not raise the
-    default approval mode to full access.
+    default approval mode to full access;
+  - `/api/secret-bindings`, which the default grant reaches (it includes
+    `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
+    `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias
+    `POST /:id/migrate-stored-env`, and `PUT /:id` for a binding that is
+    already bound to a server, when that server launches a command (the same
+    inference as above; a server that cannot be read counts as launching one).
+    A bound value becomes the launched command's environment, so attaching one
+    or changing the value of one that is attached chooses that environment.
+    Unbind, revoke, create, list and get are not refused, and a binding to a URL
+    server or an ACP provider header is not either. One device cannot hold both
+    `access:manage` and `coding:exec` (a scope edit cannot re-grant
+    `access:manage`), so in practice only the operator passes these;
+  - `POST /api/registry/agents/install` when the id is not a plugin the plugin
+    resolver knows: the agent face delegates to the same provider `install`
+    that copies a plugin tree into the plugins directory
+    (`json-manifest-registry.ts` `install`, `agentRegistry().install`), which
+    startup and `/api/plugins/reload` would then load, so it takes the same
+    authority as a plugin install.
 
   The accepted cost: entering an API key for a command-launching tool server
   from a paired device without `coding:exec` now needs the grant, or the
-  operator on the host (or a secret binding, which is `access:manage`).
+  operator on the host. A secret binding is not a way around it.
 
   Checked and not run-new-code or a command choice: the ACP registry install
   (the command comes from the built-in registry or an installed plugin), ACP
@@ -770,10 +788,15 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   (their `config` names no executable that is read; Claude's executable is the
   installed copy), scheduler jobs (a prompt for an Agent), Agent definitions
   (they reference tool servers by id), Skill `command` (a slash-command word),
-  `/api/secret-bindings` (`access:manage` tier, so an operate device cannot reach
-  it), marketplace source management and `POST /api/plugins/preview` (they list
+  marketplace source management and `POST /api/plugins/preview` (they list
   and fetch and read a manifest; nothing is executed until an install, which is
-  guarded), `POST /api/plugins/reload` (reconciles plugins already installed),
+  guarded), `POST /api/projects/:slug/plugin-draft/lease` (it starts a bundler
+  build of the Project folder: the build is Station's own esbuild run in a
+  disposable child (`plugin-draft-build-process.ts`, `plugin-draft-build-child.ts`)
+  with a minimal environment (`PATH`, temp and Windows basics), a Station-owned
+  plugin list and the tsconfig parsed rather than run (`packages/shared/src/build.ts`),
+  so no script, config or package hook from the folder is executed; the bundle is
+  only served, and runs when a viewer's tab loads it), `POST /api/plugins/reload` (reconciles plugins already installed),
   plugin grants, settings and command effects (they act on already-installed
   code), and the Agent and skill registry installs (prompts and text). Task
   `workspaceBinding` paths are not a folder choice either: Task creation

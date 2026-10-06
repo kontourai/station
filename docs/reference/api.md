@@ -70,7 +70,10 @@ command-launching server, a URL-transport record changed to launch a stored
 command, `POST /api/plugins/install`, `/:name/recover` and `/:name/update`,
 `POST /api/registry/plugins/install` and `POST /api/registry/integrations/install`;
 entering an API key for a command-launching tool server from a paired device now
-needs the grant. A saved Environment's dispatch that names no Project
+needs the grant. Binding a secret to a command-launching server
+(`POST /api/secret-bindings/:id/bind`, `migrate-stored-env`, and `PUT` on a binding
+already bound to one) and `POST /api/registry/agents/install` take it too. A saved
+Environment's dispatch that names no Project
 is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
