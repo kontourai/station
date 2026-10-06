@@ -1,0 +1,7 @@
+{
+  "revision": "3e4ab28f7a5512d14beda8b72147394210f0f1bb",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3406 delta round: D1 keeps an already filed conversation under its Project while its folder is unreadable even when outside-project following is off, matching the existing sentence 'A conversation Station has already filed keeps its Project'. D2 limit behaviour is not user-facing beyond that. No prose change.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

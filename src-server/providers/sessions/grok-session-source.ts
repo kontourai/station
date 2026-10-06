@@ -948,8 +948,10 @@ function mapGrokUpdate(
     // time the marker is written, a live follower has already published those
     // turns into an append-only event log that has no retraction event, and
     // dropping them only on a cold import would make two imports of one
-    // session disagree. The marker is recorded as an extension notification;
-    // nothing binds it for display yet, so the transcript does not show it.
+    // session disagree. The marker is recorded as an extension notification,
+    // which the transcript projection shows as a quiet line
+    // (`extension-transcript-markers.ts`): that line is what tells a reader
+    // the engine itself went back over the turns still shown.
     const target = isOffset(update.target_prompt_index)
       ? update.target_prompt_index
       : undefined;

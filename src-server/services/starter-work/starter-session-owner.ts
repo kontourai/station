@@ -78,11 +78,15 @@ export function createStarterSessionOwner(
         // #3386: a folder Station will not continue in is refused again on
         // every retry, so the launch says retrying is not safe to offer.
         const permanent = observed.code === 'continuation_place_refused';
+        // #3429: the engine was not ready; nothing was created and the
+        // reservation is gone, so the outcome is certain and a retry after
+        // setting the engine up is safe.
+        const notStarted = observed.code === 'continuation_engine_not_ready';
         return {
           // A folder refusal happens before anything is created or recorded,
           // so its outcome is certain: it failed.
           state:
-            permanent || observed.receiptStatus === 'persisted'
+            permanent || notStarted || observed.receiptStatus === 'persisted'
               ? ('failed' as const)
               : ('indeterminate' as const),
           reason:

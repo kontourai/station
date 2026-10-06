@@ -871,6 +871,13 @@ the CLI. Chat currently uses that process directory rather than the preserved
 the Station checkout. For directory-based work, pass an explicit target-visible
 `--cwd`. This is a current caller limitation, not a Project authorization grant.
 
+With `--on=<environment>` and neither `--project` nor `--cwd`, a new chat sends
+no workspace, because this machine's directory means nothing on another Station.
+A directory workspace (the default for the current Station, or `--cwd`, or
+`station delegate --project-path`/`--cwd`) needs the operator's credential or a
+device holding the `coding:exec` grant; a paired device without it is refused with
+`working-directory-not-granted` and nothing starts. `--project` needs no grant.
+
 On continuation, the current caller omits workspace selection: `--project`
 and `--cwd` have no effect and are not warned about. The Conversation keeps its
 persisted workspace. Omit those flags when continuing; start a new chat to
@@ -1571,7 +1578,8 @@ station flow report <project> <runId> [--api-base=<url>]
 ```
 
 `attach-command` runs the command **server-side in the project workspace**
-(same trust level as scheduler jobs and tool servers) and attaches the output
+(same trust level as scheduler jobs and tool servers, and a paired device needs the
+operator's `coding:exec` grant: `command-not-granted` otherwise) and attaches the output
 tail as claim evidence: exit 0 attaches the claim with status `assumed` — a
 passing command is a claim, not verification, and Surface downgrades
 `verified` without backing evidence; a non-zero exit or timeout attaches

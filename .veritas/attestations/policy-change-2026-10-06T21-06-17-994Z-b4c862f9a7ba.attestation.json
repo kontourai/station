@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex-agent",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-06T21:06:17.994Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:8fc9938f121d8e94a115d60f4f7f65657a1d89392bf599b8ba2057f6532bde71",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+  "validUntilDays": 6,
+  "notes": "Codex executes the explicitly authorized same-scope formatter patch integrity rebind after merge-queue whitespace rejection. Only whitespace-bearing unchanged dist context removed; additions/deletions identical and installed source/min hashes unchanged99e901c0ae0e17adc28b962525031c6f432b340eba8f4d3099058869306db083/71024e953ebe9c73ccf298776c15508a328469fb68c2d8b876319b61f46017c4. NewpatchSHA256d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6; maintainedlock3hashreferences/reboundpatchBindinghash only. Managedci0 verify0; actualbindingGOOD/oldhashBAD/payloaddriftBAD/restoredGOOD. Oldcommitteddiffcheckexit2/new60b233exit0. Exactrootproduction sprintf-js1.0.3 GHSA-hp3w-g68c-fv3c moderate, expires2026-10-13 unchanged/no renewal or identityfallback/newacceptance. Authorityreceipt6daywindow ends beforeOct13, no expiryextension. Prior threat/reachability/precision limits unchanged; source CI/hosted/landing remain separate.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+    "approvalRef": "t3-thread:2476b495-8abe-4c47-be5a-57851a445325:Root-authorized-same-scope-Oct13-patch-integrity-rebind-2026-10-06",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+        "validUntil": "2026-10-12T21:06:17.994Z"
+      },
+      "createdAt": "2026-10-06T21:06:17.994Z",
+      "updatedAt": "2026-10-06T21:06:17.994Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+      "claimId": "veritas.attestation.policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Codex executes the explicitly authorized same-scope formatter patch integrity rebind after merge-queue whitespace rejection. Only whitespace-bearing unchanged dist context removed; additions/deletions identical and installed source/min hashes unchanged99e901c0ae0e17adc28b962525031c6f432b340eba8f4d3099058869306db083/71024e953ebe9c73ccf298776c15508a328469fb68c2d8b876319b61f46017c4. NewpatchSHA256d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6; maintainedlock3hashreferences/reboundpatchBindinghash only. Managedci0 verify0; actualbindingGOOD/oldhashBAD/payloaddriftBAD/restoredGOOD. Oldcommitteddiffcheckexit2/new60b233exit0. Exactrootproduction sprintf-js1.0.3 GHSA-hp3w-g68c-fv3c moderate, expires2026-10-13 unchanged/no renewal or identityfallback/newacceptance. Authorityreceipt6daywindow ends beforeOct13, no expiryextension. Prior threat/reachability/precision limits unchanged; source CI/hosted/landing remain separate.",
+      "observedAt": "2026-10-06T21:06:17.994Z",
+      "collectedBy": "codex-agent",
+      "integrityRef": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+      "metadata": {
+        "actor": {
+          "id": "codex-agent",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-06T21:06:17.994Z",
+        "validUntil": "2026-10-12T21:06:17.994Z",
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+      "status": "verified",
+      "actor": "codex-agent",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba"
+      ],
+      "createdAt": "2026-10-06T21:06:17.994Z",
+      "verifiedAt": "2026-10-06T21:06:17.994Z"
+    }
+  }
+}

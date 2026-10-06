@@ -32,6 +32,10 @@ import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import {
+  TranscriptMarker,
+  transcriptMarkerLabel,
+} from '../chat/TranscriptMarker';
 import { Dialog } from '../Dialog';
 import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
@@ -159,6 +163,13 @@ export function AttachedSessionDetail({
   // that disables the button.
   const serverRejectedRetryRef = useRef(false);
   const [serverRejectedRetry, setServerRejectedRetry] = useState(false);
+  /**
+   * #3429: Station's reason for a continuation it settled as not created
+   * (its engine was not ready), shown as written; the retry stays available.
+   */
+  const [serverFailureReason, setServerFailureReason] = useState<string | null>(
+    null,
+  );
   const continuationStore = useRef<ReturnType<
     typeof browserAttachedSessionContinuationStore
   > | null>(null);
@@ -188,6 +199,7 @@ export function AttachedSessionDetail({
   );
   const adoption = useMutation({
     mutationFn: async (_intent: number) => {
+      setServerFailureReason(null);
       try {
         const persisted = continuationStore.current!.read(session.threadId);
         let operationId: string;
@@ -260,6 +272,8 @@ export function AttachedSessionDetail({
         if (outcome.retrySafe === false) {
           serverRejectedRetryRef.current = true;
           setServerRejectedRetry(true);
+        } else if (outcome.state === 'failed') {
+          setServerFailureReason(outcome.reason);
         }
         throw new AdoptSessionError({
           failureClass:
@@ -395,11 +409,13 @@ export function AttachedSessionDetail({
               ? 'Station says this continuation cannot be retried safely from this state.'
               : adoptionNonRetryable
                 ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
-                : adoptionDidNotReachStation ||
-                    adoptionOutcomeUncertain ||
-                    adoptionTransportFailed
-                  ? "Couldn't start the continuation — Station isn't responding right now."
-                  : "Couldn't start the continuation. Technical detail is under Details below."}
+                : serverFailureReason
+                  ? `Couldn't start the continuation. ${serverFailureReason}`
+                  : adoptionDidNotReachStation ||
+                      adoptionOutcomeUncertain ||
+                      adoptionTransportFailed
+                    ? "Couldn't start the continuation — Station isn't responding right now."
+                    : "Couldn't start the continuation. Technical detail is under Details below."}
         </p>
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (
@@ -585,6 +601,9 @@ export function AttachedSessionDetail({
               const contentParts = message.parts
                 .flatMap(conversationPartToContentParts)
                 .map(withoutApprovalBinding);
+              const marker = transcriptMarkerLabel(contentParts);
+              if (marker)
+                return <TranscriptMarker key={message.id} label={marker} />;
               if (presentation === 'chat')
                 return (
                   <MessageBubble
