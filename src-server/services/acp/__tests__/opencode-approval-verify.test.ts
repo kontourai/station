@@ -375,7 +375,50 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         /did not apply Station's task rule for the build agent as written/,
       );
     });
-    test("at full access, general's question must be hidden", async () => {
+    // A user's own `task: deny` hides task with or without Station's key.
+    const userDeniesTask = (tools: Record<string, boolean>) => ({
+      tools,
+      permission: [
+        ...OPENCODE_DEFAULTS,
+        r('task', 'deny'),
+        ...STATION_CONFINED,
+      ],
+    });
+    test("a user's own task deny shows nothing about Station's key: with no other agent to observe, Station does not govern", async () => {
+      const result = await verifyOpenCodeApprovalFloor(
+        'confined',
+        reader({
+          build: userDeniesTask({ task: false, bash: true }),
+          plan: {
+            ...userDeniesTask({ task: false, bash: true }),
+            permission: [
+              ...userDeniesTask({}).permission,
+              r('edi?', 'deny'),
+              r('edi?', 'allow', '.opencode/plans/*.md'),
+            ],
+          },
+        }),
+      );
+      expect(result.ok ? '' : result.reason).toMatch(
+        /your OpenCode configuration denies task itself, so Station cannot observe how this OpenCode reads its approval rules/,
+      );
+    });
+    test('an agent whose own rules deny task is not counted; another agent still is', async () => {
+      const verify = (planTask: boolean) =>
+        verifyOpenCodeApprovalFloor(
+          'confined',
+          reader({
+            build: userDeniesTask({ task: false, bash: true }),
+            plan: { ...confinedPlan, tools: { task: planTask, bash: true } },
+          }),
+        );
+      expect(await verify(false)).toEqual({ ok: true });
+      const shown = await verify(true);
+      expect(shown.ok ? '' : shown.reason).toMatch(
+        /did not apply Station's task rule for the plan agent as written/,
+      );
+    });
+    test("at full access nothing is observed: general's question is hidden by OpenCode's own defaults, so it would prove nothing", async () => {
       const result = await verifyOpenCodeApprovalFloor(
         'full',
         reader({
@@ -414,9 +457,7 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
           },
         }),
       );
-      expect(result.ok ? '' : result.reason).toMatch(
-        /did not apply Station's question rule for the general agent/,
-      );
+      expect(result).toEqual({ ok: true });
     });
   });
 });

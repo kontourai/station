@@ -323,7 +323,7 @@ export function acpConnectionDefaultCwd(config: {
 }
 
 /** How long a passed start preflight stands for the start that follows. */
-const START_PREFLIGHT_REUSE_MS = 60_000;
+export const START_PREFLIGHT_REUSE_MS = 60_000;
 
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
@@ -337,6 +337,8 @@ export interface AcpAdapterOptions {
    * #3290: reads OpenCode's resolved agent rules (`opencode debug agent`);
    * tests replace it. Defaults to running the connection's command.
    */
+  /** Injectable clock for the start preflight's reuse window (#3290). */
+  now?: () => number;
   readOpenCodeAgents?: (input: {
     command: string;
     cwd: string;
@@ -690,6 +692,7 @@ export class AcpAdapter implements ProviderAdapterShape {
   private shuttingDown = false;
 
   private readonly approvalRelaunchTimeoutMs: number;
+  private readonly now: () => number;
   /** #3290: governance checks `preflightStart` passed, by thread. */
   private readonly startPreflights = new Map<
     string,
@@ -697,6 +700,7 @@ export class AcpAdapter implements ProviderAdapterShape {
   >();
 
   constructor(private readonly options: AcpAdapterOptions) {
+    this.now = options.now ?? Date.now;
     this.approvalRelaunchTimeoutMs =
       options.approvalRelaunchTimeoutMs ?? COLD_START_OPERATION_TIMEOUT_MS;
   }
@@ -804,7 +808,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       command: config.command,
       cwd,
       floor,
-      at: Date.now(),
+      at: this.now(),
     });
   }
 
@@ -997,7 +1001,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         preflight.command !== config.command ||
         preflight.cwd !== cwd ||
         preflight.floor !== startApprovalFloor ||
-        Date.now() - preflight.at > START_PREFLIGHT_REUSE_MS
+        this.now() - preflight.at > START_PREFLIGHT_REUSE_MS
       ) {
         await this.assertStartGovernable(
           input,

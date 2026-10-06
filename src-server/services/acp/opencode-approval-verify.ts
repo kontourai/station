@@ -24,6 +24,7 @@ import {
   OPENCODE_EXPLORE_TOOLS,
   OPENCODE_PLAN_FILE_PATTERN,
   type OpenCodeApprovalFloor,
+  stationRuleKey,
 } from './opencode-approval-launch.js';
 
 export type OpenCodeRule = {
@@ -323,9 +324,12 @@ export async function verifyOpenCodeApprovalFloor(
           ? checkFullPrimary(agent, rules)
           : checkFullSubagent(agent, entry ?? {});
     if (failure) return { ok: false, reason: failure };
-    const unobserved = wildcardUnobserved(floor, agent, entry ?? {});
-    if (unobserved) return { ok: false, reason: unobserved };
   }
+  const unobserved = wildcardUnobserved(
+    floor,
+    agents.map((agent, index) => ({ agent, resolved: resolved[index] ?? {} })),
+  );
+  if (unobserved) return { ok: false, reason: unobserved };
   return { ok: true };
 }
 
@@ -333,28 +337,55 @@ export async function verifyOpenCodeApprovalFloor(
  * The check above evaluates OpenCode's rules with a model of its wildcard
  * matching; this observes the engine's own. OpenCode hides a tool whose last
  * matching rule denies every pattern, and reports that in `debug agent`'s
- * `tools` (`Permission.disabled`). Station writes such a rule under a
- * `?`-spelled key (`tas?: deny` below full access, `questio?: deny` for
- * `general` at full access), so the tool is hidden only if this OpenCode
- * matches `?` keys the way the model assumes (checked against 1.18.18). An
- * engine that does not is refused, whatever its version: a version range
- * would refuse a compatible release and admit an incompatible one.
+ * `tools` (`Permission.disabled`). Below full access Station denies `task`
+ * under its `?`-spelled key (`tas?`), and `task` is visible by default on
+ * build and plan (checked against 1.18.18), so a hidden `task` shows that this
+ * OpenCode matched Station's `?` key the way the model assumes. An engine that
+ * does not is refused, whatever its version: a version range would refuse a
+ * compatible release and admit an incompatible one.
+ *
+ * Only an agent whose own rules would leave `task` visible without Station's
+ * rule counts: where your configuration denies `task` itself, the tool is
+ * hidden either way and shows nothing about Station's key. If no agent counts,
+ * Station cannot observe its key and does not govern.
+ *
+ * Nothing is observed at full access. Station denies no tool there that
+ * OpenCode shows by default (`general` already hides `question`), so no
+ * observation could tell a matched key from an ignored one. A misread key at
+ * full access can only leave OpenCode's own stricter rules in force (a call
+ * that asks, or a subagent that asks and waits); it cannot run anything that
+ * full access would not.
  */
 function wildcardUnobserved(
   floor: OpenCodeApprovalFloor,
-  agent: string,
-  resolved: OpenCodeResolvedAgent,
+  agents: ReadonlyArray<{ agent: string; resolved: OpenCodeResolvedAgent }>,
 ): string | undefined {
-  const tool =
-    floor === 'confined'
-      ? agent === 'build' || agent === 'plan'
-        ? 'task'
-        : undefined
-      : agent === 'general'
-        ? 'question'
-        : undefined;
-  if (!tool || resolved.tools?.[tool] === false) return undefined;
-  return `this OpenCode did not apply Station's ${tool} rule for the ${agent} agent as written, so Station cannot rely on how it reads its approval rules`;
+  if (floor !== 'confined') return undefined;
+  const telling = agents.filter(
+    ({ resolved }) => !hiddenWithoutStation(resolved.permission ?? [], 'task'),
+  );
+  if (telling.length === 0) {
+    return 'your OpenCode configuration denies task itself, so Station cannot observe how this OpenCode reads its approval rules';
+  }
+  const unapplied = telling.find(
+    ({ resolved }) => resolved.tools?.task !== false,
+  );
+  if (!unapplied) return undefined;
+  return `this OpenCode did not apply Station's task rule for the ${unapplied.agent} agent as written, so Station cannot rely on how it reads its approval rules`;
+}
+
+/** Whether `tool` would be hidden by the rules other than Station's own key. */
+function hiddenWithoutStation(
+  rules: readonly OpenCodeRule[],
+  tool: string,
+): boolean {
+  const key = stationRuleKey(tool);
+  const last = rules
+    .filter(
+      (rule) => rule.permission !== key && wildcard(tool, rule.permission),
+    )
+    .at(-1);
+  return last?.pattern === '*' && last.action === 'deny';
 }
 
 /** How long one `debug agent` read may take (a cold OpenCode start is ~1-2s). */

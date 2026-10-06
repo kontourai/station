@@ -1,4 +1,4 @@
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { openCodeAgentReader } from '../../services/acp/opencode-approval-verify.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
-import { AcpAdapter } from '../adapters/acp-adapter.js';
+import {
+  AcpAdapter,
+  START_PREFLIGHT_REUSE_MS,
+} from '../adapters/acp-adapter.js';
 
 /**
  * #3290: Station's approval mode governs OpenCode over ACP.
@@ -818,6 +821,81 @@ describe.skipIf(process.platform === 'win32')(
       } finally {
         await adapter.stopAll();
       }
+    });
+
+    describe('a passed start preflight stands only for the same start, briefly', () => {
+      function counted(clock: { now: number }) {
+        const reads: string[] = [];
+        const adapter = new AcpAdapter({
+          getConnections: async () => [
+            {
+              id: 'engine-under-test',
+              name: 'OpenCode',
+              command: h.command,
+              args: ['acp'],
+              enabled: true,
+            } as never,
+          ],
+          now: () => clock.now,
+          readOpenCodeAgents: (input) => {
+            const read = openCodeAgentReader(input);
+            return (agent) => {
+              reads.push(agent);
+              return read(agent);
+            };
+          },
+        });
+        const input = (threadId: string, cwd: string) =>
+          ({
+            provider: 'acp',
+            threadId,
+            cwd,
+            confinement: 'workspace',
+            metadata: { connectionId: 'engine-under-test' },
+            modelOptions: { approvalMode: 'ask' },
+          }) as never;
+        return { adapter, reads, input };
+      }
+
+      test('the window is one minute', () => {
+        expect(START_PREFLIGHT_REUSE_MS).toBe(60_000);
+      });
+
+      test('a preflight for another directory is checked again', async () => {
+        h = harness('opencode');
+        const other = join(h.cwd, 'other');
+        mkdirSync(other);
+        const { adapter, reads, input } = counted({ now: 0 });
+        try {
+          await adapter.preflightStart(input('moved', h.cwd));
+          const preflightReads = reads.length;
+          await adapter.startSession(input('moved', other));
+          expect(reads.length).toBeGreaterThan(preflightReads);
+        } finally {
+          await adapter.stopAll();
+        }
+      });
+
+      test('a preflight older than the window is checked again; one inside it is not', async () => {
+        h = harness('opencode');
+        const clock = { now: 1_000 };
+        const { adapter, reads, input } = counted(clock);
+        try {
+          await adapter.preflightStart(input('inside', h.cwd));
+          let before = reads.length;
+          clock.now += START_PREFLIGHT_REUSE_MS;
+          await adapter.startSession(input('inside', h.cwd));
+          expect(reads).toHaveLength(before);
+
+          await adapter.preflightStart(input('expired', h.cwd));
+          before = reads.length;
+          clock.now += START_PREFLIGHT_REUSE_MS + 1;
+          await adapter.startSession(input('expired', h.cwd));
+          expect(reads.length).toBeGreaterThan(before);
+        } finally {
+          await adapter.stopAll();
+        }
+      });
     });
 
     test('a mode at start (a pick or a configured default) launches on the floor', async () => {
