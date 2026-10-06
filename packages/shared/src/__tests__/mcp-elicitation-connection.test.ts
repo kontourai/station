@@ -183,7 +183,9 @@ describe.each(['modern', 'legacy'] as const)(
         }
         return { action: 'accept', content: { name: 'A-private' } };
       });
-      await opened;
+      // A's call settling first means its form never opened.
+      await Promise.race([opened, a]);
+      expect(formsShownToA).toHaveLength(1);
       // B: an unbridged call on the same connection (an MCP Apps or
       // station-control call) that elicits while A is in flight.
       const b = await settle(askDetails(connection));
@@ -239,7 +241,8 @@ describe.each(['modern', 'legacy'] as const)(
         },
         'ask_twice',
       );
-      await opened;
+      await Promise.race([opened, a]);
+      expect(formsA).toHaveLength(1);
       // Turn B: its own call elicits while A's is in flight.
       const b = recordingRoute({ name: 'B-private' });
       const outcomeB = await settle(askDetails(connection, b.route));
