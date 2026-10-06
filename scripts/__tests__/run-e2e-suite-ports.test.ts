@@ -1922,7 +1922,8 @@ function serverExternalSourceRootVariables(): string[] {
           walk(path);
       } else if (/\.(ts|mts|js|mjs)$/.test(entry.name)) {
         for (const match of readFileSync(path, 'utf8').matchAll(
-          /process\.env\.(STATION_EXTERNAL_[A-Z0-9_]+_SOURCE_ROOT)\b/g,
+          // `process.env.X`, an injected `env.X`, and `env['X']` / `env["X"]`.
+          /\benv(?:\.|\[\s*['"])(STATION_EXTERNAL_[A-Z0-9_]+_SOURCE_ROOT)\b/g,
         ))
           names.add(match[1]);
       }

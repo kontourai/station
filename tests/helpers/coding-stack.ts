@@ -36,20 +36,42 @@ export async function openCodingView(page: Page, name: string | RegExp) {
 }
 
 /**
- * The Coding workbench's wide fold (#3229): the same viewport query
- * `codingPanels.ts` (`CODING_WIDE_MEDIA_QUERY`) asks. Past it the rail runs in
- * `panels` mode, below it in `stack` mode. Read from the viewport, not from
- * the rail's own attributes, so a rail that renders the wrong mode's state
- * fails rather than being believed.
+ * The Coding rail's mode, derived from the device the way the product derives
+ * it, not from the rail's own attributes, so a rail that renders the wrong
+ * mode's state fails rather than being believed. `ProjectLayoutRenderer`
+ * runs `panels` only when `useCodingWide()` (the `codingPanels.ts` query
+ * below) AND Chat is in the centre; Chat leaves the centre whenever the dock
+ * folds to one region, which `availablePlacements` (`useIsMobile.ts`) decides
+ * as a coarse pointer or a viewport of 768px or less. So a touch screen past
+ * 1280px still runs `stack`.
  */
 const CODING_WIDE_MEDIA_QUERY = '(min-width: 1280px)';
+const DOCK_SLOT_COARSE_POINTER_QUERY = '(pointer: coarse)';
+const DOCK_ONE_REGION_MAX_WIDTH = 768;
 
 export async function codingRailMode(page: Page): Promise<'panels' | 'stack'> {
-  const wide = await page.evaluate(
-    (query) => window.matchMedia(query).matches,
-    CODING_WIDE_MEDIA_QUERY,
+  const derived = await page.evaluate(
+    ({ wideQuery, coarseQuery, oneRegionMaxWidth }) => {
+      const wide = window.matchMedia(wideQuery).matches;
+      const bottomOnly =
+        window.matchMedia(coarseQuery).matches ||
+        window.innerWidth <= oneRegionMaxWidth;
+      return wide && !bottomOnly ? 'panels' : 'stack';
+    },
+    {
+      wideQuery: CODING_WIDE_MEDIA_QUERY,
+      coarseQuery: DOCK_SLOT_COARSE_POINTER_QUERY,
+      oneRegionMaxWidth: DOCK_ONE_REGION_MAX_WIDTH,
+    },
   );
-  return wide ? 'panels' : 'stack';
+  // The workbench names the mode it chose; a disagreement means this
+  // derivation and the product's have drifted apart, which is the thing to
+  // fix — not a reason to trust either attribute set.
+  await expect(
+    page.locator('.coding-workbench'),
+    `Coding rail mode: the device says "${derived}" but the workbench disagrees`,
+  ).toHaveAttribute('data-mode', derived);
+  return derived;
 }
 
 /**
