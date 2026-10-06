@@ -14,6 +14,11 @@ vi.mock('../../modals/NewChatModal', () => ({
     return <div>new chat picker</div>;
   },
 }));
+// The dock's composer reads run locations (#3391); none have arrived here.
+vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useScopedProjectRunLocationsQuery: () => ({ data: undefined }),
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => undefined,
 }));

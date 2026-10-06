@@ -151,10 +151,10 @@ vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
     project: projects.find((project) => project.slug === slug),
     isLoading: false,
   }),
-  // The run-locations read, answering only while the dock asks for it.
-  useScopedProjectRunLocationsQuery: (config?: { enabled?: boolean }) => {
-    runLocationReads.push(config?.enabled !== false);
-    return { data: config?.enabled === false ? undefined : RUN_LOCATIONS };
+  // The run-locations read; each call is one render of a component reading it.
+  useScopedProjectRunLocationsQuery: () => {
+    runLocationReads.push(true);
+    return { data: RUN_LOCATIONS };
   },
 }));
 vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
@@ -564,13 +564,13 @@ test('the dock reads run locations only while the start composer is open, and ha
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
-  expect(runLocationReads.length).toBeGreaterThan(0);
-  expect(runLocationReads.every((enabled) => !enabled)).toBe(true);
+  // Nothing reads run locations while the dock shows no start composer.
+  expect(runLocationReads).toEqual([]);
 
   fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
   await screen.findByRole('dialog', { name: 'New chat picker' });
 
-  expect(runLocationReads.at(-1)).toBe(true);
+  expect(runLocationReads.length).toBeGreaterThan(0);
   expect(pickerProps.at(-1)!.projectRunLocations).toEqual(RUN_LOCATIONS);
 });
 
