@@ -30,6 +30,8 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
@@ -47,7 +49,6 @@ import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
 import { ProjectSidebarNav } from './ProjectSidebarNav';
 import { ProjectSidebarRow } from './ProjectSidebarRow';
-import { projectAccents } from './projectAccent';
 import { useProjectListReorder } from './useProjectListReorder';
 import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
@@ -205,12 +206,9 @@ function ProjectSidebarImpl() {
         }),
     [activeChats, drafts, openChatSessionIds],
   );
-  // Allocate the accent palette across the whole sorted project set so every
-  // color is used before any repeats, stable regardless of API order.
-  const accentBySlug = useMemo(
-    () => projectAccents(projects.map((project) => project.slug)),
-    [projects],
-  );
+  // The one project-colour allocation every surface shares.
+  const accentBySlug = useProjectAccents();
+  const iconBySlug = useProjectIcons();
   const projectSlugs = useMemo(
     () => projects.map((project) => project.slug),
     [projects],
@@ -482,6 +480,8 @@ function ProjectSidebarImpl() {
                     items: recentTasks,
                     workFacts: openChatFacts,
                     now: openChatsNow,
+                    projectAccentBySlug: accentBySlug,
+                    projectIconBySlug: iconBySlug,
                     onActivate: (task) => {
                       openChatsStore.focus({
                         sessionId: chatTaskSessionId(task),

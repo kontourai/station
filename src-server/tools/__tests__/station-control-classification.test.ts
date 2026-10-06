@@ -107,6 +107,8 @@ describe('station-control tool classification', () => {
         'track_skill_run',
         'record_skill_outcome',
         'run_independent_review',
+        // #3161: a durable session record, so mutating, not a bounded write.
+        'declare_pull_request',
       ]),
     );
     expect(readOnly).toEqual(

@@ -149,11 +149,33 @@ export interface IStreamResult {
   finishReason?: Promise<string>;
 }
 
+/** One authored chat message as `streamText` may receive it. */
+export interface ModelInputMessage {
+  id?: string;
+  role: string;
+  parts?: Array<{ type: string; text?: string }>;
+}
+
+/**
+ * #3112: composes the model-facing form of one turn's authored input — the
+ * ambient, skill, project and retrieval context the model reads ahead of the
+ * typed text.
+ */
+export type ModelInputComposer = (
+  input: string | ModelInputMessage[],
+) => string | ModelInputMessage[];
+
 export interface IAgent {
   readonly id: string;
   readonly name: string;
   readonly model?: any;
   generateText(prompt: string, options?: any): Promise<IGenerateResult>;
+  /**
+   * `input` is the authored turn: what the framework persists as the user
+   * message and titles a conversation from. `options.composeModelInput`
+   * ({@link ModelInputComposer}), when present, is applied only where the
+   * model reads that turn — never to what is stored.
+   */
   streamText(input: string, options?: any): Promise<IStreamResult>;
   generateObject?(prompt: string, options?: any): Promise<IGenerateResult>;
   getMemory(): IMemory | null;

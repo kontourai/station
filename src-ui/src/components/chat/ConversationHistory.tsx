@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useSessionManagementMenu } from '../../hooks/useSessionManagementMenu';
 import { useSessionManagementViewModel } from '../../hooks/useSessionManagementViewModel';
+import { workGroupLabelText } from '../inbox-row/work-group-label';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { SessionConversationItem } from '../session/SessionConversationItem';
 import { Empty, SkeletonList } from '../state';
@@ -133,7 +134,7 @@ export function ConversationHistory({
     <div className="conversation-history">
       <div className="conversation-history__header">
         <span className="conversation-history__title">
-          History ({visibleConversations.length})
+          {workGroupLabelText('History', visibleConversations.length)}
         </span>
         <div className="conversation-history__actions">
           {mutableConversations.length > 0 && (

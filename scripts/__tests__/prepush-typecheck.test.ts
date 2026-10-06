@@ -382,10 +382,19 @@ describe.skipIf(process.platform === 'win32')(
         readFileSync('.githooks/pre-push'),
         { mode: 0o755 },
       );
-      writeFileSync(
-        join(primary, 'scripts', 'lib', 'git-environment.mjs'),
-        readFileSync('scripts/lib/git-environment.mjs'),
-      );
+      // The hook runs these itself before any gate: git-environment, and the
+      // liveness-scale resolver (#3309) with its whole relative-import closure.
+      for (const lib of [
+        'git-environment.mjs',
+        'liveness-scale-resolve.mjs',
+        'liveness-scale.mjs',
+        'module-entry.mjs',
+        'verification-host-pressure.mjs',
+      ])
+        writeFileSync(
+          join(primary, 'scripts', 'lib', lib),
+          readFileSync(`scripts/lib/${lib}`),
+        );
       writeFileSync(join(primary, 'README.md'), 'pushed repository\n');
       writeFileSync(join(primary, 'docs', 'guide.md'), 'tracked guide\n');
       git(primary, ['add', '.']);

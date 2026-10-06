@@ -1388,7 +1388,8 @@ describe('native Device request-proof pilot over the production composition', ()
     });
   });
 
-  test('current native Device may observe neutral Station identity before account login but cannot read Projects', async () => {
+  test('current native Device may observe neutral Station identity and status before account login but cannot read Projects', async () => {
+    vi.stubEnv('STATION_E2E_SYSTEM_STATUS_READY', '1');
     vi.stubEnv('STATION_BUILD_SHA', '081bfd979d9f3e180586bafb6b46130556ce5d60');
     vi.stubEnv('STATION_INSTANCE_ID', 'native-pilot-fixture');
     vi.stubEnv('STATION_BOOT_ID', 'native-pilot-fixture-boot');
@@ -1419,6 +1420,19 @@ describe('native Device request-proof pilot over the production composition', ()
         bootId: 'native-pilot-fixture-boot',
         sha: '081bfd979d9f3e180586bafb6b46130556ce5d60',
       });
+      const statusPath = '/api/system/status';
+      const status = await peer.nativeFetch(
+        new Request(`${ORIGIN}${statusPath}`, {
+          headers: {
+            [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof(
+              'GET',
+              statusPath,
+            ),
+          },
+        }),
+      );
+      expect(status.status).toBe(200);
+      await status.body?.cancel();
       const project = await peer.nativeFetch(
         new Request(`${ORIGIN}/api/projects`, {
           headers: {

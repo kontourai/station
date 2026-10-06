@@ -490,19 +490,22 @@ async function openDefaultAgentSession(
     .locator('.chat-dock__tab-actions')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
-  const draft = page.getByRole('form', { name: 'New chat draft' });
-  // The right agent and model are preselected: the draft is where the
-  // default identity is now advertised.
+  const draft = page
+    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('form', { name: 'Start work' });
+  // The right agent and model are preselected: the start composer's Agent
+  // chip names both, and its project chip the context they resolve in.
   await expect(
-    draft.getByRole('button', { name: 'Agent: Station', exact: true }),
+    draft.getByRole('button', {
+      name: 'Agent: Station · llama3.2',
+      exact: true,
+    }),
   ).toBeVisible({ timeout: 10_000 });
-  await expect(
-    draft.getByRole('button', { name: 'Model: llama3.2', exact: true }),
-  ).toBeVisible();
+  await expect(draft.getByRole('button', { name: /^Project: / })).toBeVisible();
   await draft
-    .getByRole('textbox', { name: 'Message', exact: true })
+    .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(options.firstMessage);
-  await draft.getByRole('button', { name: 'Send', exact: true }).click();
+  await draft.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
   // The dock now holds the chat the draft started, bound to the same identity.
   await expect(
@@ -640,7 +643,7 @@ test.describe('Default agent workflow', () => {
 
     await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
-      'History (1)',
+      'History · 1',
     );
     await expect(page.locator('.conversation-history')).toContainText(
       'Station Chat',

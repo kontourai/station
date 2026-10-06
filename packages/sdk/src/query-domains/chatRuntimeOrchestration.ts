@@ -41,6 +41,7 @@ import {
 } from '../client/http';
 import {
   getChildWorkTranscript,
+  getConversationUsageTree,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventWindow,
   getSessionBuilderRun,
@@ -165,6 +166,46 @@ export async function fetchOrchestrationConversationEventWindow(
     throw new Error('Conversation history requires a server upgrade');
   }
   return page;
+}
+
+/**
+ * A conversation's usage tree (`getConversationUsageTree`). Enabled by
+ * default, and off for an empty id or `config.enabled: false`. It polls only
+ * when `config.refetchInterval` is set, and stops polling after a 404 (no
+ * orchestration record for this conversation) or a 422 (tree past its
+ * bound): neither changes by asking again. Neither is retried.
+ */
+export function useConversationUsageTreeQuery(
+  conversationId: string,
+  apiBase?: string,
+  config?: { enabled?: boolean; refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: [
+      'orchestration-conversation-usage-tree',
+      apiBase ?? 'default',
+      conversationId,
+    ],
+    enabled: Boolean(conversationId) && (config?.enabled ?? true),
+    queryFn: async ({ signal }) =>
+      getConversationUsageTree(await resolveApiBase(apiBase), conversationId, {
+        signal,
+      }),
+    retry: false,
+    staleTime: 2_000,
+    refetchInterval: (query) =>
+      isSettledUsageTreeRefusal(query.state.error)
+        ? false
+        : (config?.refetchInterval ?? false),
+  });
+}
+
+/** A usage-tree answer that asking again cannot change. */
+function isSettledUsageTreeRefusal(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError &&
+    (error.status === 404 || error.status === 422)
+  );
 }
 
 /** Reconciles one persisted context-boundary intent after reload or reconnect. */

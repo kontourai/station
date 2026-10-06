@@ -1,0 +1,7 @@
+{
+  "revision": "db467d740a272142f5c458744b240e039b800126",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-reviewed after the added observer-isolation tests in conversation-pull-request-links.test.ts: the test pins that a refresh still answers 200 with its links when the close-out observer throws, and what the observer is told. The conversation-pull-request-links and TaskRecord.closeOnMerge compatibility statements are unchanged.","inputs":["docs/reference/contracts.md","src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts"]}
+  ]
+}

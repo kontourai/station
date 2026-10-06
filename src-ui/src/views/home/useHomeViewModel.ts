@@ -10,7 +10,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
-import { useNavigation } from '../../contexts/NavigationContext';
 import {
   openChatsStore,
   useOpenWorkChats,
@@ -24,7 +23,6 @@ import {
   dockFoldsToOneRegion,
   useDockSlotDevice,
 } from '../../hooks/useIsMobile';
-import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import { useWorkFacts } from './useWorkFacts';
@@ -48,9 +46,6 @@ interface HomeWorkData {
    * fetching its own would be a second read that can disagree.
    */
   agents: ReturnType<typeof useAgents>;
-  defaultSelection: ReturnType<
-    typeof useNewChatSelectionModel
-  >['defaultSelection'];
   actionsLoading: boolean;
   workItems: HomeWorkItem[];
   /**
@@ -92,12 +87,6 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data ?? [],
     resolveModelLabel,
   );
-  const selectedProject = useNavigation((state) => state.selectedProject);
-  const { defaultSelection } = useNewChatSelectionModel({
-    agents,
-    projects,
-    selectedContext: selectedProject || '__global__',
-  });
   const remoteEnvironments = remoteSessionsResult?.environments ?? [];
   const inventoryById = useMemo(
     () =>
@@ -160,7 +149,6 @@ function useHomeWorkData(): HomeWorkData {
   return {
     projects,
     agents,
-    defaultSelection,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
@@ -264,28 +252,9 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       return null;
     }
   };
-  const { agent, effectiveModel } = data.defaultSelection;
-  const startIdentity = agent
-    ? [
-        agent.name,
-        effectiveModel.label === 'Model not reported'
-          ? undefined
-          : effectiveModel.label,
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    : 'No agent is ready yet';
   return {
     ...data,
-    /**
-     * Whether the card can honestly recommend anything. False on a home where
-     * no Agent is runnable — a fresh install, or one whose engines all need
-     * setting up — and the card becomes a set-up CTA rather than naming an
-     * Agent the New Chat picker would refuse one click later.
-     */
-    startReady: data.defaultSelection.agent !== undefined,
-    startIdentity,
-    // #2310 review M3: "Continue most recent work" must name work. A Draft
+    // #2310 review M3: the "Continue" card must name work. A Draft
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(
       (task) =>

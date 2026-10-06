@@ -214,7 +214,7 @@ export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
   'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
   'Nightly and tagged preview and stable promotions',
-  'manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.',
+  'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',
   'one exact source SHA',
 ]);
 /** The single document that carries the rendered lane catalog table. */

@@ -5380,6 +5380,7 @@ describe('upgrade', () => {
 
 describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () => {
   let serverModule: any;
+  const makeTrackedUiDir = trackTempDirs();
   let uiDir: string;
   let upstream: import('node:http').Server | ReturnType<typeof serve> | null =
     null;
@@ -6136,6 +6137,35 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     );
     // The upstream still sees the rewritten Host it dials.
     expect(seen?.host).toBe(`127.0.0.1:${upstreamPort}`);
+  });
+
+  it('#2894: attests that its client sent forwarding headers, and discards a client-supplied attestation', async () => {
+    uiDir = makeTrackedUiDir('station-ui-client-forwarded-');
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    const seen: Record<string, string | string[] | undefined>[] = [];
+    await startUpstream((req, res) => {
+      seen.push(req.headers);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{}');
+    });
+    serverModule = await startServer();
+    const send = (headers: Record<string, string>) =>
+      fetch(`http://127.0.0.1:${serverModule.port}/api/projects`, {
+        headers,
+      });
+
+    // A forwarder in front of this proxy (its client) added X-Forwarded-For.
+    expect((await send({ 'x-forwarded-for': '100.96.12.7' })).status).toBe(200);
+    // A client claiming the marker itself, with no forwarding header.
+    expect(
+      (await send({ 'x-station-proxy-client-forwarded': '1' })).status,
+    ).toBe(200);
+    // An ordinary direct client.
+    expect((await send({})).status).toBe(200);
+
+    expect(
+      seen.map((headers) => headers['x-station-proxy-client-forwarded']),
+    ).toEqual(['1', undefined, undefined]);
   });
 
   it('keeps hosted readiness and readiness-file navigation behind the resolved tenant attestation', async () => {
@@ -9185,6 +9215,79 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       }),
     );
     expect(execSync).not.toHaveBeenCalled();
+  });
+
+  it("on Windows, checks the install root's ACL instead of mode bits and re-runs the version's install.ps1 (#2675 W2)", async () => {
+    const { installRoot, manifestUrl, stationHome, version } =
+      installerArchiveWithRunningService();
+    rmSync(join(stationHome, 'service'), { recursive: true, force: true });
+    writeFileSync(join(version, 'install.ps1'), '# the version installer\n');
+    // Node.js reports every writable Windows file as 0o666; POSIX mode bits
+    // would refuse this state file, the DACL is what guards it there.
+    chmodSync(join(installRoot, '.station-release-state.json'), 0o666);
+    vi.stubEnv('STATION_INSTALL_PUBLIC_MANIFEST_URL', '');
+    vi.stubEnv('SystemRoot', 'C:\\Windows');
+    const execFileSync = vi.fn();
+    const spawnSync = vi.fn(() => ({
+      status: 0,
+      stderr: '',
+      stdout: '{"trusted":true}',
+    }));
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      const { lifecycle } = await loadLifecycleModule({
+        cwd: version,
+        childProcessMock: { execFileSync, execSync: vi.fn(), spawnSync },
+      });
+      await lifecycle.upgrade();
+    } finally {
+      if (platform) Object.defineProperty(process, 'platform', platform);
+    }
+
+    const powershell =
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+    // The install root's DACL was verified through Windows PowerShell.
+    const trust = spawnSync.mock.calls.find(
+      (call) => (call as unknown[])[0] === powershell,
+    ) as unknown as [string, string[]] | undefined;
+    expect(trust).toBeDefined();
+    const program = Buffer.from(trust?.[1].at(-1) ?? '', 'base64').toString(
+      'utf16le',
+    );
+    const payload = JSON.parse(
+      Buffer.from(
+        /FromBase64String\('([^']+)'\)/.exec(program)?.[1] ?? '',
+        'base64',
+      ).toString('utf8'),
+    );
+    expect(payload).toEqual({
+      operation: 'verify',
+      targets: [
+        { kind: 'directory', path: installRoot, policy: 'current-user-only' },
+      ],
+    });
+    expect(execFileSync).toHaveBeenCalledWith(
+      powershell,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        join(version, 'install.ps1'),
+        'install',
+      ],
+      expect.objectContaining({
+        cwd: version,
+        env: expect.objectContaining({
+          STATION_CHANNEL: 'beta',
+          STATION_HOME: stationHome,
+          STATION_INSTALL_ROOT: installRoot,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
+        }),
+      }),
+    );
   });
 
   it.each([

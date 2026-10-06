@@ -239,3 +239,32 @@ describe('ProjectPageHeader folder refusal (#2412 review)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+describe('the header draws the project icon', () => {
+  test('a stored image is drawn beside the name; a refused value falls back to initials', () => {
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    const first = renderHeader({
+      project: {
+        name: 'Station',
+        icon: image,
+        workingDirectory: '/Users/me/dev/github/station',
+      },
+    });
+    const identity = document.querySelector('.project-page__identity');
+    expect(identity?.querySelector('img')?.getAttribute('src')).toBe(image);
+    first.unmount();
+
+    renderHeader({
+      project: {
+        name: 'Station',
+        icon: 'https://example.com/logo.png',
+        workingDirectory: '/Users/me/dev/github/station',
+      },
+    });
+    const fallback = document.querySelector('.project-page__identity');
+    expect(fallback?.querySelector('img')).toBeNull();
+    expect(fallback?.querySelector('.brand-icon__initials')?.textContent).toBe(
+      'ST',
+    );
+  });
+});

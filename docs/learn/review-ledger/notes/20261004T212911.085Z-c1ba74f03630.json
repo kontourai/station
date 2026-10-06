@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; the handshake contract adds the delegatedInputAnswers flag.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}

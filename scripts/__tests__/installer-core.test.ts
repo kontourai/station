@@ -11,6 +11,7 @@ import {
 } from '../../packages/shared/src/installer/download.js';
 import {
   isAbsoluteRoot,
+  plainPowerShellMessage,
   windowsInstallRootRefusal,
 } from '../../packages/shared/src/installer/install.js';
 import {
@@ -354,7 +355,7 @@ describe('installer Windows install-root rule (#2675 W1)', () => {
     expect(
       windowsInstallRootRefusal('/srv/station/installs/nightly', '/home/u'),
     ).toBe(
-      'on Windows, install.ps1 installs only beneath your user profile (/home/u) until it checks install-root permissions (#2675 slice W2); /srv/station/installs/nightly is outside it',
+      'on Windows, install.ps1 installs only beneath your user profile (/home/u); /srv/station/installs/nightly is outside it',
     );
     expect(windowsInstallRootRefusal('/home/u', '/home/u')).not.toBeNull();
     // A sibling that shares the profile's prefix is not inside it.
@@ -419,5 +420,17 @@ describe('installer test-only key gate', () => {
     expect((caught as Error).message).toBe(
       'a test-only key needs the test-only flag',
     );
+  });
+});
+
+describe('plainPowerShellMessage', () => {
+  it('keeps the first error record of a CLIXML error stream', () => {
+    // As Windows PowerShell wrote it on the install-smoke Windows leg.
+    const clixml =
+      'Windows current-user ACL verification failed: #< CLIXML\r\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><S S="Error">Station trust ACL has unrelated entries: D:\\a\\root_x000D__x000A_</S><S S="Error">At line:57 char:29_x000D__x000A_</S></Objs>';
+    expect(plainPowerShellMessage(clixml)).toBe(
+      'Windows current-user ACL verification failed: Station trust ACL has unrelated entries: D:\\a\\root',
+    );
+    expect(plainPowerShellMessage('plain failure')).toBe('plain failure');
   });
 });

@@ -1,4 +1,4 @@
-name: Merge integration
+name: "PR: Merge integration"
 
 # The required context keeps its name: ruleset 21782867 requires exactly
 # `Merge-queue regression`. fast-checks runs only its plan's affected tests,

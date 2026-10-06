@@ -1,0 +1,7 @@
+{
+  "revision": "9319492e1635efebf44a8faee440483ad8da7a5a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home still covers Home/continuity: the active-work test now declares and waits for the file-preview changes read (#3365) and asserts its 200, closing an undeclared-request race. The row's description (continuation, first steps, deep links, many Home responses mocked) remains accurate; no prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

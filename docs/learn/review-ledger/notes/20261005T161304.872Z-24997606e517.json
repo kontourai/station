@@ -1,0 +1,7 @@
+{
+  "revision": "09c85b03ddb2c50e48c18d6617e000a59a0bec58",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"#3386 delta only: attached sessions now attributed by git repository and unattributed ones followed under No project; this document makes no claim about attached-session attribution, the Activity project filter or the adoption refusal text, so it remains accurate. Checked by grepping for attached/attribution/adoption claims; no prose change. Glossary delta is one added clause on the Activity project filter.","inputs":["CONTEXT.md","docs/glossary.md"]}
+  ]
+}

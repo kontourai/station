@@ -554,7 +554,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
         },
       ),
     ).rejects.toThrow(
-      /Operator access commands \(access list\/approve\/deny\/devices\/scope\) require a loopback --api-base/,
+      /Operator access commands \(access list\/approve\/deny\/devices\/scope\/revoke\/remove\) require a loopback --api-base/,
     );
     expect(request).not.toHaveBeenCalled();
     expect(createService).not.toHaveBeenCalled();
@@ -615,5 +615,344 @@ describe('a full-access refusal as the CLI prints it (#1796)', () => {
     );
     expect(printed).toContain('An agent can never put itself');
     expect(printed).not.toContain('station environment access scope');
+  });
+});
+
+describe('station environment access revoke / remove (#3256)', () => {
+  const stdout = vi.fn();
+  const stderr = vi.fn();
+  const REVOKED_AT = Date.UTC(2026, 9, 5);
+  // A revoked tablet and a live one that share a name, so `remove` and
+  // `revoke` each see only their own side of the list.
+  const LIVE = DEVICES.filter((device) => device.revokedAt === null);
+  const OLD = DEVICES[3]!;
+  beforeEach(() => {
+    stdout.mockReset();
+    stderr.mockReset();
+  });
+  const printed = () => stdout.mock.calls.map((call) => call[0]).join('\n');
+
+  function host(
+    answer: (verb: 'revoke' | 'remove', deviceId: string) => unknown = (
+      verb,
+      deviceId,
+    ) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      revokedAt: verb === 'revoke' ? REVOKED_AT : OLD.revokedAt,
+    }),
+  ) {
+    return vi
+      .fn<OperatorJsonRequest>()
+      .mockImplementation(async (_apiBase, path, init) => {
+        if (path === '/.well-known/station/v1')
+          return { environmentId: HOME.environmentId };
+        if (path === PUBLIC_STATION_PROOF_PATH) return proofResponse(init);
+        if (path === '/api/pairing/devices') return { devices: DEVICES };
+        const match = /^\/api\/pairing\/devices\/([^/]+)(\/record)?$/.exec(
+          path,
+        );
+        if (match && init?.method === 'DELETE')
+          return answer(
+            match[2] ? 'remove' : 'revoke',
+            decodeURIComponent(match[1]!),
+          );
+        throw new Error(`Unexpected test request: ${path}`);
+      });
+  }
+  const deletes = (request: ReturnType<typeof host>) =>
+    request.mock.calls
+      .filter(([, , init]) => init?.method === 'DELETE')
+      .map(([, path]) => path);
+  const run = (
+    args: string[],
+    request: OperatorJsonRequest,
+    extra: {
+      isInteractive?: boolean;
+      confirm?: (question: string) => Promise<boolean>;
+      apiBase?: string;
+    } = {},
+  ) =>
+    runEnvironmentCommand(
+      ['access', ...args, `--api-base=${extra.apiBase ?? API}`],
+      {
+        createService: () => makeService(),
+        projectHome: '/tmp/station-home',
+        request,
+        stdout,
+        stderr,
+        isInteractive: extra.isInteractive ?? false,
+        ...(extra.confirm ? { confirm: extra.confirm } : {}),
+      },
+    );
+
+  test('revoke deletes the device chosen by id prefix, as the operator, and says what happened', async () => {
+    const request = host();
+    await run(['revoke', 'aaaa1111', '--force'], request);
+    expect(request).toHaveBeenCalledWith(
+      API,
+      `/api/pairing/devices/${LIVE[0]!.id}`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${HOME.credential}` },
+      }),
+    );
+    expect(deletes(request)).toEqual([`/api/pairing/devices/${LIVE[0]!.id}`]);
+    expect(printed()).toContain('Laptop CLI');
+    expect(printed()).toContain('Revoked.');
+  });
+
+  test('revoke prints what its full-access reset did', async () => {
+    const request = host((_verb, deviceId) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      revokedAt: REVOKED_AT,
+      fullAccessRevocation: {
+        cause: 'device-revoked',
+        reset: [{ conversationId: 'conversation:a', was: 'never' }],
+        stillFullAccess: [],
+      },
+    }));
+    await run(['revoke', 'Laptop CLI', '--force'], request);
+    expect(printed()).toContain('conversation:a');
+    stdout.mockReset();
+    const failed = host((_verb, deviceId) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      revokedAt: REVOKED_AT,
+      fullAccessRevocationError: 'reset_failed',
+    }));
+    await expect(
+      run(['revoke', 'Laptop CLI', '--force'], failed),
+    ).rejects.toThrow(/The device was revoked, but Station could not reset/);
+  });
+
+  test('remove deletes only the record of a revoked device', async () => {
+    const request = host();
+    await run(['remove', 'Old tablet', '--force'], request);
+    expect(request).toHaveBeenCalledWith(
+      API,
+      `/api/pairing/devices/${OLD.id}/record`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${HOME.credential}` },
+      }),
+    );
+    expect(deletes(request)).toEqual([`/api/pairing/devices/${OLD.id}/record`]);
+    expect(printed()).toContain('Removed the revoked record.');
+  });
+
+  test('a device that is still paired is neither a remove candidate nor a revoked one', async () => {
+    const request = host();
+    await expect(
+      run(['remove', 'aaaa1111', '--force'], request),
+    ).rejects.toThrow(
+      /No revoked device record matches "aaaa1111".*access revoke <device>/,
+    );
+    await expect(
+      run(['revoke', 'Old tablet', '--force'], request),
+    ).rejects.toThrow(/No paired device matches "Old tablet"/);
+    expect(deletes(request)).toEqual([]);
+  });
+
+  test('an ambiguous name or prefix is refused before anything is deleted', async () => {
+    for (const selector of ['Phone', 'aaaa']) {
+      const request = host();
+      await expect(
+        run(['revoke', selector, '--force'], request),
+      ).rejects.toThrow(/matches more than one paired device/);
+      expect(deletes(request)).toEqual([]);
+    }
+    const twin = { ...OLD, id: 'cccc5555-0000-4000-8000-000000000005' };
+    const request = vi
+      .fn<OperatorJsonRequest>()
+      .mockImplementation(async (_apiBase, path, init) => {
+        if (path === '/.well-known/station/v1')
+          return { environmentId: HOME.environmentId };
+        if (path === PUBLIC_STATION_PROOF_PATH) return proofResponse(init);
+        if (path === '/api/pairing/devices') return { devices: [OLD, twin] };
+        throw new Error(`Unexpected test request: ${path}`);
+      });
+    await expect(run(['remove', 'cccc', '--force'], request)).rejects.toThrow(
+      /matches more than one paired device/,
+    );
+  });
+
+  test('a mismatched or unrevoked answer is refused, not reported as done', async () => {
+    await expect(
+      run(
+        ['revoke', 'Laptop CLI', '--force'],
+        host(() => ({ ...DEVICES[1]!, revokedAt: REVOKED_AT })),
+      ),
+    ).rejects.toThrow(/mismatched device after the revoke/);
+    await expect(
+      run(
+        ['revoke', 'Laptop CLI', '--force'],
+        host((_verb, deviceId) => ({
+          ...DEVICES.find((device) => device.id === deviceId),
+          revokedAt: null,
+        })),
+      ),
+    ).rejects.toThrow(/mismatched device after the revoke/);
+    await expect(
+      run(
+        ['remove', 'Old tablet', '--force'],
+        host(() => ({ ...DEVICES[1]!, revokedAt: REVOKED_AT })),
+      ),
+    ).rejects.toThrow(/mismatched device after the record removal/);
+    expect(printed()).not.toContain('Revoked.');
+    expect(printed()).not.toContain('Removed');
+  });
+
+  test('without --force a non-interactive run is refused before any Station is contacted', async () => {
+    for (const args of [
+      ['revoke', 'aaaa1111'],
+      ['remove', 'Old tablet'],
+    ]) {
+      const request = host();
+      await expect(run(args, request)).rejects.toThrow(
+        /is destructive and requires --force when stdin is non-interactive/,
+      );
+      expect(request).not.toHaveBeenCalled();
+    }
+  });
+
+  test('an interactive run names the device in the question and deletes only on yes', async () => {
+    const answers = [false, true];
+    const confirm = vi.fn(async (_question: string) => answers.shift()!);
+    const request = host();
+    await expect(
+      run(['revoke', 'aaaa1111'], request, { isInteractive: true, confirm }),
+    ).rejects.toThrow(/the revoke was not approved/);
+    expect(confirm.mock.calls[0]![0]).toContain('Laptop CLI');
+    expect(confirm.mock.calls[0]![0]).toContain('cannot be restored');
+    expect(confirm.mock.calls[0]![0]).toContain(LIVE[0]!.id);
+    expect(deletes(request)).toEqual([]);
+    await run(['revoke', 'aaaa1111'], request, {
+      isInteractive: true,
+      confirm,
+    });
+    expect(deletes(request)).toEqual([`/api/pairing/devices/${LIVE[0]!.id}`]);
+
+    const removeConfirm = vi.fn(async (_question: string) => false);
+    const removeRequest = host();
+    await expect(
+      run(['remove', 'Old tablet'], removeRequest, {
+        isInteractive: true,
+        confirm: removeConfirm,
+      }),
+    ).rejects.toThrow(/the removal was not approved/);
+    expect(removeConfirm.mock.calls[0]![0]).toContain('Old tablet');
+    expect(removeConfirm.mock.calls[0]![0]).toContain(OLD.id);
+    expect(deletes(removeRequest)).toEqual([]);
+  });
+
+  test('a non-loopback Station is refused before any credential is read', async () => {
+    for (const verb of ['revoke', 'remove']) {
+      const request = host();
+      const createService = vi.fn(() => makeService());
+      await expect(
+        runEnvironmentCommand(
+          [
+            'access',
+            verb,
+            'aaaa1111',
+            '--force',
+            '--api-base=https://station.example.test',
+          ],
+          {
+            createService,
+            projectHome: '/tmp/station-home',
+            request,
+            stdout,
+            stderr,
+            isInteractive: false,
+          },
+        ),
+      ).rejects.toThrow(/require a loopback --api-base/);
+      expect(request).not.toHaveBeenCalled();
+      expect(createService).not.toHaveBeenCalled();
+    }
+  });
+
+  test('an empty or blank selector is a usage error before any Station is contacted, for scope, revoke and remove', async () => {
+    for (const args of [
+      ['revoke', ''],
+      ['revoke', '  ', '--force'],
+      ['remove', '', '--force'],
+      ['scope', '', '--add=terminal:operate'],
+      ['scope', ' ', '--add=terminal:operate'],
+    ]) {
+      const request = host();
+      await expect(run(args, request)).rejects.toThrow(/Usage:/);
+      expect(request).not.toHaveBeenCalled();
+    }
+  });
+
+  test('a malformed command is a usage error before any Station is contacted', async () => {
+    for (const args of [
+      ['revoke'],
+      ['revoke', 'a', 'b'],
+      ['revoke', 'aaaa1111', '--add=terminal:operate'],
+      ['remove', 'Old tablet', '--force=yes'],
+    ]) {
+      const request = host();
+      await expect(run(args, request)).rejects.toThrow(/Usage:/);
+      expect(request).not.toHaveBeenCalled();
+    }
+  });
+
+  test('revoke and remove through the default request path against a real loopback Station', async () => {
+    const seen: string[] = [];
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        const reply = (status: number, body: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(body));
+        };
+        if (req.url === '/.well-known/station/v1')
+          return reply(200, { environmentId: HOME.environmentId });
+        if (req.url === PUBLIC_STATION_PROOF_PATH)
+          return reply(200, proofResponse({ body: raw }));
+        if (req.url === '/api/pairing/devices')
+          return reply(200, { devices: DEVICES });
+        if (req.method === 'DELETE') {
+          seen.push(`${req.method} ${req.url}`);
+          const record = req.url!.endsWith('/record');
+          return reply(
+            200,
+            record
+              ? OLD
+              : { ...LIVE[0], revokedAt: REVOKED_AT, fullAccessRevocation: {} },
+          );
+        }
+        return reply(404, { error: 'not_found' });
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      for (const args of [
+        ['revoke', 'aaaa1111', '--force'],
+        ['remove', 'Old tablet', '--force'],
+      ])
+        await runEnvironmentCommand(
+          ['access', ...args, `--api-base=http://127.0.0.1:${port}`],
+          {
+            createService: () => makeService(),
+            projectHome: '/tmp/station-home',
+            stdout,
+            stderr,
+            isInteractive: false,
+          },
+        );
+      expect(seen).toEqual([
+        `DELETE /api/pairing/devices/${LIVE[0]!.id}`,
+        `DELETE /api/pairing/devices/${OLD.id}/record`,
+      ]);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

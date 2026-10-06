@@ -80,6 +80,42 @@ are `410`, unavailable storage is `503`, and lost current authority is opaque
 `404`. A keep preserves an artifact or reference; it does not establish agent
 attribution, accepted quality or feedback. Exact-version review is described below; it remains a human statement rather than Task acceptance.
 
+An agent on any engine declares a pull request with the Station Control
+`declare_pull_request` tool, which writes the same declared-output record as
+Station's own `declare_output` (see [the tool](../guides/self-configuring-agent.md)).
+Its REST side, `POST /api/orchestration/station-control/declare-pull-request`, is
+for Station's own tool code only: it answers 404 to any request the runtime
+boundary did not accept as Station's internal principal, derives the Session and
+its running turn from the verified caller, takes a body of exactly
+`{provider, host, repository: {owner, name}, ref, label?}` (the conversation link
+identity), and answers `{status}` with `declared`, `already-declared` or
+`no-active-turn`. A pull request in another repository than the Session's, or one
+the provider cannot return at that identity, is `409`. The declaration lands with
+the turn's completion: it is held, with no time limit, while the turn runs, and
+is dropped if the turn is aborted, interrupted, ends in an error or is replaced
+(a retried transient error keeps the turn alive), or if Station
+restarts before the turn completes (declarations wait in memory until the
+terminal event is stored). The keep above applies to it unchanged.
+
+`PUT /api/tasks/:taskId/close-on-merge` accepts `{enabled}` and sets or clears the
+Task's `closeOnMerge` flag. It is a person's opt-in: no Station Control tool
+reaches it, and the authority guard refuses an agent's request to it. A Task with
+the flag moves to `done` when every pull request kept on it reports `MERGED` at its
+provider, matched by declaration and pull request (one turn's declarations share
+an event, so the event alone is not the match), if it is still the same Task
+incarnation, nothing was kept since the reads, and `canTransitionTaskStatus` allows
+`done`: a Task in todo, ready, triage or blocked never closes by itself. A pull
+request closed without merging does not complete it; un-keeping an unmerged pull
+request lets the remaining merged ones close it. The check rides the conversation
+pull request refresh (`GET /api/conversation-pull-requests/:conversationId`): a
+refresh that observes a merged pull request reconciles the Tasks that kept it, in
+the background, but only when the viewer holds the pairing scope
+`PATCH /api/tasks/:taskId/status` needs (`orchestration:operate`), and never for a
+Station Control tool call. There is no timer, so a merge is noticed when an
+operate-tier viewer next refreshes that conversation, and nothing reconciles
+without one. A store carrying the flag is refused by older Station builds: clear
+it before a rollback.
+
 New snapshots store their Task creation identity and, for admitted Session
 declarations, the declaration's Session/event/turn/tool identities privately.
 Public output records remain schema version 1 and omit those private fields.
@@ -280,7 +316,10 @@ GET /api/agents
 The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
 persisted definitions, registry defaults, and runtime observations. Rows can
 include execution binding, availability/validation findings, and activation
-failures; inclusion in the list is not proof that a chat can launch. The example
+failures; inclusion in the list is not proof that a chat can launch. A bound
+row's `engineId` and `engineConnectionType` come from the connection record and
+its Adapter, so they survive a failed or timed-out runtime inspection;
+`engineDisplayName` and availability still need that live read. The example
 below is a field excerpt, not a fixed response for every Agent.
 
 
@@ -314,6 +353,20 @@ below is a field excerpt, not a fixed response for every Agent.
 }
 ```
 
+A request acting for a deployment account (a Project member) never receives
+this shape. The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+answers `GET /agents`, `GET /api/agents` and `GET /api/agents/:slug` for it
+with `station.member-agent/v1` views of Agents whose
+[audience](config.md#audience) admits it; `/api/boot`'s `agents` section
+carries the same views. Any other or unknown Agent slug, in a path or as an
+orchestration `target.agent`, returns `404 Agent not found`. A turn on an
+admitted Agent returns `403 member_agent_turns_unavailable`. Creating or
+materializing an Agent, and updating, deleting or editing the tools or
+workflows of an admitted one, returns `403 member_agent_catalog_read_only`
+(a hidden slug stays `404`). All of these gate
+responses are `no-store`. See
+[Agent audience](../design/project-membership.md#agent-audience).
 
 ---
 
@@ -513,6 +566,31 @@ values; clients use the returned metadata when editing. A failed lookup returns
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
 service refuses changes that would create a shadow copy.
+
+### Connected accounts (#3279)
+
+An integration whose definition sets `credentialOwnership: {owner: "principal"}`
+uses each person's own account instead of the shared Station credential. A turn
+uses only the credential of the principal it runs as (a credential narrowed to the
+Agent's Project first, then the person's own). A person without one gets a
+"connect your account" refusal; the shared credential is used only when
+`allowInstanceFallback` is `true`. The owner is the request's resolved human
+`PrincipalRef.id`; a paired device without a person, a non-human principal, and a
+hosted request cannot own an account.
+
+`POST /integrations/:id/oauth/authorize` and `POST /integrations/:id/oauth/callback`
+accept optional `owner` (`"self"` or, when fallback is allowed, `"instance"`) and
+`projectSlug`. A person's consent flow is keyed by the principal who started it, so
+only that principal's callback can complete it, and it never changes the
+integration's shared `probe.authorization`. A successful first connection records
+the tool catalog Agents load that integration's tools from.
+
+`GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+owner and availability only, never a token. `DELETE /integrations/:id/account`
+removes the caller's own credential; the next call that needs it refuses.
+
+MCP Apps reads and calls are not available yet for these integrations.
 
 ### Delete Integration
 
@@ -804,13 +882,28 @@ Respect `hasMore` rather than assuming one response contains the entire history.
 ### Get Conversation Messages
 
 `GET /agents/:slug/conversations/:conversationId/messages` returns
-`{success: true, data: messages}`. The reader can restore authorized messages
-from orchestration when the file-memory path has no usable record. Messages
-carry the owner's current parts/metadata shape; do not depend on every message
-having the old `content: string`/`timestamp` pair.
+`{success: true, data: messages}`. A conversation can span several execution
+Sessions: a follow-up its current Session cannot take, such as one after a
+failed Station-agent turn, runs in a successor Session. The read covers every
+Session in the conversation's lineage, oldest first, and concatenates them
+([read seam](../../src-server/routes/chat/conversations.ts)). For each Session it
+reads the file-memory record first and, when that has no usable record, the
+authorized messages restored from orchestration. A successor stores only its
+own turns; earlier history reaches its model without being copied into its
+record. Export, fork and summary use the same read. A successor's own record
+is never listed as a conversation of its own, and conversation message search
+reports its hits under the conversation it continues. A conversation whose
+lineage exceeds 64 Sessions is refused with 422 `conversation_lineage_too_long`
+by this read, export, fork, summary and stats, rather than read partially. Messages carry the owner's current parts/metadata shape; do not depend on
+every message having the old `content: string`/`timestamp` pair.
 
-A `/chat` turn that failed before producing output is recorded as a user-role
-`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+A stored user turn is the typed text (and its attachments) alone. Ambient
+context such as `[Timezone: …]`, skill instructions, project rules and
+retrieved knowledge reach only the model's input for that turn.
+
+A `/chat` turn that failed before producing output is recorded as its prompt
+followed by a user-role `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message, with no
+empty assistant reply between them. `<text>` is never the model
 provider's own error message. It is one of: a status sentence such as
 "The model provider returned an error (HTTP 500).", "The model provider
 rejected the credentials.", "Stream aborted by client", or "The response
@@ -834,7 +927,9 @@ are refused. Use the orchestration operation for its owned history.
 
 `DELETE /agents/:slug/conversations/:conversationId` returns `{success: true}`
 after deleting file-memory history and its derived summary. Orchestration
-history is read-only through this path (409), and hosted requests return 404.
+history is read-only through this path (409), including a conversation whose
+later turns run in successor Sessions and each successor itself, and hosted
+requests return 404.
 A caller-scoped station-control deletion additionally checks the stored owner.
 This is not a general endpoint for deleting any Session visible in a list.
 
@@ -862,12 +957,22 @@ these file-memory mutations before invoking the owner.
 `{success: true, data: stats}` after the shared stats parser. The owner uses
 file-memory stats or authorized orchestration usage when available. Prompt/tool
 estimates, reported tokens, cost, and observed model/context values are distinct
-inputs; missing provider observations are not measurements of zero.
+inputs; missing provider observations are not measurements of zero. Like the
+message read, stats cover every Session in the conversation's lineage: stored
+cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
+records, and context occupancy comes from the newest one. Without a stored
+record, the orchestration usage fold runs over every authorized Session's
+events in lineage order.
 
 `contextWindowPercentage` is absent when the model's context window cannot be
 resolved. Render that as unavailable. See the
 [stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
 and [response contract](../../packages/contracts/src/runtime.ts).
+
+These statistics cover the conversation's own turns. Its usage with every
+subagent and delegated task under it, with a total that says what it leaves
+out, is the
+[conversation usage tree](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree).
 
 ---
 
@@ -932,6 +1037,11 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
+Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
+OpenAI-compatible Model connection; its current address/key are resolved at
+launch. `config.modelRoute` is a secret-free discovery projection, not an
+editable credential. Selecting a missing/disabled proxy refuses launch.
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.
@@ -1277,8 +1387,10 @@ adds bounded `aggregateReceipts` for leaf Station transfer, after logical
 replacement/deduplication. Context occupancy alone does not produce a token
 receipt or consumed-usage coverage.
 
-Cumulative token identities survive engine-process restarts; cumulative cost
-identities follow the declared cost-process epochs. `sourceSequence` orders
+Cumulative token identities survive engine-process restarts. A cumulative cost
+identity spans one running total: a resumed Claude process continues its
+predecessor's total, while a restart without resume or a lower figure starts
+another. `sourceSequence` orders
 same-Station/thread observations when ingestion timestamps tie. Sparse
 cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
@@ -2734,9 +2846,15 @@ POST /tool-approval/:approvalId
 ```
 
 Resolve a pending tool call using the request-bound Session read authority and
-client origin. Knowing an approval ID alone is not sufficient. The
-[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
-cannot resolve an authorized pending request.
+client origin. The [approval handler](../../src-server/routes/agents/invoke.ts)
+returns 404 when it cannot resolve an authorized pending request. In hosted
+mode the entry must be bound to a session of the caller's tenant. Outside
+hosted mode the
+[registry](../../src-server/services/approvals/approval-registry.ts) lets any
+caller that reaches this route settle a pending entry by its ID. The exception
+is a request acting for a Project member: the
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+refuses it with `403 member_agent_turns_unavailable`.
 
 The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
 uses orchestration for parts carrying an approval thread ID, including the exact
@@ -3151,6 +3269,29 @@ The promotion satisfies the pending-request route scope without granting
 `access:manage`. Authority is rechecked before publishing a decision. It does
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
+
+## Operator passkey administration (host)
+
+`GET /api/pairing/operator-passkeys` lists enrollment availability, active
+passkeys (metadata only: id, label, relying-party ID, origin, transports,
+timestamps) and pending enrollment requests **without their codes**.
+Each pending request carries `requester` (`kind`, the first eight characters of
+`deviceId`, `pairedAt`, `scope`) from the pairing registry, beside the
+device-chosen `deviceLabel`. `POST .../requests/inspect` takes
+`{ "code" }` and returns that without confirming. `POST .../requests/approve`
+takes `{ "code", "device"? }`; `device`, when sent, must be a prefix (at least
+four characters) of the requesting device's id or nothing is confirmed (409
+`device_mismatch`). `POST .../requests/deny` takes `{ "code" }` and also
+withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
+are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
+a passkey. Only the operator credential is accepted; a paired device holding
+`access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
+(429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
+(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
+consent origin under `/operator/passkeys/enroll`; see the
+[enrollment guide](../guides/operator-passkeys.md). Owner:
+[host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),
+[service](../../src-server/services/identity/operator-passkey-enrollment.ts).
 
 ## Bind a paired device to its verified person
 

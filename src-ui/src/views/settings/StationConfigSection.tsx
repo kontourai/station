@@ -50,6 +50,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'terminalShell',
     'mcpUiHost',
     'surfaceTrustFromVeritasEvidence',
+    'attachedSessionsOutsideProjects',
     'mobileDeviceHubUrl',
   ],
   // Where this Station gets agents, skills, plugins and layouts.

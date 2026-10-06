@@ -1,7 +1,9 @@
+import type { GitReadLocation } from '@kontourai/station-sdk';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
+import { rowProjectMarks } from '../inbox-row/row-project-marks';
 
 interface HomeWorkRowProps {
   task: HomeLaneItem;
@@ -41,6 +43,16 @@ export interface HomeRowContext {
    * Decided once by the section from `useCoarsePointer`.
    */
   chrome: 'hover' | 'touch';
+  /**
+   * The rows' hover-card git sections, by thread id — the dock's own
+   * derivation (`useGitLocationByThreadId`), so a row names the same branch
+   * on Home as in the inbox.
+   */
+  gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
+  /** The sidebar's project colours (`useProjectAccents`), by slug. */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The projects' icons (`useProjectIcons`), by slug. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
 }
 
 /** The discard itself is the button's own server command; Home has no tab
@@ -80,6 +92,15 @@ export function renderHomeWorkRow({
         chrome={context.chrome}
         agents={agents}
         isWoken={isWoken}
+        // Resolved exactly as `InboxGroupList` resolves the dock's rows.
+        gitLocation={context.gitLocationByThreadId?.get(
+          task.orchestrationThreadId ?? task.chatSessionId ?? '',
+        )}
+        {...rowProjectMarks(
+          task,
+          context.projectAccentBySlug,
+          context.projectIconBySlug,
+        )}
         onActivate={() => onOpen(task)}
         onSnoozeWake={
           onSnooze

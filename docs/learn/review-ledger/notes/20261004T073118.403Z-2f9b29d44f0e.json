@@ -1,0 +1,7 @@
+{
+  "revision": "63898ce5b8c02c3cf8682829270908408906d9a6",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added the re-drive-keeps-its-branch sentence and the two accepted limits (key eviction versus downstream dedup; stuck unresolved claims); checked against the request-key table, the chat-turn dedup table size and the route.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/session-control-request-keys.ts"]}
+  ]
+}

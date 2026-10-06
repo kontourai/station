@@ -1,0 +1,7 @@
+{
+  "revision": "ee3119c1df218b6f97008e26c5b4e21c1ee87b07",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"No prose change: reviewed its attention/continue mentions, none concern a model change on a bound delegated answer; the orchestration routes only map that refusal to 400.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

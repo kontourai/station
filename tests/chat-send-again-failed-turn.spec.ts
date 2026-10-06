@@ -13,11 +13,13 @@ import { closeFixtureServer } from './helpers/ollama-fixture';
  * #3112: "Send again" on a stored failure card, against a real Station and a
  * model server that fails every turn with HTTP 500.
  *
- * A Station agent's conversation store keeps the framework's copy of the
- * model-facing input — the typed text with its ambient context (`[Timezone:
- * …]`) composed in — beside the typed text itself. The resend must read
- * exactly as the original prompt did, so its `turn.started` prompt carries no
- * ambient context prefix.
+ * The resend must read exactly as the original prompt did, so its
+ * `turn.started` prompt carries no ambient context prefix. A failed
+ * Station-agent turn ends its Session's binding, so the resend runs in a
+ * successor Session; the conversation read covers the whole lineage, so it
+ * gains the resent prompt and its failure marker. Stored user turns are the
+ * typed text alone — the ambient context (`[Timezone: …]`) reaches only the
+ * model.
  */
 
 const FIXTURE_CONNECTION_ID = 'e2e-send-again-failure-fixture';
@@ -255,5 +257,51 @@ test.describe('Send again on a stored failed turn (#3112)', () => {
     await expect
       .poll(readTurnPrompts, { timeout: 90_000 })
       .toEqual([PROMPT, PROMPT]);
+
+    // The conversation read gains the resent prompt and its failure marker.
+    await expect
+      .poll(async () => failureMarkers(await readMessages()).length, {
+        timeout: 60_000,
+      })
+      .toBe(2);
+    const stored = await readMessages();
+    const texts = stored.map(storedText);
+    const markerIndexes = texts.flatMap((text, index) =>
+      text.startsWith('[SYSTEM_EVENT] [CHAT_ERROR]') ? [index] : [],
+    );
+    expect(
+      texts.slice(markerIndexes[0]! + 1, markerIndexes[1]!),
+      'the resent prompt is stored between the two failure markers',
+    ).toContain(PROMPT);
+    // Every stored user turn is the typed text alone, and each failed turn
+    // is exactly its prompt and its marker.
+    for (const message of stored.filter((entry) => entry.role === 'user'))
+      expect(storedText(message)).not.toContain('[Timezone:');
+    expect(
+      stored.map((message) =>
+        storedText(message).startsWith('[SYSTEM_EVENT] [CHAT_ERROR]')
+          ? 'marker'
+          : `${message.role}:${storedText(message)}`,
+      ),
+    ).toEqual([`user:${PROMPT}`, 'marker', `user:${PROMPT}`, 'marker']);
+
+    // The successor Session the resend ran in is not a conversation of its
+    // own.
+    const listed = await authenticatedRequest.get(
+      `/agents/${encodeURIComponent(agentSlug)}/conversations`,
+    );
+    expect(listed.ok()).toBe(true);
+    const listedIds = (
+      (await listed.json()) as { data: { items: Array<{ id: string }> } }
+    ).data.items.map((item) => item.id);
+    expect(listedIds).toEqual([threadId]);
+
+    // A runtime conversation is read-only to the file-store delete, so its
+    // lineage is never left half-deleted.
+    const deleted = await authenticatedRequest.delete(
+      `/agents/${encodeURIComponent(agentSlug)}/conversations/${encodeURIComponent(threadId)}`,
+    );
+    expect(deleted.status()).toBe(409);
+    expect(failureMarkers(await readMessages())).toHaveLength(2);
   });
 });

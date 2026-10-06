@@ -57,6 +57,16 @@
   overflow-wrap: anywhere;
 }
 
+/* The Project row's mark: the project's icon, else its colour dot. */
+.chat-dock-inbox-hover-card__project-mark {
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+.chat-dock-inbox-hover-card__project-mark.brand-icon {
+  display: inline-flex;
+  vertical-align: -3px;
+}
+
 .chat-dock-inbox-hover-card__status {
   display: flex;
   align-items: center;

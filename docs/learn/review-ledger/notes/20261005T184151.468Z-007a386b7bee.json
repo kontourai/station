@@ -1,0 +1,7 @@
+{
+  "revision": "a35a9aea96890dfb9981b36531ede0142ecb1a7b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#3394: ci-health.mjs import order only (biome organizeImports); the ledger-merge measurement row stays accurate.","inputs":["docs/guides/testing.md","scripts/ci-health.mjs"]}
+  ]
+}

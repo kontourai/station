@@ -129,3 +129,193 @@ export function describeProjectSlugConflict(
 ): string {
   return `A project called '${name}' already exists. The slug '${conflict.suggestedSlug}' is available.`;
 }
+
+/**
+ * What a stored `ProjectConfig.icon` may be. ONE authority for a rule with
+ * three callers on both sides of the wire: the create and update routes
+ * refuse a value with a problem, the settings and New Project pickers refuse
+ * it before the request, and `ProjectIcon` renders nothing it would refuse.
+ *
+ * Two shapes are icons, and nothing else is:
+ *
+ * - **A glyph**: an emoji or a short symbol, at most
+ *   {@link PROJECT_ICON_MAX_GLYPH_LENGTH} UTF-16 code units, with no `/`,
+ *   `\`, `:` or control character and no leading `~`. That alphabet is why
+ *   no glyph can be a filesystem path, a URL or a `brand:` reference — the
+ *   portable manifest copies `icon` verbatim and refuses an absolute or
+ *   tilde path there (`validateProjectManifest`, §3.2), so a path stored here
+ *   would make the project's manifest unreadable.
+ *   It must also have a visible character, and contains no bidirectional
+ *   control or lone surrogate (`glyph-characters`); a ZWJ joining emoji is
+ *   fine.
+ * - **An inline image**: a base64 `data:` URL of one of
+ *   {@link PROJECT_ICON_IMAGE_MEDIA_TYPES}, whose decoded bytes start with
+ *   that format's signature and number at most
+ *   {@link PROJECT_ICON_MAX_IMAGE_BYTES}. This is the shape
+ *   `project-icon-discovery.ts` produces and the bound it reads under, so
+ *   every discovered candidate is storable and nothing larger is.
+ *
+ * Remote and same-origin URLs are refused rather than stored: the renderer
+ * never hotlinks (`BrandIcon` loads no remote artwork), so a stored URL would
+ * be an icon nothing could show; and a same-origin `/path` is an absolute
+ * path to the manifest.
+ */
+export const PROJECT_ICON_MAX_GLYPH_LENGTH = 16;
+/** Decoded image bytes; discovery reads candidates under the same bound. */
+export const PROJECT_ICON_MAX_IMAGE_BYTES = 128 * 1024;
+export const PROJECT_ICON_IMAGE_MEDIA_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/x-icon',
+] as const;
+export type ProjectIconImageMediaType =
+  (typeof PROJECT_ICON_IMAGE_MEDIA_TYPES)[number];
+
+export type ProjectIconProblem =
+  | 'not-a-string'
+  | 'empty'
+  | 'glyph-too-long'
+  | 'glyph-shape'
+  | 'glyph-characters'
+  | 'image-type'
+  | 'image-encoding'
+  | 'image-too-large'
+  | 'image-signature';
+
+/** The sentence each side shows for a {@link ProjectIconProblem}. */
+export const PROJECT_ICON_PROBLEM_MESSAGES: Record<ProjectIconProblem, string> =
+  {
+    'not-a-string': 'A project icon must be text.',
+    empty: 'A project icon cannot be blank.',
+    'glyph-too-long': `Use an emoji or a symbol of at most ${PROJECT_ICON_MAX_GLYPH_LENGTH} characters.`,
+    'glyph-shape':
+      'Use an emoji or a short symbol. Links, file paths and text with /, \\ or : are not icons.',
+    'glyph-characters':
+      'Use an emoji or a symbol you can see. Hidden formatting characters are not icons.',
+    'image-type': 'Use a PNG, JPEG, WebP or ICO image.',
+    'image-encoding': 'That image could not be read.',
+    'image-too-large': `Use an image of at most ${PROJECT_ICON_MAX_IMAGE_BYTES / 1024} KB.`,
+    'image-signature': 'That file is not the image type it claims to be.',
+  };
+
+// The media type is captured loosely so that any type outside the allowed
+// list, including a differently cased one, reports `image-type`.
+const PROJECT_ICON_DATA_URL_PATTERN =
+  /^data:([^;,]*);base64,([A-Za-z0-9+/]*={0,2})$/;
+const BASE64_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+// A control character, a separator a path or URL needs, or a leading tilde.
+const GLYPH_FORBIDDEN_PATTERN = /[\p{Cc}/\\:]|^~/u;
+// Bidirectional controls (they reorder the text drawn around the icon, which
+// is how a name can be made to read as something else) and lone surrogates
+// (half an emoji, which renders as a replacement box).
+const GLYPH_HIDDEN_PATTERN =
+  /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]|\p{Cs}/u;
+// A character that draws something. Format characters (ZWJ, ZWSP, the word
+// joiner), separators, combining marks and variation selectors only modify
+// or space the characters around them, and the Hangul fillers draw blank.
+// ZWJ inside an emoji sequence passes because the emoji beside it is visible.
+const GLYPH_VISIBLE_PATTERN =
+  /[^\p{Cf}\p{Z}\p{M}\p{Cc}\p{Cs}\u115F\u1160\u3164\uFFA0]/u;
+const IMAGE_FILE_NAME_PATTERN = /\.(?:png|jpe?g|webp|ico|gif|svg)$/i;
+
+/**
+ * Whether `bytes` begin with the signature of `mediaType`. Shared with
+ * workspace artwork discovery, which checks files before offering them.
+ */
+export function projectIconSignatureMatches(
+  bytes: ArrayLike<number>,
+  mediaType: string,
+): boolean {
+  const at = (index: number) => (index < bytes.length ? bytes[index] : -1);
+  switch (mediaType) {
+    case 'image/png':
+      return [137, 80, 78, 71, 13, 10, 26, 10].every(
+        (byte, index) => at(index) === byte,
+      );
+    case 'image/jpeg':
+      return at(0) === 0xff && at(1) === 0xd8;
+    case 'image/x-icon':
+      return at(0) === 0 && at(1) === 0 && at(2) === 1 && at(3) === 0;
+    case 'image/webp': {
+      const ascii = (from: number, to: number) => {
+        let text = '';
+        for (let index = from; index < to; index += 1) {
+          text += String.fromCharCode(at(index));
+        }
+        return text;
+      };
+      return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+    }
+    default:
+      return false;
+  }
+}
+
+/** Decodes only the first bytes of a base64 payload: enough for a signature. */
+function decodeBase64Prefix(payload: string, byteCount: number): number[] {
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bits = 0;
+  for (const char of payload) {
+    if (char === '=' || bytes.length >= byteCount) break;
+    buffer = (buffer << 6) | BASE64_ALPHABET.indexOf(char);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
+    }
+  }
+  return bytes;
+}
+
+/**
+ * Why `value` is not a storable project icon, or `undefined` when it is one.
+ * An empty or absent icon is the CALLER's "no icon" (the routes read `''` and
+ * `null` as a clear); it is never passed here as an icon to store.
+ */
+export function projectIconProblem(
+  value: unknown,
+): ProjectIconProblem | undefined {
+  if (typeof value !== 'string') return 'not-a-string';
+  if (value.trim().length === 0) return 'empty';
+  if (value.startsWith('data:')) {
+    const match = PROJECT_ICON_DATA_URL_PATTERN.exec(value);
+    if (!match) return 'image-encoding';
+    const [, mediaType, payload] = match;
+    if (
+      !(PROJECT_ICON_IMAGE_MEDIA_TYPES as readonly string[]).includes(mediaType)
+    ) {
+      return 'image-type';
+    }
+    if (payload.length === 0 || payload.length % 4 !== 0) {
+      return 'image-encoding';
+    }
+    const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+    const byteLength = (payload.length / 4) * 3 - padding;
+    if (byteLength > PROJECT_ICON_MAX_IMAGE_BYTES) return 'image-too-large';
+    if (
+      !projectIconSignatureMatches(decodeBase64Prefix(payload, 12), mediaType)
+    )
+      return 'image-signature';
+    return undefined;
+  }
+  if (
+    value !== value.trim() ||
+    GLYPH_FORBIDDEN_PATTERN.test(value) ||
+    IMAGE_FILE_NAME_PATTERN.test(value)
+  ) {
+    return 'glyph-shape';
+  }
+  if (GLYPH_HIDDEN_PATTERN.test(value) || !GLYPH_VISIBLE_PATTERN.test(value)) {
+    return 'glyph-characters';
+  }
+  if (value.length > PROJECT_ICON_MAX_GLYPH_LENGTH) return 'glyph-too-long';
+  return undefined;
+}
+
+/** Whether a stored icon is an inline image (vs a glyph). Assumes it is valid. */
+export function isProjectIconImage(icon: string): boolean {
+  return icon.startsWith('data:');
+}
