@@ -4,6 +4,52 @@ Station uses one root `pnpm-lock.yaml` for its workspace. Root, SDK, and Shared
 remain separate advisory views of that graph; they no longer own independent
 npm lockfiles.
 
+## Proxy, copy, and numeric formatter advisories (2026-10)
+
+The workspace pins `proxy-addr` 2.0.8 and `fast-copy` 4.1.0. The
+[proxy advisory](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) concerns a
+remote caller spoofing `X-Forwarded-For` when a consumer configures a short
+IPv4-mapped IPv6 trust subnet. Both Express dependency branches use the pin;
+Station's trust configuration is unchanged. Version exposure does not prove
+that Station uses the vulnerable trust configuration.
+
+The [copy advisory](https://github.com/advisories/GHSA-jggr-w7fw-pc2j) concerns
+stack exhaustion from deeply nested input. `pino-pretty`, used by Station's
+logging seam, creates the copier with default options. The upstream patch
+limits traversal to 1,000 nested objects and throws `MaxDepthExceededError`, a
+`RangeError` subclass. This bounds traversal; it does not make arbitrary deep
+input succeed or establish that an unauthenticated request reaches that call.
+
+`sprintf-js` remains version 1.0.3 with a Station-owned
+[package patch](../../patches/sprintf-js-1.0.3.patch), bound through
+`patchedDependencies` and the lockfile hash. The
+[formatter advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) concerns
+attacker-controlled precision causing an uncaught numeric `RangeError`. The
+patch covers both `src/sprintf.js` and the shipped `dist/sprintf.min.js`:
+`e` and `f` precision is capped at 100; `g` precision is clamped to 1–100 on
+Station's Node 24 runtime. Supported precision and omitted-precision behavior
+stay unchanged. Unsupported precision now rounds at the bound; explicit
+`g` precision zero uses one significant digit instead of throwing. This is a
+compatibility choice for previously invalid input, not a new upstream version.
+Width, padding, parser input size, and nonnumeric type errors are outside this
+patch's scope. The Angular artifacts delegate to the formatter globals.
+
+The dependency path is VoltAgent → gray-matter → js-yaml 3 → argparse 1 →
+sprintf-js. Gray-matter uses js-yaml's library `safeLoad`/`safeDump` exports;
+that library entrypoint does not import argparse. The bundled js-yaml CLI
+does import argparse. Installed dependency reachability is broader than an
+executed Station request path; this inspection does not prove remote format
+control. Keep the legacy YAML API rather than forcing js-yaml 4, where those
+calls no longer have the same contract.
+
+The registry advisory scan may continue to report patched `sprintf-js` 1.0.3
+by version. Patch application and bounded behavior evidence do not imply a
+green advisory floor. No advisory exception, residual, baseline, or trust
+policy is changed by these repairs. The separate
+[source-map advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) is not
+addressed here. Remove the local formatter patch only after a compatible
+upstream release passes the same numeric, formatter, YAML, and CLI controls.
+
 ## Lifecycle scripts are reviewed capabilities
 
 Use `npm run dependencies:ci` for a frozen install and
