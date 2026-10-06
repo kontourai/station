@@ -506,7 +506,12 @@ then resolves it, and a `POST /api/orchestration/chat` follow-up whose
 workspace names only the child's Project continues it in its recorded
 `dispatchCanonicalCwd` (the Project folder, a folder inside it, or a
 worktree), never the Project folder instead. A follow-up that names a folder
-or an isolation meets the ordinary exact checks. When the engine has no Agent
+or an isolation meets the ordinary exact checks. A later Session of the
+conversation, started after the child's engine exited, starts in that same
+recorded folder, even a worktree outside the Project folder, only while the
+folder still resolves to the record and still passes adoption's check (the
+Project folder or a genuine worktree of its repository); otherwise it is
+refused as outside the Project. When the engine has no Agent
 on this Station, the child is created without a binding: Activity continues
 it, and the dock reports why it cannot open it.
 
