@@ -1,0 +1,9 @@
+{
+  "revision": "bb2cdc10d340be68dd46960942bbcab69e2b4cea",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#3386 Grok source: the only config.md change adds Grok to the attachedSessionsOutsideProjects row's list of followed transcripts. This review's claims cite config.md for other settings and abstractions; it does not describe that row or attached-session sources. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#3386 Grok source: the only config.md change adds Grok to the attachedSessionsOutsideProjects row's list of followed transcripts. This design's settings-ownership claims do not mention that row's engine list; no prose change.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "revision": "81119beee7ca34df36773bc6f16a79b4fb83a77d",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#3386 fix round: stale only because module-map.md gained one sentence (an adopted attached-session child records dispatchCanonicalCwd). Searched this document for dispatchCanonicalCwd and adopted-child claims; it routes to the module map and states none that change. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

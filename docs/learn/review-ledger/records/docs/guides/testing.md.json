@@ -148,7 +148,9 @@
 
     "scripts/run-vitest-corpus.mjs",
 
-    "scripts/__tests__/run-vitest-corpus.test.ts"
+    "scripts/__tests__/run-vitest-corpus.test.ts",
+
+    "scripts/__tests__/windows-resource-staging.test.ts"
   ],
 
   "checks": [

@@ -1146,7 +1146,9 @@ such as a worktree, is not substituted. The admitted canonical path is written
 to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
 value is removed first. Recovery and the credential-profile restart compare
 the re-resolved folder with that record before starting an engine, and a
-continuation child in the same folder inherits it. The refusal reaches the
+continuation child in the same folder inherits it. An adopted attached-session
+child (Continue in Station, #3386) records its resolved folder the same way,
+so its recovery gets the same comparison. The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
