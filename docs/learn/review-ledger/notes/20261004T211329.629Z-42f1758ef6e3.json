@@ -1,0 +1,7 @@
+{
+  "revision": "5bf327aa857df75444a899abc77796496053206b",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Checked: only the source-path reference form changed (split multi-range refs; ranges re-verified against PairedDevicesPanel.tsx and environment.ts after merging main); OPERATOR_CREDENTIAL_OFF_HOST_LOG_MESSAGE made module-private with no behavior change; planned files the doc names are allowlisted in the docs reference gate.","inputs":["docs/design/operator-device-access.md","packages/cli/src/commands/lifecycle.ts","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","src-desktop/src/lib.rs","src-server/runtime/consent/consent-listener.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/host-operator-credential.ts"]}
+  ]
+}

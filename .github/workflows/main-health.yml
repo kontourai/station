@@ -1,17 +1,18 @@
-name: Main pipeline health
+name: "Main: Health"
 
 on:
   workflow_run:
     # Self-exclusion is by omission: watching this workflow would recurse.
     workflows:
-      - Nightly
-      - Container smoke
-      - Secret Scan
-      - Scheduled dependency advisory floor
-      # Chained: Android Tests is itself a workflow_run of the Android build
+      - "Nightly"
+      - "Main: Qualification health"
+      - "Main: Container smoke"
+      - "PR: Secret scan"
+      - "Repo: Dependency advisory"
+      # Chained: Main: Android tests is itself a workflow_run of the Android build
       # (two levels, within GitHub's limit of three). Its green runs have no
       # skipped jobs, so the close guard below can clear its tracker (#1315).
-      - Android Tests
+      - "Main: Android tests"
     types: [completed]
 
 permissions:

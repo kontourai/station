@@ -1,4 +1,4 @@
-name: Internal iOS TestFlight cohort
+name: "Release: Internal TestFlight cohort"
 
 # This is intentionally a dispatch-only iOS/TestFlight entrypoint. It does not
 # call release.yml or any desktop, package, container, GitHub Release, updater,

@@ -129,11 +129,9 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
-import {
-  appHomeActive,
-  connectionSpawnEnv,
-} from '../../services/connections/connection-env.js';
+import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
@@ -841,11 +839,12 @@ export class StationRuntime {
     // byte-identical spawn env. Lazy-captured posture identical to
     // `getAppHomeEnv` above: only invoked at spawn time, well after
     // construction.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.claude?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'claude',
+        config.agentConnections?.claude?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
@@ -940,11 +939,12 @@ export class StationRuntime {
     // station#2072: codex counterpart of claudeAdapter's getConnectionEnv
     // closure above — same sanitization, same lazy capture, `CODEX_HOME`
     // as the config-home key.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.codex?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'codex',
+        config.agentConnections?.codex?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // archive#1195: the wire-safe substitution for the built-in

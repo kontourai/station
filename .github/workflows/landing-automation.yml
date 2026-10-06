@@ -1,11 +1,11 @@
-name: Landing automation
+name: "Repo: Landing automation"
 
 on:
   pull_request_target:
     branches: [main]
     types: [labeled, ready_for_review, reopened]
   workflow_run:
-    workflows: [CI]
+    workflows: ["PR: CI"]
     types: [completed]
 
 permissions:
@@ -42,6 +42,7 @@ jobs:
           repositories: station
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write
       - name: Arm explicitly opted-in PRs once
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}

@@ -24,7 +24,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
-| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
+| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
@@ -583,7 +583,13 @@ Their absence means the task runs on this Station, or the server predates them.
 Station's checks on the delegated `respond` route. Both are additive and
 optional; neither feeds the local request routes. The source is
 `OrchestrationDelegationContext.peerPendingRequest` on the orchestration
-subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
+subpath, copied from the paired Station's status read and never derived here.
+With the `delegatedInputAnswers` capability (`StationCapabilityFlags` on the
+environment-security subpath) the reference also carries the paired Station's
+`threadId`, `requestEventId` and `callerCanRespond`, and
+`OrchestrationPeerPendingRequest` the matching `eventId`, `threadId`, `body`
+and `callerCanRespond`. All are optional; their absence means an older Station
+or no report, and clients then offer no bound answer. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)

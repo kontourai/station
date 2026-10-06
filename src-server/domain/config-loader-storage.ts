@@ -18,6 +18,7 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
 import { IntegrationIconAssets } from '../services/plugins/integration-icon-assets.js';
 import {
+  removePrincipalToolServerCredentials,
   ToolServerCredentialStore,
   toolServerIntegrationMutationLockPath,
 } from '../services/plugins/tool-server-credential-store.js';
@@ -309,6 +310,8 @@ export async function deleteIntegrationConfig(
     }
     const store = new ToolServerCredentialStore(projectHomeDir);
     await store.removeServer(id);
+    // #3279: people's own connected accounts for this server go with it.
+    await removePrincipalToolServerCredentials(projectHomeDir, id);
   } finally {
     await release();
   }

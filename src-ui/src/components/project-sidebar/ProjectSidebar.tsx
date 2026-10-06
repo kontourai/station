@@ -31,6 +31,7 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
@@ -207,6 +208,7 @@ function ProjectSidebarImpl() {
   );
   // The one project-colour allocation every surface shares.
   const accentBySlug = useProjectAccents();
+  const iconBySlug = useProjectIcons();
   const projectSlugs = useMemo(
     () => projects.map((project) => project.slug),
     [projects],
@@ -478,6 +480,8 @@ function ProjectSidebarImpl() {
                     items: recentTasks,
                     workFacts: openChatFacts,
                     now: openChatsNow,
+                    projectAccentBySlug: accentBySlug,
+                    projectIconBySlug: iconBySlug,
                     onActivate: (task) => {
                       openChatsStore.focus({
                         sessionId: chatTaskSessionId(task),

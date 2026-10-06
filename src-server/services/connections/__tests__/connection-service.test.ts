@@ -902,6 +902,86 @@ describe('ConnectionService', () => {
     });
   });
 
+  test('resolves engine identities per Adapter without a live inspection (#3355)', async () => {
+    const getPrerequisites = vi.fn(async () => []);
+    // A plugin Adapter whose metadata accessor throws: it loses only its own
+    // identity, where the live inspection loses everyone's.
+    const broken = { provider: 'muse' };
+    Object.defineProperty(broken, 'metadata', {
+      get: () => {
+        throw new Error('plugin metadata unavailable');
+      },
+    });
+    const registry: AgentRegistry = {
+      version: 2,
+      revision: 0,
+      engineConnections: ['codex-cli', 'muse', 'kiro'].map((id) => ({
+        id: engineConnectionId(id),
+      })),
+      defaultAgents: [],
+    };
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () =>
+        [
+          {
+            provider: 'codex',
+            metadata: {
+              displayName: 'Codex',
+              description: 'runtime',
+              capabilities: ['agent-runtime'],
+              engineId: 'codex',
+              // The public id differs from the engine id; attribution keys on
+              // the public connection id an Agent binds.
+              connectionId: 'codex-cli',
+            },
+            getPrerequisites,
+          },
+          broken,
+          {
+            provider: 'claude',
+            metadata: {
+              displayName: 'Claude Code',
+              description: 'runtime',
+              capabilities: ['agent-runtime'],
+              engineId: 'claude',
+            },
+            getPrerequisites,
+          },
+        ] as any,
+      async () => [
+        { id: 'kiro', name: 'Kiro', command: 'kiro', enabled: true },
+        { id: 'not registered', name: 'Bad', command: 'x', enabled: true },
+      ],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(),
+      undefined,
+      undefined,
+      [],
+      undefined,
+      { load: async () => registry, register: vi.fn(), unregister: vi.fn() },
+    );
+
+    await expect(service.listRuntimeConnections()).rejects.toThrow(
+      'Runtime capability inspection unavailable',
+    );
+    getPrerequisites.mockClear();
+
+    await expect(service.listEngineConnectionIdentities()).resolves.toEqual([
+      { id: 'codex-cli', engineId: 'codex', type: 'codex' },
+      // `claude` is not registered, so it has no public connection.
+      { id: 'kiro', engineId: 'acp', type: 'acp' },
+    ]);
+    // Static: no Adapter probe ran.
+    expect(getPrerequisites).not.toHaveBeenCalled();
+  });
+
   test('reports the active launchable inventory without exposing connection secrets', async () => {
     const providerService = {
       listProviderConnections: vi.fn(() => [
@@ -2857,6 +2937,67 @@ describe('ConnectionService', () => {
       agentConnections: {},
     });
     expect(unregister).toHaveBeenCalledWith('claude');
+  });
+
+  test('a deliberate connection check can recover from a retained authentication failure, but never skips a missing CLI', async () => {
+    let prerequisites = [
+      {
+        id: 'codex-auth',
+        name: 'Codex login',
+        description: 'Sign in',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    const adapter = {
+      provider: 'codex',
+      metadata: {
+        displayName: 'Codex',
+        description: 'Codex',
+        capabilities: ['agent-runtime'],
+        builtin: true,
+        modelLaunch: { defaultAtStart: 'engine-selected' },
+      },
+      getPrerequisites: async () => prerequisites,
+      listModels: async () => [],
+    };
+    const service = createConnectionServiceForTest(
+      { listProviderConnections: () => [] } as any,
+      () => [adapter] as any,
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({ defaultModel: 'gpt-6.1-sol' }) as any,
+      vi.fn(),
+      {
+        getFailure: () => ({
+          provider: 'codex',
+          observedAt: '2026-09-30T00:00:00Z',
+          expiresAt: '2026-09-30T00:01:00Z',
+        }),
+        dispose: vi.fn(),
+      } as any,
+    );
+    const runner = vi.fn().mockResolvedValue({ ok: true, durationMs: 10 });
+    service.setSmokeRunner(runner);
+    const recovered = await service.smokeConnection('codex', {
+      confirmed: true,
+    });
+    expect(recovered.smoke.status, JSON.stringify(recovered)).toBe('passed');
+    expect(runner).toHaveBeenCalledTimes(1);
+    prerequisites = [
+      {
+        id: 'codex-cli',
+        name: 'Codex CLI',
+        description: 'Install',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    expect(
+      (await service.smokeConnection('codex', { confirmed: true })).smoke
+        .reasonCode,
+    ).toBe('missing-prerequisites');
+    expect(runner).toHaveBeenCalledTimes(1);
   });
 
   test('persists a confirmed one-turn smoke without upgrading untested inventory', async () => {

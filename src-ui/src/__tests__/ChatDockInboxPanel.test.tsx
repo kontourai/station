@@ -15,6 +15,8 @@ import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildOrchestrationItems } from '../views/home/home-view-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 const NOW = Date.parse('2026-07-27T18:00:00Z');
 
@@ -714,6 +716,31 @@ describe('ChatDockInboxPanel', () => {
       '2020-06-15T12:00:00.000Z',
     );
     expect(onOpenSession).not.toHaveBeenCalled();
+  });
+
+  it('opens a paired-Station record in Activity and opens no chat on the peer conversation', async () => {
+    const onOpenConversation = vi.fn().mockResolvedValue(true);
+    const onOpenSession = vi.fn();
+    const [peerItem] = buildOrchestrationItems(
+      [peerRecordSummary({ displayTitle: 'Verify on the peer' })] as never,
+      [],
+    );
+    renderPanel({
+      items: [peerItem],
+      activeChatSessionId: null,
+      openChatSessionIds: [],
+      onOpenConversation,
+      onOpenSession,
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Verify on the peer/ }),
+    );
+
+    await waitFor(() =>
+      expect(onOpenSession).toHaveBeenCalledWith('peer-delegation:abc'),
+    );
+    expect(onOpenConversation).not.toHaveBeenCalled();
   });
 
   it('opens session details and identifies outside work when Station cannot rehydrate', () => {

@@ -1,4 +1,4 @@
-name: Deliver iOS TestFlight channel
+name: "Release: TestFlight delivery"
 
 # One source-owned delivery path for all three separately installed iOS apps.
 # Callers bind source_sha and both versions before this workflow starts; this

@@ -25,6 +25,7 @@ import { openChatsStore } from '../contexts/open-chats-store';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // #928: Activity has no route left, so every Home affordance that used to
 // navigate to `{ type: 'activity' }` now reveals the region surface instead.
@@ -1187,6 +1188,30 @@ describe('HomeView', () => {
       session: 'attached-thread',
     });
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  // A delegated task running on a PAIRED Station: this Station holds only its
+  // lifecycle record, whose agent slug and conversation id are the peer's.
+  // Continuing it opens the Activity detail (where its request can be
+  // answered on the paired Station), never a local chat on the peer's ids.
+  test('opens a paired-Station record in Activity instead of rehydrating a chat', () => {
+    fixtures.sessions = [peerRecordSummary() as never];
+    const onNavigate = vi.fn();
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    renderHomeView({ continuation: null, onNavigate });
+
+    fireEvent.click(continueRow());
+
+    expect(focus).not.toHaveBeenCalled();
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'peer-delegation:abc',
+    });
+    expect(onNavigate).not.toHaveBeenCalled();
+    unregister();
   });
 
   test('does not show a false empty state while orchestration sessions load and Tasks are empty', () => {

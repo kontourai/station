@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import {
   bootPayloadSectionErrors,
   bootPayloadServed,
@@ -6,14 +6,17 @@ import {
 
 const BOOT_PAYLOAD_VERSION = 1;
 
+/** Each provider receives the boot request, so a section can answer per caller. */
+type BootSection = (c: Context) => Promise<unknown>;
+
 export interface BootPayloadProviders {
-  auth: () => Promise<unknown>;
-  config: () => Promise<unknown>;
-  capabilities: () => Promise<unknown>;
-  branding: () => Promise<unknown>;
-  agents: () => Promise<unknown>;
-  projects: () => Promise<unknown>;
-  models: () => Promise<unknown>;
+  auth: BootSection;
+  config: BootSection;
+  capabilities: BootSection;
+  branding: BootSection;
+  agents: BootSection;
+  projects: BootSection;
+  models: BootSection;
 }
 
 /** A best-effort, cache-seeding read: no individual section can block boot. */
@@ -23,7 +26,7 @@ export function createBootRoutes(providers: BootPayloadProviders) {
     const entries = await Promise.all(
       Object.entries(providers).map(async ([name, read]) => {
         try {
-          return [name, { data: await read() }] as const;
+          return [name, { data: await read(c) }] as const;
         } catch {
           bootPayloadSectionErrors.add(1, { section: name });
           return [name, { error: true }] as const;

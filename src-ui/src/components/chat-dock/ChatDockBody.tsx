@@ -1994,9 +1994,14 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
-            agentLabel={
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
-            }
+            agentLabel={[
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug,
+              activeOrchestrationSession?.modelRoute
+                ? `via ${activeOrchestrationSession.modelRoute.label}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             onOpenAgentHandoff={
               onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
             }

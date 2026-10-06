@@ -177,6 +177,116 @@ The runner requires a clean linked worktree, takes an exclusive lock, owns the t
 
 The mutation suite is deliberately focused and opt-in. Its runner safety and policy catch tests run in ordinary focused verification; the application mutations themselves are not injected during general CI or while another process owns the worktree.
 
+## Actions workflow inventory
+
+The sidebar names below describe the primary trigger or delivery family.
+`PR:` checks can also run on main pushes; `Main:` qualification is scheduled
+on main every six hours. `Repo:` identifies housekeeping even when scheduled
+or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
+maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
+Schedules below are cron expressions in UTC; path filters and job admission
+still apply. Renaming a workflow does not change its required job contexts.
+
+Reusable workflows inherit their caller family when it is shared. Two have
+callers in several families: `Main: Full qualification` serves main, Nightly,
+release and manual PR CI qualification; `Release: TestFlight delivery` serves
+release, Nightly and the internal TestFlight tool. Their names describe their
+shared authority rather than implying one exclusive caller. Portable archives
+also serve release/Nightly callers alongside their direct PR/main triggers.
+
+| Workflow file | Previous sidebar name | Sidebar name | When it runs |
+| --- | --- | --- | --- |
+| [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
+| [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
+| [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
+| [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
+| [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
+| [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
+| [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
+| [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
+| [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
+| [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
+| [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
+| [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
+| [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
+| [`docs-freshness-sweep.yml`](../../.github/workflows/docs-freshness-sweep.yml) | Documentation freshness sweep | **Repo: Docs freshness sweep** | UTC schedule: `37 5 * * *`; manual dispatch. |
+| [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
+| [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
+| [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events. |
+| [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | PR events (path filtered); manual dispatch. |
+| [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
+| [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
+| [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
+| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
+| [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
+| [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
+| [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
+| [`nightly-gallery.yml`](../../.github/workflows/nightly-gallery.yml) | Nightly gallery | **Nightly: Gallery** | UTC schedule: `30 7 * * *`; manual dispatch. |
+| [`nightly-native-cohort.yml`](../../.github/workflows/nightly-native-cohort.yml) | Nightly native cohort | **Nightly: Native cohort** | reused by `Nightly`. |
+| [`nightly-native-stage.yml`](../../.github/workflows/nightly-native-stage.yml) | Nightly native staging | **Nightly: Native staging** | reused by `Nightly`. |
+| [`nightly.yml`](../../.github/workflows/nightly.yml) | Nightly | **Nightly** | UTC schedule: `43 6 * * *`; manual dispatch. |
+| [`node-pty-prebuilds.yml`](../../.github/workflows/node-pty-prebuilds.yml) | node-pty Linux prebuilds | **Tool: node-pty prebuilds** | manual dispatch. |
+| [`pages.yml`](../../.github/workflows/pages.yml) | GitHub Pages | **Main: Pages** | main pushes (path filtered); manual dispatch. |
+| [`portable-nightly-publish.yml`](../../.github/workflows/portable-nightly-publish.yml) | Portable server Nightly publication | **Nightly: Portable publication** | reused by `Nightly`; manual dispatch. |
+| [`portable-server-archives.yml`](../../.github/workflows/portable-server-archives.yml) | Portable server archives | **PR: Portable archives** | PR events (path filtered); main pushes (path filtered); reused by `Nightly: Portable publication`; manual dispatch. |
+| [`pr-duplicate-sweep.yml`](../../.github/workflows/pr-duplicate-sweep.yml) | PR duplicate sweep | **Repo: Duplicate sweep** | UTC schedule: `27 */6 * * *`; manual dispatch. |
+| [`publish-packages.yml`](../../.github/workflows/publish-packages.yml) | Publish Packages | **Main: Publish packages** | main pushes; manual dispatch. |
+| [`publish-release.yml`](../../.github/workflows/publish-release.yml) | Publish Station release | **Release: Publish** | manual dispatch. |
+| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
+| [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
+| [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
+| [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
+| [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
+| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
+| [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
+| [`starved-pr-report.yml`](../../.github/workflows/starved-pr-report.yml) | Starved pull request report | **Repo: Starved PR report** | UTC schedule: `17 * * * *`; manual dispatch. |
+| [`testflight-delivery.yml`](../../.github/workflows/testflight-delivery.yml) | Deliver iOS TestFlight channel | **Release: TestFlight delivery** | reused by `Nightly: Native cohort`, `Nightly: Native staging`, `Release: Stage`, `Release: Internal TestFlight cohort`. |
+| [`windows-pr-verification.yml`](../../.github/workflows/windows-pr-verification.yml) | Windows PR Verification | **PR: Windows** | PR events; merge queue. |
+| [`windows-vitest-diagnostic.yml`](../../.github/workflows/windows-vitest-diagnostic.yml) | Windows Full Vitest Diagnostic | **Tool: Windows full vitest diagnostic** | manual dispatch. |
+
+### Retirement candidates for owner review
+
+These are candidates, not retirement decisions. No workflow was deleted,
+disabled or re-enabled. The seven-day counts are the dated inventory in
+[epic #3101's latest inventory comment](https://github.com/kontourai/station/issues/3101),
+ending 2026-10-03; zero recent runs does not prove a reusable or release
+workflow is obsolete. Disabled state was checked through the Actions REST API.
+
+| Candidate | Reason / decision needed |
+| --- | --- |
+| `Tool: CI extended` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `PR: Advisory review` | Disabled manually; review admission/cost before any re-enable (slice I). |
+| `Main: Full qualification` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
+| `Tool: Interactive workspace performance` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `Release: Internal TestFlight cohort` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `Tool: Native store preflight` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `Nightly: Fleet staging` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
+| `Nightly: Native cohort` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
+| `Nightly: Native staging` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
+| `Tool: node-pty prebuilds` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `Nightly: Portable publication` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
+| `Release: Publish` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `Tool: Recover terminal capacity owner` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+| `Release: Stage` | Zero runs in the dated seven-day inventory; confirm continued need. |
+| `Release: TestFlight delivery` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
+| `Tool: Windows full vitest diagnostic` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
+
+The hosted inventory also lists **Debug SARIF capture** as disabled with zero
+recent runs, but `debug-sarif-capture.yml` is absent from this checkout. It needs
+an owner decision in hosted settings, not a source rename. GitHub-generated
+**Dependabot Updates**, **Dependency Graph**, and **pages-build-deployment**
+are provider-managed entries, not checked-in workflows; leave their names to
+GitHub.
+
+The workflow contract test parses every checked-in `workflow_run.workflows`
+reference against the current top-level names. It protects downstream triggers
+from silently going dormant after a rename; job names and filenames remain
+separate identities.
+
 ## CI health history
 
 [`scripts/ci-health.mjs`](../../scripts/ci-health.mjs) recomputes the capacity
@@ -203,7 +313,7 @@ comments into a trend table; `--json` also works for history.
 | Measure | Definition |
 | --- | --- |
 | Merge groups built, failed, failure rate | Distinct queue branches across workflows; a group fails if any workflow run attempt concludes `failure`. Groups with cancelled or timed-out runs have separate counts (which may overlap failed groups). Rate divides failed groups by all built groups, including unfinished groups. |
-| Integration failures and duration | Failed groups containing the legacy required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled `Merge integration` or historical `Merge-queue regression` workflow attempts (`run_started_at` to `updated_at`, including runner waits), not the short aggregator job. |
+| Integration failures and duration | Failed groups containing the legacy required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled `PR: Merge integration` or historical `Merge integration` / `Merge-queue regression` workflow attempts (`run_started_at` to `updated_at`, including runner waits), not the short aggregator job. |
 | PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; `removed_from_merge_queue` events by actor login `github-merge-queue[bot]` for those PRs inside the window. Other bot actors are excluded. Removals within one minute of a merge are excluded. |
 | Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit or `head_ref_force_pushed` event in between, versus neither event followed by merge without another failed removal. Timeline `created_at` decides event order when present. A commit without event time falls back to committer date, then author date; if neither exists, it cannot establish an intervening change. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
 | Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
@@ -211,7 +321,7 @@ comments into a trend table; `--json` also works for history.
 | Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
-| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. |
+| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
 Runs are selected by creation time in the half-open window; all job durations
 and available attempts for those runs are counted, even when completion lies
@@ -359,7 +469,7 @@ shards and additionally runs Android viewport tests. Scheduled main qualificatio
 daily Nightly, and tagged Preview/Stable use that authority. Promotion requires
 success, with bounded exact-source reuse; native Nightly staging can run alongside
 qualification but cannot publish before it passes. See [the release process](releasing.md). A
-manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 The full Vitest corpus is phase-attested there, separately from the fast
 feedback loop.
 
@@ -393,7 +503,7 @@ npm run test:e2e:screenshot -- --screens=home,agents  # targeted capture — onl
 npm run screenshot:baseline       # write tests/screenshots.baseline.json from a completed gallery run
 npm run screenshot:diff           # compare a completed gallery run against the committed baseline
 npm run verify:e2e:full           # public coordinated E2E escalation across all buckets plus Android
-npm run sync:e2e:latest            # install newest compatible CI Extended E2E projection locally
+npm run sync:e2e:latest            # install newest compatible Tool: CI extended E2E projection locally
 npm run test:e2e:product -- --spec=tests/foo.spec.ts          # focused spec with the canonical lifecycle
 npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # focused test name
 npm run test:connected-agents         # focused connected-agents server suite
@@ -522,7 +632,7 @@ PASS/FAIL/EMPTY verdicts, and bounded inventory; open
 screenshot bucket replaces stale green evidence truthfully. CI artifacts cannot
 modify a checkout themselves: run `npm run sync:e2e:latest` (or pass
 `-- --run-id <id>` / `-- --status <conclusion>`) to download and validate the
-latest compatible completed CI Extended artifact. Never paste the directory's
+latest compatible completed Tool: CI extended artifact. Never paste the directory's
 image bytes or broad logs into agent context. For a change that alters rendered
 UI, inspected before/after screenshots belong in the pull request body itself;
 CI artifacts, logs, or local files alone do not establish a visual claim.
@@ -1238,14 +1348,14 @@ changing fleet labels or adding a capacity-leased workflow.
 
 ### Merge integration (required)
 
-The `Merge integration` workflow retains the legacy required context
+The `PR: Merge integration` workflow retains the legacy required context
 `Merge-queue regression` for ruleset compatibility. It checks the combined
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 The merge path does not run the full corpus.
 
-[Main qualification](../../.github/workflows/main-qualification.yml) runs every
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
 six hours outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
