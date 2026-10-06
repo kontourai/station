@@ -83,6 +83,32 @@ describe('mcpElicitationFormFromRequest', () => {
   });
 });
 
+describe('readMcpElicitationForm', () => {
+  test.each([
+    { kind: 'string', format: 'password' },
+    { kind: 'string', minLength: -1 },
+    { kind: 'string', default: 42 },
+    { kind: 'integer', minimum: Number.POSITIVE_INFINITY },
+    { kind: 'number', default: '42' },
+    { kind: 'boolean', default: 'yes' },
+    { kind: 'choice', options: [] },
+    { kind: 'choice', options: [{ value: 'a', label: 42 }] },
+    { kind: 'choice', options: [{ value: 'a' }, { value: 'a' }] },
+    { kind: 'choice', options: [{ value: 'a' }], default: 'b' },
+    { kind: 'multi-choice', options: [{ value: 'a' }], minItems: 1.5 },
+    { kind: 'multi-choice', options: [{ value: 'a' }], default: ['b'] },
+    { kind: 'object' },
+  ])('refuses malformed stored field %j', (field) => {
+    expect(
+      readMcpElicitationForm({
+        serverId: 'fixture',
+        message: 'Question',
+        fields: [{ name: 'answer', required: false, ...field }],
+      }),
+    ).toBeNull();
+  });
+});
+
 describe('validateMcpElicitationContent', () => {
   test('accepts valid content without changing it', () => {
     const content = {
