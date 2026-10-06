@@ -2939,6 +2939,67 @@ describe('ConnectionService', () => {
     expect(unregister).toHaveBeenCalledWith('claude');
   });
 
+  test('a deliberate connection check can recover from a retained authentication failure, but never skips a missing CLI', async () => {
+    let prerequisites = [
+      {
+        id: 'codex-auth',
+        name: 'Codex login',
+        description: 'Sign in',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    const adapter = {
+      provider: 'codex',
+      metadata: {
+        displayName: 'Codex',
+        description: 'Codex',
+        capabilities: ['agent-runtime'],
+        builtin: true,
+        modelLaunch: { defaultAtStart: 'engine-selected' },
+      },
+      getPrerequisites: async () => prerequisites,
+      listModels: async () => [],
+    };
+    const service = createConnectionServiceForTest(
+      { listProviderConnections: () => [] } as any,
+      () => [adapter] as any,
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({ defaultModel: 'gpt-6.1-sol' }) as any,
+      vi.fn(),
+      {
+        getFailure: () => ({
+          provider: 'codex',
+          observedAt: '2026-09-30T00:00:00Z',
+          expiresAt: '2026-09-30T00:01:00Z',
+        }),
+        dispose: vi.fn(),
+      } as any,
+    );
+    const runner = vi.fn().mockResolvedValue({ ok: true, durationMs: 10 });
+    service.setSmokeRunner(runner);
+    const recovered = await service.smokeConnection('codex', {
+      confirmed: true,
+    });
+    expect(recovered.smoke.status, JSON.stringify(recovered)).toBe('passed');
+    expect(runner).toHaveBeenCalledTimes(1);
+    prerequisites = [
+      {
+        id: 'codex-cli',
+        name: 'Codex CLI',
+        description: 'Install',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    expect(
+      (await service.smokeConnection('codex', { confirmed: true })).smoke
+        .reasonCode,
+    ).toBe('missing-prerequisites');
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
   test('persists a confirmed one-turn smoke without upgrading untested inventory', async () => {
     const providerService = {
       listProviderConnections: vi.fn(() => []),

@@ -70,7 +70,10 @@ Open the terminal Session in **Activity**, then choose **Continue in Station**.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has
 observed; wait for a completed turn if the action is disabled. Station also
-shows a reason when the engine or source configuration is unavailable.
+shows a reason when the engine or source configuration is unavailable, and
+when the Session's folder is inside no Project folder: Activity files a
+worktree Session under its Project by repository and lists others under
+**No project**, but continuation resolves the Project by folder only.
 
 An attached terminal Session stays read only. The first eligible **Continue in
 Station** action launches the bounded `continue-session` Starter: Station

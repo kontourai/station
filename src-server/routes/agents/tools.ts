@@ -8,7 +8,7 @@ import {
   mcpToolDisabled,
   originalMcpToolName,
 } from '@kontourai/station-shared/mcp-tool-selection';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import {
   markIntegrationEnabledExplicit,
   wasIntegrationEnabledExplicit,
@@ -26,6 +26,7 @@ import {
   MCPServerDisabledError,
   type MCPService,
   MCPToolDisabledError,
+  type ToolServerAccountActor,
 } from '../../services/plugins/mcp-service.js';
 import {
   integrationIconAssetReads,
@@ -104,6 +105,13 @@ export interface McpUiCallDeps {
     arguments: Record<string, unknown>;
     request: Request;
   }) => Promise<unknown | undefined>;
+  /**
+   * #3279: the calling request's own `PrincipalRef.id` for connected-account
+   * actions, when that principal may own an account (the same id an
+   * authorized turn records as its session owner). `undefined` otherwise; a
+   * person-owned integration then refuses rather than guessing.
+   */
+  resolveAccountPrincipalId?: (c: Context) => string | undefined;
 }
 
 /**
@@ -200,6 +208,29 @@ export function createToolRoutes(
   const iconAssets =
     mcpUiCallDeps.integrationIconAssets ??
     new IntegrationIconAssets(resolveHomeDir());
+
+  /**
+   * The caller as a connected-account actor. Only the principal comes from
+   * request authority; the body may choose `owner` and a narrowing Project.
+   */
+  function accountActor(
+    c: Context,
+    body: Record<string, unknown> = {},
+  ): ToolServerAccountActor | undefined {
+    const principalId = mcpUiCallDeps.resolveAccountPrincipalId?.(c);
+    if (!principalId) return undefined;
+    const owner = body.owner;
+    if (owner !== undefined && owner !== 'self' && owner !== 'instance')
+      throw new Error('owner must be self or instance');
+    const projectSlug = body.projectSlug;
+    if (projectSlug !== undefined && typeof projectSlug !== 'string')
+      throw new Error('projectSlug must be a string');
+    return {
+      principalId,
+      ...(owner ? { owner } : {}),
+      ...(projectSlug ? { projectSlug } : {}),
+    };
+  }
 
   async function persistAndActivate(
     id: string,
@@ -792,7 +823,10 @@ export function createToolRoutes(
   app.post('/:id/reconnect', async (c) => {
     try {
       toolDefinitionOps.add(1, { op: 'reconnect' });
-      const def = await mcpService.probeIntegration(param(c, 'id'));
+      const def = await mcpService.probeIntegration(
+        param(c, 'id'),
+        accountActor(c),
+      );
       if (def.enabled !== false) await reinitialize();
       return c.json({ success: true, data: integrationReadProjection(def) });
     } catch (error: unknown) {
@@ -828,10 +862,14 @@ export function createToolRoutes(
     try {
       const body = (await c.req.json().catch(() => ({}))) as {
         mode?: unknown;
-      };
+      } & Record<string, unknown>;
       if (body.mode !== 'local' && body.mode !== 'remote')
         throw new Error('mode must be local or remote');
-      const data = await mcpService.startOAuth(param(c, 'id'), body.mode);
+      const data = await mcpService.startOAuth(
+        param(c, 'id'),
+        body.mode,
+        accountActor(c, body),
+      );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -842,14 +880,46 @@ export function createToolRoutes(
     try {
       const body = (await c.req.json().catch(() => ({}))) as {
         callbackUrl?: unknown;
-      };
+      } & Record<string, unknown>;
       if (typeof body.callbackUrl !== 'string')
         throw new Error('callbackUrl must be a string');
       const def = await mcpService.finishOAuth(
         param(c, 'id'),
         body.callbackUrl,
+        accountActor(c, body),
       );
+      // A person's first connection may record the tool catalog Agents load
+      // that integration's tools from; reload so they appear.
+      if (def.credentialOwnership && def.enabled !== false)
+        await reinitialize().catch(() => undefined);
       return c.json({ success: true, data: integrationReadProjection(def) });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  // #3279: the caller's own account state (owner and availability only).
+  app.get('/:id/account', async (c) => {
+    try {
+      const projectSlug = c.req.query('projectSlug');
+      const data = await mcpService.getAccountStatus(
+        param(c, 'id'),
+        accountActor(c, projectSlug ? { projectSlug } : {}),
+      );
+      return c.json({ success: true, data });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  app.delete('/:id/account', async (c) => {
+    try {
+      const projectSlug = c.req.query('projectSlug');
+      const data = await mcpService.disconnectAccount(
+        param(c, 'id'),
+        accountActor(c, projectSlug ? { projectSlug } : {}),
+      );
+      return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

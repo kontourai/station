@@ -1533,6 +1533,22 @@
               }
             },
             "additionalProperties": false
+          },
+          "credentialOwnership": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "type": "string",
+                "const": "principal"
+              },
+              "allowInstanceFallback": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "owner"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1647,6 +1663,22 @@
                 "type": "number"
               }
             },
+            "additionalProperties": false
+          },
+          "credentialOwnership": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "type": "string",
+                "const": "principal"
+              },
+              "allowInstanceFallback": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "owner"
+            ],
             "additionalProperties": false
           }
         },
