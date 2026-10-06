@@ -105,10 +105,10 @@ function createServer() {
     },
     async (_args, ctx) => {
       if (legacy) {
-        const result = await ctx.mcpReq.elicitInput({
-          mode: 'form',
-          ...DETAILS_REQUEST,
-        });
+        // A refused elicitation throws; it still ends this call.
+        const result = await ctx.mcpReq
+          .elicitInput({ mode: 'form', ...DETAILS_REQUEST })
+          .finally(reported);
         return report(result.action, result.content);
       }
       const view = inputResponse(ctx.mcpReq.inputResponses, 'details');
