@@ -525,7 +525,7 @@ function installRemoteStationFetch(
   remoteFixture.ssh = {
     profile: {
       id: 'profile-1',
-      name: 'Brian media',
+      name: 'Home media',
       environmentId: 'environment-remote',
       remoteHome:
         discovery && 'remoteHome' in discovery
@@ -1071,7 +1071,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     const handle = delegationHandle({
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -2274,7 +2274,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       status: 'dispatched',
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -2323,7 +2323,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       status: 'running',
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },

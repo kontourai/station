@@ -413,10 +413,10 @@ The remaining controls are defined by
   and discard a Draft; it is not a general Session deletion.
 
 The other lifecycle controls are `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
-`alreadyAdopted: true`),
+`alreadyAdopted: true`; `target` is described below),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
 
@@ -459,8 +459,52 @@ following unattributed transcripts from the next poll, already listed ones
 included; it deletes no imported event, search entry or read grant. A hosted runtime
 (`STATION_HOSTED_TENANT_REGISTRY_FILE` set) never follows unattributed
 transcripts. It does follow attributed ones, but without a tenant binding no
-account can read them. `adoptSession` resolves the Project by working directory only, so
-it refuses a transcript attributed by repository or not at all.
+account can read them.
+
+`adoptSession` decides where the child runs from the transcript's cwd at
+adoption time, not from the stored attribution
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)).
+The cwd must still exist as a directory; it is symlink-resolved and attributed
+again with `resolveAttachedSessionProject` and a fresh repository lookup, and
+checked once more just before the engine is started. The child's cwd is always
+that resolved folder, and the engine is confined to it under the request's
+`workspace`/`host` grant as for any adoption. Station never relocates a
+conversation to another folder.
+
+- Attributed (by folder, or by repository from a worktree outside the Project
+  folder): the child records the Project's `projectSlug` and `localProjectId`.
+  `target` may be omitted or `{ kind: 'project', projectSlug }` naming that
+  same Project; `{ kind: 'own-folder' }` is refused.
+- Ambiguous: refused, naming the candidates.
+- Unattributed: refused unless `target` is `{ kind: 'own-folder' }`, which
+  creates a No project child (no `projectSlug`) confined to the cwd. That is
+  refused on a hosted runtime. Otherwise the resolved cwd must be strictly
+  inside the resolved home folder (`noProjectFolderRefusal`), and not inside a
+  dot-folder directly under home (every one, not a list of credential
+  stores), `~/Library` or `~/AppData`, not the system temporary folder or a
+  folder containing it, and not overlapping the Station runtime home. The
+  recorded cwd must not reach its folder through a symbolic link inside the
+  home folder, so the folder the person confirmed is the one the child runs
+  in. A different letter case or Unicode normalization of the same folder,
+  and links above the home folder (a linked or automounted home), are
+  accepted. Every refusal message names no path.
+  `{ kind: 'project', projectSlug }` is refused, because the cwd is not part of
+  any Project.
+
+Every adopted child records its resolved folder as
+`dispatchCanonicalCwd`, so a later engine start for it (a restart's
+recovery) refuses a folder that no longer resolves there
+(`assertDispatchCwdUnmoved`).
+
+A refusal of the folder or Project answers 400 with
+`code: 'continuation_place_refused'` and `retryable: false`: the same request
+is refused again until the folder or the Projects change, so clients show the
+reason and offer no retry. The Starter Work launch reports it with
+`retrySafe: false`. Other adoption failures keep their retryable answers.
+
+`target` accepts only these two shapes; any other field, such as a path, is
+refused at the route. The Starter Work `continue-session` launch accepts the
+same `target`.
 Encrypted content and subagent sidechain traversal are outside this importer.
 Additional user input after observed assistant or tool activity keeps the same
 native turn identity and is marked as steering. When the rollout does not

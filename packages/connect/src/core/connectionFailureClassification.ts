@@ -1,3 +1,4 @@
+import { CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE } from '@kontourai/station-contracts/environment-security';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from '@kontourai/station-contracts/http';
 import type { FailureClassification } from './ConnectionSupervisor';
 import type { ConnectionFailureReason } from './types';
@@ -57,6 +58,7 @@ const REASONS_NEEDING_A_DECISION: ReadonlySet<ConnectionFailureReason> =
     'access-method-mismatch',
     'authentication-failed',
     'unsupported-capability-version',
+    'client-protocol-unsupported',
     'origin-not-allowed',
     'unexpected-response',
   ]);
@@ -97,6 +99,9 @@ export function connectionFailureNeedsDecision(
  *   its own `rate_limited` code and stays out of this branch: an authorised
  *   principal writing too fast is not a fact about access, and inventing one
  *   would be the same defect pointed the other way.
+ * - **426 `client_protocol_unsupported`** — the host no longer serves the
+ *   client API protocol this app speaks (#2962). This app is the side to
+ *   update; the status alone is not enough, so the code is required.
  * - **anything else** (404, 5xx, a 200 whose body will not parse) — the
  *   address answered, and not as a Station.
  *
@@ -118,6 +123,9 @@ export function classifyHttpFailureResponse(
   }
   if (status === 429 && errorCode === AUTH_RATE_LIMITED_ERROR_CODE) {
     return 'authentication-failed';
+  }
+  if (status === 426 && errorCode === CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE) {
+    return 'client-protocol-unsupported';
   }
   return 'unexpected-response';
 }
