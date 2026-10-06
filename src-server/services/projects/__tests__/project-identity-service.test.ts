@@ -13,6 +13,7 @@ import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import {
   FileStorageConflictError,
@@ -578,7 +579,7 @@ describe('portable Project attachment', () => {
 
   test('HTTP preparation and attachment use the service and preserve typed status/refusals', async () => {
     const { service, storage } = harness();
-    const app = createProjectIdentityRoutes(service);
+    const app = withOperatorPrincipal(createProjectIdentityRoutes(service));
     await storage.createProject(project());
     expect((await app.request('/local/identity')).status).toBe(404);
     expect(
@@ -623,7 +624,7 @@ describe('portable Project attachment', () => {
 
   test('HTTP identity read discriminates not-prepared from a removed Project', async () => {
     const { service, storage } = harness();
-    const app = createProjectIdentityRoutes(service);
+    const app = withOperatorPrincipal(createProjectIdentityRoutes(service));
     await storage.createProject(project());
     // Genuine missing: the Project exists, only its identity is unprepared.
     const missing = await app.request('/local/identity');
@@ -664,21 +665,20 @@ describe('portable Project attachment', () => {
       slug: 'local',
       identity: identity(),
     });
-    const response = await createProjectIdentityRoutes(service).request(
-      '/local/identity/execution-root',
-      {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          expectedIdentity: attached.identity,
-          expectedLocalProjectId: attached.association.localProjectId,
-          executionRoot: {
-            repoId: 'git.example/acme/repo',
-            path: 'apps/web',
-          },
-        }),
-      },
-    );
+    const response = await withOperatorPrincipal(
+      createProjectIdentityRoutes(service),
+    ).request('/local/identity/execution-root', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+        },
+      }),
+    });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       success: true,
@@ -699,18 +699,17 @@ describe('portable Project attachment', () => {
     vi.spyOn(service, 'attach').mockRejectedValue(
       new FileStorageConflictError('DO-NOT-EXPOSE-private-location'),
     );
-    const response = await createProjectIdentityRoutes(service).request(
-      '/attach',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Local',
-          slug: 'local',
-          identity: identity(),
-        }),
-      },
-    );
+    const response = await withOperatorPrincipal(
+      createProjectIdentityRoutes(service),
+    ).request('/attach', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Local',
+        slug: 'local',
+        identity: identity(),
+      }),
+    });
     expect(response.status).toBe(409);
     const body = await response.text();
     expect(body).not.toContain('DO-NOT-EXPOSE');

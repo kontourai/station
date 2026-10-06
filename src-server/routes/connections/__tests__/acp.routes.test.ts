@@ -1128,7 +1128,7 @@ describe('ACP Routes', () => {
     test('POST /connections refuses an id a native runtime Adapter owns', async () => {
       registerNativeCodex();
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/connections', {
         method: 'POST',
@@ -1161,7 +1161,7 @@ describe('ACP Routes', () => {
         },
       });
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/connections', {
         method: 'POST',
@@ -1180,7 +1180,7 @@ describe('ACP Routes', () => {
     test('POST /connections still accepts an ACP id no native Adapter owns', async () => {
       registerNativeCodex();
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/connections', {
         method: 'POST',
@@ -1203,7 +1203,7 @@ describe('ACP Routes', () => {
         },
       });
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/registry/codex/install', {
         method: 'POST',
