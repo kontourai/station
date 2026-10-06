@@ -414,9 +414,9 @@ how Station preserves the same work identity through retries and response loss.
 
 ## See Conversations Started Outside Station
 
-**Activity** also lists Claude Code, Codex and Grok conversations you ran in a
-terminal or another app on this machine. Station reads them; it never controls
-them. It looks in three places:
+**Activity** also lists Claude Code, Codex, Grok and OpenCode conversations
+you ran in a terminal or another app on this machine. Station reads them; it
+never controls them. It looks in four places:
 
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
@@ -426,12 +426,25 @@ them. It looks in three places:
   is not set. A Grok session appears once it has a prompt. A subagent's own
   session is not listed separately, and neither is a Grok chat you started in
   Station, which is already there.
+- OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
+  example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
+  `~/.local/share/opencode` when that is not set. Station opens it read-only
+  and lists top-level OpenCode sessions you have sent a message in; subagent
+  sessions and archived sessions are left out. A message appears once OpenCode
+  has finished writing it. Conversations Station itself runs through an
+  OpenCode connection are not listed a second time. Older OpenCode releases
+  kept sessions as JSON files under `storage`; Station does not read those,
+  and current OpenCode moves them into the database when it starts. If an
+  OpenCode update changes the database layout, Station stops reading it and
+  logs one warning instead of guessing.
 
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
-`STATION_EXTERNAL_GROK_SOURCE_ROOT` point Station at a different folder. Station
-checks every two seconds and reads the 128 most recently changed conversations
-from each place. Older ones stay in Activity once Station has read them, but new
-messages in them are not picked up until they are among the 128 again.
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+point Station at a different folder (for OpenCode, the folder holding the
+database). Station checks every two seconds and reads the 128 most recently
+changed conversations from each place. Older ones stay in Activity once Station
+has read them, but new messages in them are not picked up until they are among
+the 128 again.
 
 Each conversation is filed under a Project by the folder it ran in:
 
@@ -470,7 +483,8 @@ ones inside a Project, but no account can open them there.
 
 Open an attached terminal Session in **Activity**, then choose **Continue in
 Station**. Claude and Codex create independent child Sessions; the original
-terminal Session can keep running. Codex continues from the latest completed
+terminal Session can keep running. OpenCode conversations are read only: the
+action shows why it is unavailable. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
 
 The continuation always works in the folder the conversation ran in, and the

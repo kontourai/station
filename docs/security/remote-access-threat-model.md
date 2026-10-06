@@ -131,6 +131,7 @@ malformed identity never produce verified provenance.
 | `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
 | Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
 | HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
+| Pairing-scoped routes and the pairing request, access-request, and exchange, declaring (or, absent the header, read as) a client protocol below `minClientProtocol` | `426 client_protocol_unsupported`, before any credential check; a malformed `X-Station-Client-Protocol` is `400` ([admission](#client-api-protocol-admission-2962)) | Same | Same |
 | Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
 | Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
@@ -172,7 +173,7 @@ commit or executable identity. Its schema is:
     "serverVersion": "<station package version>",
     "protocolVersion": 1,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -180,6 +181,83 @@ commit or executable identity. Its schema is:
 
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
+
+### Client API protocol admission (#2962)
+
+A client states the client API protocol it was built against in
+`X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
+`packages/contracts/src/environment-security.ts`). Like the client-origin
+header, it is a compatibility signal and never authority. The host enforces
+the same `compatibility` block the handshake advertises, before any
+credential check:
+
+| Request | Answer |
+| --- | --- |
+| Header at or above `minClientProtocol`, including a protocol newer than the host's | Admitted; whether a newer client can use this host is the client's own check |
+| Header absent | Read as protocol 1, so admitted while `minClientProtocol` is 1 and refused once it rises |
+| Header below `minClientProtocol` | `426` with `error.code` `client_protocol_unsupported`, `minClientProtocol`, `serverVersion`, and a sentence telling the reader to update the app |
+| Header present but not one integer from 1 to 9999 (empty, signed, zero-padded, repeated, or larger) | `400` with `error.code` `client_protocol_invalid` |
+
+The check covers every paired-scope route and the public pairing request,
+access-request, and exchange routes, so an outdated client is refused before
+it pairs. It does not cover the public handshake and proof, which an outdated
+client must still reach to learn why; liveness and the direct-loopback
+owner-secret routes, whose callers are launchers governed by the launcher
+protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
+account-authentication routes, which have their own callers; or Station's own
+attested loopback consumer. The navigation-reached landing page, `/doc`, `/ui`,
+and integration icons are also exempt: browser navigation, iframe/link loads,
+and image elements cannot attach a custom request header. The exemption is
+these declared route IDs, not every route an element might load; attachment,
+MCP UI resource and preview reads through the SDK remain covered.
+
+Both protocol refusals emit `station.auth.failure` within a separate direct-peer
+protocol audit budget (default: 10 audits per 60-second window), with outcome
+`denied` and the refusal code as reason. An unsupported protocol records its
+parsed integer; a malformed value is never copied into the audit. The owner is
+[`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
+The audit limiter reuses `RuntimeAuthFailureLimiter` with its 1,024-peer cap,
+keyed by the direct socket address. The cap evicts live entries, so an
+attacker holding more than 1,024 distinct socket sources can reset a peer's
+count and exceed 10 audits per window; the bound is per peer only while fewer
+peers are tracked, and memory stays bounded. Exhaustion suppresses only audits: every
+refusal still receives 400/426. Protocol refusals neither consult nor consume
+the authentication budget, so clients sharing a proxy or NAT can correct their
+header and authenticate without being locked out by protocol refusals.
+
+Terminal and voice WebSockets are not covered yet, deliberately. Their
+upgrades never pass the HTTP boundary that runs this check (each socket
+server listens on its own port with its own `verifyClient`), and a browser
+`WebSocket` cannot set a request header, so carriage would need a query
+parameter or subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
+the browser fail the connection, so a newer client would lose every older
+host. A query parameter is harmless to older hosts and is the planned
+carriage, added together with the check on each socket's own upgrade path.
+
+Clients send the header from the SDK request seam (which the CLI uses), the
+pairing client, and the connection health probe. The CORS preflight allow-list
+includes it. Same-origin browser requests, Node callers, and host-owned native
+or encrypted relay transports can send it without preflight negotiation.
+Cross-origin browser requests send it only after the host's public handshake
+advertises `compatibility.capabilities.clientProtocolHeader >= 1`. The
+[shared policy](../../packages/shared/src/client-protocol.ts) remembers this
+per origin in process memory and removes the observation when the capability
+is no longer advertised. The UI clears the prior observation when a handshake
+starts. Across both UI
+callers, only the latest-started handshake per origin may restore acceptance;
+its non-OK response, invalid JSON or transport error leaves acceptance cleared.
+An older overlapping success cannot restore it. Older or unobserved hosts
+receive no header and read the request as protocol 1.
+
+The native pairing exchange, which Rust builds itself, remains undeclared.
+Direct `fetch` callers that bypass the SDK seam also remain undeclared, including
+the notification action and local UI identity requests in `src-ui` and the
+`station operate` event stream in the CLI. The ratchet in
+[`client-protocol-admission.test.ts`](../../src-server/runtime/__tests__/client-protocol-admission.test.ts)
+blocks raising `minClientProtocol` above 1 while these four known callers remain
+on its list. Removing an entry requires carriage evidence; the test is not an
+automatic discovery of every caller. Terminal and voice admission needs its
+separate implementation before a raised minimum covers those listeners.
 
 ## Separate native relay pilot
 

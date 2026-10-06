@@ -22,10 +22,12 @@ import { MessageContent } from './message-bubble/MessageContent';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
+  resolveTurnEngineId,
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
+import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -218,6 +220,10 @@ function MessageBubbleComponent({
   if (contextBoundary) {
     return <ConversationContextBoundary boundary={contextBoundary} />;
   }
+  const transcriptMarker = transcriptMarkerLabel(msg.contentParts);
+  if (transcriptMarker) {
+    return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
+  }
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
@@ -259,7 +265,7 @@ function MessageBubbleComponent({
   const registeredRowAgent = rowAgentSlug
     ? agents.find((candidate) => candidate.slug === rowAgentSlug)
     : undefined;
-  const rowAgent =
+  const resolvedRowAgent =
     (msg.agentDisplayName
       ? { slug: rowAgentSlug, name: msg.agentDisplayName, icon: msg.agentIcon }
       : registeredRowAgent) ??
@@ -277,6 +283,16 @@ function MessageBubbleComponent({
               : `Deleted Agent “${rowAgentSlug}”`,
         }
       : undefined);
+  // #3355: the avatar's engine mark is the engine that ran THIS turn, read
+  // from the turn's own envelope (`resolveTurnEngineId`), in every branch
+  // above — so a Codex turn draws the Codex mark rather than initials, and a
+  // rebound agent cannot relabel history (archive#1424). A row without an
+  // envelope keeps whatever the branch already carried.
+  const turnEngineId = isAssistant ? resolveTurnEngineId(msg) : undefined;
+  const rowAgent =
+    resolvedRowAgent && turnEngineId
+      ? { ...resolvedRowAgent, engineId: turnEngineId }
+      : resolvedRowAgent;
   const avatarContent = isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
   ) : (

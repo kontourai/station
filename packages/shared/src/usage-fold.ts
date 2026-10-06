@@ -124,6 +124,10 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // Muse serve emits the usage of each model call, not its wire cumulative
     // field (MuseServeSession.onTokenUsage; captured session/tokenUsage frames).
     ['muse', 'per-turn'],
+    // The attached OpenCode source sums the `step-finish` usage of one turn's
+    // assistant messages and emits it once, when that turn closes
+    // (`opencode-session-source.ts`), so each event is that turn's figure.
+    ['opencode', 'per-turn'],
   ]);
 
 /** `undefined` means nobody has declared this provider's usage scope. */
@@ -401,6 +405,11 @@ export const PROVIDER_PROMPT_CACHE_INCLUSIVITY: ReadonlyMap<
   // — undeclared refuses the sum, which is the honest posture until real
   // Ollama-side evidence exists.
   ['bedrock', 'disjoint'],
+  // OpenCode stores step input with cache reads and writes already
+  // subtracted (`Session.getUsage`: `input = inputTokens - cacheRead -
+  // cacheWrite`, after AI SDK v6 made `inputTokens` cache-inclusive), and the
+  // attached OpenCode source publishes no `totalTokens`.
+  ['opencode', 'disjoint'],
 ]);
 
 /** `undefined` means nobody has declared this provider's cache inclusivity. */

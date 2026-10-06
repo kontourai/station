@@ -633,6 +633,52 @@ test.each(['inspector', 'chat'] as const)(
   },
 );
 
+describe('AttachedSessionDetail transcript markers (station#3415)', () => {
+  const turnWith = (namespace: string, type: string) => [
+    ev({ method: 'turn.started', turnId: 'r1', prompt: 'list files' }),
+    ev({ method: 'content.text-delta', turnId: 'r1', delta: 'First half.' }),
+    ev({
+      method: 'extension.notification',
+      turnId: 'r1',
+      namespace,
+      type,
+      payload: { source: 'provider-event' },
+    } as Partial<CanonicalRuntimeEvent> & { method: string }),
+    ev({ method: 'content.text-delta', turnId: 'r1', delta: 'Second half.' }),
+    ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+  ];
+
+  for (const presentation of ['chat', 'inspector'] as const) {
+    test(`a mid-turn Codex compaction renders one marker line after its whole turn (${presentation})`, () => {
+      renderAttached({
+        presentation,
+        events: turnWith('codex-rollout', 'context-compacted'),
+      });
+      const markers = screen.getAllByText('Context compacted during this turn');
+      expect(markers).toHaveLength(1);
+      const marker = markers[0]!.closest('.transcript-marker')!;
+      expect(marker).toBeTruthy();
+      // The turn stays one row; the marker follows all of it.
+      const answer = screen.getByText(/First half\.\s*Second half\./);
+      expect(
+        answer.compareDocumentPosition(marker) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // A marker is not a speaker row: no "You" label stands over it.
+      expect(marker.closest('article')).toBeNull();
+    });
+  }
+
+  test('an unbound tuple renders nothing and leaves the turn in one row', () => {
+    renderAttached({
+      presentation: 'chat',
+      events: turnWith('codex-rollout', 'never-seen'),
+    });
+    expect(document.querySelector('.transcript-marker')).toBeNull();
+    expect(screen.getByText(/First half\.\s*Second half\./)).toBeTruthy();
+  });
+});
+
 describe('a conversation no project claims (#3386)', () => {
   test('a project conversation names no choice and keeps its plain Continue', async () => {
     adoptOrchestrationSession.mockClear();

@@ -705,6 +705,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Each case owns one child plus one grandchild at most, all under
   // Station-owned tempdirs with the registry pointed at a disposable dir.
   'src-server/providers/__tests__/muse-adapter.real-child.process.test.ts',
+  // Spawns one short python3 child per probe to read POSIX locks on an
+  // OpenCode fixture's -shm with F_GETLK; the probe must run in another
+  // process. No wall-clock bound; skipped where python3 or fcntl is absent.
+  'src-server/providers/sessions/__tests__/opencode-session-source.locks.test.ts',
   // Forks the real Windows owned launcher with an IPC channel and a fake guard
   // (node itself, exiting on a bad module path) to prove the production
   // `onState` wiring delivers settlement-state messages to the coordinator.
@@ -843,6 +847,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
+  // Executes the Windows floor's PowerShell staging body against real fixture resources.
+  'scripts/__tests__/windows-resource-staging.test.ts',
   // station#3205: builds throwaway `git init` repositories with real linked
   // worktrees and drives the hygiene tool — including its exit statuses, as a
   // real child process — against them. The tool only reads, and so does this
