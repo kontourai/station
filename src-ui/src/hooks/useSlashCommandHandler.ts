@@ -1,6 +1,6 @@
 import { useRunSkill, useSkillDetailReader } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import {
   activeChatsStore,
   useActiveChatActions,
@@ -8,7 +8,6 @@ import {
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import type { SlashCommandContext } from '../slashCommands/dispatch';
-import { loadSlashCommands } from '../slashCommands/load';
 
 export function useSlashCommandHandler() {
   const { apiBase } = useApiBase();
@@ -17,12 +16,6 @@ export function useSlashCommandHandler() {
   const queryClient = useQueryClient();
   const runSkillMutation = useRunSkill();
   const readSkillDetail = useSkillDetailReader();
-
-  // Warm the built-in commands once a chat input exists. Dispatch still
-  // awaits their load; custom commands and skills do not depend on it.
-  useEffect(() => {
-    loadSlashCommands().catch(() => undefined);
-  }, []);
 
   return useCallback(
     async (
