@@ -4,7 +4,7 @@
 > below own current behavior; this document records a design checked against
 > `origin/main` at `14c83da3cd` by source inspection only. No slice has been
 > built, no GitHub delivery was sent, and no test was run for these claims.
-> Section 9 lists the owner decisions that are still pending.
+> Section 9 records the owner decisions.
 
 Status: **proposal.** It extends the existing
 [inbound webhook](../../src-server/routes/webhooks/inbound-webhooks.ts) and
@@ -327,16 +327,21 @@ episode.
 
 ## 9. Owner decisions
 
-All five are **pending**. Each line is a recommendation, not an answer.
-Record the owner's answer here when it is given.
+Decided by the owner on 2026-10-06; each answer adopts the recommendation.
 
-1. **Funnel exception or polling first?** Recommendation: polling first. It
-   needs no threat-model change, and push can follow. Pending.
-2. **Do Station repair PRs autoland?** Recommendation: no. Merge by a human
-   first. Pending.
-3. **Run the repair host without ambient GitHub write credentials?**
-   Recommendation: yes, so "never merge" is enforced rather than hoped for.
-   Pending.
-4. **CI fallback when Station is unreachable.** Recommendation: issue
-   updates and alerts only, as #3438 leaves it. Pending.
-5. **The name "Automations".** Recommendation: yes. Pending.
+1. **Ingress: polling first, no public Station.** Station's own GitHub
+   monitor polls workflow runs (`github-poll`); no Funnel exception and no
+   threat-model change. If instant reaction or other event types are wanted
+   later, the preferred push path is a relay-forwarded source: a webhook
+   mailbox on the self-operated
+   [connection broker](connection-broker.md), which is internet-facing by
+   design, hands events to Station over the connection Station already holds.
+   GitHub's `X-Hub-Signature-256` is verified by Station end to end, so the
+   broker can read but never forge or alter an event. That path waits for the
+   broker's production enablement.
+2. **Repair PRs do not autoland.** A human merges them.
+3. **The repair host runs without ambient GitHub write credentials,** so
+   "never merge" is enforced; publishing uses the station-automation App token
+   in the deterministic `publish-branch` step only.
+4. **CI fallback:** issue updates and alerts only, as #3438 leaves it.
+5. **Name:** Automations.
