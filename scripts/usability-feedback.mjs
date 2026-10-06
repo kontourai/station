@@ -399,7 +399,7 @@ export function renderFeedback(report) {
     );
   lines.push(
     '',
-    'Pixel comparison remains in Nightly gallery (#1645/#1665). These fresh-home captures are not silently promoted to reference images.',
+    'Pixel comparison remains in Nightly: Gallery (#1645/#1665). These fresh-home captures are not silently promoted to reference images.',
     '',
     'Full interaction coverage still requires real-engine follow-ups, external-session discovery, reconnect, hover/focus geometry, and device pairing. Missing coverage is NOT_VERIFIED, never a pass.',
     '',

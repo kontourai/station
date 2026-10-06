@@ -608,6 +608,36 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   interrupt_task: { ...DISPATCH, routes: DISPATCH_ROUTES },
 
+  // ── operations: Session control (#3160) ────────────────────────────────
+  // Each owns its leaf and shares none with dispatch. The guard holds the
+  // caller to a recorded owner; the route then decides the target Session's
+  // scope itself (`refuseOutOfScopeDispatch`: the owner's own sessions in the
+  // caller's Project or global space, never `host`, never remote, with the
+  // owner's Project `execute` action) before any effect. A bound operator
+  // keeps the operator's reach, as everywhere else.
+  send_to_session: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/send')],
+  },
+  interrupt_session: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/interrupt')],
+  },
+  // An owner-scoped read (decision 2): it observes any Session the owner may
+  // read and changes none.
+  wait_session: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-control/:sessionId/wait')],
+  },
+
   // ── operations: SSH environments ───────────────────────────────────────
   create_ssh_environment: {
     ...OPERATOR_MUTATION,

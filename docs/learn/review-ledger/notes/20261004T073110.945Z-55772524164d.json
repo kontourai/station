@@ -1,0 +1,7 @@
+{
+  "revision": "63898ce5b8c02c3cf8682829270908408906d9a6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed the request-key table delta: a release is honoured only for a fresh claim; a re-driven claim is kept with its pinned branch. The module section's idempotence paragraph (pinned branch survives a re-drive) is now also true when the re-drive is refused. No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/session-control-request-keys.ts"]}
+  ]
+}

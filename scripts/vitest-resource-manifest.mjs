@@ -129,6 +129,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-health.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
+  // Runs the advisory review gate as a real child against a loopback GitHub API.
+  'scripts/__tests__/advisory-review-gate.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
@@ -283,6 +285,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and the stdio tools' own REST helper against an in-process guard, proving
   // a real pooled child reaches reads only; no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
+  // #3160: one bounded Node child registers the real station-control server
+  // as a caller-less stdio child and calls the three Session tools over an
+  // in-memory transport, proving each refuses before any request; the child
+  // exits after its one probe and no real service is reached.
+  'src-server/tools/__tests__/station-control-session-tools.process.test.ts',
   // #3159: bounded single-shot Node children act as an external engine
   // calling `read_conversation` over HTTP MCP against the production route
   // composition on a loopback listener with a temporary SQLite EventStore;
@@ -493,6 +500,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/documentation-impact.test.ts',
   // Bounded Git fixtures run the freshness check and review-record CLIs.
   'scripts/__tests__/documentation-freshness.test.ts',
+  // Bounded Git fixtures run the freshness check and review-record CLIs (#3036).
+  'scripts/__tests__/review-ledger-guards.test.ts',
   'scripts/__tests__/documentation-review-notes.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
@@ -834,6 +843,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
+  // Executes the Windows floor's PowerShell staging body against real fixture resources.
+  'scripts/__tests__/windows-resource-staging.test.ts',
   // station#3205: builds throwaway `git init` repositories with real linked
   // worktrees and drives the hygiene tool — including its exit statuses, as a
   // real child process — against them. The tool only reads, and so does this
@@ -870,6 +881,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // repository whose own config plants a clean filter (execFileSync git).
   'src-server/services/checkpoints/__tests__/turn-checkpoint-capture.test.ts',
   'packages/cli/src/__tests__/checkpoints-command.test.ts',
+  // #3386: builds real Git repositories and worktrees through execFileSync to
+  // prove attached-session attribution by repository.
+  'src-server/services/orchestration/__tests__/attached-session-repository-attribution.test.ts',
+  // #3386: continues attached sessions from real Git worktrees (execFileSync
+  // git) through the real OrchestrationService.
+  'src-server/services/orchestration/__tests__/attached-session-continuation.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
   // under the four-worker ordinary corpus. Keep their feedback deterministic.
@@ -1087,6 +1104,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3043: owns Chromium to measure the shared inbox row's height before
   // and during hover, and its action targets at desktop and phone viewports.
   'src-ui/src/components/inbox-row/__tests__/InboxRow.geometry.test.tsx',
+  // Owns Chromium to measure an agent's and a project's glyph icon font size
+  // against the real BrandIcon cascade at two icon sizes.
+  'src-ui/src/components/icons/__tests__/BrandIcon.glyph.geometry.test.tsx',
+  // Owns Chromium to measure where sidebar project names start when some
+  // projects have icons and some do not.
+  'src-ui/src/__tests__/ProjectSidebarRow.iconSlot.geometry.test.tsx',
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',

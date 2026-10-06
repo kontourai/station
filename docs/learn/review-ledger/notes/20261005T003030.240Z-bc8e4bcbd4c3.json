@@ -1,0 +1,7 @@
+{
+  "revision": "2910576181ea3b322b6d9bb756736eb4c7a88f27",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"#3308 review round: child-work.ts gained childWorkSettleFromItem (pure item-to-settle helper) and a settle-delta usageProvisional field; README's pure-reducers claim still holds. No prose change.","inputs":["packages/contracts/README.md","packages/contracts/src/child-work.ts"]}
+  ]
+}

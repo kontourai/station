@@ -148,7 +148,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
               environment: input.environmentId
                 ? {
                     id: staleDiscoveryEnvironment ?? input.environmentId,
-                    name: 'Brian Media',
+                    name: 'Home Media',
                     kind: 'ssh',
                   }
                 : {
@@ -224,7 +224,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
               {
                 profile: {
                   id: 'media',
-                  name: 'Brian Media',
+                  name: 'Home Media',
                   environmentId: 'env-media',
                   verifiedProjectPath:
                     '/home/user/dev/github/kontourai/station',
@@ -283,7 +283,7 @@ describe('DelegationLauncher', () => {
       taskId: 'task:1',
       sessionId: 'task:1',
       status: 'dispatched',
-      environment: { id: 'env-media', name: 'Brian Media', kind: 'ssh' },
+      environment: { id: 'env-media', name: 'Home Media', kind: 'ssh' },
       target: { kind: 'agent', id: 'codex' },
       resumable: true,
     });
@@ -371,7 +371,7 @@ describe('DelegationLauncher', () => {
         }) as HTMLOptionElement
       ).disabled,
     ).toBe(true);
-    fireEvent.click(screen.getByText('1 unavailable on Brian Media'));
+    fireEvent.click(screen.getByText('1 unavailable on Home Media'));
     expect(screen.getByText(/Install the required runtime first/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Model'), {
       target: { value: 'gpt-5.6-sol' },
@@ -656,7 +656,7 @@ describe('DelegationLauncher', () => {
   });
 
   test('keeps the draft and offers retry when capability discovery fails', () => {
-    discoveryFailure = new Error('Brian Media could not be reached');
+    discoveryFailure = new Error('Home Media could not be reached');
     render(
       <DelegationLauncher
         isOpen
@@ -670,7 +670,7 @@ describe('DelegationLauncher', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Brian Media could not be reached',
+      'Home Media could not be reached',
     );
     expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
       'Keep this task draft',
@@ -849,7 +849,7 @@ describe('DelegationLauncher', () => {
         environmentId: 'env-media',
         apiBase: 'https://media.example.test',
         scope: 'orchestration:read orchestration:operate',
-        label: 'Brian Media (peer)',
+        label: 'Home Media (peer)',
         createdAt: 1,
         updatedAt: 1,
       },
@@ -866,10 +866,10 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect(
       screen.queryByRole('option', {
-        name: 'Brian Media (peer) — Paired Station',
+        name: 'Home Media (peer) — Paired Station',
       }),
     ).toBeNull();
-    expect(screen.getAllByRole('option', { name: /Brian Media/ }).length).toBe(
+    expect(screen.getAllByRole('option', { name: /Home Media/ }).length).toBe(
       1,
     );
   });
@@ -1637,7 +1637,7 @@ describe('DelegationLauncher', () => {
         taskId: 'task:1',
         sessionId: 'task:1',
         status: 'dispatched',
-        environment: { id: 'env-media', name: 'Brian Media', kind: 'ssh' },
+        environment: { id: 'env-media', name: 'Home Media', kind: 'ssh' },
         target: { kind: 'agent', id: 'codex' },
         resumable: true,
       };

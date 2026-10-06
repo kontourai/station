@@ -1,6 +1,9 @@
-import { HomeActionSection } from '../../components/home/HomeActionSection';
-import { HomeChatStartForm } from '../../components/home/HomeChatStartForm';
+import {
+  HomeActionSection,
+  HomeContinueCard,
+} from '../../components/home/HomeActionSection';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
+import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
 import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import type { NavigationView } from '../../types';
@@ -25,6 +28,8 @@ export interface HomeSurfaceProps {
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
 /** The recent-work section's id: the skip target (U2). */
 const RECENT_WORK_SECTION_ID = 'home-recent-work';
+/** Continue leads the work, so the skip link lands there when it shows. */
+const CONTINUE_SECTION_ID = 'home-continue';
 
 /**
  * The one Home (archive#3122's experiment, concluded).
@@ -85,12 +90,53 @@ export function HomeSurface({
       continuation={continuation}
       model={model}
       onNavigate={onNavigate}
+      // With work on the page Continue leads the work (above Recent work,
+      // which leaves its item out); an empty page has nothing to continue.
+      showPrimary={false}
     />
   );
+  // The Continue card shows its item as the full work row; the list beside
+  // it leaves that item out rather than show it twice. Counts in the chart
+  // still read every item.
+  const continued =
+    !model.actionsLoading && model.primaryWorkItem
+      ? model.primaryWorkItem.id
+      : undefined;
+  const listedLanes = continued ? withoutItem(lanes, continued) : lanes;
+  // With Continue holding the only item, Recent work would be a heading
+  // over nothing: it is left out, and View Activity moves beside Continue.
+  // Loading, failure and remote notes still need the section.
+  const listEmpty =
+    Boolean(continued) &&
+    !model.workLoading &&
+    !model.workDegraded &&
+    !model.workError &&
+    model.remoteUnavailable.length === 0 &&
+    model.remoteAuthenticationRequired.length === 0 &&
+    [
+      listedLanes.needsYou,
+      listedLanes.running,
+      listedLanes.idle,
+      listedLanes.external ?? [],
+      listedLanes.drafts ?? [],
+      listedLanes.recentlyFinished,
+      listedLanes.snoozed,
+      listedLanes.settled,
+    ].every((items) => items.length === 0);
+  const continueCard =
+    !model.actionsLoading && model.primaryWorkItem ? (
+      <HomeContinueCard
+        model={model}
+        id={CONTINUE_SECTION_ID}
+        onViewActivity={
+          listEmpty ? () => showSurfacePage('activity') : undefined
+        }
+      />
+    ) : null;
   const recentWork = (
     <HomeRecentWorkSection
       id={RECENT_WORK_SECTION_ID}
-      lanes={lanes}
+      lanes={listedLanes}
       workItems={model.workItems}
       workFacts={model.workFacts}
       workLoading={model.workLoading}
@@ -130,7 +176,10 @@ export function HomeSurface({
       {/* U2: the first inbox row sat 35 tab stops in. A keyboard reader lands
           on the work in one. */}
       {hasWork && (
-        <a className="home-view__skip" href={`#${RECENT_WORK_SECTION_ID}`}>
+        <a
+          className="home-view__skip"
+          href={`#${continueCard ? CONTINUE_SECTION_ID : RECENT_WORK_SECTION_ID}`}
+        >
           Skip to recent work
         </a>
       )}
@@ -144,14 +193,12 @@ export function HomeSurface({
       <div
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
       >
-        <HomeChatStartForm
-          identity={model.startReady ? model.startIdentity : undefined}
-          compact={hasWork}
-        />
+        <HomeStartComposer compact={hasWork} />
       </div>
       {hasWork ? (
         <>
-          {recentWork}
+          {continueCard}
+          {!listEmpty && recentWork}
           {actions}
           {chart}
         </>
@@ -163,6 +210,34 @@ export function HomeSurface({
       )}
     </>
   );
+}
+
+/** The lanes without one item (by id), every other field as derived. */
+function withoutItem<
+  L extends {
+    needsYou: { id: string }[];
+    running: { id: string }[];
+    idle: { id: string }[];
+    external?: { id: string }[];
+    drafts?: { id: string }[];
+    recentlyFinished: { id: string }[];
+    snoozed: { id: string }[];
+    settled: { id: string }[];
+  },
+>(lanes: L, id: string): L {
+  const keep = <T extends { id: string }>(items: T[]) =>
+    items.filter((item) => item.id !== id);
+  return {
+    ...lanes,
+    needsYou: keep(lanes.needsYou),
+    running: keep(lanes.running),
+    idle: keep(lanes.idle),
+    ...(lanes.external ? { external: keep(lanes.external) } : {}),
+    ...(lanes.drafts ? { drafts: keep(lanes.drafts) } : {}),
+    recentlyFinished: keep(lanes.recentlyFinished),
+    snoozed: keep(lanes.snoozed),
+    settled: keep(lanes.settled),
+  };
 }
 
 /**

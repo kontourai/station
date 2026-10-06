@@ -1,0 +1,7 @@
+{
+  "revision": "09c85b03ddb2c50e48c18d6617e000a59a0bec58",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386: replaced 'only transcripts attributed to configured Projects enter the follower' with the actual rule: resolveAttachedSessionProject folder-first then same common git dir with worktree-relative path containment; unattributed transcripts followed with projectAttribution 'unattributed' and no slug; unattributed never replaces a stored attribution; local operator owns all; hosted (STATION_HOSTED_TENANT_REGISTRY_FILE) skips unattributed; adoptSession resolves by folder only. Checked against attached-session-follow-service.ts, attached-session-repository.ts, attached-session-adoption.ts, runtime-tenant-context.ts and attached-session-repository-attribution.test.ts (real git worktrees, executed, fault-injected).","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-adoption.ts","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/attached-session-repository.ts"]}
+  ]
+}

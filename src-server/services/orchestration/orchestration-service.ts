@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
@@ -8,10 +9,11 @@ import {
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AttentionInputReplyContext,
-  AttentionRequestInspection,
-  AttentionRequestReference,
+import {
+  ATTENTION_REQUEST_ID_MAX_CHARS,
+  type AttentionInputReplyContext,
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
@@ -39,6 +41,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -56,12 +59,14 @@ import {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   ApprovalMode,
+  DelegationProvenance,
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
@@ -510,6 +515,8 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
+  delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
@@ -1041,6 +1048,8 @@ interface PeerDelegationActivityDispatch {
    * conversation that launched it.
    */
   parentConversationId?: string;
+  /** #3323: how the route came by that context; stamped beside it. */
+  delegationProvenance?: DelegationProvenance;
 }
 
 /**
@@ -1055,10 +1064,56 @@ export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
  * can tell it was shortened; the request id carries identity, not the title.
  */
 function boundedPeerRequestTitle(title: string): string {
-  const characters = Array.from(title);
-  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
-    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
-    : title;
+  return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
+}
+
+function boundedPeerText(text: string, max: number): string {
+  const characters = Array.from(text);
+  return characters.length > max
+    ? `${characters.slice(0, max - 1).join('')}…`
+    : text;
+}
+
+/** Only the request types the canonical vocabulary names are stored. */
+function isPeerRequestType(
+  type: string | undefined,
+): type is NonNullable<OrchestrationPeerPendingRequest['type']> {
+  return (
+    type === 'approval' ||
+    type === 'permission' ||
+    type === 'confirmation' ||
+    type === 'input'
+  );
+}
+
+/** Bound on the paired Station's presented question text. */
+export const PEER_PENDING_REQUEST_BODY_MAX_CHARS = 4_000;
+
+/** Every reported field except the local observation time. */
+function samePeerPendingRequest(
+  a: OrchestrationPeerPendingRequest,
+  b: OrchestrationPeerPendingRequest,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.title === b.title &&
+    a.eventId === b.eventId &&
+    a.threadId === b.threadId &&
+    a.body === b.body &&
+    a.callerCanRespond === b.callerCanRespond
+  );
+}
+
+/** What the paired Station's status read reported about its open request. */
+export interface PeerReportedPendingRequest {
+  id: string;
+  type?: string;
+  title?: string;
+  eventId?: string;
+  threadId?: string;
+  body?: string;
+  callerCanRespond?: boolean;
 }
 
 function peerDelegationActivityThreadId(
@@ -3759,6 +3814,11 @@ export class OrchestrationService {
         ...(input.parentConversationId
           ? { parentConversationId: input.parentConversationId }
           : {}),
+        ...(input.parentConversationId && input.delegationProvenance
+          ? {
+              [DELEGATION_PROVENANCE_METADATA_KEY]: input.delegationProvenance,
+            }
+          : {}),
       },
     });
     return threadId;
@@ -3774,7 +3834,7 @@ export class OrchestrationService {
   recordPeerDelegationPendingRequest(input: {
     taskId: string;
     environmentId: string;
-    pendingRequest: { id: string; type?: string; title?: string } | null;
+    pendingRequest: PeerReportedPendingRequest | null;
     /**
      * Set when the paired Station has just answered `respond` for this
      * request id: clear the observation only if it still names that request,
@@ -3813,23 +3873,45 @@ export class OrchestrationService {
         { threadId, length: rawId.length },
       );
     const id = idRefused ? undefined : rawId;
-    const title = input.pendingRequest?.title?.trim();
+    const reported = input.pendingRequest;
+    const title = reported?.title?.trim();
+    const body = reported?.body?.trim();
+    // The binding pair is stored only whole and within bounds; a cut id
+    // would name another request, so an over-long one leaves no binding
+    // (the inbox then keeps the note rather than offering an answer).
+    const binding =
+      reported?.eventId &&
+      reported.threadId &&
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
+        ? { eventId: reported.eventId, threadId: reported.threadId }
+        : undefined;
     const next = id
       ? {
           id,
-          ...(input.pendingRequest?.type
-            ? { type: input.pendingRequest.type }
-            : {}),
+          ...(isPeerRequestType(reported?.type) ? { type: reported.type } : {}),
           ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          ...(binding ?? {}),
+          ...(body
+            ? {
+                body: boundedPeerText(
+                  body,
+                  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+                ),
+              }
+            : {}),
+          ...(typeof reported?.callerCanRespond === 'boolean'
+            ? { callerCanRespond: reported.callerCanRespond }
+            : {}),
           observedAt: new Date().toISOString(),
         }
       : null;
     if (
       next === null
         ? current === null || current === undefined
-        : current?.id === next.id &&
-          current.type === next.type &&
-          current.title === next.title
+        : current !== null &&
+          current !== undefined &&
+          samePeerPendingRequest(current, next)
     )
       return false;
     this.projectAndPublishEvent({
@@ -5926,6 +6008,27 @@ export class OrchestrationService {
               },
             };
           }
+          // #3323: how the dispatch route came by this start's delegation
+          // context, re-stamped after the reserved-key strip removed any
+          // caller-supplied value, and only when the start carries exactly
+          // the context the route resolved: the stamp travels with that
+          // context, so a start with any other context is never stamped.
+          if (
+            internal?.delegationProvenance &&
+            isDeepStrictEqual(
+              startInput.metadata?.delegation,
+              internal.delegationProvenance.context,
+            )
+          ) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DELEGATION_PROVENANCE_METADATA_KEY]:
+                  internal.delegationProvenance.provenance,
+              },
+            };
+          }
           // #484 phase A: re-stamp the server-minted portable consent
           // marker after the reserved-key strip (which removed any
           // caller-forged value) so the persisted session binding carries
@@ -6560,6 +6663,8 @@ export class OrchestrationService {
             // request's grant, like every other start, and (#1796) who
             // granted it. A grant naming no grantor is refused.
             adoptionConfinement(context?.fullAccessGrant),
+            // #3386: where a conversation no project claims continues.
+            command.target,
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke

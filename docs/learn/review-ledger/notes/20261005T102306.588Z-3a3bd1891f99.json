@@ -1,0 +1,7 @@
+{
+  "revision": "b7e55b0159062cba02ea278cb826ac5d70faa47c",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the #3338 change to postPeerPortableFollowUp (the paired-Station 403 sentence is now applied only for peer targets, so a current-Station 403 keeps its typed local code). The example describes tool definitions, delegation metadata and posture; it makes no claim about 403 handling or typed refusals on the respond/continue follow-up path, so it is unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

@@ -3035,6 +3035,11 @@ fn native_header_allowlisted(name: &str) -> bool {
             // native still owns the bearer and refuses every authority-bearing
             // renderer header below.
             | "x-station-client-origin"
+            // `CLIENT_PROTOCOL_HEADER` in
+            // `packages/contracts/src/environment-security.ts` (#2962): the
+            // client API protocol this build speaks. A compatibility signal
+            // the host may refuse on; it carries no authority.
+            | "x-station-client-protocol"
             | "x-station-client-session"
             | "x-station-plugin"
             | "x-abort-reason"
@@ -3056,6 +3061,11 @@ fn native_response_headers(
                     | "last-modified"
                     | "retry-after"
                     | "x-request-id"
+                    // `STATION_ENVELOPE_HEADER` in `packages/contracts/src/http.ts`:
+                    // Station's own-answer marker, read by the SDK's
+                    // `isStationAnswer` to tell its refusals from an
+                    // intermediary's (#2842, #3166). Carries no authority.
+                    | "x-station-envelope"
             )
             .then(|| value.to_str().ok().map(|value| (name, value.to_string())))
             .flatten()
@@ -20645,10 +20655,38 @@ mod tests {
         assert!(native_header_allowlisted("x-station-plugin"));
         assert!(native_header_allowlisted("x-abort-reason"));
         assert!(native_header_allowlisted("X-Station-Client-Origin"));
+        assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
         assert!(!native_header_allowlisted("cookie"));
         assert!(!native_header_allowlisted("x-station-device-id"));
         assert!(NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT);
+    }
+
+    #[test]
+    fn native_response_headers_forward_the_station_envelope_marker_only_from_the_allowlist() {
+        // Pinned beside `STATION_ENVELOPE_HEADER` in packages/contracts/src/http.ts.
+        let mut headers = ureq::http::HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert("X-Station-Envelope", "1".parse().unwrap());
+        headers.insert("set-cookie", "session=secret".parse().unwrap());
+        headers.insert("www-authenticate", "Bearer".parse().unwrap());
+        headers.insert("x-station-device-id", "device".parse().unwrap());
+
+        let forwarded = native_response_headers(&headers);
+
+        assert_eq!(
+            forwarded.get("x-station-envelope").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            forwarded.get("content-type").map(String::as_str),
+            Some("application/json")
+        );
+        assert_eq!(
+            forwarded.len(),
+            2,
+            "unexpected forwarded headers: {forwarded:?}"
+        );
     }
 
     #[test]

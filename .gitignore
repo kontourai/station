@@ -42,6 +42,8 @@ src-ui/src/plugins/
 
 # Audit cleanup
 archive/
+# Review-note archives are tracked ledger files (#3394), not audit cleanup.
+!docs/learn/review-ledger/notes/archive/
 *.png
 # Reviewed application captures; raw capture output stays in .kontourai.
 !docs/learn/media/*.png

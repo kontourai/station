@@ -26,6 +26,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -1145,7 +1146,9 @@ such as a worktree, is not substituted. The admitted canonical path is written
 to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
 value is removed first. Recovery and the credential-profile restart compare
 the re-resolved folder with that record before starting an engine, and a
-continuation child in the same folder inherits it. The refusal reaches the
+continuation child in the same folder inherits it. An adopted attached-session
+child (Continue in Station, #3386) records its resolved folder the same way,
+so its recovery gets the same comparison. The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
@@ -1161,6 +1164,44 @@ covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
+
+## SessionMessageDelivery
+
+An agent that messages another Session must not deliver twice when it retries,
+and must not start a second turn on a Session that is already running one.
+[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
+is the one place that decides which of those a message becomes, for Station
+Control's `send_to_session` and later for delegation result delivery.
+
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
+decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+`no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
+pure rule: `auto` steers a running Session and starts an idle one, `start`
+refuses a running one, and `steer` refuses an idle one. The module performs
+nothing itself: the caller supplies the ports for the busy check, a turn start,
+and a receipted steer, each already authorized.
+
+**Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
+`clientInputId` of a steer, so the durable turn claim and the steer receipt
+deduplicate a re-driven delivery. `decided` pins the branch a first attempt took
+(recorded through `recordDecision` before its effect), so a re-drive never turns a
+steer into a start because the turn ended in between. An engine without mid-turn
+input answers the steer as `session_busy`, never as a start.
+
+**Composition and evidence.** The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) checks
+the caller's scope and keys each request in the durable
+[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+(owned by `EventStore`) before it reaches this module. `wait_session` observes
+the same lifecycle fold the steer path reads through
+[SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
+which never acts on the Session. Source tests are the
+[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
+Their presence is not an executed receipt against a real engine. See
+[agent configuration](../guides/self-configuring-agent.md#session-control) for the
+tool-level behavior.
 
 ## ConversationSessionLineage
 
@@ -1349,6 +1390,12 @@ Adapters, app/ACP configuration readers, public identity mapping, and clock, the
 `ConnectionInspector` private to its inventory publication path. A non-`inspected`
 outcome rejects publication with an explicit retry-before-publish error; routes receive
 the resulting projection rather than classify inspection facts themselves.
+Engine attribution does not depend on that publication: the inspection is total, so one
+failing Adapter or a timed-out read would erase every connection's engine.
+`listEngineConnectionIdentities` derives each registered connection's `engineId` from the
+Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
+readiness keeps the live read (#3355).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
@@ -1377,6 +1424,33 @@ creation allocates a new identity. List/get derive non-secret backend availabili
 Datum only; they never materialize. Resolution requires one current, non-revoked exact
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
+
+**Ownership (#3279).** A binding has an owner: `instance` (absent on records written
+before #3279, which keep their behavior), `principal`, or `principal-project`. The
+owner id is an existing human `PrincipalRef.id` from request resolution; a paired
+device without a person, a non-human principal, or a hosted request owns none
+([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
+`create` currently refuses any owner but `instance` (`owner: "self"` on
+`POST /api/secret-bindings` returns a typed 400, "Person-owned secret bindings are not
+available yet."), because no consumer can use one; the rules below govern person-owned
+records that already exist and the future single-principal consumer. List, get, replace, revoke, and integration bind/unbind (including the grant and
+ungrant inside them) take the request principal as viewer. One typed not-found refusal
+covers a missing binding and another person's, and `/api/secret-bindings` returns it as
+the same 404 body on get, replace, revoke, bind, and unbind; request validation that
+runs before the lookup still returns 400 for both. An instance-owned `create` with
+an id already in use is refused, so it reveals that the id exists, including one held
+by an existing person-owned record; that follows from the single global id namespace
+and is accepted for now. A person-owned `create` is refused before the id check, so it
+reveals nothing. A caller without a viewer, including
+stored-env migration, sees and grants only instance bindings. Resolution refuses a
+person-owned binding with `owner_mismatch` unless the invocation names that principal
+(and Project). Stdio MCP children and ACP providers are shared and name none, so
+`grant` refuses a person-owned binding for either consumer (a typed 400, checked after
+the not-found lookup) until a child can serve a single principal; integration bind
+always goes through `grant` for such a binding, even when a grant is already on
+record. New integration env
+references therefore name only instance bindings, and the integration binding
+projection lists every reference, unfiltered, for every caller.
 
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,

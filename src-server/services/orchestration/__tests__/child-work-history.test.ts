@@ -118,3 +118,41 @@ test('#3163: after a restart, the session view restores each settled subagent wi
       source: 'subagent-reply',
     });
 });
+
+test('#3308 a child settled without usage is seeded with its running figure marked provisional', () => {
+  const threadId = 'thread-1';
+  const base = {
+    provider: 'claude',
+    threadId,
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'child-work.updated',
+  };
+  const key = {
+    producer: 'engine-subagent',
+    reporterThreadId: threadId,
+    childId: 'bg',
+  };
+  const { settlements } = settledChildWorkFromHistory(threadId, [
+    {
+      ...base,
+      eventId: 'up',
+      delta: {
+        kind: 'upsert',
+        item: { ...key, status: 'running', usage: { totalTokens: 40141 } },
+      },
+    },
+    {
+      ...base,
+      eventId: 'settle',
+      delta: { kind: 'settle', ...key, status: 'completed' },
+    },
+  ] as CanonicalRuntimeEvent[]);
+  expect(settlements).toEqual([
+    expect.objectContaining({
+      ...key,
+      status: 'completed',
+      usage: { totalTokens: 40141 },
+      usageProvisional: true,
+    }),
+  ]);
+});

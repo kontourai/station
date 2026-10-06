@@ -1,4 +1,4 @@
-name: Portable server archives
+name: "PR: Portable archives"
 
 # Builds station-server-<os>-<arch> on each target's native runner and proves
 # it runs with no Node.js on PATH (#2675). An archive carries the build host's

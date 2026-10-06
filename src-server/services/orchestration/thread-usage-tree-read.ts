@@ -58,7 +58,15 @@ export interface ThreadUsageTreeReadDeps {
     parentIds: readonly string[],
     limit: number,
   ) => {
-    sessions: Array<{ threadId: string; parentId: string }>;
+    sessions: Array<{
+      threadId: string;
+      parentId: string;
+      /**
+       * #3323: Station derived the parent link from the calling session or
+       * its own runtime attested it, rather than a request claiming it.
+       */
+      stationDerived: boolean;
+    }>;
     truncated: boolean;
   };
   /** The conversation a session belongs to; its own id when it has none. */
@@ -175,10 +183,16 @@ function subagentObservability(
  * One conversation's usage tree: its own sessions' receipts, the subagents
  * those sessions reported, and the sessions launched from it, read one level
  * at a time (one delegate lookup per level). Each conversation is authorized
- * whole. A session naming a conversation the reader may not read is ignored:
- * a real delegate of the reader's conversation is the reader's own work, so
- * an unreadable one is not evidence of missing usage, and counting it would
- * let anyone mark someone else's total partial.
+ * whole.
+ *
+ * A launched session the reader may not read is never read, named or
+ * figured. When Station itself derived or attested its link to a
+ * conversation in the tree (#3323), it is real work of that conversation
+ * that runs under another owner (in hosted mode, a delegate of Station's own
+ * agent is owned by the operator), so it is counted as not visible and the
+ * total is partial. Any other unreadable session is ignored: its link is
+ * only a request's claim, and counting it would let anyone mark someone
+ * else's total partial.
  */
 export function readThreadUsageTree(
   deps: ThreadUsageTreeReadDeps,
@@ -275,7 +289,14 @@ export function readThreadUsageTree(
         // A continued delegate is one child, named by its conversation.
         const childId = deps.conversationForThread(session.threadId);
         if (visited.has(childId) || visited.has(session.threadId)) continue;
-        if (!deps.canReadConversation(childId, authority)) continue;
+        if (!deps.canReadConversation(childId, authority)) {
+          if (session.stationDerived) {
+            visited.add(childId);
+            owner.source.unreadableDelegateCount =
+              (owner.source.unreadableDelegateCount ?? 0) + 1;
+          }
+          continue;
+        }
         visited.add(childId);
         const delegate = deps.describeDelegate(childId);
         if (!delegate) continue;

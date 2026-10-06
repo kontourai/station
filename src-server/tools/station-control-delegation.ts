@@ -5,6 +5,7 @@ import {
   type AgentId,
   agentId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   EnvironmentRef,
@@ -25,6 +26,7 @@ import {
   type ApprovalMode,
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
+  type DelegationProvenance,
   type EngineId,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
@@ -107,7 +109,14 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
-import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type {
+  OrchestrationService,
+  PeerReportedPendingRequest,
+} from '../services/orchestration/orchestration-service.js';
+import {
+  type PresentableOpenRequest,
+  presentOpenRequest,
+} from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
@@ -286,6 +295,7 @@ interface StationHandshake {
     portableExecutionOffers?: boolean;
     delegationAttemptClaims?: boolean;
     executionPreparation?: boolean;
+    delegatedInputAnswers?: boolean;
   };
 }
 
@@ -370,6 +380,8 @@ export interface DelegateTaskInput {
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
+  /** #3323: see `AuthorityBearingForegroundMessageInput.delegationProvenance`. */
+  delegationProvenance?: DelegationProvenance;
   /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
   delegationAttestation?: string;
   /** #2601: see `AuthorityBearingForegroundMessageInput.stationControlToolCall`. */
@@ -477,6 +489,14 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
    * `resolveRequestDelegation` settled, and forwards it as it is.
    */
   stationControlToolCall?: true;
+  /**
+   * #3323: set only by a dispatch route, beside the `delegation` its
+   * `resolveRequestDelegation` settled: how Station came by that context.
+   * The start stamps it (`DELEGATION_PROVENANCE_METADATA_KEY`) after the
+   * reserved-key strip. Never forwarded to another Station, which judges its
+   * own request.
+   */
+  delegationProvenance?: DelegationProvenance;
 };
 
 /**
@@ -639,6 +659,14 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * `delegatedInputAnswers`: deliver `message` only as the answer to this
+   * exact open input request on the task's current Session. Forwarded to
+   * another Station only when it advertises the capability; the executing
+   * Station refuses with `input_request_changed` when the request is gone
+   * or replaced.
+   */
+  expectedInputRequest?: AttentionRequestReference;
   /**
    * Station #90 lane D (D2): route-set only. A follow-up can start a new
    * child session of the task's conversation, which must carry the same
@@ -1510,6 +1538,18 @@ export interface DelegatedTaskSnapshot {
      * only when the target returned no session for the task.
      */
     answerability?: RequestAnswerability;
+    /** `delegatedInputAnswers`: the open request's `request.opened` event id. */
+    eventId?: string;
+    /** The question as `presentOpenRequest` presents it, when it has one. */
+    body?: string;
+    /**
+     * Whether the caller of THIS read passes this Station's own checks on
+     * the route that answers the request — `respond` for an approval,
+     * permission or confirmation, `continue` for an input question. Set
+     * only by the route for a read this Station serves itself; absent
+     * means not evaluated (an older Station, or a forwarded read).
+     */
+    callerCanRespond?: boolean;
   };
   canInterrupt: boolean;
   /**
@@ -2123,7 +2163,20 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    if (response.status === 403 && forbiddenMessage)
+    // `delegatedInputAnswers`: the receiver's closed binding refusals keep
+    // their meaning here (its prose does not cross; only the code does).
+    if (response.status === 409) {
+      const code = (payload as { code?: unknown } | null)?.code;
+      if (code === 'input_request_changed')
+        throw new DelegatedInputRequestChangedError();
+      if (code === 'input_binding_unsupported')
+        throw new DelegatedInputBindingUnsupportedError();
+    }
+    // The paired-Station sentence is for a paired (peer) target's 403 only.
+    // `current` and `ssh` fall through to the local refusal below: this
+    // Station's own 403 keeps its typed code (#2708, #2795), and an SSH
+    // target is not a paired Station.
+    if (response.status === 403 && forbiddenMessage && target.kind === 'peer')
       throw new PeerPortableFollowUpError(forbiddenMessage);
     // The sentinel itself stays code-free: a peer's diagnostics never cross
     // this seam. Only this Station's own answer rides along, as a cause the
@@ -3455,6 +3508,13 @@ export function snapshotFor(options: {
             ...(typeof pendingRequest.requestType === 'string'
               ? { type: pendingRequest.requestType }
               : {}),
+            // `delegatedInputAnswers`: the request's own event identity, so a
+            // sender can bind an answer to exactly this request, and the
+            // question as the shared presentation renders it locally.
+            ...(typeof pendingRequest.eventId === 'string'
+              ? { eventId: pendingRequest.eventId }
+              : {}),
+            ...pendingRequestBody(pendingRequest),
             // The TARGET Station's own observation, forwarded as-is. Never
             // re-derived here: this process holds neither that environment's
             // adapter registry nor its thread attachments (ADR 0012).
@@ -3464,6 +3524,50 @@ export function snapshotFor(options: {
       : {}),
     canInterrupt: status === 'queued' || status === 'running',
     resumable: conversationCanAcceptFollowUp(status),
+  };
+}
+
+/**
+ * The presented question text of an open request — the same
+ * `presentOpenRequest` wording a local attention item shows — when the
+ * request carries a known type. Bounded by that presentation.
+ */
+function pendingRequestBody(event: Record<string, unknown>): {
+  body?: string;
+} {
+  const request = presentableOpenRequest(event);
+  if (!request) return {};
+  const body = presentOpenRequest(request).body;
+  return body ? { body } : {};
+}
+
+/**
+ * The fields the presentation reads, each checked off a parsed event record:
+ * a known `requestType`, a string `title` (or none), a string `description`
+ * and an object `payload` only when present in those shapes.
+ */
+function presentableOpenRequest(
+  event: Record<string, unknown>,
+): PresentableOpenRequest | undefined {
+  if (event.method !== 'request.opened') return undefined;
+  const requestType = event.requestType;
+  if (
+    requestType !== 'approval' &&
+    requestType !== 'permission' &&
+    requestType !== 'confirmation' &&
+    requestType !== 'input'
+  )
+    return undefined;
+  const payload = event.payload;
+  return {
+    requestType,
+    title: typeof event.title === 'string' ? event.title : '',
+    ...(typeof event.description === 'string'
+      ? { description: event.description }
+      : {}),
+    ...(payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? { payload: payload as Record<string, unknown> }
+      : {}),
   };
 }
 
@@ -4285,14 +4389,27 @@ export async function observeDelegatedTask(
  */
 function peerPendingRequestOf(
   snapshot: DelegatedTaskSnapshot,
-): { id: string; type?: string; title?: string } | null {
+): PeerReportedPendingRequest | null {
   const request = snapshot.pendingRequest;
   if (!request || typeof request.id !== 'string' || !request.id.trim())
     return null;
+  const eventId =
+    typeof request.eventId === 'string' && request.eventId.trim()
+      ? request.eventId
+      : undefined;
   return {
     id: request.id,
     ...(typeof request.type === 'string' ? { type: request.type } : {}),
     ...(typeof request.title === 'string' ? { title: request.title } : {}),
+    // The binding pair only travels together: an event id names a request
+    // on the paired Station's CURRENT Session.
+    ...(eventId && typeof snapshot.currentSessionId === 'string'
+      ? { eventId, threadId: snapshot.currentSessionId }
+      : {}),
+    ...(typeof request.body === 'string' ? { body: request.body } : {}),
+    ...(typeof request.callerCanRespond === 'boolean'
+      ? { callerCanRespond: request.callerCanRespond }
+      : {}),
   };
 }
 
@@ -4334,6 +4451,80 @@ export async function refreshPeerDelegationActivity(
   );
 }
 
+/** Refusal for a bound answer whose request is gone, replaced, or elsewhere. */
+class DelegatedInputRequestChangedError extends Error {
+  readonly code = 'input_request_changed';
+  constructor() {
+    super(
+      'The input request changed or was answered. Refresh and answer the current request.',
+    );
+    this.name = 'DelegatedInputRequestChangedError';
+  }
+}
+
+/** Refusal for a bound answer that also asks for a model change. */
+class DelegatedInputBindingModelChangeError extends Error {
+  readonly code = 'input_binding_model_change';
+  constructor() {
+    super(
+      'An answer to an open request cannot change the model; send the answer without a model change.',
+    );
+    this.name = 'DelegatedInputBindingModelChangeError';
+  }
+}
+
+/** Refusal for a bound answer to a Station that does not enforce bindings. */
+class DelegatedInputBindingUnsupportedError extends Error {
+  readonly code = 'input_binding_unsupported';
+  constructor() {
+    super(
+      'The selected Station cannot bind an answer to its open request; answer it on that Station.',
+    );
+    this.name = 'DelegatedInputBindingUnsupportedError';
+  }
+}
+
+/**
+ * The executing Station's own check before a bound answer: the reference
+ * names the task's CURRENT Session and an input request that is open and
+ * answerable there for this caller. The orchestration service re-checks the
+ * same request immediately before invoking the engine.
+ */
+function assertInputRequestOpenOnTask(
+  expected: AttentionRequestReference,
+  currentSessionId: string,
+  orchestrationService: OrchestrationService,
+  readAuthority: SessionReadAuthority,
+): void {
+  if (expected.threadId !== currentSessionId)
+    throw new DelegatedInputRequestChangedError();
+  const context = orchestrationService.inspectInputReplyContext(
+    expected,
+    readAuthority,
+  );
+  if (context.state !== 'open') throw new DelegatedInputRequestChangedError();
+}
+
+/**
+ * The selected Station's public handshake must advertise
+ * `delegatedInputAnswers` and name the selected environment back.
+ */
+async function assertTargetEnforcesInputBinding(
+  target: DelegationTarget,
+): Promise<void> {
+  const handshake = await readJson<StationHandshake>(
+    target,
+    `${target.apiBase}/.well-known/station/v1`,
+    { headers: target.requestOptions?.headers ?? {} },
+    'The selected Station could not be reached to confirm answer binding support',
+  );
+  if (
+    handshake.environmentId !== target.environmentId ||
+    handshake.capabilities?.delegatedInputAnswers !== true
+  )
+    throw new DelegatedInputBindingUnsupportedError();
+}
+
 /**
  * Continue the durable Conversation through its serving Station's shared
  * foreground seam. A stopped predecessor is intentionally replaced by a
@@ -4350,6 +4541,11 @@ export async function continueDelegatedTask(
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
+  // A bound answer goes to the request's own Session. A model change can
+  // start a successor Session before the turn's binding check runs, moving
+  // the task off the question it answers, so the two are never combined.
+  if (input.expectedInputRequest && (input.model || input.modelOptions))
+    throw new DelegatedInputBindingModelChangeError();
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     { environmentId: input.environmentId },
@@ -4396,12 +4592,20 @@ export async function continueDelegatedTask(
     // Station, while every non-portable failure keeps the plain path
     // byte-for-byte (the narrow translator cannot mislabel a legacy
     // failure, since the body carries no portable signal either way).
+    // A bound answer goes only to a Station that advertises enforcing the
+    // binding: an older Station's schema would drop the field and deliver
+    // the text as an unbound follow-up turn.
+    if (input.expectedInputRequest && selectedTarget.kind !== 'current')
+      await assertTargetEnforcesInputBinding(selectedTarget);
     return normalizeDelegatedIdentity(
       await postPeerPortableFollowUp<DelegatedTaskFollowUpHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/continue`,
         {
           message: input.message,
+          ...(input.expectedInputRequest
+            ? { expectedInputRequest: input.expectedInputRequest }
+            : {}),
           ...relayQuery(selectedTarget),
           ...(input.model ? { model: input.model } : {}),
           ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
@@ -4419,6 +4623,13 @@ export async function continueDelegatedTask(
     input,
   );
   const snapshot = snapshotFor(loaded);
+  if (input.expectedInputRequest)
+    assertInputRequestOpenOnTask(
+      input.expectedInputRequest,
+      snapshot.currentSessionId,
+      orchestrationService,
+      readAuthority,
+    );
   // The shared execution-target resolver owns model-option capability checks.
   // A completed predecessor may be replaced by a child with another provider,
   // so prevalidating against the predecessor snapshot can reject a valid
@@ -4427,6 +4638,10 @@ export async function continueDelegatedTask(
     {
       conversationId: snapshot.conversationId,
       message: input.message,
+      // Re-checked by the orchestration service at engine invocation.
+      ...(input.expectedInputRequest
+        ? { expectedInputRequest: input.expectedInputRequest }
+        : {}),
       userId: readAuthority.userId,
       ...(input.ownerAttribution
         ? { ownerAttribution: input.ownerAttribution }
@@ -4946,7 +5161,12 @@ export async function delegateTask(
         // only an unresolved claim, so it names no parent here.
         ...(!input.stationControlToolCall &&
         input.delegation?.parentConversationId
-          ? { parentConversationId: input.delegation.parentConversationId }
+          ? {
+              parentConversationId: input.delegation.parentConversationId,
+              ...(input.delegationProvenance
+                ? { delegationProvenance: input.delegationProvenance }
+                : {}),
+            }
           : {}),
       });
     }
@@ -5514,6 +5734,15 @@ export async function delegateTask(
             environmentId: target.environmentId,
           },
           resourceAdmissionIntent: 'delegated_background',
+          // #3323: stamped beside `delegation` after the reserved-key strip.
+          ...(input.delegation && input.delegationProvenance
+            ? {
+                delegationProvenance: {
+                  context: input.delegation,
+                  provenance: input.delegationProvenance,
+                },
+              }
+            : {}),
           ...(input.taskRoomInvocationAdmission
             ? {
                 receiverExecutionAdmission: input.taskRoomInvocationAdmission,
@@ -5836,6 +6065,8 @@ export async function executeExecutionTargetMessage(
       delegation: _claimedDelegation,
       delegationAttestation: _claimedAttestation,
       stationControlToolCall: _stationControlToolCall,
+      // #3323: this Station's judgement of its own request; never forwarded.
+      delegationProvenance: _delegationProvenance,
       ...remoteInput
     } = input;
     const forwarded = input.stationControlToolCall
@@ -6217,6 +6448,15 @@ export async function executeExecutionTargetMessage(
                   resourceId: input.receiverAdmission.resourceId,
                   localProjectId:
                     input.receiverAdmission.admittedProject.localProjectId,
+                },
+              }
+            : {}),
+          // #3323: stamped beside `delegation` after the reserved-key strip.
+          ...(input.delegation && input.delegationProvenance
+            ? {
+                delegationProvenance: {
+                  context: input.delegation,
+                  provenance: input.delegationProvenance,
                 },
               }
             : {}),

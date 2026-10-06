@@ -390,6 +390,25 @@ store.
 
 ## 11. Resolved decisions (2026-08-29)
 
+- **#2962 — client API compatibility is separate from peer authority.** The
+  host advertises `compatibility.capabilities.clientProtocolHeader: 1`; SDK
+  requests declare `X-Station-Client-Protocol`, with cross-origin browser
+  carriage conditioned on observing that capability. The UI clears prior origin
+  acceptance when a handshake starts. Only the latest-started handshake per
+  origin may restore it; its failed response, invalid JSON or transport error
+  leaves acceptance cleared even if an older overlapping handshake succeeds. Paired-scope HTTP and
+  pairing request/access-request/exchange refuse a protocol below
+  `minClientProtocol` with `426 client_protocol_unsupported`; malformed is
+  `400`, and absent means legacy protocol 1. The public handshake remains
+  reachable. This adds no delegation scope, peer credential or mutual pairing
+  ceremony. Native pairing exchange and direct fetch callers still have
+  declaration gaps, and terminal/voice WebSockets are outside the HTTP check.
+  The ratchet test in
+  [`client-protocol-admission.test.ts`](../../src-server/runtime/__tests__/client-protocol-admission.test.ts)
+  blocks raising the minimum above 1 while its known undeclared callers remain.
+  See the
+  [current threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962).
+
 - **#2377 slice C2b — cross-Station forwarding is server-side (2026-09-27).**
   A station-control tool no longer resolves, connects to, or holds a bearer
   for another Station. It sends the saved Environment to this Station's own

@@ -61,7 +61,7 @@ rounding differences.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
-| Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is cumulative within each engine process; a restart begins another cost epoch |
+| Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is a running total. A process that resumes its transcript continues that total; a restart without resume, or a lower figure, starts a new total that is added |
 | Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
@@ -90,8 +90,20 @@ explicit dropped-material coverage instead of failing the entire peer read.
 
 A context-only ACP observation produces no empty token receipt and does not
 count as a consumed-usage report. Codex token snapshots retain one identity
-across engine-process restarts; Claude cost snapshots keep separate process
-epochs. Durable event sequence resolves equal Station-observation timestamps,
+across engine-process restarts. A Claude cost snapshot keeps one identity per
+running total. A process started with the SDK `resume` option continues the
+total its transcript saved, so its figures replace the previous process's.
+A restart without resume starts a new total. A figure lower than the one it
+would replace also starts a new total; a missing-transcript resume reports
+`0`, for example. The session cost and the receipt rollup use the same rule.
+`session.started` events recorded before this marker existed read as restarts,
+so older resumed sessions can still over-report their cost. The SDK reports
+no starting total, so the rule has two blind spots. A reset or a resume whose
+transcript saved no total undercounts when its first figure already exceeds the
+previous total. A restated total slightly below the last live figure starts a
+new total and overcounts.
+
+Durable event sequence resolves equal Station-observation timestamps,
 and sparse cumulative updates preserve previously reported components.
 Combined counter estimates remain unpriced when their model, price snapshot,
 or inherited component evidence does not support one estimate. These receipts
@@ -138,11 +150,14 @@ session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less
 station-control process (as a Strands-runtime agent uses) names neither, so it
-is not found and not shown as missing. Sessions you can't read are ignored,
-so in hosted mode a delegate launched by a caller-less internal request
-(Station's own agent or a Strands-runtime agent), which the Station operator
-owns, isn't counted and doesn't make the total partial. The tree refreshes every 15 seconds while the
-dialog is open, and stops after a 404 or 422.
+is not found and not shown as missing. A task you can't read is never named
+or figured. When Station derived or attested its link to your conversation
+(in hosted mode, a delegate Station couldn't attribute to a bound caller is
+the Station operator's), the total is partial and says how many such tasks
+there are. When the link was only a request's claim, the task is ignored, so
+no one can mark your total partial by naming your conversation. The tree
+refreshes every 15 seconds while the dialog is open, and stops after a 404 or
+422.
 
 **People paired with this Station** reads the existing paired-device registry
 through a captured API/authority scope. Only active interactive devices with an
