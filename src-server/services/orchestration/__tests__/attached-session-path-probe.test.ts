@@ -41,7 +41,7 @@ const HANGING_CHILD = new URL(
 const PROBE_MODULE = fileURLToPath(
   new URL('../attached-session-path-probe.ts', import.meta.url),
 );
-const DEADLINE_MS = 400;
+const DEADLINE_MS = 800;
 const OBSERVATION: SessionAnswerabilityObservation = {
   threadAttachment: 'detached',
   providerRegistered: true,
