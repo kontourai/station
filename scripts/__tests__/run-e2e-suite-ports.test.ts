@@ -1908,7 +1908,11 @@ describe('suiteStationE2EEnv', () => {
   test.each(['smoke-live', 'product', 'first-run'])(
     'keeps %s history isolated with the correct authentication boundary',
     (suite) => {
-      const roots = { claude: '/fixture/claude', codex: '/fixture/codex' };
+      const roots = {
+        claude: '/fixture/claude',
+        codex: '/fixture/codex',
+        opencode: '/fixture/opencode',
+      };
       const inherited = {
         CLAUDE_CONFIG_DIR: '/host/claude',
         CODEX_HOME: '/host/codex',
@@ -1916,6 +1920,7 @@ describe('suiteStationE2EEnv', () => {
       const env = e2eProviderConfigEnv(suite, roots, inherited);
       expect(env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT).toBe(roots.claude);
       expect(env.STATION_EXTERNAL_CODEX_SOURCE_ROOT).toBe(roots.codex);
+      expect(env.STATION_EXTERNAL_OPENCODE_SOURCE_ROOT).toBe(roots.opencode);
       expect(env.CLAUDE_CONFIG_DIR).toBe(
         suite === 'smoke-live' ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
       );

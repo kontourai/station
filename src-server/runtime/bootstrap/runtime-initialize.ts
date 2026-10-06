@@ -15,6 +15,7 @@ import {
   type UsagePricingSnapshotCapture,
 } from '../../analytics/usage-pricing-snapshot-capture.js';
 import {
+  type EngineAgentCatalog,
   loadOrCreateAgentRegistry,
   reconcilePluginEngineConnections,
 } from '../../domain/agent-registry.js';
@@ -76,6 +77,7 @@ import {
   createEnvironmentRuntimeResourcePostureProbe,
   type RuntimeResourcePostureProbe,
 } from '../../services/infra/resource-posture.js';
+import { createAdoptedChildExecutionBindingResolver } from '../../services/orchestration/adopted-child-execution-binding.js';
 import {
   AttachedSessionFollowService,
   attachedSessionsOutsideProjectsEnabled,
@@ -176,6 +178,9 @@ export interface InitializeRuntimeDeps {
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
+    // #3429: this Station's Environment, which a continued attached
+    // conversation records as its execution binding.
+    | 'readExistingRecord'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -190,7 +195,7 @@ export interface InitializeRuntimeDeps {
     saveIntegration: (id: string, def: ToolDef) => Promise<void>;
     hasIntegration: (id: string) => Promise<boolean>;
     /** Agent-record enumeration for boot-time engine adoption. */
-    listAgents: () => Promise<Array<{ slug: string }>>;
+    listAgents: EngineAgentCatalog['listAgents'];
     mutateAgent: (slug: string, updater: (current: any) => any) => Promise<any>;
   };
   storageAdapter: FileStorageAdapter;
@@ -612,6 +617,15 @@ export async function initializeRuntime(
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
+    // #3429: a continued attached conversation runs as its engine's own
+    // Agent on this Station's Environment, so the dock can open it.
+    resolveAdoptedChildExecutionBinding:
+      createAdoptedChildExecutionBindingResolver({
+        configLoader,
+        readEnvironmentId: async () =>
+          (await deps.environmentSecurityService.readExistingRecord())
+            .environmentId,
+      }),
     // #2873: where an ACP connection would start a session that has no
     // directory of its own, read from the same config the adapter reads, so
     // a scoped dispatch is decided on the directory it will run in.

@@ -591,6 +591,34 @@ and voice WebSockets. A `401` returns the connection to its masked
 credential-required recovery state. Reconnect/session continuity beyond this
 credential recovery is tracked in #303.
 
+The pairing client and UI health probe observe
+`compatibility.capabilities.clientProtocolHeader` in the public handshake
+before protected requests. The shared
+[header policy](../../packages/shared/src/client-protocol.ts) sends
+`X-Station-Client-Protocol` cross-origin in a browser only after that host
+advertises a numeric capability of at least 1. An absent capability removes
+the process-local observation; it is not persisted across page loads. The UI
+also clears the previous observation when a handshake starts. Only the
+latest-started handshake per origin may restore acceptance. Its non-OK
+response, invalid JSON or transport error leaves acceptance cleared, even if
+an older overlapping handshake succeeds. The next cross-origin request then
+carries no protocol header.
+Same-origin, Node and host-owned transport requests can carry the header
+without CORS negotiation. The SDK replaces any caller-supplied copy with its
+build's protocol. These declarations grant no credential or scope.
+
+The host checks paired-scope HTTP and the public pairing request,
+access-request and exchange before credentials: below `minClientProtocol` is
+`426 client_protocol_unsupported`, malformed is `400 client_protocol_invalid`,
+and absent means protocol 1. The handshake remains reachable. A protocol
+refusal requires correcting/updating the client rather than re-pairing to gain
+authority. Protocol refusals use a separate direct-socket-peer audit budget
+(default: 10 per 60 seconds), reusing the existing limiter and its 1,024-peer
+cap. Exhaustion suppresses only audits while every refusal receives 400/426.
+Refusals neither consult nor consume the authentication budget.
+The separate native Rust pairing exchange and direct fetch callers
+remain undeclared; terminal/voice WebSockets are outside this HTTP check.
+
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.
 

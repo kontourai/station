@@ -92,7 +92,14 @@ to completed canonical main-qualification runs. It keeps one P1 issue titled
 `Main qualification repair`, with failed source/run, job outcomes, an owner,
 state and a deadline 24 hours after the episode opens.
 
-The first failure starts one bounded agent attempt. Further failures update the
+By default no automated repair agent runs: repository variable
+`QUALIFICATION_REPAIR_AGENT` is unset, and the issue is opened or updated with
+state `needs-owner` and no claimed owner, so a person or a Station agent repairs
+it. Setting the variable to `codex` opts in to the bounded Codex attempt below
+(it needs the `OPENAI_API_KEY` secret and spends OpenAI credits); any other
+value fails the prepare step and starts nothing. Closing on green is unchanged.
+
+With `codex` selected, the first failure starts one bounded agent attempt. Further failures update the
 same episode without starting another agent. Out-of-order older successes cannot
 close a newer failure. After a repair lands and main CI succeeds, [Main: Qualify landed repair](../../.github/workflows/qualification-after-repair.yml)
 dispatches one fresh main qualification. A later successful qualification closes

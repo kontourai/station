@@ -210,7 +210,9 @@
 
     "src-server/providers/sessions/claude-transcript-session-source.ts",
 
-    "src-server/providers/sessions/codex-rollout-session-source.ts"
+    "src-server/providers/sessions/codex-rollout-session-source.ts",
+
+    "src-server/providers/sessions/grok-session-source.ts"
   ],
 
   "checks": [

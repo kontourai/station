@@ -635,6 +635,56 @@ describe('SessionQueryModule', () => {
     expect(listEvents).toHaveBeenCalledOnce();
   });
 
+  test('station#3415: a compaction marker at the end of a turn leaves its answer readable', async () => {
+    const at = (eventId: string, fields: Record<string, unknown>) => ({
+      eventId,
+      provider: 'codex',
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      createdAt: '2026-10-05T00:00:00.000Z',
+      ...fields,
+    });
+    const module = createSessionQueryModule({
+      findSession: vi.fn(async () => ({ id: 'thread-1' })),
+      projectConversation: vi.fn(() => ({
+        assignedAgentSlug: 'codex',
+        createdAt: '2026-10-05T00:00:00.000Z',
+        updatedAt: '2026-10-05T00:01:00.000Z',
+      })),
+      canReadSession: vi.fn(() => true),
+      listEvents: vi.fn(
+        () =>
+          [
+            at('e0', { method: 'turn.started', prompt: 'question' }),
+            at('e1', { method: 'content.text-delta', delta: 'the answer' }),
+            at('e2', {
+              method: 'extension.notification',
+              namespace: 'codex-rollout',
+              type: 'context-compacted',
+              payload: { source: 'provider-event' },
+            }),
+            at('e3', { method: 'turn.completed' }),
+          ] as unknown as CanonicalRuntimeEvent[],
+      ),
+    });
+
+    await expect(
+      module.readAssistantTurn(
+        { type: 'assistant-turn', threadId: 'thread-1', turnId: 'turn-1' },
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      ),
+    ).resolves.toMatchObject({
+      status: 'found',
+      turnId: 'turn-1',
+      message: {
+        id: 'e0:assistant',
+        role: 'assistant',
+        metadata: { turnId: 'turn-1', answerEligible: true },
+        parts: [expect.objectContaining({ text: 'the answer' })],
+      },
+    });
+  });
+
   test('uses the indexed turn seam and never returns reasoning or a cancelled/partial terminal answer', async () => {
     const listEvents = vi.fn(() => {
       throw new Error('exact answer must not replay the full Session');

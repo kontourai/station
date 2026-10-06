@@ -45,6 +45,7 @@ import { type AgentRegistry } from '../../domain/agent-registry.js';
 import {
   connectionIdForAdapter,
   engineIdForAdapter,
+  nativeRuntimeConnectionIds,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { LegacyCredentialProfileRegistryState } from '../../providers/app-home/credential-profile-registry.js';
@@ -57,6 +58,7 @@ import {
   upsertCredentialProfile,
 } from '../../providers/app-home/credential-profile-registry.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   type EngineProxyRoute,
   resolveEngineProxy,
@@ -256,6 +258,17 @@ function adapterEngineIdOrUndefined(
     return engineIdForAdapter(adapter);
   } catch {
     return undefined;
+  }
+}
+
+const logger = createLogger({ name: 'connection-service' });
+
+/** An Adapter's `provider` key for a log line, never throwing. */
+function adapterProviderLabel(adapter: ProviderAdapterShape): string {
+  try {
+    return String(adapter.provider);
+  } catch {
+    return 'unknown';
   }
 }
 
@@ -1278,13 +1291,31 @@ export class ConnectionService {
           engineId: adapterEngineId,
           type: adapterEngineId,
         });
-      } catch {}
+      } catch (error: unknown) {
+        logger.debug(
+          'Engine identity unavailable for one Adapter; its Agents lose only their own engine attribution',
+          {
+            adapter: adapterProviderLabel(adapter),
+            error: sanitizeFreeText(String(error)),
+          },
+        );
+      }
     }
+    const nativeIds = nativeRuntimeConnectionIds(adapters);
     for (const config of acpConnections) {
       // Parsed, never assumed: a config id that is not a clean identity has
       // no public connection, and must not abort its siblings' attribution.
       const configEngineId = parseEngineId(config.id);
       if (!configEngineId) continue;
+      // A stored ACP connection that shares a native engine's id (written
+      // before the ACP routes refused such ids) resolves to that engine's
+      // public connection. Keyed by connection id, the ACP entry would then
+      // relabel every native Agent as `acp`; the native engine keeps the id,
+      // and the collision is logged once per id so it can be repaired.
+      if (nativeIds.has(config.id)) {
+        this.reportAcpNativeIdCollision(config.id);
+        continue;
+      }
       const identity = publicEngineConnection(
         adapters,
         registry,
@@ -1298,6 +1329,17 @@ export class ConnectionService {
       });
     }
     return identities;
+  }
+
+  private readonly reportedAcpNativeIdCollisions = new Set<string>();
+
+  private reportAcpNativeIdCollision(id: string): void {
+    if (this.reportedAcpNativeIdCollisions.has(id)) return;
+    this.reportedAcpNativeIdCollisions.add(id);
+    logger.warn(
+      'An ACP connection shares its id with a native engine; engine attribution keeps the native engine. Delete the ACP connection and add it again under a different id.',
+      { connectionId: id },
+    );
   }
 
   /**
