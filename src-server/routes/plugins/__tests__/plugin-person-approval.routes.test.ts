@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
+import { PAIRING_SCOPE_CODING_EXEC } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
@@ -222,8 +223,14 @@ function createHarness(
     eventBus: { emit() {} } as unknown as EventBus,
     security: {
       verifyCredential: (candidate: string) => candidate in CREDENTIALS,
+      // The person's device holds the operator's coding:exec grant: installing
+      // runs the package's code, which a paired device also needs.
       resolveGrantedScope: (candidate: string) =>
-        candidate in CREDENTIALS ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
+        candidate === MEMBER_DEVICE
+          ? `${DEFAULT_GRANT_PAIRING_SCOPE} ${PAIRING_SCOPE_CODING_EXEC}`
+          : candidate in CREDENTIALS
+            ? DEFAULT_GRANT_PAIRING_SCOPE
+            : undefined,
       resolveCredentialAuthority: (candidate: string) =>
         CREDENTIALS[candidate]?.authority,
       resolveCredentialDeviceId: (candidate: string) =>

@@ -1460,7 +1460,10 @@ projection lists every reference, unfiltered, for every caller.
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
 resolves fresh child-only environment values and records success only after
 connection/handshake succeeds; unsupported transports and the built-in station-control
-child refuse authored injection. Changing grants does not erase values already delivered
+child refuse authored injection. Attaching a binding to a command-launching
+server (bind, migrate-stored-env, or replacing a binding already bound to one) takes
+the operator or a device holding `coding:exec` at the route (`routes/secret-bindings.ts`),
+because the value becomes that command's environment. Changing grants does not erase values already delivered
 to a running child. The same store separately implements `resolveForAcpProvider()` for
 exact connection/provider/header grants, consumed by the ACP provider-configuration
 route; that is not generic MCP header injection. The Datum adapter is the contracts

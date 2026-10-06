@@ -1126,9 +1126,13 @@ Install, recovery, update, and removal are person-only lifecycle operations.
 The [route guard](../../src-server/routes/plugins/plugin-person-approval.ts)
 refuses Station's internal agent-tool identity and delegated or unconfirmed
 device identities. Agent tools can propose an operation for a person to
-complete. This is an authenticated Station API boundary, not isolation from
-arbitrary code running as Station's operating-system user; that code can access
-the same local credentials and files.
+complete. Install, recovery and update also run the package's code, so a paired
+device additionally needs the operator's `coding:exec` grant (`403` with
+`code: 'command-not-granted'` otherwise); the operator in person never does.
+Preview only fetches and reads a manifest and needs no grant. This is an
+authenticated Station API boundary, not isolation from arbitrary code running as
+Station's operating-system user; that code can access the same local credentials
+and files.
 
 ```bash
 API_BASE="${STATION_API_BASE:-http://127.0.0.1:18141}"

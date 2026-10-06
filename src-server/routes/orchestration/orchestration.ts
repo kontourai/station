@@ -161,6 +161,7 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
 import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
@@ -1996,6 +1997,11 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       if (
         body.skillExperience &&
         (body.automaticBackground || !body.clientTurnId)
@@ -2314,6 +2320,11 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.target.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        const directoryRefused = refuseUngrantedDirectoryWorkspace(
+          c,
+          body.target,
+        );
+        if (directoryRefused) return directoryRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.handoffConversation({
@@ -2650,6 +2661,11 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       // #2377 slice C2a: a new task starts in the Project the body names.
       const scoped = scopeDispatch(
         c,

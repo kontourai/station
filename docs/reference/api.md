@@ -36,6 +36,52 @@ apply to each tool operation.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Choosing a working folder
+
+Naming a folder takes the authority to run commands there: for a paired
+device, the operator's `coding:exec` grant (the same rule `POST /api/projects`
+applies to a Project's folder). A device without it, including a `delegation`
+or `standard` preset device, gets `403` with
+`code: 'working-directory-not-granted'` and nothing starts or saves. The rule
+covers exactly these routes:
+
+- `POST /api/orchestration/delegations`, `/chat`, `/chat/delegated`,
+  `/chat/background` and `/conversations/:conversationId/handoff`, when
+  `target.workspace` is `{ kind: 'directory', cwd }`;
+- `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
+  (`start-task`), when `runtimeConfig.cwd` is not the Task Project's own
+  folder;
+- `POST /api/projects/attach` with a `workingDirectory`, and
+  `PUT /api/projects/:slug/identity/execution-root` setting a path.
+
+A `{ kind: 'project' }` workspace is unchanged. The operator, and the desktop
+app on the Station's own computer, are not decided by the rule. Other routes
+that take a path are not covered by it.
+
+Choosing a command for Station to run takes the same authority, decided by the
+same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
+or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
+when `command`, `args` or `cwd` change; `POST /integrations`, and
+`PUT /integrations/:id`, when `command` or `args` are set or change; `POST
+/api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
+when `terminalShell` changes (an agent's station-control call may not change it
+at all). The same code covers a tool server's `env` or `secretEnv` on a
+command-launching server, a URL-transport record changed to launch a stored
+command, `POST /api/plugins/install`, `/:name/recover` and `/:name/update`,
+`POST /api/registry/plugins/install` and `POST /api/registry/integrations/install`;
+entering an API key for a command-launching tool server from a paired device now
+needs the grant. Binding a secret to a command-launching server
+(`POST /api/secret-bindings/:id/bind`, `migrate-stored-env`, and `PUT` on a binding
+already bound to one) and `POST /api/registry/agents/install` take it too. A bind is checked for a missing or hidden
+binding too, so a caller without the grant gets `command-not-granted` there and one
+with it gets the service's `404`; a person-owned binding still answers the
+service's `400`; no env name is
+exempt. A saved
+Environment's dispatch that names no Project
+is sent with the verified project folder; if that Station answers
+`working-directory-not-granted`, the caller gets a fixed message naming a Project
+or the grant.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
@@ -2378,7 +2424,9 @@ provider's available catalog.
 
 `POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
-Otherwise it calls the Agent registry provider and returns its result. A
+Otherwise it calls the Agent registry provider (which copies a plugin tree into
+the plugins directory, so a paired device needs the `coding:exec` grant here
+too) and returns its result. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 

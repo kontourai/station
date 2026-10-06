@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { KIT_OBSERVABILITY_CONFORMANCE_VECTORS } from '@kontourai/flow-agents/kit-observability-conformance';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -149,7 +150,7 @@ function setup(
     listSkills: vi.fn().mockReturnValue([]),
     getSkill: vi.fn().mockResolvedValue({ name: 's1', path: '/tmp/skills/s1' }),
   };
-  const app = createRegistryRoutes(
+  const routes = createRegistryRoutes(
     configLoader as any,
     refreshACPModes,
     reloadSkills,
@@ -174,6 +175,9 @@ function setup(
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any,
     },
   );
+  // Installing an integration or plugin takes the operator in person; a bare
+  // mount is refused.
+  const app = withOperatorPrincipal(routes);
   return { app, configLoader, refreshACPModes, reloadSkills, skillService };
 }
 

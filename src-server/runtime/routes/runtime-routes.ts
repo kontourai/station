@@ -375,6 +375,7 @@ import { createSettingsRegistryRoutes } from '../../routes/system/settings-regis
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
+import { launchesCommand } from '../../routes/working-directory-authority.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
@@ -2675,6 +2676,8 @@ export function configureRuntimeRoutes(
       context.secretBindingAdministration,
       context.secretBindingIntegrationAdministration,
       context.mcpService,
+      async (integrationId) =>
+        launchesCommand(await context.mcpService.getIntegration(integrationId)),
       { resolveViewerPrincipalId: resolveConnectedAccountPrincipalId },
     ),
   );
@@ -6526,6 +6529,7 @@ export function configureRuntimeRoutes(
               ).id,
               c.req.raw,
             ),
+          projectFolder: resolveWorkspacePath,
         },
       ),
     );

@@ -16,6 +16,7 @@ import {
   SecretBindingPersonCreateError,
   SecretBindingPersonGrantError,
 } from '../services/secrets/secret-binding-administration.js';
+import { refuseUngrantedCommandChoice } from './working-directory-authority.js';
 
 /** Operator-only mount; runtime composition owns its access:manage gate. */
 export function createSecretBindingRoutes(
@@ -27,6 +28,13 @@ export function createSecretBindingRoutes(
       bindings: Record<string, { bindingId: string; expectedRevision: number }>;
     }): Promise<{ outcome: 'migrated'; migratedEnvNames: string[] }>;
   },
+  /**
+   * Whether an integration launches a command (stdio). A binding's value
+   * becomes that command's environment, so attaching one, or changing the
+   * value of one that is attached, is choosing a command. Absent or failing,
+   * an integration counts as launching one.
+   */
+  integrationLaunches?: (integrationId: string) => Promise<boolean>,
   options: {
     /**
      * #3279: the calling request's own principal id. Bindings owned by a
@@ -36,6 +44,21 @@ export function createSecretBindingRoutes(
     resolveViewerPrincipalId?: (c: Context) => string | undefined;
   } = {},
 ) {
+  // Fails closed: a missing or malformed id, an unreadable integration or an
+  // unwired lookup all count as launching a command.
+  const launches = async (integrationId: unknown): Promise<boolean> =>
+    typeof integrationId !== 'string' ||
+    (integrationLaunches
+      ? await integrationLaunches(integrationId).catch(() => true)
+      : true);
+  /** A 403 when the integration launches a command and the caller may not choose one. */
+  const refuseIfLaunching = async (
+    c: Context,
+    integrationId: unknown,
+  ): Promise<Response | undefined> =>
+    (await launches(integrationId))
+      ? refuseUngrantedCommandChoice(c)
+      : undefined;
   const app = new Hono();
   const viewerOf = (c: Context): SecretBindingViewer | undefined => {
     const principalId = options.resolveViewerPrincipalId?.(c);
@@ -107,15 +130,30 @@ export function createSecretBindingRoutes(
       201,
     ),
   );
-  app.put('/:id', async (c) =>
-    respond(c, async () =>
+  app.put('/:id', async (c) => {
+    // Replacing a binding changes the value every command it is bound to
+    // receives, so it is gated when any of them launches one.
+    let current: Awaited<ReturnType<SecretBindingAdministration['get']>>;
+    try {
+      current = await service.get(c.req.param('id'), viewerOf(c));
+    } catch {
+      // Unreadable grants can't be checked, so refuse an ungranted caller.
+      const refused = refuseUngrantedCommandChoice(c);
+      if (refused) return refused;
+      current = null;
+    }
+    for (const grant of current?.grants ?? []) {
+      const refused = await refuseIfLaunching(c, grant.integrationId);
+      if (refused) return refused;
+    }
+    return respond(c, async () =>
       service.replace({
         ...(await body(c)),
         id: c.req.param('id'),
         viewer: viewerOf(c),
       } as Parameters<SecretBindingAdministration['replace']>[0]),
-    ),
-  );
+    );
+  });
   app.post('/:id/revoke', async (c) =>
     respond(c, async () =>
       service.revoke({
@@ -132,6 +170,7 @@ export function createSecretBindingRoutes(
       consumers,
       'bind',
       c.req.param('id'),
+      refuseIfLaunching,
       viewerOf(c),
     ),
   );
@@ -142,6 +181,7 @@ export function createSecretBindingRoutes(
       consumers,
       'unbind',
       c.req.param('id'),
+      refuseIfLaunching,
       viewerOf(c),
     ),
   );
@@ -151,6 +191,10 @@ export function createSecretBindingRoutes(
         { success: false, error: 'Secret binding migration unavailable.' },
         503,
       );
+    // Migrating moves stored env into bindings on that integration: the same
+    // attach, gated by the same decision.
+    const refused = await refuseIfLaunching(c, integrationId);
+    if (refused) return refused;
     return respond(c, async () => {
       const input = await body(c);
       return migration.migrateStoredEnv({
@@ -180,6 +224,10 @@ async function respondBindingMutation(
   consumers: SecretBindingIntegrationAdministration | undefined,
   operation: 'bind' | 'unbind',
   id: string,
+  refuseIfLaunching: (
+    c: Context,
+    integrationId: unknown,
+  ) => Promise<Response | undefined>,
   viewer: SecretBindingViewer | undefined,
 ) {
   let input: Record<string, unknown>;
@@ -191,6 +239,12 @@ async function respondBindingMutation(
     });
   }
   if (input.kind !== 'acp-provider-header') {
+    // Attaching a value to a command's environment chooses that command's
+    // environment; detaching one only removes it.
+    if (operation === 'bind' && (await bindingMayAttach(service, id, viewer))) {
+      const refused = await refuseIfLaunching(c, input.integrationId);
+      if (refused) return refused;
+    }
     return respondConsumer(c, consumers, operation, id, viewer, input);
   }
   const grant: SecretBindingGrant = {
@@ -207,6 +261,28 @@ async function respondBindingMutation(
       ...(viewer ? { viewer } : {}),
     }),
   );
+}
+
+/**
+ * Whether the command check applies to a bind of binding `id`. It does not
+ * for a person-owned binding: the service refuses every grant of one to a
+ * shared integration (400, `SECRET_BINDING_PERSON_GRANT_MESSAGE`), and an
+ * owner never changes, so nothing can attach and that answer is certain.
+ *
+ * It does for everything else, including a binding this read cannot find or
+ * the caller cannot see. Skipping on a missing binding would be a race: the
+ * binding can be created between this read and the service's own, and the bind
+ * would then attach with no check. An ungranted caller is refused either way,
+ * and a hidden binding answers exactly as a missing one, so nothing is revealed
+ * about existence. A lookup that fails counts as instance-owned.
+ */
+async function bindingMayAttach(
+  service: SecretBindingAdministration,
+  id: string,
+  viewer: SecretBindingViewer | undefined,
+): Promise<boolean> {
+  const seen = await service.get(id, viewer).catch(() => undefined);
+  return !(seen?.owner && seen.owner.kind !== 'instance');
 }
 
 async function respondConsumer(
