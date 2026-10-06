@@ -5,8 +5,11 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const ABSOLUTE_DEVELOPER_PATH =
   /(?:^|[\s`"'(])(?:\/(?:Users|home|private(?:\/(?:tmp|var))?|tmp|var|opt|Volumes)(?=\/|\b)|[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/gim;
 // Match complete DNS labels: settings.local.json is not a .local host.
+// A private media server's name is rejected in its hostname form and in its
+// display form (the same words split by whitespace, any case). Public text
+// calls it "home media", which this pattern does not match.
 const PRIVATE_HOSTNAME =
-  /\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|corp|local|lan|home\.arpa)(?![a-z0-9-]|\.[a-z0-9-])|(?:[a-z0-9-]+\.)?ts\.net|brian-media|desktop-win)\b/gi;
+  /\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|corp|local|lan|home\.arpa)(?![a-z0-9-]|\.[a-z0-9-])|(?:[a-z0-9-]+\.)?ts\.net|brian(?:-|\s+)media|desktop-win)\b/gi;
 // IPv6 branches require the literal's shape — a hex first group and a colon —
 // not a prefix: `(?:fc|fd)[\da-f:]+` matched every colon-free hex run starting
 // fc/fd, which is ~1 in 128 git SHAs (the deploy ledger's `fd2c04e…`).
