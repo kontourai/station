@@ -43,6 +43,7 @@ packageExtensionsChecksum: sha256-V9jQTPrRdqf6Z859wSbwGftx8ZFtQKJ6xDqATP3e4pk=
 patchedDependencies:
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
   '@voltagent/server-hono@2.0.14': 1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5
+  sprintf-js@1.0.3: 3542905f175dc1fcc4701cf1f1f8f60002a49d25ad7c3d3eb516c1e196ac19dc
 
 importers:
 
@@ -12225,7 +12226,7 @@ snapshots:
 
   argparse@1.0.10:
     dependencies:
-      sprintf-js: 1.0.3
+      sprintf-js: 1.0.3(patch_hash=3542905f175dc1fcc4701cf1f1f8f60002a49d25ad7c3d3eb516c1e196ac19dc)
 
   argparse@2.0.1: {}
 
@@ -15962,7 +15963,7 @@ snapshots:
 
   split2@4.2.0: {}
 
-  sprintf-js@1.0.3: {}
+  sprintf-js@1.0.3(patch_hash=3542905f175dc1fcc4701cf1f1f8f60002a49d25ad7c3d3eb516c1e196ac19dc): {}
 
   sqlite-vec-darwin-arm64@0.1.9:
     optional: true
