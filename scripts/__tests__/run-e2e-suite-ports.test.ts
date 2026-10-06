@@ -1904,6 +1904,71 @@ describe('establishedUserPlaywrightEnv', () => {
   });
 });
 
+/**
+ * Every external-session source root the server reads, from the server source
+ * itself: a new engine's `STATION_EXTERNAL_<ENGINE>_SOURCE_ROOT` joins this
+ * list without anyone editing it, and the assertion below then fails until
+ * the e2e runner isolates it too. An unisolated root makes the e2e server tail
+ * the host's real history (#3465: Grok sessions' toasts covered the Coding
+ * rail).
+ */
+function serverExternalSourceRootVariables(): string[] {
+  const names = new Set<string>();
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules')
+          walk(path);
+      } else if (/\.(ts|mts|js|mjs)$/.test(entry.name)) {
+        for (const match of readFileSync(path, 'utf8').matchAll(
+          /process\.env\.(STATION_EXTERNAL_[A-Z0-9_]+_SOURCE_ROOT)\b/g,
+        ))
+          names.add(match[1]);
+      }
+    }
+  };
+  walk(resolve(import.meta.dirname, '../../src-server'));
+  return [...names].sort();
+}
+
+describe('e2eProviderConfigEnv external source isolation', () => {
+  test('the server-derived list still sees the known engines', () => {
+    // Pinned literal beside the derived list, so a scan that silently finds
+    // nothing cannot pass the isolation test below vacuously.
+    expect(serverExternalSourceRootVariables()).toEqual(
+      expect.arrayContaining([
+        'STATION_EXTERNAL_CLAUDE_SOURCE_ROOT',
+        'STATION_EXTERNAL_CODEX_SOURCE_ROOT',
+        'STATION_EXTERNAL_GROK_SOURCE_ROOT',
+        'STATION_EXTERNAL_OPENCODE_SOURCE_ROOT',
+      ]),
+    );
+  });
+
+  test.each(['product', 'smoke-live', 'first-run', 'extended'])(
+    'isolates every external source root the server reads (%s)',
+    (suite) => {
+      // Any root the runner asks for gets its own fixture path, so this test
+      // does not need to know the runner's key names.
+      const roots = new Proxy({} as Record<string, string>, {
+        get: (_target, key) => `/fixture/${String(key)}`,
+      });
+      const env = e2eProviderConfigEnv(suite, roots, {}) as Record<
+        string,
+        string | undefined
+      >;
+      const variables = serverExternalSourceRootVariables();
+      const unisolated = variables.filter(
+        (name) => !env[name]?.startsWith('/fixture/'),
+      );
+      expect(unisolated).toEqual([]);
+      const paths = variables.map((name) => env[name]);
+      expect(new Set(paths).size).toBe(paths.length);
+    },
+  );
+});
+
 describe('suiteStationE2EEnv', () => {
   test.each(['smoke-live', 'product', 'first-run'])(
     'keeps %s history isolated with the correct authentication boundary',
@@ -1912,6 +1977,7 @@ describe('suiteStationE2EEnv', () => {
         claude: '/fixture/claude',
         codex: '/fixture/codex',
         opencode: '/fixture/opencode',
+        grok: '/fixture/grok',
       };
       const inherited = {
         CLAUDE_CONFIG_DIR: '/host/claude',
@@ -1921,6 +1987,7 @@ describe('suiteStationE2EEnv', () => {
       expect(env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT).toBe(roots.claude);
       expect(env.STATION_EXTERNAL_CODEX_SOURCE_ROOT).toBe(roots.codex);
       expect(env.STATION_EXTERNAL_OPENCODE_SOURCE_ROOT).toBe(roots.opencode);
+      expect(env.STATION_EXTERNAL_GROK_SOURCE_ROOT).toBe(roots.grok);
       expect(env.CLAUDE_CONFIG_DIR).toBe(
         suite === 'smoke-live' ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
       );
