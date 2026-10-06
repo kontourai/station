@@ -218,12 +218,15 @@ export interface ToolCallResult {
  * real executing target. This is descriptive identity for future standing-
  * grant resolution only; it MUST NOT by itself change an approval decision.
  * `delegated-child` is the target shape for the next slice: production code
- * does not construct it yet.
+ * does not construct it yet. `automation-rule` names the server-issued id of
+ * an Automation rule (a recreated rule is a new principal); its dispatch path
+ * is a later slice, so production code does not construct it yet either.
  */
 export type UnattendedPrincipal =
   | { kind: 'voice'; agentSlug: string; sessionId: string }
   | { kind: 'scheduled-job'; jobId: string }
-  | { kind: 'delegated-child'; originAgentSlug: string };
+  | { kind: 'delegated-child'; originAgentSlug: string }
+  | { kind: 'automation-rule'; ruleId: string };
 
 /**
  * What an unattended standing-grant lookup found. Only literal `true`

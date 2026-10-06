@@ -88,6 +88,7 @@
     "./git-remote-identity": "./src/git-remote-identity.ts",
     "./guidance-assets": "./src/guidance-assets.ts",
     "./inbound-webhook": "./src/inbound-webhook.ts",
+    "./automation": "./src/automation.ts",
     "./http": "./src/http.ts",
     "./knowledge": "./src/knowledge.ts",
     "./openai-compat-catalog-semantics": "./src/openai-compat-catalog-semantics.ts",
