@@ -909,8 +909,9 @@ test.describe('Orchestration Chat Flow', () => {
             ).size;
           }),
         );
+      // Deny and Allow Once; the session choices sit in the overflow menu.
       expect(lineCounts, `${context}: button labels on one line`).toEqual([
-        1, 1, 1,
+        1, 1,
       ]);
     };
     await expectClearLayout('desktop right dock pending');
