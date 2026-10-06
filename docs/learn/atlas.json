@@ -48,6 +48,7 @@
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",
         "SessionMessageDelivery",
+        "SessionDigest",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",
