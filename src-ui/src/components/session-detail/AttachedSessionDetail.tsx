@@ -2,6 +2,7 @@ import { externalSessionContinuationAvailability } from '@kontourai/station-cont
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   OrchestrationSessionSummary,
   StarterWorkStatus,
 } from '@kontourai/station-sdk';
@@ -26,10 +27,15 @@ import {
 import type { ChatMessage } from '../../types';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
+import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import {
+  TranscriptMarker,
+  transcriptMarkerLabel,
+} from '../chat/TranscriptMarker';
 import { Dialog } from '../Dialog';
 import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
@@ -138,6 +144,17 @@ export function AttachedSessionDetail({
     session.attachedSource,
   );
   const continuationSupported = continuationSupport.enabled;
+  // #3386: a conversation no project claims (Activity's No project) continues
+  // only as a No project chat in its own folder, and only because the person
+  // confirmed that here: the request names the choice, and Station refuses
+  // it for a folder too broad to confine an agent to. A conversation a
+  // project claims continues under that project, so it names no choice.
+  const outsideProjects = sessionProjectKeys(session).length === 0;
+  const adoptionTarget: AdoptSessionTarget | undefined = outsideProjects
+    ? { kind: 'own-folder' }
+    : undefined;
+  const ownFolder = session.cwd ? session.cwd : 'its own folder';
+  const noProjectExplanation = `This conversation belongs to no project. Station will continue it as a No project chat that works only in ${ownFolder}. To continue it in a project instead, add a project for that folder or its repository first.`;
   const adoptionIntent = useRef(createAdoptOrchestrationSessionIntent());
   // A settled server outcome is distinct from local reservation evidence: the
   // former says this exact continuation cannot be retried safely, whereas the
@@ -207,6 +224,7 @@ export function AttachedSessionDetail({
               sourceThreadId: session.threadId,
               apiBase,
               intent: adoptionIntent.current,
+              ...(adoptionTarget ? { target: adoptionTarget } : {}),
             });
           const reservation = await continuationStore.current!.reserve(
             session.threadId,
@@ -221,6 +239,7 @@ export function AttachedSessionDetail({
           sourceSessionId: session.threadId,
           operationId,
           apiBase,
+          ...(adoptionTarget ? { target: adoptionTarget } : {}),
         });
         if (outcome.state === 'continued') {
           const clearance = await continuationStore.current!.clear(
@@ -253,6 +272,11 @@ export function AttachedSessionDetail({
               : 'certain-response',
           message: outcome.reason,
           retryable: outcome.retrySafe,
+          // #3386: a settled refusal Station says retrying cannot change is
+          // shown in its own words.
+          ...(outcome.state === 'failed' && outcome.retrySafe === false
+            ? { refusal: outcome.reason }
+            : {}),
         });
       } catch (error) {
         if (error instanceof AdoptSessionError) throw error;
@@ -316,7 +340,15 @@ export function AttachedSessionDetail({
   const adoptionOutcomeUncertain =
     adoptionError?.failureClass === 'uncertain-no-response';
   const adoptionTransportFailed = isStationTransportFailure(adoption.error);
+  // #3386: Station refused this continuation for a reason a retry cannot
+  // change (a folder it will not continue in): say why, offer no retry.
+  const adoptionRefusal =
+    adoptionError?.failureClass === 'certain-response' &&
+    adoptionError.retryable === false
+      ? adoptionError.refusal
+      : undefined;
   const adoptionDisabled =
+    Boolean(adoptionRefusal) ||
     !continuationSupported ||
     adoption.isPending ||
     openingContinuation ||
@@ -357,16 +389,21 @@ export function AttachedSessionDetail({
   const continuationFeedback = (
     <>
       {adoption.error && (
-        <p className="sessions-detail__adoption-reason" role="alert">
-          {serverRejectedRetry
-            ? 'Station says this continuation cannot be retried safely from this state.'
-            : adoptionNonRetryable
-              ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
-              : adoptionDidNotReachStation ||
-                  adoptionOutcomeUncertain ||
-                  adoptionTransportFailed
-                ? "Couldn't start the continuation — Station isn't responding right now."
-                : "Couldn't start the continuation. Technical detail is under Details below."}
+        <p
+          className="sessions-detail__adoption-reason sessions-detail__adoption-folder"
+          role="alert"
+        >
+          {adoptionRefusal
+            ? adoptionRefusal
+            : serverRejectedRetry
+              ? 'Station says this continuation cannot be retried safely from this state.'
+              : adoptionNonRetryable
+                ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
+                : adoptionDidNotReachStation ||
+                    adoptionOutcomeUncertain ||
+                    adoptionTransportFailed
+                  ? "Couldn't start the continuation — Station isn't responding right now."
+                  : "Couldn't start the continuation. Technical detail is under Details below."}
         </p>
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (
@@ -385,6 +422,14 @@ export function AttachedSessionDetail({
             ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
             : continuationSupport.reason}
         </p>
+        {continuationSupported && outsideProjects && (
+          <p
+            className="sessions-detail__adoption-folder"
+            data-testid="attached-continuation-no-project"
+          >
+            {noProjectExplanation}
+          </p>
+        )}
       </div>
       {continuationAction}
       {continuationFeedback}
@@ -544,6 +589,9 @@ export function AttachedSessionDetail({
               const contentParts = message.parts
                 .flatMap(conversationPartToContentParts)
                 .map(withoutApprovalBinding);
+              const marker = transcriptMarkerLabel(contentParts);
+              if (marker)
+                return <TranscriptMarker key={message.id} label={marker} />;
               if (presentation === 'chat')
                 return (
                   <MessageBubble
@@ -690,6 +738,14 @@ export function AttachedSessionDetail({
               ? `This conversation started in ${displayProvider(session)}. Station will continue from this history and send your message. The original conversation stays available.`
               : continuationSupport.reason}
           </p>
+          {continuationSupported && outsideProjects && (
+            <p
+              className="sessions-detail__adoption-folder"
+              data-testid="attached-continuation-no-project"
+            >
+              {noProjectExplanation}
+            </p>
+          )}
           {continuationFeedback}
         </Dialog>
       )}

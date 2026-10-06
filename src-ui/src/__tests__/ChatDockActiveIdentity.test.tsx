@@ -264,3 +264,106 @@ describe('ChatDockActiveIdentity', () => {
     expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
   });
 });
+
+/**
+ * #3355: a LOCAL chat passes no `originProvider` (only an imported session
+ * records one), so the header's engine mark has to come from the catalog's
+ * `engineId` for the agent. Before this, a Codex-bound agent with a non-brand
+ * slug drew "CO"-style initials in the header even with the catalog healthy.
+ * The slug is deliberately not an engine id, so `AgentIcon`'s slug parse
+ * cannot supply the mark on its own.
+ */
+describe('ChatDockActiveIdentity engine mark for a local chat (#3355)', () => {
+  const session = {
+    id: 'chat-local',
+    title: 'Review the release notes',
+    agentSlug: 'release-reviewer',
+    agentName: 'Release Reviewer',
+  } as ChatSession;
+
+  function avatar() {
+    return document.querySelector('.chat-dock__active-identity-avatar');
+  }
+
+  test('draws the catalog engine mark when the agent resolves to codex', () => {
+    const agent = {
+      slug: 'release-reviewer',
+      name: 'Release Reviewer',
+      engineId: 'codex',
+      engineDisplayName: 'Codex',
+      execution: { agentConnectionId: 'codex' },
+    } as unknown as AgentData;
+
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(avatar()?.getAttribute('data-brand-key')).toBe('codex');
+    expect(avatar()?.querySelector('.brand-icon__initials')).toBeNull();
+  });
+
+  test('a catalog agent with no engine keeps its identicon rather than a guessed mark', () => {
+    const agent = {
+      slug: 'release-reviewer',
+      name: 'Release Reviewer',
+    } as unknown as AgentData;
+
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(avatar()?.getAttribute('data-brand-key')).toBeNull();
+    expect(avatar()?.classList.contains('brand-icon--identicon')).toBe(true);
+  });
+
+  test("an imported session's recorded provider still wins over the catalog", () => {
+    const agent = {
+      slug: 'release-reviewer',
+      name: 'Release Reviewer',
+      engineId: 'codex',
+    } as unknown as AgentData;
+
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agent}
+        originProvider="opencode"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(avatar()?.getAttribute('data-brand-key')).toBe('opencode');
+  });
+  test('an ACP-bound agent draws no brand mark (#3355)', () => {
+    const agent = {
+      slug: 'release-reviewer',
+      name: 'Release Reviewer',
+      engineId: 'acp',
+      engineConnectionType: 'acp',
+      execution: { agentConnectionId: 'kiro' },
+    } as unknown as AgentData;
+
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(avatar()?.getAttribute('data-brand-key')).toBeNull();
+    // `acp` is not a product, so the avatar is the agent's own fallback.
+    const fallback =
+      avatar()?.querySelector('.brand-icon__initials') ??
+      (avatar()?.classList.contains('brand-icon--identicon') ? avatar() : null);
+    expect(fallback).not.toBeNull();
+  });
+});

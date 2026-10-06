@@ -122,6 +122,9 @@ function renderAttached({
               },
               createdAt: '2026-06-27T00:00:00.000Z',
               updatedAt: '2026-06-27T00:00:00.000Z',
+              // A conversation a project claims, unless a test says otherwise
+              // (#3386: one no project claims continues as a No project chat).
+              projectSlug: 'station',
               ...sessionOverrides,
             } as any
           }
@@ -620,3 +623,156 @@ test.each(['inspector', 'chat'] as const)(
     expect(screen.queryByRole('button', { name: /^deny/i })).toBeNull();
   },
 );
+
+describe('AttachedSessionDetail transcript markers (station#3415)', () => {
+  const turnWith = (namespace: string, type: string) => [
+    ev({ method: 'turn.started', turnId: 'r1', prompt: 'list files' }),
+    ev({ method: 'content.text-delta', turnId: 'r1', delta: 'First half.' }),
+    ev({
+      method: 'extension.notification',
+      turnId: 'r1',
+      namespace,
+      type,
+      payload: { source: 'provider-event' },
+    } as Partial<CanonicalRuntimeEvent> & { method: string }),
+    ev({ method: 'content.text-delta', turnId: 'r1', delta: 'Second half.' }),
+    ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+  ];
+
+  for (const presentation of ['chat', 'inspector'] as const) {
+    test(`a mid-turn Codex compaction renders one marker line after its whole turn (${presentation})`, () => {
+      renderAttached({
+        presentation,
+        events: turnWith('codex-rollout', 'context-compacted'),
+      });
+      const markers = screen.getAllByText('Context compacted during this turn');
+      expect(markers).toHaveLength(1);
+      const marker = markers[0]!.closest('.transcript-marker')!;
+      expect(marker).toBeTruthy();
+      // The turn stays one row; the marker follows all of it.
+      const answer = screen.getByText(/First half\.\s*Second half\./);
+      expect(
+        answer.compareDocumentPosition(marker) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // A marker is not a speaker row: no "You" label stands over it.
+      expect(marker.closest('article')).toBeNull();
+    });
+  }
+
+  test('an unbound tuple renders nothing and leaves the turn in one row', () => {
+    renderAttached({
+      presentation: 'chat',
+      events: turnWith('codex-rollout', 'never-seen'),
+    });
+    expect(document.querySelector('.transcript-marker')).toBeNull();
+    expect(screen.getByText(/First half\.\s*Second half\./)).toBeTruthy();
+  });
+});
+
+describe('a conversation no project claims (#3386)', () => {
+  test('a project conversation names no choice and keeps its plain Continue', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    renderAttached({ presentation: 'chat' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
+    expect(adoptOrchestrationSession.mock.calls[0]![0]).not.toHaveProperty(
+      'target',
+    );
+  });
+
+  test('the inspector explains the No project chat in the conversation folder before Continue', () => {
+    renderAttached({
+      session: { projectSlug: undefined, cwd: '/work/scratch/app' },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId('attached-continuation-no-project').textContent,
+    ).toBe(
+      'This conversation belongs to no project. Station will continue it as a No project chat that works only in /work/scratch/app. To continue it in a project instead, add a project for that folder or its repository first.',
+    );
+  });
+
+  test('confirming continues it as a No project chat in its own folder, and nothing before that', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const onAdopted = vi.fn();
+    renderAttached({
+      presentation: 'chat',
+      onAdopted,
+      session: { projectSlug: undefined, cwd: '/work/scratch/app' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
+    expect(dialog.textContent).toContain(
+      'Station will continue it as a No project chat that works only in /work/scratch/app.',
+    );
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    await waitFor(() => expect(onAdopted).toHaveBeenCalled());
+    expect(adoptOrchestrationSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceThreadId: 'external:claude:raw-thread-id',
+        target: { kind: 'own-folder' },
+      }),
+    );
+  });
+
+  test('an ambiguous conversation names its candidates, not No project', () => {
+    renderAttached({
+      session: {
+        projectSlug: undefined,
+        projectAttribution: { state: 'ambiguous', candidates: ['a', 'b'] },
+      },
+    });
+    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeTruthy();
+  });
+
+  test('a refusal Station will repeat is shown in its own words, with no retry', async () => {
+    adoptOrchestrationSession.mockReset();
+    const refusal =
+      'Station will not continue this conversation as a No project chat in /work/app: it is outside your home folder. A No project chat may only work in a folder inside your home folder. Add a project for that folder, or keep working in the original app.';
+    adoptOrchestrationSession.mockRejectedValue(
+      new AdoptSessionError({
+        failureClass: 'certain-response',
+        message: `Station rejected the continuation request (HTTP 400). ${refusal}`,
+        retryable: false,
+        status: 400,
+        refusal,
+      }),
+    );
+    renderAttached({
+      presentation: 'chat',
+      session: { projectSlug: undefined, cwd: '/work/app' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(refusal);
+    const action = screen.getByRole('button', {
+      name: 'Continue and send',
+    }) as HTMLButtonElement;
+    expect(action.disabled).toBe(true);
+    fireEvent.click(action);
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+});
