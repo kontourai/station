@@ -76,7 +76,7 @@ interface ChatDockModalStackProps {
   projectsLoaded?: boolean;
   projectAccentBySlug?: ReadonlyMap<string, string>;
   /** The sidebar's project icons, for the start composer's project chip. */
-  projectIconBySlug?: ReadonlyMap<string, string>;
+  projectIconBySlug: ReadonlyMap<string, string>;
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;

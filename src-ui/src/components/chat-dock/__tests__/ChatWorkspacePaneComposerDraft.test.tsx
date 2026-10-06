@@ -43,6 +43,7 @@ import {
   type ProjectChatComposerDraft,
   requestProjectChat,
 } from '../../../lib/projectChatEvents';
+import { displayableProjectIcon } from '../../icons/ProjectIcon';
 
 const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
   vi.hoisted(() => ({
@@ -57,8 +58,15 @@ const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
     },
   }));
 
+// The shape the icon picker stores: a base64 image data URL.
+const PULSE_ICON = 'data:image/png;base64,iVBORw0KGgo=';
 const projects = [
-  { slug: 'pulse', name: 'Pulse', workingDirectory: '/work/pulse' },
+  {
+    slug: 'pulse',
+    name: 'Pulse',
+    workingDirectory: '/work/pulse',
+    icon: PULSE_ICON,
+  },
   { slug: 'other', name: 'Other', workingDirectory: '/work/other' },
 ];
 
@@ -538,6 +546,23 @@ test('the docked New chat button opens a draft in the bound Project with one rea
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(pickerProps.at(-1)!.startSurface).toBe(true);
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('the dock hands the start composer the sidebar’s project icons', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+
+  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const icons = pickerProps.at(-1)!.projectIconBySlug as ReadonlyMap<
+    string,
+    string
+  >;
+  expect(displayableProjectIcon(PULSE_ICON)).toBe(PULSE_ICON);
+  expect(icons.get('pulse')).toBe(displayableProjectIcon(PULSE_ICON));
+  expect(icons.has('other')).toBe(false);
 });
 
 test('the docked New Chat picker defaults to the dock’s bound Project', async () => {

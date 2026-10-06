@@ -132,7 +132,7 @@ const StartModelPicker = React.lazy(() =>
 /** Re-exported for callers that imported it from here before it moved. */
 export { ContextPickerOptions };
 
-const NO_ACCENTS: ReadonlyMap<string, string> = new Map();
+const NO_PROJECT_ACCENTS: ReadonlyMap<string, string> = new Map();
 
 export interface NewChatModalMode {
   kind: 'fork';
@@ -196,8 +196,11 @@ interface NewChatModalProps {
    * project in the sidebar's colour.
    */
   projectAccentBySlug?: ReadonlyMap<string, string>;
-  /** The sidebar's project icons (`useProjectIcons`, read by the dock). */
-  projectIconBySlug?: ReadonlyMap<string, string>;
+  /**
+   * The sidebar's project icons (`useProjectIcons`, read by the dock).
+   * Required: a caller that forgot it would draw every project as a dot.
+   */
+  projectIconBySlug: ReadonlyMap<string, string>;
 }
 
 /** "Global" sentinel for the context picker */
@@ -220,8 +223,8 @@ export function NewChatModal({
   onDraftChange,
   projectBindable = false,
   projectsLoaded = true,
-  projectAccentBySlug = NO_ACCENTS,
-  projectIconBySlug = NO_ACCENTS,
+  projectAccentBySlug = NO_PROJECT_ACCENTS,
+  projectIconBySlug,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   // In the automatic start, "Chat options" (or a start that cannot use

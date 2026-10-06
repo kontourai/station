@@ -44,6 +44,7 @@ function renderStack(
   const noop = vi.fn();
   render(
     <ChatDockModalStack
+      projectIconBySlug={new Map()}
       agents={[]}
       projects={[]}
       newChatProjectOverride={override}

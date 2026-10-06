@@ -101,6 +101,7 @@ beforeAll(() => {
 function renderModal() {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={[ACP_AGENT]}
       projects={[]}
       onSelect={vi.fn()}

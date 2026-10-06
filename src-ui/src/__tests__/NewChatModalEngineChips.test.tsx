@@ -235,6 +235,7 @@ describe('NewChatModal engine chips', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[NATIVE_OPENCODE]}
         projects={[]}
         onSelect={onSelect}
@@ -307,6 +308,7 @@ describe('NewChatModal engine chips', () => {
   test("a fork's reset names the source turn and closes the picker", async () => {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[NATIVE_OPENCODE]}
         projects={[]}
         onSelect={vi.fn()}
@@ -345,6 +347,7 @@ describe('NewChatModal engine chips', () => {
   test('disambiguates the two identically-named OpenCode entries with engine chips', () => {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[
           NATIVE_OPENCODE,
           ACP_OPENCODE,
@@ -407,6 +410,7 @@ describe('NewChatModal engine chips', () => {
 
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         requestAuthority={{
           apiBase: 'http://station.test/api',
           authorityKey: 'station:operator',
@@ -452,6 +456,7 @@ describe('NewChatModal engine chips', () => {
 
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         requestAuthority={{
           apiBase: 'http://station.test/api',
           authorityKey: 'station:operator',
@@ -507,6 +512,7 @@ describe('NewChatModal row hierarchy', () => {
   function renderPicker() {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[
           NATIVE_OPENCODE,
           ACP_OPENCODE,

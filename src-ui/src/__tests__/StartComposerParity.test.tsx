@@ -1327,6 +1327,7 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
       value={{ status: 'verified', namespace: 'ns-1', observation: null }}
     >
       <NewChatModal
+        projectIconBySlug={new Map()}
         startSurface
         agents={state.agents as AgentData[]}
         projects={state.projects as ProjectMetadata[]}
