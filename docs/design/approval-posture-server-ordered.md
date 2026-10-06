@@ -277,6 +277,8 @@ this order:
    is read per call through `resolveStationDefaultApprovalMode`, wired like
    `resolveStationDefaultWorkspaceIsolation`.
 2. **Else `ask`,** if Station has put a concrete posture on this live thread.
+   A posture the engine refused does not count: an OpenCode governance
+   refusal leaves the engine on what it ran before (#3290).
    - `ask` is the engine's own standard mode: Claude's `default` permission
      mode, and Codex's `untrusted`/`workspace-write`.
    - The engine is actually moved off bypass. The applied report then names

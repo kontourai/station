@@ -130,8 +130,11 @@ OpenCode is refused before any engine effect with
 `code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
 Station's, or the chat runs an agent Station does not govern
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
-The message names the setting. The same request is refused again until that
-configuration or the chat's mode changes, so it is not a retry candidate.
+The message names the setting and says what picking Default would do in that
+chat. A refused start keeps that code: it is checked before Station claims the
+start, so it is never reported as a start that may have happened
+(`SESSION_START_INDETERMINATE`). The same request is refused again until that configuration or the
+chat's mode changes, so it is not a retry candidate.
 
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
