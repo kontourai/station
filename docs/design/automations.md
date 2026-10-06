@@ -116,9 +116,11 @@ Four findings shape the design.
 
 ## 3. Model
 
-A new contract subpath, `@kontourai/station-contracts/automation`, lives in
-`packages/contracts/src/automation.ts`. It holds types and constants only;
-validators live in `src-server/services/automation/`.
+S1 proposes a new contract subpath, `@kontourai/station-contracts/automation`,
+in a new `automation.ts` file under
+[`packages/contracts/src/`](../../packages/contracts/src/). It would hold
+types and constants only; validators would live in a new `automation/`
+directory under [`src-server/services/`](../../src-server/services/).
 
 - `AutomationSourceKind` is `'github-webhook' | 'github-poll' |
   'station-webhook' | 'scheduler' | 'station-event'`.
