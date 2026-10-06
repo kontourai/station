@@ -187,7 +187,7 @@ function installedInstances(root, lock, name, version) {
           found.push(child);
       }
       // A require from lib/help also searches lib/help/node_modules, not just the package root.
-      scan(child, entry.name === 'node_modules', depth + 1);
+      scan(child, entry.name.toLowerCase() === 'node_modules', depth + 1);
     }
   }
   for (const importer of importerRoots) {

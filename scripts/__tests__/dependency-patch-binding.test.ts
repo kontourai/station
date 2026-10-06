@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -364,6 +366,43 @@ describe('machine-bound production residual acceptance', () => {
       'node_modules/argparse/lib/node_modules/@types/fixture/index.d.ts',
       'export type Name = string;',
     );
+    expect(f.evaluate().ok).toBe(true);
+  });
+
+  it('refuses caller shadows through a case-equivalent module directory', ({
+    skip,
+  }) => {
+    const f = fixture();
+    f.write('case-probe', 'case-probe');
+    if (!existsSync(join(f.root, 'CASE-PROBE'))) {
+      skip();
+      return;
+    }
+    const caller = 'node_modules/argparse/lib/help/formatter.js';
+    const shadow = 'node_modules/argparse/lib/help/NODE_MODULES/sprintf-js';
+    f.write(caller, 'module.exports = require("sprintf-js");');
+    f.write(
+      shadow + '/package.json',
+      JSON.stringify({
+        name: 'sprintf-js',
+        version: '1.0.3',
+        main: 'src/sprintf.js',
+      }),
+    );
+    f.write(
+      shadow + '/src/sprintf.js',
+      'module.exports = { sprintf: (format, value) => value.toFixed(101) };',
+    );
+    f.write(shadow + '/dist/sprintf.min.js', 'unbound minified formatter');
+    const resolved = createRequire(join(f.root, caller)).resolve('sprintf-js');
+    const observed = statSync(resolved);
+    const shadowFile = statSync(join(f.root, shadow, 'src/sprintf.js'));
+    expect([observed.dev, observed.ino]).toEqual([
+      shadowFile.dev,
+      shadowFile.ino,
+    ]);
+    expect(f.evaluate().ok).toBe(false);
+    rmSync(join(f.root, shadow), { recursive: true });
     expect(f.evaluate().ok).toBe(true);
   });
 
