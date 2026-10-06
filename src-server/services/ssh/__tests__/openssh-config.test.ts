@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 const EFFECTIVE_CONFIG = `
-hostname brian-media.internal
+hostname home-media.internal
 user casey
 port 2222
 identityagent /Users/me/Library/Group Containers/agent.sock
@@ -32,9 +32,9 @@ userknownhostsfile /Users/me/.ssh/work_known_hosts /Users/me/.ssh/known_hosts
 
 describe('OpenSSH effective config', () => {
   test('parses public connection facts without exposing agent paths', () => {
-    expect(parseOpenSshGOutput('brian-media', EFFECTIVE_CONFIG)).toEqual({
-      alias: 'brian-media',
-      hostname: 'brian-media.internal',
+    expect(parseOpenSshGOutput('home-media', EFFECTIVE_CONFIG)).toEqual({
+      alias: 'home-media',
+      hostname: 'home-media.internal',
       user: 'casey',
       port: 2222,
       identityAgent: 'configured',
@@ -53,9 +53,9 @@ describe('OpenSSH effective config', () => {
   test('a quoted trust-store path containing spaces survives as one file', () => {
     expect(
       parseOpenSshGOutput(
-        'brian-media',
+        'home-media',
         [
-          'hostname brian-media.internal',
+          'hostname home-media.internal',
           'user casey',
           'port 22',
           'userknownhostsfile "/Users/me/Application Support/known_hosts"',
@@ -67,8 +67,8 @@ describe('OpenSSH effective config', () => {
   test('a host whose configuration names no trust store reports none, rather than guessing one', () => {
     expect(
       parseOpenSshGOutput(
-        'brian-media',
-        'hostname brian-media.internal\nuser casey\nport 22\n',
+        'home-media',
+        'hostname home-media.internal\nuser casey\nport 22\n',
       ).userKnownHostsFiles,
     ).toEqual([]);
   });
@@ -80,11 +80,11 @@ describe('OpenSSH effective config', () => {
       exitCode: 0,
     }));
     await expect(
-      resolveOpenSshHost('brian-media', runner),
+      resolveOpenSshHost('home-media', runner),
     ).resolves.toMatchObject({
-      hostname: 'brian-media.internal',
+      hostname: 'home-media.internal',
     });
-    expect(runner).toHaveBeenCalledWith(['-G', '--', 'brian-media']);
+    expect(runner).toHaveBeenCalledWith(['-G', '--', 'home-media']);
     await expect(
       resolveOpenSshHost('-oProxyCommand=bad', runner),
     ).rejects.toThrow('SSH host alias');
@@ -95,12 +95,12 @@ describe('OpenSSH alias discovery', () => {
   test('keeps only concrete aliases, excluding wildcard and negated patterns', () => {
     expect(
       parseConcreteOpenSshAliases(`
-        Host brian-media media.local
+        Host home-media media.local
         Host=equals-host
         Host *.prod !blocked.prod
         Host "quoted-host"
       `),
-    ).toEqual(['brian-media', 'media.local', 'equals-host', 'quoted-host']);
+    ).toEqual(['home-media', 'media.local', 'equals-host', 'quoted-host']);
   });
 
   test('walks bounded Include globs while OpenSSH remains resolution authority', async () => {
@@ -111,7 +111,7 @@ describe('OpenSSH alias discovery', () => {
       join(root, 'config'),
       'Include=conf.d/*.conf\nHost primary\n  HostName primary.local\n',
     );
-    await writeFile(join(root, 'conf.d', 'media.conf'), 'Host brian-media\n');
+    await writeFile(join(root, 'conf.d', 'media.conf'), 'Host home-media\n');
     await mkdir(join(root, 'extra'));
     await writeFile(
       join(root, 'conf.d', 'work.conf'),
@@ -120,7 +120,7 @@ describe('OpenSSH alias discovery', () => {
     await writeFile(join(root, 'extra', 'nested.conf'), 'Host nested-box\n');
     await expect(
       discoverOpenSshAliases({ configPath: join(root, 'config') }),
-    ).resolves.toEqual(['brian-media', 'nested-box', 'primary', 'work-box']);
+    ).resolves.toEqual(['home-media', 'nested-box', 'primary', 'work-box']);
   });
 
   test('expands stable OpenSSH Include tokens and skips undefined variables', async () => {
@@ -165,9 +165,9 @@ describe('OpenSSH alias discovery', () => {
       return { stdout: EFFECTIVE_CONFIG, stderr: '', exitCode: 0 };
     });
     await expect(
-      discoverOpenSshHosts({ aliases: ['brian-media', 'missing'], runner }),
+      discoverOpenSshHosts({ aliases: ['home-media', 'missing'], runner }),
     ).resolves.toEqual({
-      hosts: [expect.objectContaining({ alias: 'brian-media' })],
+      hosts: [expect.objectContaining({ alias: 'home-media' })],
       unavailableAliases: ['missing'],
     });
   });

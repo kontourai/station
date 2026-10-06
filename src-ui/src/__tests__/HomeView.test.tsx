@@ -1751,7 +1751,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       environments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
         {
@@ -1767,7 +1767,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
-    expect(within(recent).getByText('Brian media')).toBeTruthy();
+    expect(within(recent).getByText('Home media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.
@@ -1799,7 +1799,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       environments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1832,7 +1832,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       environments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1897,7 +1897,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ];
     fixtures.remoteSessionsResult = {
       environments: [],
-      unavailable: [{ environmentId: 'env-a', environmentName: 'Brian media' }],
+      unavailable: [{ environmentId: 'env-a', environmentName: 'Home media' }],
     };
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
@@ -1906,7 +1906,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(within(recent).getByText(CODEX_SESSION_TITLE)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(
-      within(recent).getByText(/Brian media is unavailable right now/),
+      within(recent).getByText(/Home media is unavailable right now/),
     ).toBeTruthy();
   });
 
@@ -1917,7 +1917,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       authenticationRequired: [
         {
           environmentId: 'env-auth',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           action: 'provision_peer_credential',
         },
       ],
@@ -1926,7 +1926,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
     expect(
-      screen.getByText(/Brian media requires a peer credential/i),
+      screen.getByText(/Home media requires a peer credential/i),
     ).toBeTruthy();
     expect(
       screen.getByText(/Add or replace its pairing credential/i),

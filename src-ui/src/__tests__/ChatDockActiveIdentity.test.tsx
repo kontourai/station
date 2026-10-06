@@ -53,13 +53,13 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
         session={session}
         agent={codex}
         modelLabel="GPT-6.1 Sol"
-        routeLabel="brian-media"
+        routeLabel="home-media"
         onClose={vi.fn()}
       />,
     );
     expect(
       document.querySelector('.chat-dock__active-identity-engine')?.textContent,
-    ).toBe('Claude Code · GPT-6.1 Sol · via brian-media');
+    ).toBe('Claude Code · GPT-6.1 Sol · via home-media');
   });
 
   test('leads with the agent, then the title, with engine and model as one token behind it', () => {
