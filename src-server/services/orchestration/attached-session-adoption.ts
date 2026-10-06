@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
 import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AdoptedSessionResult,
   AdoptSessionTarget,
@@ -84,6 +85,27 @@ export class AdoptionContinuationInProgressError extends Error {
     this.name = 'AdoptionContinuationInProgressError';
   }
 }
+
+/**
+ * #3429: the engine was not ready, found before anything was created, and
+ * the reservation was cleaned up. Its outcome is certain, its reason is the
+ * engine's own readiness report, and the same request can succeed once the
+ * engine is set up.
+ */
+export class AdoptionEngineNotReadyError extends Error {
+  readonly code = 'continuation_engine_not_ready';
+  readonly retryable = true;
+
+  constructor(engine: string, detail: string) {
+    super(
+      `${engine} isn't ready, so no continuation was created (${detail}). Set up ${engine}, then try again.`,
+    );
+    this.name = 'AdoptionEngineNotReadyError';
+  }
+}
+
+/** The readiness check's own failure, before rollback decides what is certain. */
+class EngineNotReady extends Error {}
 
 interface AdoptionContext {
   source: ProviderSession;
@@ -430,6 +452,12 @@ export class AttachedSessionAdoption {
           receipt,
         );
       }
+      if (cleanupComplete && error instanceof EngineNotReady)
+        throw new AdoptionEngineNotReadyError(
+          engineDisplayLabel(context.source.provider) ??
+            context.source.provider,
+          error.message,
+        );
       throw new Error(
         cleanupComplete
           ? 'Station could not continue this attached session. No continuation was kept.'
@@ -780,7 +808,11 @@ export class AttachedSessionAdoption {
         ? { sourceBoundary: context.reservation.sourceBoundary }
         : {}),
     };
-    await this.deps.assertAdapterReady(adapter);
+    try {
+      await this.deps.assertAdapterReady(adapter);
+    } catch (error) {
+      throw new EngineNotReady(errorMessage(error));
+    }
     this.deps.assertAdapterCurrent(adapter);
     await this.reverifyAdoptionPlace(context);
     const startCreation = () => {

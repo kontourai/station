@@ -739,7 +739,10 @@ class DraftDiscardedError extends Error {
   }
 }
 
-export { AdoptionContinuationInProgressError } from './attached-session-adoption.js';
+export {
+  AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
+} from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
 /**

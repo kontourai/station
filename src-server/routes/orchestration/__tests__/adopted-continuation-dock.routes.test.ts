@@ -15,6 +15,7 @@ import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -36,6 +37,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { createStarterSessionOwner } from '../../../services/starter-work/starter-session-owner.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createGlobalConversationRoutes } from '../../chat/conversations.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
@@ -201,6 +203,12 @@ class AdoptingEngine implements ProviderAdapterShape {
   }
 
   async discardSession(): Promise<void> {}
+
+  /** What the engine reports about its own setup. */
+  prerequisites: Prerequisite[] = [];
+  async getPrerequisites(): Promise<Prerequisite[]> {
+    return this.prerequisites;
+  }
 
   async startSession(input: {
     threadId: string;
@@ -600,6 +608,57 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     expect(followUp.status).not.toBe(200);
     expect(followUp.text).toMatch(/different workspace directory/);
     expect(f.engines.claude.turns).toEqual([]);
+  });
+
+  // #3429: the "Continue here?" dialog said Station was not responding when
+  // the engine simply was not set up. The refusal is certain and says why.
+  test('an engine that is not ready is refused with its reason, and nothing is created', async () => {
+    const f = await fixture({ engineAgent: true });
+    f.engines.claude.prerequisites = [
+      {
+        id: 'claude-login',
+        name: 'Claude login',
+        description: 'Sign in to Claude Code.',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    const source = f.attached('claude');
+    const refused = await f.request('/api/orchestration/commands', {
+      type: 'adoptSession',
+      sourceThreadId: source,
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body).toMatchObject({
+      success: false,
+      code: 'continuation_engine_not_ready',
+      retryable: true,
+    });
+    expect(refused.body.error).toBe(
+      "Claude Code isn't ready, so no continuation was created (claude prerequisites missing: Claude login). Set up Claude Code, then try again.",
+    );
+    expect(f.engines.claude.adoptions).toEqual([]);
+
+    // Starter Work's continue-session owner (what the dialog launches) reads
+    // that as a certain failure with Station's reason, safe to retry.
+    const owner = createStarterSessionOwner(f.service as never);
+    await expect(
+      owner.continue({
+        sourceSessionId: source,
+        operationId: '5e3c8b9e-3f7a-4c1e-9d2b-7a6f0e4d1c22',
+        fullAccessGrant: null,
+        owner: { ownerUserId: 'operator' },
+      }),
+    ).resolves.toEqual({
+      state: 'failed',
+      reason: refused.body.error,
+      retrySafe: true,
+    });
+
+    // Once the engine is set up, the same conversation continues.
+    f.engines.claude.prerequisites = [];
+    await f.adopt(source);
+    expect(f.engines.claude.adoptions).toHaveLength(1);
   });
 
   test('a follow-up as a different Agent is refused by the binding', async () => {
