@@ -503,7 +503,9 @@ A continuation receipt confirms admission, not completion of the work.
 
 The continuation runs as the engine's own Agent on this Station, the one New
 Chat sets up for Claude Code or Codex. That is what lets it open as a chat in
-the dock and take your next messages there. If Station has no Agent for that
+the dock and take your next messages there. Those messages keep working in
+the conversation's own folder, including a folder inside the Project or a
+worktree, never the Project folder instead. If Station has no Agent for that
 engine, the continuation is still created and you continue it from
 **Activity**; the dock says why it cannot open it.
 
