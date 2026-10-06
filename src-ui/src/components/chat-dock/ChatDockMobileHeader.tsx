@@ -5,9 +5,14 @@ import type {
 } from 'react';
 import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import { ArrowDownGlyph, FolderGlyph, MenuGlyph } from '../icons/Glyph';
+import {
+  ArrowDownGlyph,
+  FolderGlyph,
+  MenuGlyph,
+  NewChatGlyph,
+} from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
-import { NewChatAction } from '../NewChatAction';
+import '../NewChatAction.css';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -280,12 +285,16 @@ export function ChatDockMobileHeader({
             </>
           )}
         </button>
-        <NewChatAction
-          appearance="toolbar-icon"
-          className="chat-dock__mobile-header-icon chat-dock__mobile-new"
+        <button
+          type="button"
+          className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"
+          aria-label="New chat"
+          title="New chat"
           data-no-dock-drag=""
           onClick={onNewChat}
-        />
+        >
+          <NewChatGlyph />
+        </button>
       </div>
       {isOverflowOpen && (
         <LazyBoundary

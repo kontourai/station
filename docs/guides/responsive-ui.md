@@ -143,9 +143,10 @@ picker uses 18px titles with up to two lines, Agent icons, 14px project/status
 metadata, and a pinned New chat action at the lower right. Project names wrap.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the mobile bar, task picker, desktop inbox, the collapsed dock bar (icon
-only) and the open, empty dock, with a 44px minimum target and an accessible
-name. It opens the start composer: its two chips stay on one line (the Agent
+across the task picker, desktop inbox, the collapsed dock bar (icon only) and
+the open, empty dock. The mobile bar composes the same conversation-plus glyph
+with its toolbar button styles. Both forms retain a 44px minimum target and
+an accessible name. It opens the start composer: its two chips stay on one line (the Agent
 chip gives up width first) and the overflow sits with Start, so a phone gets
 the chips on row one and [⋯ … Start] on row two with no viewport query; every
 target is 44px, and the chip menus are edge sheets on a phone with their own
