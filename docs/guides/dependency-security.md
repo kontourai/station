@@ -94,6 +94,50 @@ when a compatible upstream release passes the same numeric, formatter, YAML,
 and CLI controls. No unrelated exception, baseline, severity, or proxy trust
 policy is changed.
 
+## Shell quoting and MCP credential issuer advisories (2026-10)
+
+The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.2.0
+in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.31.0.
+Exact overrides cover transitive client/SDK consumers. The client brings its
+exact core 2.2.0 dependency; the unaffected server retains its core 2.0.0.
+No Station code imports core directly.
+
+The [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)
+concerns attacker-controlled line terminators in a string after a comment token
+in `quote()`, allowing shell execution when the resulting string is executed.
+Version 1.11.0 rejects LF, CR, U+2028 and U+2029 in that position. Bounded
+controls observed those rejections and preserved ordinary quoting and editor
+argument parsing without executing a shell. Station's inspected transitive
+caller, launch-editor, calls `parse()` and launches an argument array; direct
+Station exploitation of the advisory has not been reproduced.
+
+The [MCP advisory](https://github.com/advisories/GHSA-6qxp-vccf-f47h) concerns a
+compromised remote MCP server choosing a different authorization server to
+receive previously saved refresh tokens or client secrets. The patched client
+and SDK retain issuer metadata and refuse credentials bound to another issuer.
+An upgrade alone does not repair an application that strips issuer fields,
+uses a bundled provider without its required expected issuer, or bypasses the
+supported authorization path.
+
+Station's [OAuth provider](../../src-server/services/plugins/tool-server-oauth.ts)
+already stores the complete supplied credential value, binds records to their
+resource and owner, and refuses reads with missing or mismatched issuer context.
+The inspected HTTP client uses this provider and the vendor's context-aware
+`tokens()` and `clientInformation()` calls. Station's inspected v1 SDK caller
+uses stdio. The repair changes vendor inputs; it does not clear or migrate
+credentials, loosen issuer checks, or change OAuth trust policy. Focused
+provider, mounted OAuth-runtime, local-custody and Strands-stdio controls passed
+against the new graph. These controls do not establish every transitive
+consumer's remote authorization behavior or prove an attacker reached Station.
+New interactive sign-in trust and direct low-level vendor calls remain
+separate from this advisory's saved-credential binding claim.
+
+The earlier local audit and hosted receipts retain their observation times:
+these newly disclosed findings do not rewrite those results. Current audit,
+new-source CI, normal hooks, hosted checks and actual landing each own their
+subsequent verdict. The formatter patch, machine binding and exact
+2026-10-13 residual remain unchanged; no new advisory exception is added.
+
 ## Lifecycle scripts are reviewed capabilities
 
 Use `npm run dependencies:ci` for a frozen install and
