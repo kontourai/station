@@ -197,6 +197,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
+  // #3406: spawns the attached-session path probe's helper child (a FIFO
+  // stands in for a hung mount) and a short-lived Node process that must exit.
+  'src-server/services/orchestration/__tests__/attached-session-path-probe.test.ts',
+  // #3406: every poll reads folders through the shared path probe, which
+  // spawns one helper child; no direct child_process import.
+  'src-server/services/orchestration/__tests__/codex-rollout-follow.test.ts',
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.
@@ -882,12 +888,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3386: builds real Git repositories and worktrees through execFileSync to
   // prove attached-session attribution by repository.
   'src-server/services/orchestration/__tests__/attached-session-repository-attribution.test.ts',
-  // #3406: spawns the attached-session path probe's helper child (a FIFO
-  // stands in for a hung mount) and a short-lived Node process that must exit.
-  'src-server/services/orchestration/__tests__/attached-session-path-probe.test.ts',
-  // #3406: every poll reads folders through the shared path probe, which
-  // spawns one helper child; no direct child_process import.
-  'src-server/services/orchestration/__tests__/codex-rollout-follow.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
   // under the four-worker ordinary corpus. Keep their feedback deterministic.
