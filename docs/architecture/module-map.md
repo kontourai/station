@@ -3844,3 +3844,16 @@ separate platform evidence. Do not revive the deleted `notification_watch.rs`
 as a second reader: it would bypass the delivery router's envelope and privacy decisions.
 See [desktop alerts](../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden)
 for the user-facing lifecycle.
+
+## Project tool defaults
+
+[Project tool composition](../../src-server/services/projects/project-tools.ts)
+adds configured MCP IDs and detects registered Project Knowledge stores.
+The external [session resolver](../../src-server/services/orchestration/session-agent-resolution.ts)
+captures those defaults at session start. Native chats use
+[Project tool context](../../src-server/routes/chat/project-tool-context.ts) and an
+[Agent-owned tool view](../../src-server/runtime/tools/agent-tool-view.ts), retaining
+prompt, memory, hooks and configuration-generation guards. Hookless temporary
+model recovery refuses positive additions. Agent restrictions and store ACLs
+remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
+explains the UI and opt-out behavior.
