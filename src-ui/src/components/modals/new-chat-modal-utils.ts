@@ -126,7 +126,7 @@ export function withProjectRunLocations(
  * `runsAt` (or a member's view, which carries no paths) falls back to the
  * stored folder, which is what the session start used before manifests.
  */
-export function projectRunDirectory(
+function projectRunDirectory(
   project: Pick<ProjectMetadata, 'runsAt' | 'workingDirectory'>,
 ): string | undefined {
   const runsAt = project.runsAt;

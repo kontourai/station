@@ -256,7 +256,7 @@ const ASYNC_RUN_LOCATION_FS: RunLocationFs = {
  * How long a list read waits on one project's folder. A local disk answers in
  * well under a millisecond; this only bounds a folder that does not answer.
  */
-export const RUN_LOCATION_TIMEOUT_MS = 1500;
+const RUN_LOCATION_TIMEOUT_MS = 1500;
 
 export const RUN_LOCATION_TIMED_OUT_REASON =
   "Station could not check this project's folder in time (it may be on a drive that is not responding).";
