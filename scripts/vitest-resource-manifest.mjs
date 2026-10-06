@@ -879,6 +879,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // repository whose own config plants a clean filter (execFileSync git).
   'src-server/services/checkpoints/__tests__/turn-checkpoint-capture.test.ts',
   'packages/cli/src/__tests__/checkpoints-command.test.ts',
+  // #3386: builds real Git repositories and worktrees through execFileSync to
+  // prove attached-session attribution by repository.
+  'src-server/services/orchestration/__tests__/attached-session-repository-attribution.test.ts',
+  // #3386: continues attached sessions from real Git worktrees (execFileSync
+  // git) through the real OrchestrationService.
+  'src-server/services/orchestration/__tests__/attached-session-continuation.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
   // under the four-worker ordinary corpus. Keep their feedback deterministic.

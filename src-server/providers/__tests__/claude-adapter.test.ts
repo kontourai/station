@@ -607,7 +607,7 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const route = {
       connectionId: 'proxy-home',
-      label: 'brian-media',
+      label: 'home-media',
       endpoint: 'https://proxy.example',
     };
     const adapter = new ClaudeAdapter({

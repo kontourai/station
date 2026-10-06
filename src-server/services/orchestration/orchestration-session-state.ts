@@ -1017,7 +1017,12 @@ function extractAttachedSessionAttribution(
     ) {
       return { state: 'attributed', slug: projectSlug };
     }
-    if (stringMeta(metadata, 'projectAttribution') !== 'ambiguous') continue;
+    const marker = stringMeta(metadata, 'projectAttribution');
+    // #3386: the follow service found no project for this session and said
+    // so. It is the newest statement, so nothing older is read past it — the
+    // same precedence the writer's stored fingerprint uses.
+    if (marker === 'unattributed') return undefined;
+    if (marker !== 'ambiguous') continue;
     const raw = metadata?.projectCandidates;
     if (!Array.isArray(raw)) continue;
     const named = raw.filter(

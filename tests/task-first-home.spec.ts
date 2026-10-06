@@ -297,10 +297,16 @@ async function mockTaskFirstHome(
       return;
     }
     // The pane then reads that file's changes against HEAD (#3365): the file
-    // came from the active-work changed-files list, so it has a patch.
+    // came from the active-work changed-files list, so it has a patch, in the
+    // `{ success, data }` envelope the real route uses
+    // (src-server/routes/projects/workspace-pane-previews.ts). Only the
+    // previewed file's own read is declared; any other body falls through to
+    // the fixture audit and fails the test by name.
     if (
       path === '/api/projects/station/file-preview/changes' &&
-      route.request().method() === 'POST'
+      route.request().method() === 'POST' &&
+      route.request().postData() ===
+        JSON.stringify({ path: 'src-ui/src/App.tsx' })
     ) {
       const changes: WorkspaceFileChanges = {
         state: 'changed',
@@ -1776,6 +1782,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(changes.request().postDataJSON()).toMatchObject({
       path: 'src-ui/src/App.tsx',
     });
+    // The opened preview shows the file and consumed the read: the Changes
+    // toggle counts the declared patch's one changed line.
+    await expect(page.getByText('export function App() {}')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
+    ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();

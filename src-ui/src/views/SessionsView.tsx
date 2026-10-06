@@ -70,6 +70,7 @@ import {
   activityProjectOptions,
   matchesActivityKind,
   matchesActivityOrigin,
+  matchesActivityProject,
   NO_ACTIVITY_FILTERS,
 } from './activity/activity-list-model';
 import { olderDraftsLabel } from './home/draft-lane';
@@ -82,7 +83,6 @@ import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
 import {
-  matchesProjectFilter,
   partitionSessionLanes,
   SESSION_LANE_LABELS,
   SESSION_LANE_ORDER,
@@ -545,7 +545,7 @@ export function SessionsView({
       sessions.filter(
         (s) =>
           matchesActivityKind(s, filters.kind) &&
-          matchesProjectFilter(s, filters.project) &&
+          matchesActivityProject(s, filters.project) &&
           matchesActivityOrigin(s, filters.origin),
       ),
     [sessions, filters],
@@ -589,7 +589,7 @@ export function SessionsView({
         sessions.filter(
           (s) =>
             matchesActivityKind(s, filters.kind) &&
-            matchesProjectFilter(s, filters.project) &&
+            matchesActivityProject(s, filters.project) &&
             matchesSearch(s),
         ),
         selectedId,

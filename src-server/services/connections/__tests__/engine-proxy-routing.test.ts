@@ -8,7 +8,7 @@ import {
 const proxy: ProviderConnectionConfig = {
   id: 'home-proxy',
   type: 'openai-compat',
-  name: 'brian-media',
+  name: 'home-media',
   enabled: true,
   capabilities: ['llm'],
   config: {
@@ -32,7 +32,7 @@ describe('saved engine proxy routing', () => {
     });
     expect(launch.route).toEqual({
       connectionId: proxy.id,
-      label: 'brian-media',
+      label: 'home-media',
       endpoint: 'https://proxy.example:8317',
     });
     expect(JSON.stringify(launch.route)).not.toContain('private-test-key');
