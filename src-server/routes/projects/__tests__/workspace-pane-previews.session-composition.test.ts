@@ -88,6 +88,7 @@ async function composition() {
     processFactory: () => processes.shift()! as never,
   });
   vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
+  const eventStore = new EventStore(join(root, 'orchestration.sqlite'));
   const service = new OrchestrationService({
     adapterRegistry: {
       get: (provider) => (provider === 'codex' ? adapter : undefined),
@@ -95,7 +96,7 @@ async function composition() {
       register: () => {},
     },
     eventBus: new EventBus(),
-    eventStore: new EventStore(join(root, 'orchestration.sqlite')),
+    eventStore,
     logger: { debug: vi.fn(), warn: vi.fn() },
   });
   services.push(service);
@@ -152,6 +153,8 @@ async function composition() {
     });
   return {
     preview,
+    adapter,
+    eventStore,
     readAs: (userId: string) => {
       reader = userId;
     },
@@ -159,6 +162,24 @@ async function composition() {
 }
 
 describe('file preview for an engine session through the runtime composition (#3412)', () => {
+  test('the lookup reads the session’s binding, never its event history or the live provider list', async () => {
+    const { preview, adapter, eventStore } = await composition();
+    // A preview must not pay for the session's transcript: a 20k-event
+    // session cost ~80 ms of blocked event loop per request when the lookup
+    // folded the full read model.
+    const listEvents = vi.spyOn(eventStore, 'listEvents');
+    const projectionEvents = vi.spyOn(
+      eventStore,
+      'listSessionProjectionEventsForThreads',
+    );
+    const providerList = vi.spyOn(adapter, 'listSessions');
+    const response = await preview({ path: 'app.ts', thread: 'codex-lane' });
+    expect(response.status).toBe(200);
+    expect(listEvents).not.toHaveBeenCalled();
+    expect(projectionEvents).not.toHaveBeenCalled();
+    expect(providerList).not.toHaveBeenCalled();
+  });
+
   test('a Codex session previews its own worktree copy', async () => {
     const { preview } = await composition();
     const response = await preview({ path: 'app.ts', thread: 'codex-lane' });

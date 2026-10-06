@@ -46,9 +46,9 @@ export async function sessionWorkspaceDirectoryFor(
   deps: {
     canRead: (thread: string) => boolean;
     /**
-     * The session as the session read model records it (#3412): its project
-     * comes from what the session recorded, for every engine — a provider's
-     * live session list carries no project.
+     * The session's recorded binding (#3412): its project comes from what the
+     * session recorded at its start, for every engine — a provider's live
+     * session list carries no project.
      */
     readSession: (thread: string) => Promise<SessionRecord | null | undefined>;
     projectDirectory: (projectSlug: string) => Promise<string | undefined>;
@@ -77,17 +77,18 @@ export async function sessionWorkspaceDirectoryFor(
 
 /**
  * The production composition of `sessionWorkspaceDirectoryFor` over the
- * orchestration service. The session is read with the REQUEST's authority,
- * so the read model refuses a session the caller may not read even past the
- * `canRead` check.
+ * orchestration service. The binding is read with the REQUEST's authority,
+ * so it refuses a session the caller may not read even past the `canRead`
+ * check, and it reads only the session's start binding and row — never its
+ * event history, which a preview request must not pay for.
  */
 export function orchestrationSessionWorkspaceDirectory<Authority>(source: {
   sessions: {
     canUserReadSession(threadId: string, authority: Authority): boolean;
-    readSession(
+    readSessionWorkspaceBinding(
       threadId: string,
       authority: Authority,
-    ): Promise<{ session: SessionRecord } | null>;
+    ): SessionRecord | null;
   };
   authorityFor: (request: Request) => Authority;
   projects: { getProject(slug: string): { workingDirectory?: string } };
@@ -102,8 +103,10 @@ export function orchestrationSessionWorkspaceDirectory<Authority>(source: {
         canRead: (id) =>
           source.sessions.canUserReadSession(id, source.authorityFor(request)),
         readSession: async (id) =>
-          (await source.sessions.readSession(id, source.authorityFor(request)))
-            ?.session,
+          source.sessions.readSessionWorkspaceBinding(
+            id,
+            source.authorityFor(request),
+          ),
         projectDirectory: async (slug) => {
           try {
             const configured =
