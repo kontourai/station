@@ -768,11 +768,14 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
     A bound value becomes the launched command's environment, so attaching one
     or changing the value of one that is attached chooses that environment.
     Unbind, revoke, create, list and get are not refused, and a binding to a URL
-    server or an ACP provider header is not either. A bind on a binding the
-    caller cannot see still answers 404 exactly as a missing id, and a bind of a
-    person-owned binding still gets the service's own refusal (400: it can never
-    be granted to a shared integration), because nothing can attach in either
-    case and the command refusal would otherwise tell them apart. There is no
+    server or an ACP provider header is not either. A bind is checked before the binding
+    is read, for a missing or hidden binding too (a binding created between the
+    route's read and the service's would otherwise attach unchecked), so a caller
+    without the grant gets `command-not-granted` for a missing, hidden or visible
+    instance binding alike, and one with it gets the service's 404. A bind of a
+    person-owned binding is the one skip: it still gets the service's 400 (it
+    can never be granted to a shared integration, and an owner never changes),
+    because nothing can attach. There is no
     exemption for a person's own token on a command-launching server: person-owned
     bindings cannot be created or granted today, and an integration definition
     declares no per-principal environment variable name (`credentialOwnership` is
