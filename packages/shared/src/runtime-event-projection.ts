@@ -7,6 +7,11 @@ import type {
   ConversationMessage,
   MessagePart,
 } from './conversation-message.js';
+import {
+  EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+  EXTENSION_TRANSCRIPT_MARKER_TEXT,
+  extensionTranscriptMarker,
+} from './extension-transcript-markers.js';
 import { readHarnessQuestionnaire } from './harness-questions.js';
 import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
@@ -472,6 +477,51 @@ export function projectRuntimeEventsToMessages(
       const index = list.indexOf(toolPart);
       if (index >= 0) return void list.splice(index + 1, 0, ...files);
     }
+  };
+
+  /**
+   * station#3415: an extension notification the transcript shows as a marker
+   * line (`extension-transcript-markers.ts`). A marker can land inside a
+   * running turn (Codex compacts mid-turn), so what the turn produced so far
+   * is emitted first as its own row, exactly as for a steer, and the turn
+   * stays open: the marker then reads after what preceded it, and the turn's
+   * later content and provenance still belong to the same turn. Unlike a
+   * steer, a marker starts no turn, so the turn's last row keeps the
+   * canonical `observedAssistantMessageId` (Basis binds the answer by it) and
+   * the earlier segment takes an id derived from the marker's own event.
+   */
+  const emitTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+  ) => {
+    const marker = extensionTranscriptMarker(ev.namespace, ev.type);
+    if (!marker) return;
+    if (turnOpen) {
+      flushReasoning();
+      flushText();
+      if (parts.length > 0) {
+        pushMessage('assistant', parts, undefined, true);
+        if (turnAnchorEventId && ev.eventId) {
+          messages[messages.length - 1]!.id =
+            `${ev.eventId}:assistant-before-marker`;
+        }
+        parts = [];
+      }
+    }
+    const timestamp = ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN;
+    messages.push({
+      id:
+        options.stableIds && ev.eventId
+          ? `${ev.eventId}:transcript-marker`
+          : `proj-${messages.length}`,
+      role: 'system',
+      parts: [
+        {
+          type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+          text: EXTENSION_TRANSCRIPT_MARKER_TEXT[marker],
+        },
+      ],
+      ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
+    });
   };
 
   for (const ev of events) {
@@ -1071,6 +1121,9 @@ export function projectRuntimeEventsToMessages(
         noteModelGeneration(sessionModel, sessionReportedModelFromEvent);
         break;
       }
+      case 'extension.notification':
+        emitTranscriptMarker(ev);
+        break;
       case 'session.state-changed': {
         // station#4080 slice 1 (review round 1, M3): gate on
         // `interruptedTurnBoundary` — a field documented as written ONLY by

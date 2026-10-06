@@ -204,7 +204,14 @@ export function handleExtensionNotificationEvent(
     return;
   }
 
-  if (binding.consumer === 'acp.host-chrome') return;
+  // station#3415: the transcript projection renders these from the durable
+  // event (`extension-transcript-markers.ts`), live and on reload alike. An
+  // ephemeral row here would show the marker twice.
+  if (
+    binding.consumer === 'acp.host-chrome' ||
+    binding.consumer === 'transcript.marker'
+  )
+    return;
 
   if (binding.consumer === 'ui.engine.mcp-status') {
     const total = readPayloadNumber(event.payload, 'total');

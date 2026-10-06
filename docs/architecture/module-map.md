@@ -1512,7 +1512,13 @@ same-turn error context for `acp.turn-error-cause`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional
-transcript no-ops, not visible UI implementations. Claude task registry/settled
+transcript no-ops, not visible UI implementations. `transcript.marker` entries
+are derived from the [marker table](../../packages/shared/src/extension-transcript-markers.ts)
+that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
+reads: an attached-session source's context compaction or rewind becomes a
+system row with a fixed label, drawn as a quiet line, and the UI handler
+leaves it to the projection. One table entry binds and renders a tuple; the
+label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)

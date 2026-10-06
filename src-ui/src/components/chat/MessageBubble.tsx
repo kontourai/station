@@ -26,6 +26,7 @@ import {
   turnCompletedNormally,
 } from './message-bubble/utils';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
+import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -217,6 +218,10 @@ function MessageBubbleComponent({
   )?.conversationContextBoundary;
   if (contextBoundary) {
     return <ConversationContextBoundary boundary={contextBoundary} />;
+  }
+  const transcriptMarker = transcriptMarkerLabel(msg.contentParts);
+  if (transcriptMarker) {
+    return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
   }
 
   const isLastMessage = idx === activeSession.messageCount - 1;

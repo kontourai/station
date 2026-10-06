@@ -527,3 +527,30 @@ describe('conversationPartToContentParts (shared with chat)', () => {
     ]);
   });
 });
+
+describe('SessionTranscript transcript markers (station#3415)', () => {
+  test('a live compaction renders a marker line, not an empty speaker row', () => {
+    renderTranscript(true);
+    live([
+      ev({ method: 'turn.started', turnId: 'm1', prompt: 'Long task' }),
+      ev({ method: 'content.text-delta', turnId: 'm1', delta: 'Working.' }),
+      ev({
+        method: 'extension.notification',
+        turnId: 'm1',
+        namespace: 'codex-rollout',
+        type: 'context-compacted',
+        payload: { source: 'provider-event' },
+      } as Partial<CanonicalRuntimeEvent> & { method: string }),
+      ev({ method: 'content.text-delta', turnId: 'm1', delta: 'Still going.' }),
+    ]);
+    const marker = screen
+      .getByText('Context compacted')
+      .closest('.transcript-marker')!;
+    expect(marker).toBeTruthy();
+    expect(marker.closest('[data-testid="session-transcript-message"]')).toBe(
+      null,
+    );
+    // Prompt, two halves of the answer; the marker is not one of the rows.
+    expect(screen.getAllByTestId('session-transcript-message')).toHaveLength(3);
+  });
+});

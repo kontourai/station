@@ -620,3 +620,54 @@ test.each(['inspector', 'chat'] as const)(
     expect(screen.queryByRole('button', { name: /^deny/i })).toBeNull();
   },
 );
+
+describe('AttachedSessionDetail transcript markers (station#3415)', () => {
+  const turnWith = (namespace: string, type: string) => [
+    ev({ method: 'turn.started', turnId: 'r1', prompt: 'list files' }),
+    ev({ method: 'content.text-delta', turnId: 'r1', delta: 'First half.' }),
+    ev({
+      method: 'extension.notification',
+      turnId: 'r1',
+      namespace,
+      type,
+      payload: { source: 'provider-event' },
+    } as Partial<CanonicalRuntimeEvent> & { method: string }),
+    ev({ method: 'content.text-delta', turnId: 'r1', delta: 'Second half.' }),
+    ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+  ];
+
+  for (const presentation of ['chat', 'inspector'] as const) {
+    test(`a Codex compaction renders one marker line between the halves (${presentation})`, () => {
+      renderAttached({
+        presentation,
+        events: turnWith('codex-rollout', 'context-compacted'),
+      });
+      const markers = screen.getAllByText('Context compacted');
+      expect(markers).toHaveLength(1);
+      const marker = markers[0]!.closest('.transcript-marker')!;
+      expect(marker).toBeTruthy();
+      expect(marker.textContent).toBe('Context compacted');
+      const before = screen.getByText('First half.');
+      const after = screen.getByText('Second half.');
+      expect(
+        before.compareDocumentPosition(marker) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        marker.compareDocumentPosition(after) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // A marker is not a speaker row: no "You" label stands over it.
+      expect(marker.closest('article')).toBeNull();
+    });
+  }
+
+  test('an unbound tuple renders nothing and leaves the turn in one row', () => {
+    renderAttached({
+      presentation: 'chat',
+      events: turnWith('codex-rollout', 'never-seen'),
+    });
+    expect(document.querySelector('.transcript-marker')).toBeNull();
+    expect(screen.getByText(/First half\.\s*Second half\./)).toBeTruthy();
+  });
+});

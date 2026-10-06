@@ -1081,6 +1081,46 @@ describe('useActiveChatTranscript', () => {
     expect(filePart?.url).toBeUndefined();
   });
 
+  test('station#3415: a durable compaction marker reaches the dock as a system row in its place', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 5,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'go' }),
+        event('e2', 'content.text-delta', { turnId: 'turn-1', delta: 'one' }),
+        event('e3', 'extension.notification', {
+          turnId: 'turn-1',
+          namespace: 'codex-rollout',
+          type: 'context-compacted',
+          payload: { source: 'provider-event' },
+        }),
+        event('e4', 'content.text-delta', { turnId: 'turn-1', delta: 'two' }),
+        event('e5', 'turn.completed', { turnId: 'turn-1' }),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(4));
+    expect(
+      result.current.messages.map((message) => [
+        message.role,
+        message.contentParts?.map((part) => `${part.type}:${part.content}`),
+      ]),
+    ).toEqual([
+      ['user', ['text:go']],
+      ['assistant', ['text:one']],
+      ['system', ['transcript-marker:Context compacted']],
+      ['assistant', ['text:two']],
+    ]);
+    // Distinct row identities: the dock keys rows by id.
+    expect(
+      new Set(result.current.messages.map((message) => message.id)).size,
+    ).toBe(4);
+  });
+
   test('preserves durable tool-result event identity through replay mapping', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
