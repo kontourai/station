@@ -135,7 +135,8 @@ function isFoldableProse(part: ToolCallLike): boolean {
  * Only narration folds. Anything else inside that span — a file the agent
  * produced, a UI block, a runtime error, a reasoning part — is kept, in
  * order, directly after the folded run, so the fold never hides an artifact
- * or a failure. With one tool-call run or fewer this returns exactly
+ * or a failure. When no visible text follows the last call, the last
+ * narration is kept there too: it is the turn's last word. With one tool-call run or fewer this returns exactly
  * {@link splitToolCallRuns}'s blocks: nothing to merge.
  */
 export function foldTurnWork<P extends ToolCallLike>(
@@ -162,10 +163,30 @@ export function foldTurnWork<P extends ToolCallLike>(
       kept.push(block);
     }
   }
+  const after = blocks.slice(lastRun + 1);
+  // A turn that ends on a call has no outcome below the row: its last words
+  // (often a question for the user) would only be reachable by opening the
+  // sheet, so they stay in the transcript.
+  const hasOutcome = after.some(
+    (block) =>
+      block.type === 'content-part' &&
+      block.part.type === 'text' &&
+      typeof block.part.content === 'string' &&
+      block.part.content.trim().length > 0,
+  );
+  const lastWords = hasOutcome ? undefined : interludes.pop();
+  if (lastWords) {
+    kept.push({ type: 'content-part', ...lastWords });
+    kept.sort((a, b) =>
+      a.type === 'content-part' && b.type === 'content-part'
+        ? a.index - b.index
+        : 0,
+    );
+  }
   return [
     ...blocks.slice(0, firstRun),
     { ...buildRun(calls), interludes },
     ...kept,
-    ...blocks.slice(lastRun + 1),
+    ...after,
   ];
 }

@@ -191,7 +191,8 @@ function sameArgs(a: unknown, b: unknown): boolean {
 /**
  * Which failed calls were recovered: a failure counts as recovered only when
  * a LATER call in the same list ran the same tool with deep-equal arguments
- * and completed successfully. A retry with different arguments, a later
+ * and completed successfully. Calls with no arguments on record never match:
+ * nothing shows they were the same call. A retry with different arguments, a later
  * identical call that also failed (or never finished), or an earlier success
  * does not recover it. Returns one flag per input call, in order.
  */
@@ -204,6 +205,8 @@ export function recoveredFailures(calls: readonly RetryEvidence[]): boolean[] {
         .some(
           (later) =>
             later.succeeded &&
+            call.args != null &&
+            later.args != null &&
             later.toolName === call.toolName &&
             sameArgs(later.args, call.args),
         ),

@@ -156,4 +156,35 @@ describe('foldTurnWork', () => {
     if (run.type !== 'tool-call-run') throw new Error('expected a run');
     expect(run.interludes).toEqual([]);
   });
+
+  test('a turn that ends on a call keeps its last narration out of the fold', () => {
+    const parts = [
+      text('intent'),
+      toolCall({ toolCallId: 'a' }),
+      text('first note'),
+      toolCall({ toolCallId: 'b' }),
+      text('QUESTION'),
+      toolCall({ toolCallId: 'c' }),
+    ];
+    const blocks = foldTurnWork(parts);
+    const run = blocks.find((b) => b.type === 'tool-call-run');
+    if (run?.type !== 'tool-call-run') throw new Error('expected a run');
+    expect(run.interludes?.map((n) => n.index)).toEqual([2]);
+    expect(blocks.at(-1)).toMatchObject({
+      index: 4,
+      part: { content: 'QUESTION' },
+    });
+  });
+
+  test('a visible outcome after the last call lets the last narration fold', () => {
+    const parts = [
+      toolCall({ toolCallId: 'a' }),
+      text('note'),
+      toolCall({ toolCallId: 'b' }),
+      text('outcome'),
+    ];
+    const run = foldTurnWork(parts)[0]!;
+    if (run.type !== 'tool-call-run') throw new Error('expected a run');
+    expect(run.interludes?.map((n) => n.index)).toEqual([1]);
+  });
 });

@@ -285,6 +285,34 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(screen.getByText('Failed')).toBeTruthy();
   });
 
+  // A failed write or delete may have landed nothing: the completed verb
+  // would claim the change happened. Only non-mutating kinds keep it.
+  test.each([
+    ['write_file', { path: '/repo/a.ts', content: 'x' }, 'Edit a.ts'],
+    ['delete_file', { path: '/repo/a.ts' }, 'Delete a.ts'],
+  ])(
+    'a failed %s keeps the bare verb beside its Failed badge',
+    (toolName, args, label) => {
+      render(
+        <ToolCallDisplay
+          toolCall={{
+            type: 'tool-invocation',
+            toolCallId: `t-${toolName}`,
+            toolName,
+            args,
+            state: 'error',
+            output: 'EACCES',
+            error: 'EACCES',
+          }}
+        />,
+      );
+      expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+        label,
+      );
+      expect(screen.getByText('Failed')).toBeTruthy();
+    },
+  );
+
   // The two claims the old `done` fallback made, each using `write_file` so
   // past tense and infinitive differ — a denial must never borrow the
   // completed verb.

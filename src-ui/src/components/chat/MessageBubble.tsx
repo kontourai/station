@@ -127,6 +127,9 @@ interface MessageBubbleProps {
   showToolDetails: boolean;
   onCopy: (text: string) => void;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  /** The previous row belongs to the same turn (a steer, or the rest of a
+   * steered answer): no exchange starts here. */
+  continuesTurn?: boolean;
   /** #2216: nearest preceding completed assistant turn, if any. */
   userForkSource?: ForkTurnSource | null;
   onNewChatFromMessage?: (text: string) => void;
@@ -160,6 +163,7 @@ function MessageBubbleComponent({
   showToolDetails,
   onCopy,
   onForkFromTurn,
+  continuesTurn = false,
   userForkSource,
   onNewChatFromMessage,
   onToolApproval,
@@ -782,8 +786,9 @@ function MessageBubbleComponent({
   return (
     <div
       className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}${
-        // Phone: a thin rule opens every exchange after the first.
-        isMobile && msg.role === 'user' && idx > 0
+        // Phone: a thin rule opens every exchange after the first. A steer is
+        // more input on the same turn, not a new exchange.
+        isMobile && msg.role === 'user' && idx > 0 && !continuesTurn
           ? ' message-row--exchange-start'
           : ''
       }`}

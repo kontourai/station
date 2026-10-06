@@ -1326,6 +1326,21 @@ describe('recoveredFailures', () => {
     ).toEqual([false, false]);
   });
 
+  test('calls with no arguments on record do not count as the same call', () => {
+    expect(
+      recoveredFailures([
+        attempt({ failed: true, args: undefined }),
+        attempt({ failed: false, args: undefined }),
+      ]),
+    ).toEqual([false, false]);
+    expect(
+      recoveredFailures([
+        attempt({ failed: true, args: null }),
+        attempt({ failed: false, args: null }),
+      ]),
+    ).toEqual([false, false]);
+  });
+
   test('an EARLIER success does not recover a later failure', () => {
     expect(
       recoveredFailures([

@@ -11,6 +11,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { _setApiBase } from '@kontourai/station-sdk';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
   cleanup,
   fireEvent,
@@ -323,8 +324,9 @@ describe('phone transcript: one work row per settled turn', () => {
       runtimeEvent({ method: 'turn.started', turnId: 't1', prompt: 'List' }),
       say('t1', 'INTENT: checking the plugins.'),
       ...call('t1', 'c1', 'read_file', { path: 'plugins/a.json' }),
-      say('t1', 'BETWEEN: now listing them.'),
+      say('t1', 'BETWEEN: now the second one.'),
       ...call('t1', 'c2', 'read_file', { path: 'plugins/b.json' }),
+      say('t1', 'LAST: listing them.'),
       runtimeEvent({
         method: 'tool.started',
         turnId: 't1',
@@ -355,6 +357,8 @@ describe('phone transcript: one work row per settled turn', () => {
       .closest<HTMLElement>('.message-row')!;
     expect(row.querySelectorAll('.tool-call-batch__summary')).toHaveLength(1);
     expect(within(row).queryByText(/BETWEEN:/)).toBeNull();
+    // Nothing follows the last call, so its narration is the turn's last word.
+    expect(within(row).getByText(/LAST:/)).toBeTruthy();
     const pending = row.querySelector('.tool-call-batch__pending-grant');
     expect(pending?.textContent).toContain('ls plugins');
     expect(
@@ -362,6 +366,151 @@ describe('phone transcript: one work row per settled turn', () => {
         name: 'Allow Once',
       }),
     ).toBeTruthy();
+  });
+});
+
+describe('phone transcript: fold review fixes', () => {
+  beforeEach(async () => {
+    _setApiBase(API_BASE);
+    sequence = 0;
+    mobile.current = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ success: true, data: [] })),
+    );
+    await preloadToolCallBatch();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    _setApiBase('');
+  });
+
+  /** A turn the user steered mid-flight; the turn is still open. */
+  function steeredOpenTurn() {
+    return [
+      runtimeEvent({ method: 'turn.started', turnId: 't1', prompt: 'Fix it' }),
+      say('t1', 'INTENT: reading first.'),
+      ...call('t1', 'c1', 'read_file', { path: 'src/a.ts' }),
+      say('t1', 'BETWEEN: now the second file.'),
+      ...call('t1', 'c2', 'read_file', { path: 'src/b.ts' }),
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't1',
+        inputKind: 'steer',
+        prompt: 'STEER: also check c.ts',
+      }),
+      runtimeEvent({
+        method: 'tool.started',
+        turnId: 't1',
+        itemId: 'c3',
+        toolCallId: 'c3',
+        toolName: 'bash',
+        arguments: { command: 'npm test' },
+      }),
+    ];
+  }
+
+  test('a steered live turn known only from the server activity record keeps its pre-steer row unfolded', async () => {
+    windowEvents.current = steeredOpenTurn();
+    // Liveness comes from the server record; this client never stamped
+    // `openTurnId` (it attached to a running turn). The pre-steer row is not
+    // the last row, so only the turn-id guard can protect it.
+    renderTranscript(
+      chatSession({
+        conversationActivity: {
+          conversationId: THREAD,
+          asOfSequence: sequence,
+          openTurn: {
+            turnId: 't1',
+            threadId: THREAD,
+            startedAt: '2026-10-06T09:00:01.000Z',
+          },
+        },
+      }),
+    );
+
+    await waitFor(() => expect(screen.getByText(/INTENT:/)).toBeTruthy());
+    const preSteer = screen
+      .getByText(/INTENT:/)
+      .closest<HTMLElement>('.message-row')!;
+    expect(within(preSteer).getByText(/BETWEEN:/)).toBeTruthy();
+  });
+
+  test('without the server record, the live last row is protected by the tail guard alone', async () => {
+    // No turn ids on the events at all, so the turn-id guard can never
+    // match; the live turn renders as the transcript's last row.
+    windowEvents.current = workedTurn({ settled: false }).map((entry) => {
+      const { turnId: _turnId, ...event } = entry.event as Record<
+        string,
+        unknown
+      >;
+      return { ...entry, event };
+    });
+    renderTranscript(
+      chatSession({ status: 'sending', orchestrationTurnOpen: true }),
+    );
+
+    await waitFor(() => expect(screen.getByText(/OUTCOME:/)).toBeTruthy());
+    expect(within(answerRow()).getByText(/BETWEEN:/)).toBeTruthy();
+  });
+
+  test('a steer inside a turn opens no new exchange; the next turn does', async () => {
+    windowEvents.current = [
+      ...steeredOpenTurn(),
+      runtimeEvent({
+        method: 'turn.completed',
+        turnId: 't1',
+        finishReason: 'stop',
+      }),
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't2',
+        prompt: 'NEXT: and then?',
+      }),
+      say('t2', 'OUTCOME: done.'),
+      runtimeEvent({
+        method: 'turn.completed',
+        turnId: 't2',
+        finishReason: 'stop',
+      }),
+    ];
+    renderTranscript();
+
+    await waitFor(() => expect(screen.getByText(/NEXT:/)).toBeTruthy());
+    const userRow = (text: RegExp) =>
+      screen.getByText(text).closest<HTMLElement>('.message-row')!;
+    expect(userRow(/Fix it/).className).not.toContain('exchange-start');
+    expect(userRow(/STEER:/).className).not.toContain('exchange-start');
+    expect(userRow(/NEXT:/).className).toContain('message-row--exchange-start');
+  });
+
+  test('a turn that ends on a tool call keeps its last narration visible', async () => {
+    windowEvents.current = [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't1',
+        prompt: 'Clean up',
+      }),
+      say('t1', 'INTENT: checking what is left.'),
+      ...call('t1', 'c1', 'read_file', { path: 'db.json' }),
+      say('t1', 'QUESTION: should I delete the prod DB?'),
+      ...call('t1', 'c2', 'read_file', { path: 'backup.json' }),
+      runtimeEvent({
+        method: 'turn.completed',
+        turnId: 't1',
+        finishReason: 'stop',
+      }),
+    ];
+    renderTranscript();
+
+    await waitFor(() => expect(screen.getByText(/INTENT:/)).toBeTruthy());
+    const row = screen
+      .getByText(/INTENT:/)
+      .closest<HTMLElement>('.message-row')!;
+    expect(row.querySelectorAll('.tool-call-batch__summary')).toHaveLength(1);
+    expect(within(row).getByText(/QUESTION:/)).toBeTruthy();
   });
 });
 
@@ -421,5 +570,84 @@ describe('phone transcript: the answer meta row states the turn’s own time', (
 
     await waitFor(() => expect(screen.getByText(/OUTCOME:/)).toBeTruthy());
     expect(answerRow().querySelector('.message-meta')).toBeNull();
+  });
+});
+
+describe('phone transcript: meta time reads the envelope, not the row timestamp', () => {
+  beforeEach(() => {
+    _setApiBase(API_BASE);
+    sequence = 0;
+    mobile.current = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ success: true, data: [] })),
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    _setApiBase('');
+  });
+
+  /** The settled answer row and envelope exactly as the projection writes them. */
+  function projectedAnswer() {
+    const events = workedTurn({ settled: true }).map((entry) => entry.event);
+    const rows = projectRuntimeEventsToMessages(events as never);
+    const answer = [...rows].reverse().find((row) => row.role === 'assistant')!;
+    const provenance = answer.metadata?.provenance as
+      | Record<string, unknown>
+      | undefined;
+    if (!provenance?.observedAt) throw new Error('no projected envelope');
+    return { answer, provenance };
+  }
+
+  function renderRow(provenance: unknown, timestamp: number) {
+    const { answer } = projectedAnswer();
+    render(
+      <ActiveChatsProvider>
+        <ChatMessageList
+          activeSession={chatSession({
+            orchestrationSessionStarted: false,
+            messages: [
+              {
+                role: 'assistant',
+                content: 'OUTCOME: answer.',
+                turnId: answer.metadata?.turnId,
+                sessionId: THREAD,
+                timestamp,
+                provenance,
+              },
+            ],
+          })}
+          fontSize={13}
+          showReasoning={false}
+          showToolDetails={false}
+        />
+      </ActiveChatsProvider>,
+    );
+    return answerRow();
+  }
+
+  test('a row whose timestamp disagrees with its envelope shows the envelope time', () => {
+    const { provenance } = projectedAnswer();
+    const observedAt = String(provenance.observedAt);
+    // A client-clock fill-in, two days off the real settle.
+    const fabricated = Date.parse(observedAt) - 2 * 86_400_000 + 4_321_000;
+    const row = renderRow(provenance, fabricated);
+    const time = row.querySelector('.message-meta time');
+    expect(time?.getAttribute('datetime')).toBe(observedAt);
+    expect(time?.textContent).toBe(
+      messageTime(Date.parse(observedAt), Date.now()),
+    );
+    expect(time?.textContent).not.toBe(messageTime(fabricated, Date.now()));
+  });
+
+  test('an envelope without observedAt states no time, even with a row timestamp', () => {
+    const { provenance } = projectedAnswer();
+    const { observedAt: _dropped, ...withoutTime } = provenance;
+    const row = renderRow(withoutTime, Date.now());
+    expect(row.querySelector('.message-meta')).toBeTruthy();
+    expect(row.querySelector('.message-meta time')).toBeNull();
   });
 });

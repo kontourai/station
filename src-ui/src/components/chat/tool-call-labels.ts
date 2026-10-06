@@ -41,6 +41,15 @@ interface KindVerbs {
   pendingVerb: string;
 }
 
+/** Kinds whose failed call still ran and changed nothing, so the completed
+ * verb is true of it. A failed write/delete/unknown call may have changed
+ * nothing at all, and "Edited" would say it did. */
+const RAN_EVEN_WHEN_FAILED: ReadonlySet<ToolCallKind> = new Set([
+  'exec',
+  'read',
+  'search',
+]);
+
 const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
   read: { verb: 'Read', progressiveVerb: 'Reading', pendingVerb: 'Read' },
   write: { verb: 'Edited', progressiveVerb: 'Editing', pendingVerb: 'Edit' },
@@ -65,10 +74,11 @@ const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
  * from an OBSERVED successful completion, never used as a fallback.
  *
  * `'failed'` is a plain failure: the tool was invoked and reported an error.
- * It keeps the completed tense ("Ran npm test") beside its Failed badge — the
- * same rule the batch summary applies ("ran 2 commands · 1 failed"), so the
- * collapsed line and the rows it opens never disagree about tense. The badge
- * is the disclosure.
+ * For a call that changes nothing (a command, a read, a search) the row keeps
+ * the completed tense ("Ran npm test") beside its Failed badge — the command
+ * did run — matching the batch summary ("ran 2 commands · 1 failed"). A
+ * failed write, delete or unknown tool takes the bare verb ("Edit a.ts"):
+ * "Edited" would claim a change that may never have landed (`callLabel`).
  *
  * Anything else that did not complete — denied by the user, blocked by
  * Station, cancelled, or started and never resolved (a replayed
@@ -646,7 +656,8 @@ function extractTarget(
 
 /** e.g. "Read app.tsx" (done), "Running npm run build:ui" (in flight),
  * "Edit approved.txt" (proposed, awaiting approval), "Edit config.json"
- * (unresolved — denied, cancelled, failed, or never resolved). */
+ * (unresolved — denied, cancelled, or never resolved), "Ran npm test" /
+ * "Edit config.json" (failed: completed verb only for non-mutating kinds). */
 export function callLabel(
   kind: ToolCallKind,
   toolName: string,
@@ -660,7 +671,9 @@ export function callLabel(
   const verb =
     resolved === 'running'
       ? cfg.progressiveVerb
-      : resolved === 'proposed' || resolved === 'unresolved'
+      : resolved === 'proposed' ||
+          resolved === 'unresolved' ||
+          (resolved === 'failed' && !RAN_EVEN_WHEN_FAILED.has(kind))
         ? cfg.pendingVerb
         : cfg.verb;
   // What a user is asked to allow is shown whole (see `commandTarget`).

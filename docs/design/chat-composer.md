@@ -103,11 +103,14 @@ the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
 original order. Files, UI blocks, runtime errors and calls still waiting on a
-grant stay outside the fold. While the turn is live it keeps the shape it streamed
+grant stay outside the fold, and so does the last narration when no text
+follows the last call. While the turn is live it keeps the shape it streamed
 with. In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
-identical arguments and succeeded. A failed call's row keeps the completed
-verb ("Ran …") beside its Failed badge. Under each settled answer, a muted
+identical, recorded arguments and succeeded. A failed command, read or search
+keeps the completed verb ("Ran …") beside its Failed badge; a failed edit,
+delete or other tool keeps the bare verb ("Edit …"), because the change may
+not have happened. A steer inside a turn does not start a new exchange. Under each settled answer, a muted
 time beside the ⋯ button gives the turn's completion time from its provenance
 envelope. An answer without an envelope shows no time. Exchanges are divided
 by a thin rule.

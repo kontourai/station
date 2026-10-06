@@ -801,11 +801,17 @@ function ChatMessageListComponent({
       pendingApprovalCount: waitingApprovalCount,
       activityShownElsewhere: statusShownElsewhere,
       foldSettledWork: true,
-      liveTurnId: turnLive ? activeSession.openTurnId : undefined,
+      // The server's open turn decides liveness (`isTurnStreamLive`), so it
+      // also names the live turn; `openTurnId` is the pre-record fallback.
+      liveTurnId: turnLive
+        ? (activeSession.conversationActivity?.openTurn?.turnId ??
+          activeSession.openTurnId)
+        : undefined,
       liveTailRow: turnLive && Boolean(suppressStreamingRow),
     }),
     [
       turnLive,
+      activeSession.conversationActivity?.openTurn?.turnId,
       activeSession.openTurnId,
       suppressStreamingRow,
       activeSession.id,
@@ -832,6 +838,9 @@ function ChatMessageListComponent({
       showToolDetails={showToolDetails}
       onCopy={handleCopy}
       onForkFromTurn={onForkFromTurn}
+      continuesTurn={
+        msg.turnId !== undefined && messages[idx - 1]?.turnId === msg.turnId
+      }
       userForkSource={
         msg.role === 'user' ? precedingForkSource(messages, idx) : undefined
       }
