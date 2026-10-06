@@ -2131,6 +2131,45 @@
   font-size: var(--k-text-xs);
   font-variant-numeric: tabular-nums;
 }
+/* A failure a later identical call recovered: history, not a verdict. */
+.tool-call-batch__retried {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+/* Narration a folded turn moved into its sheet, between the calls it was
+   written between: the transcript's own prose, quieter than the answer. */
+.tool-call-batch-sheet__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.tool-call-batch-sheet__note > :first-child {
+  margin-top: 0;
+}
+.tool-call-batch-sheet__note > :last-child {
+  margin-bottom: 0;
+}
+
+/* Below ~one short word of room the phone header's project control only ever
+   read "New ch… / No…", so it collapses to its folder glyph; the button's
+   aria-label carries the project name either way. The base header rules live
+   in index.css; these are parent-qualified so source order cannot decide. */
+.chat-dock__mobile-header .chat-dock__mobile-project {
+  container: chat-dock-mobile-project / inline-size;
+}
+.chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+  display: none;
+  color: var(--text-secondary);
+}
+@container chat-dock-mobile-project (max-width: 88px) {
+  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+    display: inline-flex;
+  }
+  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
+    display: none;
+  }
+}
+
 /* Phone density: the transcript's own 16px gap separates rows; the base 16px
    margin on top of it doubled every step. A virtualized transcript positions
    rows absolutely, where the container gap does not apply, so the margin
