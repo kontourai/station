@@ -8,10 +8,7 @@ const state = vi.hoisted(() => ({
   data: undefined as { stationId: string; stats: UsageStats } | undefined,
   error: null as Error | null,
 }));
-vi.mock('@kontourai/station-sdk', async () => ({
-  ...(await vi.importActual<typeof import('@kontourai/station-sdk')>(
-    '@kontourai/station-sdk',
-  )),
+vi.mock('@kontourai/station-sdk/station-usage-query', () => ({
   useStationUsageQuery: () => ({
     data: state.data,
     error: state.error,

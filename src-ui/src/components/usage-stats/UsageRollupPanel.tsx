@@ -6,7 +6,7 @@ import type {
 import {
   type UsageRollupQuery,
   useUsageRollupQuery,
-} from '@kontourai/station-sdk';
+} from '@kontourai/station-sdk/usage-rollup-query';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Empty, SkeletonBlock } from '../state';

@@ -4131,6 +4131,12 @@ and does not share another person's usage statistics.
 
 ### Station operator usage queries
 
+For a lazy view, import `useStationUsageQuery` from
+`@kontourai/station-sdk/station-usage-query`. The
+[owning module](../../packages/sdk/src/query-domains/stationUsage.ts) keeps the
+operator query separate from analytics used at startup. The SDK root retains
+its existing hook export.
+
 `useStationUsageQuery(scope, config?)` reads the current local instance overview
 through `GET /api/analytics/station-usage`. Supply a captured `ApiRequestScope`;
 without it, the query stays disabled under an isolated key. Its cache includes
@@ -4153,6 +4159,11 @@ containing this change; source presence is not evidence of npm publication.
 
 
 ### Authorized receipt observers
+
+Lazy receipt views can import `useUsageRollupQuery` from
+`@kontourai/station-sdk/usage-rollup-query`, backed by the
+[receipt query module](../../packages/sdk/src/query-domains/usageRollup.ts).
+The SDK root retains the same hook and fetcher exports.
 
 `useUsageRollupQuery(query, config?)` accepts `requestScope` and
 `requireRequestScope`, with the same captured-authority rules as the operator

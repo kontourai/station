@@ -3,12 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { expect, test, vi } from 'vitest';
-import {
-  useStationUsageQuery,
-  useUsageQuery,
-  useUsageRollupQuery,
-} from '../query-domains/analytics';
+import { useUsageQuery } from '../query-domains/analytics';
 import { usePairedDevicesQuery } from '../query-domains/devicePairingRequests';
+import { useStationUsageQuery } from '../query-domains/stationUsage';
+import { useUsageRollupQuery } from '../query-domains/usageRollup';
 
 const fetch = vi.hoisted(() => vi.fn());
 vi.mock('../api', () => ({ _getApiBase: async () => 'http://station.test' }));

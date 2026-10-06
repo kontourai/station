@@ -38,6 +38,8 @@ const analyticsState = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   AuthStatusBadge: () => <div>Auth badge</div>,
+}));
+vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
   useUsageRollupQuery: () => ({
     data: { coverage: [], rows: [], receipts: [] },
     isLoading: false,

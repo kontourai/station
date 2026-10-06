@@ -94,9 +94,7 @@ export {
   useInsightsQuery,
   useResetUsageStatsMutation,
   useSaveFeedbackRatingMutation,
-  useStationUsageQuery,
   useUsageQuery,
-  useUsageRollupQuery,
 } from './query-domains/analytics';
 export {
   AnswerShareAuthRequiredError,
@@ -604,6 +602,7 @@ export {
   useRemoveSshEnvironmentMutation,
   useSshEnvironmentsQuery,
 } from './query-domains/sshEnvironments';
+export { useStationUsageQuery } from './query-domains/stationUsage';
 export {
   type AuthStatusData,
   applyCoreUpdate,
@@ -717,6 +716,7 @@ export {
   useTrustBundlesQuery,
   useTrustReportQuery,
 } from './query-domains/trustBundles';
+export { useUsageRollupQuery } from './query-domains/usageRollup';
 export {
   type ReadinessInitResultVM,
   type ReadinessRequirementVM,

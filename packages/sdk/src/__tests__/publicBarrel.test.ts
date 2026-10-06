@@ -55,6 +55,8 @@ const PUBLIC_QUERY_DOMAINS = [
   'skillExperiences',
   'skills',
   'sshEnvironments',
+  'stationUsage',
+  'usageRollup',
   'systemRuntime',
   'taskGraph',
   'taskRoomWork',

@@ -69,7 +69,7 @@ const result = vi.hoisted(() => ({
   refetch: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
   useUsageRollupQuery: () => result,
 }));
 vi.mock('../../contexts/ApiBaseContext', () => ({

@@ -2,7 +2,8 @@ import type {
   TokenReports,
   UsageStats,
 } from '@kontourai/station-contracts/usage-stats';
-import { StationHttpError, useStationUsageQuery } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk';
+import { useStationUsageQuery } from '@kontourai/station-sdk/station-usage-query';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
