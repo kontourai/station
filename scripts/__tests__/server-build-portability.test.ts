@@ -177,6 +177,10 @@ async function buildDesktopResourceFixture(root: string) {
   expect(existsSync(join(serverOutput, 'plugin-draft-build-child.js'))).toBe(
     true,
   );
+  // #3406: attached-session discovery spawns this entry the same way.
+  expect(existsSync(join(serverOutput, 'attached-session-path-child.js'))).toBe(
+    true,
+  );
   // Execute the shipped Task worker from an unrelated cwd with the real
   // staged runtime dependencies. Presence alone would not prove resolution.
   const taskReaderProbe = join(serverOutput, 'task-search-reader-probe.mjs');

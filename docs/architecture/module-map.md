@@ -1148,7 +1148,10 @@ value is removed first. Recovery and the credential-profile restart compare
 the re-resolved folder with that record before starting an engine, and a
 continuation child in the same folder inherits it. An adopted attached-session
 child (Continue in Station, #3386) records its resolved folder the same way,
-so its recovery gets the same comparison. The refusal reaches the
+so its recovery gets the same comparison. The same record binds a
+conversation's follow-up: a `/chat` request whose workspace names only the
+conversation's Project continues it in the recorded folder rather than the
+Project folder ([continuation check](../../src-server/services/execution-target/execution-target-execution.ts), #3429). The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
@@ -1457,7 +1460,10 @@ projection lists every reference, unfiltered, for every caller.
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
 resolves fresh child-only environment values and records success only after
 connection/handshake succeeds; unsupported transports and the built-in station-control
-child refuse authored injection. Changing grants does not erase values already delivered
+child refuse authored injection. Attaching a binding to a command-launching
+server (bind, migrate-stored-env, or replacing a binding already bound to one) takes
+the operator or a device holding `coding:exec` at the route (`routes/secret-bindings.ts`),
+because the value becomes that command's environment. Changing grants does not erase values already delivered
 to a running child. The same store separately implements `resolveForAcpProvider()` for
 exact connection/provider/header grants, consumed by the ACP provider-configuration
 route; that is not generic MCP header injection. The Datum adapter is the contracts
@@ -1514,7 +1520,15 @@ same-turn error context for `acp.turn-error-cause`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional
-transcript no-ops, not visible UI implementations. Claude task registry/settled
+transcript no-ops, not visible UI implementations. `transcript.marker` entries
+are derived from the [marker table](../../packages/shared/src/extension-transcript-markers.ts)
+that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
+reads: an attached-session source's context compaction or rewind becomes a
+system row with a fixed label, drawn as a quiet line, and the UI handler
+leaves it to the projection. A marker never splits a turn: one that arrives
+during a turn is held until the turn closes and follows its single answer row,
+so the turn keeps its canonical id and answer eligibility. One table entry binds and renders a tuple; the
+label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)

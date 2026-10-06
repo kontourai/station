@@ -29,9 +29,12 @@ describe('chatRuntimeDevice', () => {
     mockJsonResponse({ publicKey: 'test-public-key' });
 
     await expect(fetchVapidPublicKey()).resolves.toBe('test-public-key');
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/system/vapid-public-key',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects when the server does not return a public key', async () => {

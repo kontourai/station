@@ -1,0 +1,7 @@
+{
+  "revision": "c02475e0d13466465df1d41b50dd9cc529553703",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDockMobileHeader keeps every control and its 44px floor (project button min-width 44px unchanged); the glyph collapse is a container query inside that button. chat.css additions are transcript spacing, meta row and sheet notes; the ⋯ trigger stays 44px. No dialog, surface-actions or mobile-query rule in this guide changed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}
