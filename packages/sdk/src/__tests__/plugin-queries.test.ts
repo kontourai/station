@@ -27,9 +27,12 @@ describe('plugin-queries', () => {
       status: 'ok',
     });
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/agents/agent%20one/health',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('polls until the agent reports healthy', async () => {

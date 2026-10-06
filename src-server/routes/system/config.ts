@@ -51,11 +51,19 @@ import { fullAccessRefusal } from '../orchestration/approval-authority.js';
 const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
 
 import {
+  COMMAND_NOT_GRANTED_CODE,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
+import {
   appConfigUpdateSchema,
   errorMessage,
   getBody,
   validate,
 } from '../schemas/schemas.js';
+import {
+  changesAny,
+  refuseUngrantedCommandChoice,
+} from '../working-directory-authority.js';
 import {
   captureConfigurationMutation,
   configurationActivationPayload,
@@ -404,6 +412,30 @@ export function createConfigRoutes(
           },
           400,
         );
+      }
+
+      // The terminal shell is a program Station will start; changing it is
+      // choosing a command.
+      if (Object.hasOwn(body as object, 'terminalShell')) {
+        const current = await configLoader.loadAppConfig();
+        if (changesAny(body as object, current, ['terminalShell'])) {
+          // An agent's station-control call is the internal principal, which
+          // the folder and command rule otherwise leaves to its own policy;
+          // the terminal shell is the one setting it may not change, as it
+          // may not raise the default approval mode to full access.
+          if (requestMayBeAnAgent(c.req.raw))
+            return c.json(
+              {
+                success: false,
+                code: COMMAND_NOT_GRANTED_CODE,
+                error:
+                  'An agent cannot change the terminal shell. The operator can, in Settings.',
+              },
+              403,
+            );
+          const commandRefused = refuseUngrantedCommandChoice(c);
+          if (commandRefused) return commandRefused;
+        }
       }
 
       if (Object.hasOwn(body as object, 'logLevel')) {

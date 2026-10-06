@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
 import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AdoptedSessionResult,
   AdoptSessionTarget,
@@ -30,6 +31,10 @@ import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tena
 import type { FullAccessGrantor } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
+import {
+  adoptedChildExecutionBindingMetadata,
+  type ResolveAdoptedChildExecutionBinding,
+} from './adopted-child-execution-binding.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -80,6 +85,27 @@ export class AdoptionContinuationInProgressError extends Error {
     this.name = 'AdoptionContinuationInProgressError';
   }
 }
+
+/**
+ * #3429: the engine was not ready, found before anything was created, and
+ * the reservation was cleaned up. Its outcome is certain, its reason is the
+ * engine's own readiness report, and the same request can succeed once the
+ * engine is set up.
+ */
+export class AdoptionEngineNotReadyError extends Error {
+  readonly code = 'continuation_engine_not_ready';
+  readonly retryable = true;
+
+  constructor(engine: string, detail: string) {
+    super(
+      `${engine} isn't ready, so no continuation was created (${detail}). Set up ${engine}, then try again.`,
+    );
+    this.name = 'AdoptionEngineNotReadyError';
+  }
+}
+
+/** The readiness check's own failure, before rollback decides what is certain. */
+class EngineNotReady extends Error {}
 
 interface AdoptionContext {
   source: ProviderSession;
@@ -141,6 +167,12 @@ export interface AttachedSessionAdoptionDeps {
     discardRun(projectRoot: string, flowRunId: string): Promise<void>;
   };
   listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment the child runs as, so the dock can open
+   * it and `/chat` follow-ups find a verified execution binding. Absent (or
+   * answering undefined), the child is created without one, as before.
+   */
+  resolveExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   requireTenantExecutionContext?: () => boolean;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
@@ -420,6 +452,12 @@ export class AttachedSessionAdoption {
           receipt,
         );
       }
+      if (cleanupComplete && error instanceof EngineNotReady)
+        throw new AdoptionEngineNotReadyError(
+          engineDisplayLabel(context.source.provider) ??
+            context.source.provider,
+          error.message,
+        );
       throw new Error(
         cleanupComplete
           ? 'Station could not continue this attached session. No continuation was kept.'
@@ -681,6 +719,11 @@ export class AttachedSessionAdoption {
     userId?: string,
   ): Promise<ProviderSession> {
     const { adapter, place, reservation, source } = context;
+    // #3429: resolved before the engine is touched, so a failed read rolls
+    // back an adoption that never started a child.
+    const executionBinding = await this.deps.resolveExecutionBinding?.(
+      source.provider,
+    );
     // Adoption starts a fresh provider child from a persisted transcript, so
     // it follows the same retained-selector resume contract as recovery.
     // Do not replay `source.model` as a caller override: Station-backed
@@ -698,6 +741,14 @@ export class AttachedSessionAdoption {
       // can be forged by an adopting client.
       metadata: {
         adoptedFromThreadId: reservation.sourceThreadId,
+        // #3429: the same Agent identity and execution binding a chat
+        // started from the dock records, so the dock opens this child and a
+        // `/chat` follow-up passes `readSessionBinding`. Confinement and cwd
+        // below are adoption's own and are not derived from the Agent.
+        ...adoptedChildExecutionBindingMetadata(
+          executionBinding,
+          reservation.targetThreadId,
+        ),
         // #3386: the child belongs to the project its folder was verified
         // against just now (by folder, or by repository from a worktree),
         // with that project's local id the same way `prepareStart` records
@@ -705,6 +756,10 @@ export class AttachedSessionAdoption {
         ...(place.project
           ? {
               projectSlug: place.project.slug,
+              // #3429: what a project chat records beside its slug. The
+              // child runs in its own folder, not a worktree Station made,
+              // so its isolation is `shared`.
+              workspaceIsolation: { mode: 'shared' },
               ...(place.project.id
                 ? { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: place.project.id }
                 : {}),
@@ -753,7 +808,11 @@ export class AttachedSessionAdoption {
         ? { sourceBoundary: context.reservation.sourceBoundary }
         : {}),
     };
-    await this.deps.assertAdapterReady(adapter);
+    try {
+      await this.deps.assertAdapterReady(adapter);
+    } catch (error) {
+      throw new EngineNotReady(errorMessage(error));
+    }
     this.deps.assertAdapterCurrent(adapter);
     await this.reverifyAdoptionPlace(context);
     const startCreation = () => {

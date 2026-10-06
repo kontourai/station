@@ -53,7 +53,9 @@ const MAX_ANCESTORS = 128;
  * every folder no project contains on every poll, and an asynchronous
  * `lstat` per ancestor queued on libuv's four-thread pool made a poll of 256
  * such folders take seconds on a loaded host. Only a found `.git` is read
- * asynchronously.
+ * asynchronously. Discovery calls it in the path probe's helper process
+ * (#3406, `attached-session-path-probe.ts`), where a folder on a hung mount
+ * blocks that process instead of Station.
  */
 export async function locateRepository(
   path: string,

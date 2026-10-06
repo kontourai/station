@@ -448,9 +448,12 @@ describe('configGet', () => {
     const { configGet } = await import('../commands/config.js');
     await configGet('region', NONE);
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       `http://127.0.0.1:${DEFAULT_SERVER_PORT}/config/app`,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(consoleLog).toHaveBeenCalledWith('us-west-2');
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining('AWS_REGION'),

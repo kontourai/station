@@ -1,0 +1,7 @@
+{
+  "revision": "6de0a29b1cf98ff372ca7e3c6b8e9f1cfd54c62a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked module-map SecretBindingAdministration section against merged routes/secret-bindings.ts: viewer-scoped list/get/replace/revoke/bind/unbind (aef9606463) and the coding:exec gate on bind, migrate-stored-env and replace of a binding bound to a command-launching server both hold; PUT lookup now passes the viewer and still fails closed on an unreadable binding.","inputs":["docs/architecture/module-map.md","src-server/routes/secret-bindings.ts"]}
+  ]
+}

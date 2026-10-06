@@ -1,0 +1,7 @@
+{
+  "revision": "a2e220c76a956f03eefcfb34fad26409c668e3d0",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3406: added the hung network drive paragraph to See Conversations Started Outside Station; checked against attached-session-path-probe.ts (path-as-written fallback, 60 s back-off) and the probe test's correction-after-back-off case. The two-second check, 128 bound, filing order and removed-worktree/deleted-project claims are unchanged by this change. Limit: no real hung network drive exercised.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/attached-session-repository.ts"]}
+  ]
+}
