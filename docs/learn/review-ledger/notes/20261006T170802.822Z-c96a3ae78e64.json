@@ -1,0 +1,7 @@
+{
+  "revision": "45d74318d5a9e28ff921fab2ec497cc5d1b4e97e",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-checked after orchestration-chat-flow.spec.ts's right-dock label check began counting the approval card's two labelled buttons (Deny, Allow Once): the doc makes no claim about that test's button count.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}
