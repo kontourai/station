@@ -716,8 +716,11 @@ test.describe('Orchestration Chat Flow', () => {
       expect(line!.width, `${context}: line width`).toBeGreaterThanOrEqual(
         Math.min(160, row!.width) - 1,
       );
+      // Deny and Allow Once, plus the menu holding the session choices.
       const buttons = await card
-        .locator('.tool-call__approve-btn')
+        .locator(
+          '.tool-call__approve-btn, button[aria-label="More ways to allow this request"]',
+        )
         .evaluateAll((nodes) =>
           nodes.map((node) => {
             const r = node.getBoundingClientRect();
