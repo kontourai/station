@@ -354,16 +354,7 @@ describe('acpApprovalFor (#3290)', () => {
 });
 
 describe('a new decision clears a stale takeover failure (#3290, finding 7)', () => {
-  test('a new pick, and a newly recorded decision, are not marked not-applied', () => {
-    expect(
-      approvalPickUpdate(
-        { approvalPosture: 'ask', approvalTakeoverFailed: true },
-        'auto',
-      ),
-    ).toEqual({
-      queuedApprovalMode: 'auto',
-      approvalTakeoverFailed: undefined,
-    });
+  test('a newly recorded decision (a re-pick of the same mode included) is not marked not-applied', () => {
     const failed = {
       approvalPosture: 'ask' as const,
       approvalPostureSequence: 4,
@@ -374,6 +365,9 @@ describe('a new decision clears a stale takeover failure (#3290, finding 7)', ()
       mode: 'auto',
       state: 'requested',
     });
+    // A re-pick of the same mode is a new decision too.
+    const repicked = { ...failed, ...foldApprovalPosture(failed, 'ask', 6) };
+    expect(sessionApprovalOverride(repicked)?.state).toBe('requested');
     // The same decision folded again keeps the failure it already had.
     expect(foldApprovalPosture(failed, 'ask', 4)).toEqual({});
   });
