@@ -247,6 +247,8 @@ async function fixture() {
       },
     ],
   };
+  // A binding that does not exist for the route's read and does for a later one.
+  const raceBinding = { reads: 0, visibleAfterFirstRead: false };
   const personOwned = {
     ...binding,
     id: 'b-person',
@@ -281,6 +283,12 @@ async function fixture() {
         get: async (id: string) => {
           if (id === 'b-unreadable') throw new Error('store unreadable');
           if (id === 'missing') return null;
+          if (id === 'raced') {
+            raceBinding.reads += 1;
+            return raceBinding.visibleAfterFirstRead && raceBinding.reads > 1
+              ? binding
+              : null;
+          }
           if (id === 'b-person') return personOwned;
           return id === 'b-stdio'
             ? boundToStdio
@@ -361,6 +369,7 @@ async function fixture() {
     pair,
     send,
     configRoutes,
+    raceBinding,
     recorders: {
       saveACPConfig,
       saveIntegration,
@@ -800,21 +809,44 @@ describe("/api/secret-bindings: a bound value is a launched command's environmen
     expect(header.status).toBe(200);
   });
 
-  test('a binding the caller cannot see, or that does not exist, still answers 404, never the command refusal', async () => {
+  test('a missing or hidden binding is refused like any other for a caller without coding:exec, and answers 404 for one with it', async () => {
     const f = await fixture();
-    const device = f.pair('default-grant');
-    const res = await f.send(
-      device,
+    const body = {
+      integrationId: 'tool-1',
+      envName: 'NODE_OPTIONS',
+      expectedRevision: 1,
+    };
+    const refused = await f.send(
+      f.pair('default-grant'),
       'POST',
       '/api/secret-bindings/missing/bind',
-      {
-        integrationId: 'tool-1',
-        envName: 'NODE_OPTIONS',
-        expectedRevision: 1,
-      },
+      body,
     );
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBeUndefined();
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe(CODE);
+    const operator = await f.send(
+      f.operator.credential,
+      'POST',
+      '/api/secret-bindings/missing/bind',
+      body,
+    );
+    expect(operator.status).toBe(404);
+  });
+
+  test('a binding that appears between the route read and the service read is still checked', async () => {
+    const f = await fixture();
+    // The route's read finds nothing; by the time the service reads, the
+    // binding exists and the bind would attach.
+    f.raceBinding.visibleAfterFirstRead = true;
+    const res = await f.send(
+      f.pair('default-grant'),
+      'POST',
+      '/api/secret-bindings/raced/bind',
+      { integrationId: 'tool-1', envName: 'NODE_OPTIONS', expectedRevision: 1 },
+    );
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(CODE);
+    expect(f.recorders.bindConsumer).not.toHaveBeenCalled();
   });
 
   test('a person-owned binding keeps the service refusal (it can never be granted to a shared server), not the command refusal', async () => {

@@ -265,12 +265,16 @@ async function respondBindingMutation(
 
 /**
  * Whether the command check applies to a bind of binding `id`. It does not
- * when the service will answer first and nothing can attach: a binding the
- * caller cannot see answers exactly as a missing id (404, so the check must
- * not turn it into a 403 that tells them apart), and the service refuses
- * every grant of a person-owned binding to a shared integration (400,
- * `SECRET_BINDING_PERSON_GRANT_MESSAGE`). A lookup that fails counts as
- * visible and instance-owned, so the check applies.
+ * for a person-owned binding: the service refuses every grant of one to a
+ * shared integration (400, `SECRET_BINDING_PERSON_GRANT_MESSAGE`), and an
+ * owner never changes, so nothing can attach and that answer is certain.
+ *
+ * It does for everything else, including a binding this read cannot find or
+ * the caller cannot see. Skipping on a missing binding would be a race: the
+ * binding can be created between this read and the service's own, and the bind
+ * would then attach with no check. An ungranted caller is refused either way,
+ * and a hidden binding answers exactly as a missing one, so nothing is revealed
+ * about existence. A lookup that fails counts as instance-owned.
  */
 async function bindingMayAttach(
   service: SecretBindingAdministration,
@@ -278,7 +282,6 @@ async function bindingMayAttach(
   viewer: SecretBindingViewer | undefined,
 ): Promise<boolean> {
   const seen = await service.get(id, viewer).catch(() => undefined);
-  if (seen === null) return false;
   return !(seen?.owner && seen.owner.kind !== 'instance');
 }
 

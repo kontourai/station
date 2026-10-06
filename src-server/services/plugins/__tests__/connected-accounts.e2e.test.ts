@@ -724,7 +724,30 @@ test('two principals each reach the MCP server with their own token and cannot u
         body,
       );
       expect(hidden, label).toEqual(missing);
-      expect(hidden, label).toEqual(NOT_FOUND);
+      if (label === 'bind') {
+        // An env bind on a command-launching server is checked before the
+        // binding is read (a missing binding could be created in between), so
+        // a caller without coding:exec is refused the same way for a hidden
+        // and a missing id.
+        expect(hidden.status, label).toBe(403);
+        expect(JSON.parse(hidden.body).code, label).toBe('command-not-granted');
+      } else {
+        expect(hidden, label).toEqual(NOT_FOUND);
+      }
+    }
+    // A caller who may choose a command gets the service's 404, identically
+    // for a hidden and a missing binding.
+    for (const id of ['alice-mail', 'no-such-binding']) {
+      expect(
+        await raw(
+          app,
+          'POST',
+          `/api/secret-bindings/${id}/bind`,
+          'exec-credential',
+          consumer('MAIL_TOKEN', 1),
+        ),
+        id,
+      ).toEqual(NOT_FOUND);
     }
 
     // The owner cannot grant their binding to a shared child: a stdio MCP
