@@ -1,0 +1,11 @@
+{
+  "revision": "63fcc806005ebcebe02e6bbe2a2bbb7fc995e32b",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3386 Phase B delta: AttachedSessionFollowService.stop() now also calls each source's optional close() (OpenCode releases its read-only store connections). No claim in this document describes follower shutdown or source handles; no prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3386 Phase B delta: AttachedSessionFollowService.stop() now also calls each source's optional close() (OpenCode releases its read-only store connections). No claim in this document describes follower shutdown or source handles; no prose change.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 Phase B delta: AttachedSessionFollowService.stop() now also calls each source's optional close() (OpenCode releases its read-only store connections). No claim in this document describes follower shutdown or source handles; no prose change.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

@@ -45,9 +45,12 @@ describe('Peer credentials SDK domain (station#settings-revamp slice 5)', () => 
         updatedAt: 2,
       },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/environments/peers',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces the envelope error message when the server reports success:false', async () => {

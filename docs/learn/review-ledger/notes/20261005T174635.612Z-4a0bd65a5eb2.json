@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"#3386 fix round: schemas/app.schema.json gained one boolean property, attachedSessionsOutsideProjects; this document's claims about the app schema (plugin/registry fields) are unaffected. No prose change.","inputs":["docs/design/plugin-installation-lifecycle.md","schemas/app.schema.json"]}
+  ]
+}

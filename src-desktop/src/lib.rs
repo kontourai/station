@@ -3035,6 +3035,11 @@ fn native_header_allowlisted(name: &str) -> bool {
             // native still owns the bearer and refuses every authority-bearing
             // renderer header below.
             | "x-station-client-origin"
+            // `CLIENT_PROTOCOL_HEADER` in
+            // `packages/contracts/src/environment-security.ts` (#2962): the
+            // client API protocol this build speaks. A compatibility signal
+            // the host may refuse on; it carries no authority.
+            | "x-station-client-protocol"
             | "x-station-client-session"
             | "x-station-plugin"
             | "x-abort-reason"
@@ -20652,6 +20657,7 @@ mod tests {
         assert!(native_header_allowlisted("x-station-plugin"));
         assert!(native_header_allowlisted("x-abort-reason"));
         assert!(native_header_allowlisted("X-Station-Client-Origin"));
+        assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
         assert!(!native_header_allowlisted("cookie"));
         assert!(!native_header_allowlisted("x-station-device-id"));

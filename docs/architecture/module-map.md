@@ -27,6 +27,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
+| [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -1176,7 +1177,12 @@ such as a worktree, is not substituted. The admitted canonical path is written
 to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
 value is removed first. Recovery and the credential-profile restart compare
 the re-resolved folder with that record before starting an engine, and a
-continuation child in the same folder inherits it. The refusal reaches the
+continuation child in the same folder inherits it. An adopted attached-session
+child (Continue in Station, #3386) records its resolved folder the same way,
+so its recovery gets the same comparison. The same record binds a
+conversation's follow-up: a `/chat` request whose workspace names only the
+conversation's Project continues it in the recorded folder rather than the
+Project folder ([continuation check](../../src-server/services/execution-target/execution-target-execution.ts), #3429). The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
@@ -1230,6 +1236,57 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+## SessionDigest
+
+An agent deciding whether a peer Session is worth a full transcript read needs
+a cheap account of it, and that account must be what Station recorded, not a
+model's summary. [SessionDigest](../../src-server/services/orchestration/session-digest.ts)
+folds the recorded facts of a conversation's turns into that account for Station
+Control's `get_session_digest`, and the
+[route](../../src-server/routes/orchestration/session-project-activity.ts) that
+serves it also serves `list_project_activity`.
+
+**Interface.** `EventStore.readTurnDigestFacts(threadIds, { beforeGlobalSequence,
+turnLimit })` selects and aggregates in SQLite the facts of a window of turns,
+newest first: the turn's `turn.started` (a steer is not a turn) with a bounded
+prompt prefix, its last terminal event, a count of `tool.started` by tool name,
+the path argument of a successful call whose own `tool.completed` reported an
+`edit`, `delete` or `move` kind (and whether any call of the turn reported a
+kind at all), and the `pull-request` rows the turn declared.
+`EventStore.listThreadIdsStartedIn(projectId)` selects the threads that could
+be in one Project's scope from their start records (`session.started` and `session.configured`, as the scope owner reads them), so the list narrows before
+it folds; it is a candidate list, never the check.
+`digestTurn(facts, children)` bounds each field and `fitDigestPage(turns)` takes
+the longest prefix under 8 KiB, refusing (`DigestTurnTooLargeError`) rather
+than serving a turn that alone exceeds it; a lineage past 500 Sessions is
+refused the same way (`TurnDigestLineageTooLongError`). `encodeDigestCursor` and `decodeDigestCursor` carry the paging
+position, the oldest returned turn's `turn.started` global sequence.
+
+**Invariants.** Nothing is summarized and nothing is named that nothing
+computes: a fact that was not recorded is absent, and a turn whose engine
+reports no tool kinds says `filesReported: false` instead of implying no files;
+and a turn with no terminal event is `open`, not
+guessed. Each field is bounded and says when it was collapsed, so a page ends
+for the byte cap, never by cutting a turn, and paging covers each turn once.
+Delegated children are the Sessions Station derived as launched from the
+conversation (`listSessionsNamingParents`, `stationDerived`) that started within
+a turn's window (the parent is recorded per conversation, not per turn), and a child the caller may not see is not counted.
+
+**Composition and evidence.** The route decides authority per Session before
+reading anything: the owner-scoped read model, the shared scope rule
+(`stationControlScopeRefusal` with the owner's Project `view` action), and no
+remote host. A Session out of scope reads as not found. The status word is
+`sessionLadderWord` in the
+[session-attention contract](../../packages/contracts/src/session-attention.ts),
+the derivation the UI's status ladder also reads. The
+[mounted matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts)
+drives every caller kind against same-Project, other-Project, global, other-owner
+and remote targets over real events, and the
+[fold tests](../../src-server/services/orchestration/__tests__/session-digest.test.ts)
+pin the bounds. Their presence is not an executed receipt against a real engine.
+See [agent configuration](../guides/self-configuring-agent.md#project-activity)
+for the tool-level behavior.
 
 ## ConversationSessionLineage
 
@@ -1453,12 +1510,42 @@ Datum only; they never materialize. Resolution requires one current, non-revoked
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
 
+**Ownership (#3279).** A binding has an owner: `instance` (absent on records written
+before #3279, which keep their behavior), `principal`, or `principal-project`. The
+owner id is an existing human `PrincipalRef.id` from request resolution; a paired
+device without a person, a non-human principal, or a hosted request owns none
+([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
+`create` currently refuses any owner but `instance` (`owner: "self"` on
+`POST /api/secret-bindings` returns a typed 400, "Person-owned secret bindings are not
+available yet."), because no consumer can use one; the rules below govern person-owned
+records that already exist and the future single-principal consumer. List, get, replace, revoke, and integration bind/unbind (including the grant and
+ungrant inside them) take the request principal as viewer. One typed not-found refusal
+covers a missing binding and another person's, and `/api/secret-bindings` returns it as
+the same 404 body on get, replace, revoke, bind, and unbind; request validation that
+runs before the lookup still returns 400 for both. An instance-owned `create` with
+an id already in use is refused, so it reveals that the id exists, including one held
+by an existing person-owned record; that follows from the single global id namespace
+and is accepted for now. A person-owned `create` is refused before the id check, so it
+reveals nothing. A caller without a viewer, including
+stored-env migration, sees and grants only instance bindings. Resolution refuses a
+person-owned binding with `owner_mismatch` unless the invocation names that principal
+(and Project). Stdio MCP children and ACP providers are shared and name none, so
+`grant` refuses a person-owned binding for either consumer (a typed 400, checked after
+the not-found lookup) until a child can serve a single principal; integration bind
+always goes through `grant` for such a binding, even when a grant is already on
+record. New integration env
+references therefore name only instance bindings, and the integration binding
+projection lists every reference, unfiltered, for every caller.
+
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
 resolves fresh child-only environment values and records success only after
 connection/handshake succeeds; unsupported transports and the built-in station-control
-child refuse authored injection. Changing grants does not erase values already delivered
+child refuse authored injection. Attaching a binding to a command-launching
+server (bind, migrate-stored-env, or replacing a binding already bound to one) takes
+the operator or a device holding `coding:exec` at the route (`routes/secret-bindings.ts`),
+because the value becomes that command's environment. Changing grants does not erase values already delivered
 to a running child. The same store separately implements `resolveForAcpProvider()` for
 exact connection/provider/header grants, consumed by the ACP provider-configuration
 route; that is not generic MCP header injection. The Datum adapter is the contracts
@@ -1515,7 +1602,15 @@ same-turn error context for `acp.turn-error-cause`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional
-transcript no-ops, not visible UI implementations. Claude task registry/settled
+transcript no-ops, not visible UI implementations. `transcript.marker` entries
+are derived from the [marker table](../../packages/shared/src/extension-transcript-markers.ts)
+that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
+reads: an attached-session source's context compaction or rewind becomes a
+system row with a fixed label, drawn as a quiet line, and the UI handler
+leaves it to the projection. A marker never splits a turn: one that arrives
+during a turn is held until the turn closes and follows its single answer row,
+so the turn keeps its canonical id and answer eligibility. One table entry binds and renders a tuple; the
+label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)

@@ -32,6 +32,7 @@ import {
 } from './api-error-message';
 import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
+import { withClientProtocolHeader } from './client-protocol.js';
 import {
   rethrowDeadline,
   SAFE_HTTP_METHODS,
@@ -875,8 +876,12 @@ async function dispatchAuthenticatedFetch(
     ...(init?.signal ? { signal: init.signal } : {}),
   });
   if (!configured || !sameOrigin(url, configured.origin)) {
-    const originHeaders = withClientOriginHeaders(
-      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    const originHeaders = withClientProtocolHeader(
+      withClientOriginHeaders(
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
+      ),
+      url,
+      false,
     );
     const originInit = originHeaders
       ? { ...(init ?? {}), headers: originHeaders }
@@ -950,7 +955,11 @@ async function dispatchAuthenticatedFetch(
     throw new StationCredentialConflictError(url);
   }
   const requestInit = { ...(init ?? {}) };
-  const originHeaders = withClientOriginHeaders(headerRecord, true);
+  const originHeaders = withClientProtocolHeader(
+    withClientOriginHeaders(headerRecord, true),
+    url,
+    request !== fetch,
+  );
   if (originHeaders) requestInit.headers = originHeaders;
   const assertAuthority = bindRequestAuthority(url, undefined, configured);
   assertAuthority();
@@ -1059,6 +1068,12 @@ export async function getJson(
     configured?.transport && sameOrigin(url, configured.origin)
       ? configured.transport
       : fetch;
+  const protocolHeaders = withClientProtocolHeader(
+    init.headers as Record<string, string> | undefined,
+    url,
+    request !== fetch,
+  );
+  if (protocolHeaders) init.headers = protocolHeaders;
   const dispatchInit = nativeTransportInit(
     init,
     requestOptions,
@@ -1144,6 +1159,12 @@ export async function mutateJson(
     configured?.transport && sameOrigin(url, configured.origin)
       ? configured.transport
       : fetch;
+  const protocolHeaders = withClientProtocolHeader(
+    init.headers as Record<string, string> | undefined,
+    url,
+    request !== fetch,
+  );
+  if (protocolHeaders) init.headers = protocolHeaders;
   const dispatchInit = nativeTransportInit(
     init,
     requestOptions,

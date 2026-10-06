@@ -1,0 +1,7 @@
+{
+  "revision": "ae3033839a74ad8dc5d005fa71bb349e1efea634",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"No prose change: it makes no claim about the workspace Home projection fields or opening paired-Station records; docs/reference/session-api.md changed only to describe the new delegationEnvironmentKind projection field.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

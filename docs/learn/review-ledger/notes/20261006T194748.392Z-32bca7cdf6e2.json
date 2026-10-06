@@ -1,0 +1,7 @@
+{
+  "revision": "b94d17d4482ad6c4b7f664c9eed60e6370ac6cca",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Added owning OAuth/provider and shared transport/importer citations for the new advisory explanation. Inspected complete value-preserving writeBound and resource/owner/issuer readBound, client-context call path and compatible transport/custody controls at15c239;188 focused tests PASS. First patched vendor pins installed/verified, exact formatter binding observed, actual new audit atb94 exited0. No user secret migration/clearing or new trust policy; current source not yet CI/hosted/landed.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts","packages/shared/src/mcp-connection.ts","packages/shared/package.json"]}
+  ]
+}

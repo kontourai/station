@@ -149,7 +149,9 @@ file. Its versioned state contains Project slug, relative path, optional bounded
 line range, wrap and Markdown mode preferences, and an optional Session `thread`.
 Without a thread it reads the Project checkout; with one, the route resolves
 that readable Session's directory and refuses an unavailable or unauthorized
-Session instead of falling back to the Project directory. Its opaque
+Session instead of falling back to the Project directory. The Session must
+belong to the Project its start recorded, whatever its engine; a read-only
+attached Session records none there and is refused. Its opaque
 instance and state keys never encode a path, and host geometry never contains
 file intent. The host restores it only when the builtin descriptor, renderer,
 provenance, bound Project/source context, and separately validated state all

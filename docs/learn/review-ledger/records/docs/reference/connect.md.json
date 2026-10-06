@@ -26,19 +26,19 @@
 
     "packages/connect/src/__tests__/nativeEnrollmentExchange.test.ts",
 
-    "packages/connect/src/core/connectionCandidates.ts",
-
-    "packages/connect/src/core/connectionFailureClassification.ts",
-
     "packages/connect/src/core/ConnectionHealthCoordinator.ts",
-
-    "packages/connect/src/core/connectionIndicator.ts",
-
-    "packages/connect/src/core/connectionProfile.ts",
 
     "packages/connect/src/core/ConnectionStore.ts",
 
     "packages/connect/src/core/ConnectionSupervisor.ts",
+
+    "packages/connect/src/core/connectionCandidates.ts",
+
+    "packages/connect/src/core/connectionFailureClassification.ts",
+
+    "packages/connect/src/core/connectionIndicator.ts",
+
+    "packages/connect/src/core/connectionProfile.ts",
 
     "packages/connect/src/core/devicePairing.ts",
 
@@ -60,23 +60,23 @@
 
     "packages/connect/src/index.ts",
 
-    "packages/connect/src/react/connection-manager-modal-utils.ts",
-
-    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
-
     "packages/connect/src/react/ConnectionManagerModal.tsx",
 
     "packages/connect/src/react/ConnectionManagerModalContent.tsx",
 
-    "packages/connect/src/react/ConnectionsContext.tsx",
-
     "packages/connect/src/react/ConnectionStatusDot.tsx",
+
+    "packages/connect/src/react/ConnectionsContext.tsx",
 
     "packages/connect/src/react/DevicePairingPanel.tsx",
 
-    "packages/connect/src/react/pairingCompletion.ts",
-
     "packages/connect/src/react/QRScanner.tsx",
+
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
+
+    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+
+    "packages/connect/src/react/pairingCompletion.ts",
 
     "packages/connect/src/react/useConnectionStatus.ts",
 
@@ -86,15 +86,33 @@
 
     "packages/contracts/src/native-relay-link.ts",
 
+    "packages/sdk/src/client/client-protocol.ts",
+
     "packages/sdk/src/client/http.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "packages/shared/src/native-relay-link.ts",
 
     "src-desktop/src/native_relay_link_intake.rs",
 
     "src-server/routes/operations/voice.ts",
 
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
     "src-server/runtime/bootstrap/runtime-http.ts",
 
     "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts",
 
     "src-server/security/runtime-request-security.ts",
 
@@ -110,6 +128,10 @@
 
     "src-server/services/terminal/terminal-ws-server.ts",
 
+    "src-ui/src/__tests__/compatibility.test.ts",
+
+    "src-ui/src/__tests__/serverHealth.test.ts",
+
     "src-ui/src/contexts/ApiBaseContext.tsx",
 
     "src-ui/src/lib/serverHealth.ts",
@@ -124,19 +146,9 @@
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
 
-    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
-
     "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
 
-    "packages/shared/src/native-relay-link.ts",
-
-    "packages/shared/package.json#/exports/.~1native-relay-link",
-
-    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
-
-    "src-server/security/pairing-route-scopes.ts",
-
-    "src-server/security/relay-management-authority.ts"
+    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx"
   ],
 
   "checks": [

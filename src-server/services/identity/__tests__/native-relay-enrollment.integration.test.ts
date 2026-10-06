@@ -132,7 +132,7 @@ async function fixture(initialGeneration = 1, actorRefresh = () => true) {
     manifests,
     members,
   );
-  const owner = humanPrincipal('fixture', 'brian', 'Brian');
+  const owner = humanPrincipal('fixture', 'casey', 'Casey');
   const ownerAuthority = {
     current: async () => ({ principal: owner, verifiedEmails: [] }),
     operator: async () => {

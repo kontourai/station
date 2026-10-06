@@ -69,6 +69,30 @@ Consequences:
   A detected row is still only a suggestion: it creates no Station connection until the
   user takes its explicit action.
 
+## Connect an engine through a saved proxy
+
+In **Connections → Engines**, Claude Code and Codex offer **Connect through**. Choose
+**Your account** or an enabled OpenAI-compatible connection already saved under **Models**.
+The saved model connection owns the address and key; the engine stores only its connection
+reference. Choosing a route explicitly replaces custom connection environment/config-home
+overrides. Station never edits the user's global CLI configuration.
+
+Save the connection to discover its models, choose a **Default model**, and use **Check
+connection**. The check sends one short, potentially billable message. It can retry an old
+authentication failure, but cannot bypass missing binaries or other prerequisites. A failed
+or timed-out check leaves failure evidence; only a proven successful turn restores runtime
+health. **Refresh models** re-reads the connection catalog and does not send a chat turn.
+
+Claude uses the proxy's Messages root. Codex uses child-process provider overrides and its
+native model catalog, preserving the existing config home and resume history. A selected
+proxy that is missing, disabled, or lacks a key refuses launch rather than falling back to
+the direct account. Credential rotation is read from the saved model connection on the next
+launch and invalidates the prior connection-check receipt.
+
+New execution sessions capture a safe route label and endpoint. Chat headers, engine
+choices and work lists show **via <proxy name>**; later configuration changes do not rename
+an idle session's recorded route. A relaunched execution records the route it actually uses. Older sessions without a captured route keep their existing labels.
+
 ## 1.1 Engine config ownership: the overlay model
 
 Shipped: the audit that grounds the overlay model, the global-config refusal guard, and the

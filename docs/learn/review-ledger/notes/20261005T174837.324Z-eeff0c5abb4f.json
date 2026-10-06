@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 fix round: added genuine-checkout rule (real .git dir that is its own common dir, or linked worktree with matching git-written back-pointer under <common>/worktrees), stale-slug refile, paired-device read via personalConversationAccess, owner-scoped search projection (event-store projectMessageSearchEvent), the setting, and hosted scope (unattributed never followed; attributed followed but unreadable without tenant binding). Checked against attached-session-repository.ts, attached-session-follow-service.ts, session-authorization.ts, device-pairing-service.ts and tests (real git, real pairing registry), fault-injected.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/attached-session-repository.ts"]}
+  ]
+}

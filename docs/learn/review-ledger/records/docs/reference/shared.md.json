@@ -50,6 +50,8 @@
 
     "packages/shared/package.json",
 
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
     "packages/shared/src/__tests__/build.test.ts",
 
     "packages/shared/src/__tests__/parsers.test.ts",
@@ -74,9 +76,13 @@
 
     "packages/shared/src/mcp.ts",
 
+    "packages/shared/src/native-relay-link.ts",
+
     "packages/shared/src/notification-envelope.ts",
 
     "packages/shared/src/parsers.ts",
+
+    "packages/shared/src/skill-experience-author.ts",
 
     "packages/shared/src/types.ts",
 
@@ -108,13 +114,7 @@
 
     "src-ui/src/core/PluginRegistry.ts",
 
-    "src-ui/src/core/pluginSharedRuntime.ts",
-
-    "packages/shared/src/skill-experience-author.ts",
-
-    "packages/shared/src/native-relay-link.ts",
-
-    "packages/shared/package.json#/exports/.~1native-relay-link"
+    "src-ui/src/core/pluginSharedRuntime.ts"
   ],
 
   "checks": [

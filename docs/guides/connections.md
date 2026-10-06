@@ -672,6 +672,25 @@ was able to read.
 
 ## Route an engine through a model proxy
 
+In **Models**, save an OpenAI-compatible connection with the proxy address and key.
+Then open **Engines → Claude Code** or **Engines → Codex**, select that connection
+under **Connect through**, and save. Choose a **Default model** from the discovered
+list and save it. **Check connection** sends one short message and reports whether
+the engine answered. A failed check is shown as **Check failed**; a model catalog
+alone does not override that result. **Refresh models** refreshes the catalog.
+
+Model requests use the proxy; the engine and its tools still run on this Station.
+
+The engine stores `config.proxyConnectionId`, referring to the saved Model
+connection. Its current key is resolved on each launch and never copied into
+engine settings. Codex uses provider arguments while keeping its config home.
+Changing settings alone does not rewrite a session's recorded route; a relaunch
+records the route it actually uses. Chat and work lists show **via <proxy name>**.
+
+The following environment/config-home options remain available for custom setups.
+Choosing **Your account** or a saved proxy in the UI explicitly replaces those
+custom connection settings.
+
 A Claude Code or Codex Engine connection can be configured to use a local
 model proxy. The proxy must support the chosen engine's requests; an
 Anthropic/OpenAI-compatible endpoint label alone does not establish that.
@@ -705,7 +724,7 @@ For example, if your local proxy expects a placeholder token:
 }
 ```
 
-For Codex, prefer `configHome` pointing at a dedicated home whose
+For custom Codex configurations, `configHome` can point at a dedicated home whose
 `config.toml` sets `model_provider` to the proxy's provider entry, so model
 discovery lists what the proxy serves.
 
