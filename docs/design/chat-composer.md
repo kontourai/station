@@ -118,9 +118,9 @@ completed verb ("Ran …") beside its Failed badge, because that verb only says
 the call ran. A failed edit, delete or other tool keeps the bare verb
 ("Edit …"), because the change may not have happened. Tool summaries follow
 the same split per kind: when every edit, delete or other call of a kind
-failed, the summary names them without a completed verb ("2 file edits");
-one success keeps the completed phrase, and the failed count discloses the
-rest.
+failed, the settled summary names them without a completed verb ("2 file
+edits"); one success keeps the completed phrase, and the failed and retried
+counts disclose the rest.
 
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather
