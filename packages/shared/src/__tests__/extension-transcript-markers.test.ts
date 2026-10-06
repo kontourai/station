@@ -219,6 +219,40 @@ describe('extension transcript markers (station#3415)', () => {
     expect(messages.map((message) => message.role)).toEqual(['user']);
   });
 
+  it('a turn whose Session exits mid-turn still shows its held marker after it', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        ev('e0', { method: 'turn.started', turnId: 't1', prompt: 'question' }),
+        ev('e1', {
+          method: 'content.text-delta',
+          turnId: 't1',
+          delta: 'partial',
+        }),
+        codexCompacted('e2', 't1'),
+        ev('e3', { method: 'session.exited' }),
+      ],
+      { stableIds: true },
+    );
+    expect(shape(messages)).toEqual([
+      { id: 'e0:user', role: 'user', text: 'text:question' },
+      { id: 'e0:assistant', role: 'assistant', text: 'text:partial' },
+      {
+        id: 'e2:transcript-marker',
+        role: 'system',
+        text: 'transcript-marker:Context compacted during this turn',
+      },
+    ]);
+  });
+
+  it("another Session's exit does not release this turn's held marker", () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev('e0', { method: 'turn.started', turnId: 't1', prompt: 'question' }),
+      codexCompacted('e1', 't1'),
+      ev('e2', { method: 'session.exited', threadId: 'other-session' }),
+    ]);
+    expect(messages.map((message) => message.role)).toEqual(['user']);
+  });
+
   it('a turn the next turn.started closes releases its markers before the new prompt', () => {
     const messages = projectRuntimeEventsToMessages([
       ev('e0', { method: 'turn.started', turnId: 't1', prompt: 'one' }),

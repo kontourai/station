@@ -407,8 +407,16 @@ export function projectRuntimeEventsToMessages(
   }> = [];
 
   /**
+   * True once the open turn's Session exited: no terminal will ever close
+   * that turn, so its held markers are shown after it even though the window
+   * ends with the turn still open (someone quit the engine mid-turn).
+   */
+  let openTurnSessionExited = false;
+
+  /**
    * `releaseMarkers` is false only for the open turn the window ends on: that
-   * turn has not closed, so its held markers are not shown yet.
+   * turn has not closed, so its held markers are not shown yet — unless its
+   * Session already exited (`openTurnSessionExited`).
    */
   const emitAssistantTurn = (releaseMarkers = true) => {
     flushReasoning();
@@ -451,6 +459,7 @@ export function projectRuntimeEventsToMessages(
     turnAnchorEventId = undefined;
     const held = heldMarkers;
     heldMarkers = [];
+    openTurnSessionExited = false;
     if (releaseMarkers)
       for (const { ev, marker } of held)
         pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
@@ -1145,6 +1154,12 @@ export function projectRuntimeEventsToMessages(
       case 'extension.notification':
         emitTranscriptMarker(ev);
         break;
+      case 'session.exited':
+        // The turn row itself is unchanged (it is still emitted as it
+        // stands at the end); only its held markers are now owed a place.
+        if (turnOpen && (!turnSessionId || turnSessionId === ev.threadId))
+          openTurnSessionExited = true;
+        break;
       case 'session.state-changed': {
         // station#4080 slice 1 (review round 1, M3): gate on
         // `interruptedTurnBoundary` — a field documented as written ONLY by
@@ -1182,7 +1197,7 @@ export function projectRuntimeEventsToMessages(
     }
   }
 
-  if (turnOpen) emitAssistantTurn(false);
+  if (turnOpen) emitAssistantTurn(openTurnSessionExited);
   return messages.map((message) => {
     if (
       message.role !== 'assistant' ||

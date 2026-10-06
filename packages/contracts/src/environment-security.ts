@@ -644,6 +644,76 @@ export const STATION_COMPAT_MIN_CLIENT_PROTOCOL = 1;
 export const STATION_COMPAT_MIN_SERVER_PROTOCOL = 1;
 
 /**
+ * Request header in which a client states the client API protocol
+ * ({@link STATION_COMPAT_PROTOCOL_VERSION}) it was built against, as one
+ * decimal integer.
+ *
+ * A compatibility signal, never authority: it decides only whether a host
+ * still serves the contract the caller speaks. It grants nothing, and a caller
+ * that lies about it only chooses which refusal it receives.
+ */
+export const CLIENT_PROTOCOL_HEADER = 'X-Station-Client-Protocol';
+
+/**
+ * Key in {@link StationCompatibility.capabilities} (value: the version of this
+ * header contract, 1) by which a host says it allow-lists
+ * {@link CLIENT_PROTOCOL_HEADER} in its CORS preflight. A browser client sends
+ * the header cross-origin only to a host it has seen advertise this, because a
+ * host released before the header would refuse the preflight and strand a
+ * client that is otherwise compatible with it.
+ */
+export const CLIENT_PROTOCOL_HEADER_CAPABILITY = 'clientProtocolHeader';
+
+/**
+ * The protocol a request WITHOUT {@link CLIENT_PROTOCOL_HEADER} is read as:
+ * every client built before the header existed spoke protocol 1. Absence is
+ * therefore admitted while a host's minimum is 1 and refused once it rises.
+ */
+export const LEGACY_CLIENT_PROTOCOL = 1;
+
+/**
+ * Largest value {@link CLIENT_PROTOCOL_HEADER} may carry. A larger value is
+ * malformed and refused, never clamped: the protocol moves only on
+ * contract-breaking changes, so four digits is far beyond any real client.
+ */
+export const MAX_CLIENT_PROTOCOL = 9999;
+
+/** A host refuses a client protocol below its minimum with this code (HTTP 426). */
+export const CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE =
+  'client_protocol_unsupported';
+/** A host refuses an unparseable {@link CLIENT_PROTOCOL_HEADER} with this code (HTTP 400). */
+export const CLIENT_PROTOCOL_INVALID_ERROR_CODE = 'client_protocol_invalid';
+
+export type ClientProtocolHeaderReading =
+  | { kind: 'absent' }
+  | { kind: 'declared'; protocol: number }
+  | { kind: 'malformed' };
+
+/**
+ * Parse a {@link CLIENT_PROTOCOL_HEADER} value exactly. Only one decimal
+ * integer from 1 to {@link MAX_CLIENT_PROTOCOL}, without sign, leading zero,
+ * or surrounding text, is declared. Repeated headers arrive joined
+ * (`"2, 3"`) and are malformed, as is an empty value: a present header is
+ * never quietly read as absent.
+ */
+export function readClientProtocolHeader(
+  value: string | null | undefined,
+): ClientProtocolHeaderReading {
+  if (value === null || value === undefined) return { kind: 'absent' };
+  // Length first, so an oversized value is refused before it is converted.
+  if (
+    value.length > String(MAX_CLIENT_PROTOCOL).length ||
+    !/^[1-9][0-9]*$/.test(value)
+  ) {
+    return { kind: 'malformed' };
+  }
+  const protocol = Number(value);
+  return protocol <= MAX_CLIENT_PROTOCOL
+    ? { kind: 'declared', protocol }
+    : { kind: 'malformed' };
+}
+
+/**
  * The compatibility block a host advertises on the public handshake.
  *
  * Optional in the wire type because public input must be parsed before it can
