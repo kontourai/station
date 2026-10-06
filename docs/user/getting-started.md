@@ -412,12 +412,66 @@ Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
 
+## See Conversations Started Outside Station
+
+**Activity** also lists Claude Code and Codex conversations you ran in a
+terminal or another app on this machine. Station reads them; it never controls
+them. It looks in two places:
+
+- Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
+  `~/.claude` when that is not set.
+- Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
+  not set.
+
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_CODEX_SOURCE_ROOT`
+point Station at a different folder. Station checks every two seconds and reads
+the 128 most recently changed conversations from each place. Older ones stay in
+Activity once Station has read them, but new messages in them are not picked up
+until they are among the 128 again.
+
+Each conversation is filed under a Project by the folder it ran in:
+
+1. A Project whose folder contains that folder. When two Projects share the
+   folder, Activity names both rather than picking one.
+2. Otherwise, a Project whose folder is in the same git repository. Every
+   worktree of the repository counts, so a conversation in
+   `../station-worktrees/fix-login` or another tool's worktree folder files
+   under the Project on the main checkout. A Project on a subfolder of the
+   repository takes that same subfolder in every worktree.
+3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
+   filter to list these.
+
+A conversation keeps its Project after its worktree is removed. If its Project
+is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
+of a worktree outside the Project folder also lands in **No project**: Station
+follows the submodule's own `.git`, which belongs to a different repository.
+
+Station copies what it reads into its own history and search index, so a
+conversation stays in Activity and in search after the original transcript is
+gone. You can open these conversations, and so can every device you have
+paired with Activity read access, including a phone.
+
+To stop reading conversations from folders outside your Projects, turn off
+**Conversations outside projects** in **Settings → Advanced** (under Station host), then **Save**
+(`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
+next check, including for conversations it already lists: new messages in
+them no longer arrive. What it already read stays in Activity, in search and
+readable from your paired devices; turning the setting off removes nothing.
+Conversations inside a Project are read either way.
+
+A hosted Station never reads conversations outside your Projects. It reads the
+ones inside a Project, but no account can open them there.
+
 ## Continue an Attached Session
 
 Open an attached terminal Session in **Activity**, then choose **Continue in
 Station**. Claude and Codex create independent child Sessions; the original
 terminal Session can keep running. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
+
+**Continue in Station** needs the conversation's folder to be inside a Project
+folder. A conversation filed by its repository, or under **No project**, shows
+the reason instead.
 
 An attached Session remains read only. Continuing opens a Station-owned child.
 If Station cannot confirm the result, use the offered retry for that same

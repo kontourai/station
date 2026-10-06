@@ -62,6 +62,29 @@ GitHub schedules may be delayed or dropped under load. Check the most recent
 qualification's source and age rather than treating the clock as evidence.
 See [GitHub's schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
+[Main qualification health](../../.github/workflows/qualification-health.yml)
+checks hourly and after a qualification run completes, without launching tests
+or retries. It maintains one P1 issue owned by repository release maintainers
+when no qualification job started within eight hours, no source qualification
+passed within fourteen hours, or the latest unqualified run has remained queued
+or running for more than three hours. These limits allow two hours of schedule
+grace beyond one start interval or two success intervals. It also reports a
+failed Nightly decision or publication after source qualification passed. The
+passing gate's completion time and exact source identify qualification health;
+a long native build does not make qualification stale by itself.
+
+Delivery failures remain in the tracker beyond its 48-hour run lookback until
+the failed leg has terminal evidence: a later native ledger job or the CLI
+registry-provenance step, including manual Nightly recovery. A green qualification that skips delivery because the source
+is already reserved cannot clear the failure. The tracker closes only when
+all observed conditions are healthy. A missing or
+skipped qualification gate is not a success, even if the overall run is green.
+API errors fail the watchdog without clearing its issue; Main pipeline health
+watches watchdog failures. The watchdog has its own GitHub schedule, so it can
+notice a missing qualification schedule, but a repository-wide Actions outage
+still requires external observation. Manual qualification remains the recovery
+command above; failed-source repair stays in its existing bounded episode.
+
 ## One repair sweep per failure episode
 
 [Main: Qualification repair](../../.github/workflows/qualification-repair.yml) reacts
@@ -151,7 +174,7 @@ for local automation credentials and the repository instructions for arm/confirm
 Nightly has two entry points, and both serialize on one `nightly` concurrency
 group:
 
-- **From qualification** (dormant until the owner sets the repository variable
+- **From qualification** (enabled when the owner sets the repository variable
   `STATION_QUALIFIED_NIGHTLY` to `enabled`, after admitting
   `main-qualification.yml@refs/heads/main` to the GCP workload identity
   condition that Android staging uses). When a main qualification run passes, it calls
@@ -166,21 +189,25 @@ group:
   reservation already names the commit, or a native Nightly shipped less than
   20 hours ago. That keeps this entry at about one build a day. A reserved
   commit without a ledger row is not retried automatically; dispatch Nightly
-  to retry. npm trusted publishing matches the top-level workflow, so this
-  entry skips the CLI publication until `main-qualification.yml` is a
-  confirmed trusted publisher.
-- **Scheduled.** Nightly also runs daily at 06:43 UTC as the fallback and as
-  the CLI's npm publishing path. It checks evidence rather than assuming the
-  06:17 qualification has finished. It can run fresh qualification when
-  necessary.
+  to retry. npm trusted publishing matches the top-level workflow: configure
+  `main-qualification.yml` as a trusted publisher for the CLI before enabling
+  this entry. A rejected OIDC exchange fails the job; it is not a successful
+  skip.
+- **Manual recovery.** Nightly has no independent schedule. Its dispatch
+  qualifies the workflow-event SHA, reusing valid exact-source evidence or
+  running fresh qualification when necessary. It cannot silently select an
+  older green ancestor. Before relying on CLI delivery from the qualified
+  entry, confirm npm trusts the top-level `main-qualification.yml` workflow;
+  the OIDC preflight fails publication when that trust is absent.
 
 The native cohort refuses a source its published markers already contain, so a
 Nightly that waited behind a newer one cannot move the markers back. A failed
 Nightly started from qualification leaves that qualification run red. Repair
 judges the run by its `Full source qualification` job, so the failure does not
 open a repair episode, and source-qualification reuse also judges that run by
-the same gate job, so the passing qualification still counts. `Main pipeline
-health` does not watch the publication, so read the run itself. Manual delivery remains available. Preview
+the same gate job, so the passing qualification still counts. `Main qualification health` reports that publication failure separately from
+failed-source repair. Read the run and provider receipts for the failed delivery
+leg. Manual delivery remains available. Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance still runs on main pushes; the manual package-publish operation

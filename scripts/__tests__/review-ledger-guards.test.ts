@@ -12,13 +12,18 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { appendOnlyNoteProblems } from '../lib/documentation-freshness.mjs';
 import {
+  compileReviewState,
+  noteArchiveFile,
+  parseNoteArchive,
   parseReviewLedgerFiles,
   REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
   REVIEW_LEDGER_PATH_BUDGET,
   recordFile,
   serializeLedgerIndex,
+  serializeNoteArchive,
   serializeRecordFile,
   writeReviewFiles,
 } from '../lib/review-ledger-store.mjs';
@@ -482,4 +487,576 @@ describe('write rollback (#3036)', () => {
       expect(git(f.root, ['status', '--short'])).toBe('');
     },
   );
+});
+
+// #3394: landed notes move into immutable archives at each baseline advance.
+// Every fixture archive below is written by the real advance-baseline command,
+// or by serializeNoteArchive, the function that command uses.
+describe('note archives (#3394)', () => {
+  const ARCHIVE_DIR = `${NOTES}/archive`;
+  const looseNotes = (root: string) =>
+    noteFiles(root).filter((file) => !file.startsWith(`${ARCHIVE_DIR}/`));
+  const archives = (root: string) =>
+    git(root, ['ls-files', ARCHIVE_DIR]).split('\n').filter(Boolean);
+  const baseline = (root: string) =>
+    JSON.parse(readFileSync(join(root, REVIEW_LEDGER_INDEX), 'utf8'))
+      .coverageBaseline as string;
+  const bytes = (root: string, file: string) =>
+    readFileSync(join(root, file), 'utf8');
+  const advance = (root: string) => {
+    git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    return run(root, 'record-documentation-review.mjs', ['--advance-baseline']);
+  };
+  function reviewEdit(
+    f: ReturnType<typeof fixture>,
+    value: number,
+    message = `review a=${value}`,
+  ) {
+    f.write('src/a.ts', `export const a = ${value};\n`);
+    commit(f.root, `change a=${value}`);
+    const reviewed = record(f.root, [
+      'docs/a.md',
+      '--note',
+      `Checked a=${value}.`,
+    ]);
+    expect(reviewed.status, JSON.stringify(reviewed.error)).toBe(0);
+    commit(f.root, message);
+  }
+
+  /**
+   * Main after one advance: note n1 landed before that advance's baseline,
+   * note n2 after it. `compaction` holds the second advance, uncommitted.
+   */
+  function compactionFixture() {
+    const f = fixture();
+    reviewEdit(f, 2);
+    const [n1] = looseNotes(f.root);
+    const first = advance(f.root);
+    expect(first.status, first.stderr).toBe(0);
+    // The fixture's first baseline predates every note: nothing to archive.
+    expect(first.stdout).not.toContain('archived');
+    commit(f.root, 'advance 1');
+    const previous = baseline(f.root);
+    reviewEdit(f, 3);
+    const n2 = looseNotes(f.root).find((file) => file !== n1) as string;
+    const n1Bytes = bytes(f.root, n1);
+    const compiledBefore = run(
+      f.root,
+      'check-documentation-freshness.mjs',
+      ['--json'],
+      { STATION_DOCS_FRESHNESS: 'strict' },
+    );
+    git(f.root, ['switch', '-qc', 'compaction']);
+    const second = advance(f.root);
+    expect(second.status, second.stderr).toBe(0);
+    return { ...f, n1, n2, n1Bytes, previous, compiledBefore };
+  }
+
+  it('archives exactly the notes the previous baseline held, byte for byte', () => {
+    const f = compactionFixture();
+    const archive = noteArchiveFile(f.previous);
+    expect(archive).toBe(`${ARCHIVE_DIR}/${f.previous}.json`);
+    expect(archive.length).toBeLessThanOrEqual(REVIEW_LEDGER_PATH_BUDGET);
+    expect(existsSync(join(f.root, f.n1))).toBe(false);
+    expect(existsSync(join(f.root, f.n2))).toBe(true);
+    expect([...parseNoteArchive(archive, bytes(f.root, archive))]).toEqual([
+      [f.n1, f.n1Bytes],
+    ]);
+    expect(baseline(f.root)).toBe(git(f.root, ['rev-parse', 'HEAD']));
+    commit(f.root, 'compact');
+    expect(looseNotes(f.root)).toEqual([f.n2]);
+    expect(archives(f.root)).toEqual([archive]);
+    // The compaction change itself passes the scoped check (negative control
+    // for note-removed) and strict coverage is unchanged.
+    expect(check(f.root, scoped)).toMatchObject({
+      status: 0,
+      blocking: [],
+      appendOnly: 'verified',
+    });
+    const after = check(f.root, { STATION_DOCS_FRESHNESS: 'strict' });
+    expect(after.status).toBe(0);
+    expect(lastJson(f.compiledBefore.stdout).reviews).toBe(
+      lastJson(
+        run(f.root, 'check-documentation-freshness.mjs', ['--json'], {
+          STATION_DOCS_FRESHNESS: 'strict',
+        }).stdout,
+      ).reviews,
+    );
+  });
+
+  it('keeps an archived note committed, so it never covers a later edit', () => {
+    const f = compactionFixture();
+    commit(f.root, 'compact');
+    // An unreviewed edit to the source every archived note covered.
+    f.write('src/a.ts', 'export const a = 99;\n');
+    commit(f.root, 'unreviewed edit');
+    const strict = check(f.root, { STATION_DOCS_FRESHNESS: 'strict' });
+    expect(strict.status).toBe(1);
+    expect(strict.blocking).toEqual([
+      expect.objectContaining({ path: 'docs/a.md', rule: 'stale' }),
+    ]);
+  });
+
+  it('accepts a removal only into an archive this change adds', () => {
+    const f = compactionFixture();
+    // Known bad: the archive the command wrote, minus the note it moved.
+    const archive = noteArchiveFile(f.previous);
+    rmSync(join(f.root, archive));
+    commit(f.root, 'compaction that lost its archive');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ rule: 'note-removed', path: f.n1 }),
+    ]);
+  });
+
+  it('still refuses a removal the added archive does not carry', () => {
+    const f = compactionFixture();
+    // Known bad: the command's compaction plus one note it left loose.
+    git(f.root, ['rm', '-q', f.n2]);
+    commit(f.root, 'compaction that also drops a later note');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    // n1 left into the archive; only n2 is refused.
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ rule: 'note-removed', path: f.n2 }),
+    ]);
+  });
+
+  it('refuses a removal into an archive that already existed at the merge base', () => {
+    const f = compactionFixture();
+    commit(f.root, 'compact');
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '-q', '--ff-only', 'compaction']);
+    reviewEdit(f, 4);
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    // Move n2 into the landed archive instead of adding one.
+    const archive = noteArchiveFile(f.previous);
+    const moved = parseNoteArchive(archive, bytes(f.root, archive));
+    moved.set(f.n2, bytes(f.root, f.n2));
+    f.write(archive, serializeNoteArchive(moved));
+    git(f.root, ['rm', '-q', f.n2]);
+    commit(f.root, 'grow a landed archive');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(rules(result.blocking).sort()).toEqual([
+      'archive-changed',
+      'note-removed',
+    ]);
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: 'note-removed', path: f.n2 }),
+        expect.objectContaining({ rule: 'archive-changed', path: archive }),
+      ]),
+    );
+  });
+
+  describe('archive immutability', () => {
+    function landedArchive() {
+      const f = compactionFixture();
+      commit(f.root, 'compact');
+      git(f.root, ['switch', '-q', 'main']);
+      git(f.root, ['merge', '-q', '--ff-only', 'compaction']);
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+      git(f.root, ['switch', '-qc', 'pr']);
+      const archive = noteArchiveFile(f.previous);
+      // Negative control: a PR that adds a review leaves the archive alone.
+      f.write('src/a.ts', 'export const a = 5;\n');
+      commit(f.root, 'pr edit');
+      const reviewed = record(f.root, ['docs/a.md', '--note', 'Checked a=5.']);
+      expect(reviewed.status, JSON.stringify(reviewed.error)).toBe(0);
+      commit(f.root, 'pr review');
+      expect(check(f.root, scoped)).toMatchObject({ status: 0, blocking: [] });
+      return { ...f, archive };
+    }
+
+    it('blocks removing a landed archive', () => {
+      const f = landedArchive();
+      git(f.root, ['rm', '-q', f.archive]);
+      commit(f.root, 'remove the archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({ rule: 'archive-changed', path: f.archive }),
+      ]);
+      const human = run(
+        f.root,
+        'check-documentation-freshness.mjs',
+        [],
+        scoped,
+      );
+      expect(human.status).toBe(1);
+      expect(human.stderr).toContain('archives are immutable');
+    });
+
+    it('blocks an uncommitted removal of a landed archive', () => {
+      const f = landedArchive();
+      rmSync(join(f.root, f.archive));
+      expect(rules(check(f.root, scoped).blocking)).toEqual([
+        'archive-changed',
+      ]);
+    });
+
+    it('blocks moving archived notes back to loose files', () => {
+      const f = landedArchive();
+      f.write(f.n1, f.n1Bytes);
+      git(f.root, ['rm', '-q', f.archive]);
+      commit(f.root, 'unarchive n1');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(rules(result.blocking)).toEqual(['archive-changed']);
+    });
+
+    it('blocks a canonical edit that adds a note to a landed archive', () => {
+      const f = landedArchive();
+      const own = looseNotes(f.root).at(-1) as string;
+      const grown = parseNoteArchive(f.archive, bytes(f.root, f.archive));
+      grown.set(own, bytes(f.root, own));
+      f.write(f.archive, serializeNoteArchive(grown));
+      git(f.root, ['rm', '-q', own]);
+      commit(f.root, 'archive the PR note in a landed archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({ rule: 'archive-changed', path: f.archive }),
+      ]);
+    });
+  });
+
+  it('refuses an added archive holding a note the merge base never had', () => {
+    const f = fixture();
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    reviewEdit(f, 6);
+    const [own] = looseNotes(f.root);
+    const archive = noteArchiveFile('b'.repeat(40));
+    f.write(
+      archive,
+      serializeNoteArchive(new Map([[own, bytes(f.root, own)]])),
+    );
+    git(f.root, ['rm', '-q', own]);
+    commit(f.root, 'archive its own note');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ rule: 'archive-unbacked', path: archive }),
+    ]);
+  });
+
+  it('refuses a note stored both loose and archived, and a non-canonical archive', () => {
+    const f = compactionFixture();
+    f.write(f.n1, f.n1Bytes);
+    const twice = check(f.root, { STATION_DOCS_FRESHNESS: 'advisory' });
+    expect(twice.status).toBe(1);
+    expect(twice.error?.code).toBe('duplicate-note');
+    rmSync(join(f.root, f.n1));
+    const archive = noteArchiveFile(f.previous);
+    f.write(archive, JSON.stringify(JSON.parse(bytes(f.root, archive))));
+    const reformatted = check(f.root, { STATION_DOCS_FRESHNESS: 'advisory' });
+    expect(reformatted.status).toBe(1);
+    expect(reformatted.error?.code).toBe('not-canonical');
+    const edited = new Map([[f.n1, f.n1Bytes.replace('Checked', 'Edited')]]);
+    f.write(archive, serializeNoteArchive(edited));
+    const tampered = check(f.root, { STATION_DOCS_FRESHNESS: 'advisory' });
+    expect(tampered.status).toBe(1);
+    expect(tampered.error?.code).toBe('notes-edited');
+  });
+
+  it('lets a branch cut before compaction merge main cleanly and pass', () => {
+    const f = compactionFixture();
+    commit(f.root, 'compact');
+    // A feature branch cut from main before the compaction landed.
+    git(f.root, ['switch', '-qc', 'feature', 'main']);
+    expect(looseNotes(f.root)).toContain(f.n1);
+    f.write('docs/a.md', '# A\n\nMore.\n');
+    commit(f.root, 'feature edit');
+    const reviewed = record(f.root, ['docs/a.md', '--note', 'Feature review.']);
+    expect(reviewed.status, JSON.stringify(reviewed.error)).toBe(0);
+    commit(f.root, 'feature review');
+    // Unmerged, the branch still passes against the compacted main.
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '-q', '--ff-only', 'compaction']);
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+    git(f.root, ['switch', '-q', 'feature']);
+    expect(
+      check(f.root, { STATION_DOCS_FRESHNESS_BASE: 'origin/main' }),
+    ).toMatchObject({
+      status: 0,
+      blocking: [],
+    });
+    const merged = spawnSync(
+      'git',
+      [...identity, 'merge', '-q', '--no-edit', 'origin/main'],
+      { cwd: f.root, env: gitEnv(), encoding: 'utf8', windowsHide: true },
+    );
+    expect(merged.status, merged.stderr + merged.stdout).toBe(0);
+    expect(git(f.root, ['status', '--short'])).toBe('');
+    expect(existsSync(join(f.root, f.n1))).toBe(false);
+    expect(looseNotes(f.root)).toHaveLength(2);
+    expect(
+      check(f.root, { STATION_DOCS_FRESHNESS_BASE: 'origin/main' }),
+    ).toMatchObject({ status: 0, blocking: [], appendOnly: 'verified' });
+  });
+
+  it('removes a file mapped to undefined and restores it on rollback', () => {
+    const root = makeTempDir('station-ledger-write-');
+    mkdirSync(join(root, 'ledger'));
+    writeFileSync(join(root, 'ledger/note.json'), 'note bytes');
+    mkdirSync(join(root, 'ledger/blocked.json'));
+    let error: any;
+    try {
+      writeReviewFiles(
+        root,
+        new Map<string, string | undefined>([
+          ['ledger/archive.json', 'archive bytes'],
+          ['ledger/note.json', undefined],
+          ['ledger/blocked.json', 'cannot be written'],
+        ]),
+        new Map([['ledger/note.json', 'note bytes']]),
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toMatchObject({ code: 'write-failed', unrestored: [] });
+    expect(readFileSync(join(root, 'ledger/note.json'), 'utf8')).toBe(
+      'note bytes',
+    );
+    expect(existsSync(join(root, 'ledger/archive.json'))).toBe(false);
+    expect(
+      writeReviewFiles(
+        root,
+        new Map<string, string | undefined>([
+          ['ledger/note.json', undefined],
+          ['ledger/gone.json', undefined],
+        ]),
+        new Map(),
+      ),
+    ).toEqual(['ledger/note.json']);
+    expect(existsSync(join(root, 'ledger/note.json'))).toBe(false);
+  });
+
+  // F1: an archive is fully determined by the merge base. Only the archive the
+  // advance writes (named for the merge base's baseline, in a change that moves
+  // the baseline, holding exactly that baseline's still-loose notes) passes.
+  describe('only the advancing baseline archive is accepted', () => {
+    /** Main holds two notes that were in the tree at its coverage baseline. */
+    function landedBaseline() {
+      const f = fixture();
+      reviewEdit(f, 2);
+      reviewEdit(f, 7);
+      const notes = looseNotes(f.root);
+      expect(notes).toHaveLength(2);
+      const first = advance(f.root);
+      expect(first.status, first.stderr).toBe(0);
+      commit(f.root, 'advance 1');
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      const previous = baseline(f.root);
+      git(f.root, ['switch', '-qc', 'pr']);
+      return { ...f, notes, previous };
+    }
+    const handArchive = (
+      f: ReturnType<typeof landedBaseline>,
+      files: string[],
+      name = f.previous,
+    ) => {
+      f.write(
+        noteArchiveFile(name),
+        serializeNoteArchive(
+          new Map(files.map((file) => [file, bytes(f.root, file)])),
+        ),
+      );
+      for (const file of files) git(f.root, ['rm', '-q', file]);
+    };
+
+    it('refuses a partial baseline archive in a change that does not advance (reviewer probe)', () => {
+      const f = landedBaseline();
+      handArchive(f, [f.notes[0]]);
+      commit(f.root, 'hand-made partial archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({
+          rule: 'archive-unbacked',
+          path: noteArchiveFile(f.previous),
+        }),
+        expect.objectContaining({ rule: 'note-removed', path: f.notes[0] }),
+      ]);
+    });
+
+    it('refuses a complete baseline archive in a change that does not advance', () => {
+      const f = landedBaseline();
+      handArchive(f, f.notes);
+      commit(f.root, 'hand-made complete archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(rules(result.blocking)).toEqual([
+        'archive-unbacked',
+        'note-removed',
+        'note-removed',
+      ]);
+    });
+
+    it('refuses the advance output stored under another archive name', () => {
+      const f = landedBaseline();
+      expect(advance(f.root).status).toBe(0);
+      const other = noteArchiveFile('e'.repeat(40));
+      f.write(other, bytes(f.root, noteArchiveFile(f.previous)));
+      rmSync(join(f.root, noteArchiveFile(f.previous)));
+      commit(f.root, 'advance with a renamed archive');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking).toEqual([
+        expect.objectContaining({ rule: 'archive-unbacked', path: other }),
+        expect.objectContaining({ rule: 'note-removed' }),
+        expect.objectContaining({ rule: 'note-removed' }),
+      ]);
+    });
+
+    it('refuses an advancing archive that leaves one baseline note loose', () => {
+      const f = landedBaseline();
+      const kept = bytes(f.root, f.notes[1]);
+      expect(advance(f.root).status).toBe(0);
+      const archive = noteArchiveFile(f.previous);
+      const partial = parseNoteArchive(archive, bytes(f.root, archive));
+      partial.delete(f.notes[1]);
+      f.write(archive, serializeNoteArchive(partial));
+      f.write(f.notes[1], kept);
+      commit(f.root, 'advance that archives only part of the baseline');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      // A refused archive moves nothing, so the note it took is removed.
+      expect(result.blocking).toEqual([
+        expect.objectContaining({ rule: 'archive-unbacked', path: archive }),
+        expect.objectContaining({ rule: 'note-removed', path: f.notes[0] }),
+      ]);
+    });
+
+    it('accepts the archive the advance writes (negative control)', () => {
+      const f = landedBaseline();
+      const out = advance(f.root);
+      expect(out.status, out.stderr).toBe(0);
+      expect(out.stdout).toContain('archived 2 landed note(s)');
+      commit(f.root, 'advance 2');
+      expect(check(f.root, scoped)).toMatchObject({
+        status: 0,
+        blocking: [],
+        appendOnly: 'verified',
+      });
+    });
+  });
+
+  // F2: the guard itself, called directly. The CLI parses every note first,
+  // so changed bytes under an old name fail as notes-edited before the guard
+  // runs; these fixtures skip that parse to pin the guard's own comparisons.
+  describe('the guard function, past the name-hash check', () => {
+    const name = (n: number) =>
+      `${NOTES}/2026010${n}T000000.000Z-${String(n).repeat(12)}.json`;
+    /** A baseline commit with note 1, then a merge base that adds note 2. */
+    function repo() {
+      const root = makeTempDir('station-archive-guard-');
+      const write = (path: string, text: string) => {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), text);
+      };
+      git(root, ['init', '-q', '-b', 'main']);
+      write(name(1), 'note one\n');
+      commit(root, 'baseline');
+      const from = git(root, ['rev-parse', 'HEAD']);
+      write(name(2), 'note two\n');
+      commit(root, 'merge base');
+      const mergeBase = git(root, ['rev-parse', 'HEAD']);
+      const compact = (notes: Record<string, string>) => {
+        write(
+          noteArchiveFile(from),
+          serializeNoteArchive(new Map(Object.entries(notes))),
+        );
+        for (const file of Object.keys(notes)) git(root, ['rm', '-q', file]);
+        commit(root, 'compaction');
+        return appendOnlyNoteProblems(root, mergeBase, {
+          from,
+          to: 'f'.repeat(40),
+        }).map(({ rule, path }: Entry) => [rule, path]);
+      };
+      return { from, compact };
+    }
+
+    it('accepts the archive that carries the baseline note byte for byte', () => {
+      expect(repo().compact({ [name(1)]: 'note one\n' })).toEqual([]);
+    });
+
+    it('refuses other bytes under the same name, and the removal with it', () => {
+      const f = repo();
+      expect(f.compact({ [name(1)]: 'note one, edited\n' })).toEqual([
+        ['archive-unbacked', noteArchiveFile(f.from)],
+        ['note-removed', name(1)],
+      ]);
+    });
+
+    it('refuses a note added after the baseline', () => {
+      const f = repo();
+      expect(
+        f.compact({ [name(1)]: 'note one\n', [name(2)]: 'note two\n' }),
+      ).toEqual([
+        ['archive-unbacked', noteArchiveFile(f.from)],
+        ['note-removed', name(1)],
+        ['note-removed', name(2)],
+      ]);
+    });
+  });
+
+  it("tracks archives under the repository's real ignore rules", () => {
+    const repo = resolve(scripts, '..');
+    const ignored = (path: string) =>
+      spawnSync('git', ['check-ignore', '-q', '--no-index', path], {
+        cwd: repo,
+        env: gitEnv(),
+        windowsHide: true,
+      }).status;
+    // The root .gitignore drops every other archive/ directory (exit 0).
+    expect(ignored('tmp/archive/x.json')).toBe(0);
+    expect(ignored(noteArchiveFile('d'.repeat(40)))).toBe(1);
+  });
+
+  it("compiles the repository's real notes identically once archived", () => {
+    const repo = resolve(scripts, '..');
+    const files = new Map(
+      git(repo, ['ls-files', '-z', REVIEW_LEDGER_DIR])
+        .split('\0')
+        .filter(Boolean)
+        .map((file) => [file, readFileSync(join(repo, file), 'utf8')]),
+    );
+    const manifest = JSON.parse(
+      readFileSync(join(repo, 'docs/learn/media.json'), 'utf8'),
+    );
+    const loose = [...files.keys()].filter(
+      (file) =>
+        file.startsWith(`${NOTES}/`) && !file.startsWith(`${ARCHIVE_DIR}/`),
+    );
+    // A real store has hundreds of notes; the split needs at least three.
+    expect(loose.length).toBeGreaterThan(100);
+    const compacted = new Map(files);
+    // Two archives and a loose remainder, as after two advances.
+    const cut = [
+      Math.floor(loose.length / 3),
+      Math.floor((2 * loose.length) / 3),
+    ];
+    const groups = [loose.slice(0, cut[0]), loose.slice(cut[0], cut[1])];
+    groups.forEach((group, index) => {
+      for (const file of group) compacted.delete(file);
+      const archive = noteArchiveFile(String(index + 1).repeat(40));
+      const text = serializeNoteArchive(
+        new Map(group.map((file) => [file, files.get(file) as string])),
+      );
+      compacted.set(archive, text);
+      // Exact bytes survive the round trip.
+      for (const [file, archived] of parseNoteArchive(archive, text))
+        expect(archived).toBe(files.get(file));
+    });
+    const compile = (input: Map<string, string>) =>
+      JSON.stringify(
+        compileReviewState(parseReviewLedgerFiles(input), manifest),
+      );
+    expect(compile(compacted)).toBe(compile(files));
+  });
 });

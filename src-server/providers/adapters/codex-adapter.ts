@@ -32,6 +32,7 @@ import {
   validateHarnessQuestionAnswers,
 } from '@kontourai/station-shared/harness-questions';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -168,6 +169,7 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Readiness seams, injectable so the installed branch and the probe's
    * environment are exercised on any host (a host without `codex` would
@@ -839,7 +841,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     // station#2072: the quota probe is an app-server child of this
     // connection too — it sees the connection env merged under the
     // resolved profile home, same precedence as the session spawn.
-    const connectionEnvForQuota = await this.resolveConnectionEnv();
+    const quotaLaunch = await this.resolveConnectionLaunch();
+    const connectionEnvForQuota = quotaLaunch.env;
     let processHandle: ReturnType<typeof createCodexProcess> | undefined;
     const pending = new Map<
       string,
@@ -852,11 +855,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
     let stdout: ReturnType<typeof createInterface> | undefined;
     try {
-      processHandle = this.processFactory(
-        appHomeEnv
-          ? { ...connectionEnvForQuota, ...appHomeEnv }
-          : connectionEnvForQuota,
-      );
+      const quotaEnv = appHomeEnv
+        ? { ...connectionEnvForQuota, ...appHomeEnv }
+        : connectionEnvForQuota;
+      processHandle = quotaLaunch.args.length
+        ? this.processFactory(quotaEnv, quotaLaunch.args)
+        : this.processFactory(quotaEnv);
       stdout = createInterface({ input: processHandle.stdout });
       stdout.on('line', (line) => {
         let message: any;
@@ -1175,10 +1179,13 @@ export class CodexAdapter implements ProviderAdapterShape {
     // The credential-profile app-home env stays session-scoped (archive#896
     // pin above) — profile homes are per-account credential state, the
     // connection env is connection-level routing.
-    const connectionEnv = await this.resolveConnectionEnv();
-    const processHandle = connectionEnv
-      ? this.processFactory(connectionEnv)
-      : this.processFactory();
+    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionEnv = connectionLaunch.env;
+    const processHandle = connectionLaunch.args.length
+      ? this.processFactory(connectionEnv, connectionLaunch.args)
+      : connectionEnv
+        ? this.processFactory(connectionEnv)
+        : this.processFactory();
     let termination: Promise<void> | null = null;
     const terminate = () => {
       termination ??= terminateCodexProcess(processHandle);
@@ -1757,12 +1764,18 @@ export class CodexAdapter implements ProviderAdapterShape {
     // the ambient env. An explicit configHome lands here exactly when no
     // profile/affinity home did (the runtime resolves only one of
     // configHome/useAppHome into these layers).
-    const connectionEnv = await this.resolveConnectionEnv();
+    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionEnv = connectionLaunch.env;
     const spawnEnv =
       connectionEnv && appHomeEnv
         ? { ...connectionEnv, ...appHomeEnv }
         : (connectionEnv ?? appHomeEnv);
-    const processHandle = this.processFactory(spawnEnv, toolServers.configArgs);
+    const processHandle = this.processFactory(
+      spawnEnv,
+      connectionLaunch.args.length
+        ? [...connectionLaunch.args, ...(toolServers.configArgs ?? [])]
+        : toolServers.configArgs,
+    );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -1902,6 +1915,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         : approvalKnobs?.sandbox;
       record.session = {
         ...record.session,
+        modelRoute: connectionLaunch.route,
         status: 'ready',
         model: reportedModelFromInit ?? input.modelId,
         updatedAt: this.now().toISOString(),
@@ -2000,6 +2014,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // resolution-stage undelivered entries session-agent-resolution.ts
       // already recorded, so passing the previous metadata as inputMetadata
       // preserves that report.
+      baseConfiguredMetadata.modelRoute = connectionLaunch.route;
       const configuredMetadata = toolServers.report
         ? mergeCapabilityDeliveryMetadata(
             baseConfiguredMetadata,
@@ -2360,9 +2375,19 @@ export class CodexAdapter implements ProviderAdapterShape {
    * block a spawn (the credential-profile branch of `resolveAppHomeEnv`
    * above stays the only fail-closed one).
    */
+  private async resolveConnectionLaunch(): Promise<
+    ReturnType<typeof engineProxyLaunch>
+  > {
+    if (this.options.getConnectionLaunch)
+      return this.options.getConnectionLaunch();
+    return { env: await this.resolveConnectionEnv(), args: [] };
+  }
+
   private async resolveConnectionEnv(): Promise<
     Record<string, string> | undefined
   > {
+    if (this.options.getConnectionLaunch)
+      return (await this.options.getConnectionLaunch()).env;
     try {
       return await this.options.getConnectionEnv?.();
     } catch (error) {

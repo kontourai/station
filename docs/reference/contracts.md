@@ -585,7 +585,13 @@ Their absence means the task runs on this Station, or the server predates them.
 Station's checks on the delegated `respond` route. Both are additive and
 optional; neither feeds the local request routes. The source is
 `OrchestrationDelegationContext.peerPendingRequest` on the orchestration
-subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
+subpath, copied from the paired Station's status read and never derived here.
+With the `delegatedInputAnswers` capability (`StationCapabilityFlags` on the
+environment-security subpath) the reference also carries the paired Station's
+`threadId`, `requestEventId` and `callerCanRespond`, and
+`OrchestrationPeerPendingRequest` the matching `eventId`, `threadId`, `body`
+and `callerCanRespond`. All are optional; their absence means an older Station
+or no report, and clients then offer no bound answer. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)

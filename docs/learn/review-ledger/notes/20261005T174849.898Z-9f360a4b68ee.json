@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3386 fix round: added deleted-project refile, submodule-in-outside-worktree limit, copy into history and search, paired devices including a phone, the Settings > Station host > Conversations outside projects setting (live from next check, imported stay, in-project unaffected), and corrected hosted wording. Checked against the follow service, repository module, settings catalog/registry, pairing service and the tests; the submodule case is pinned by a real git submodule test.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/attached-session-repository.ts"]}
+  ]
+}
