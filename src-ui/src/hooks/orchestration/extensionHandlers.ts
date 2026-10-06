@@ -204,9 +204,10 @@ export function handleExtensionNotificationEvent(
     return;
   }
 
-  // station#3415: the transcript projection renders these from the durable
-  // event (`extension-transcript-markers.ts`), live and on reload alike. An
-  // ephemeral row here would show the marker twice.
+  // station#3415: the transcript projection renders `transcript.marker`
+  // tuples from the durable event (`extension-transcript-markers.ts`). Nothing
+  // below handles this consumer, so this return only documents that intent:
+  // an ephemeral row added here would show the marker twice.
   if (
     binding.consumer === 'acp.host-chrome' ||
     binding.consumer === 'transcript.marker'

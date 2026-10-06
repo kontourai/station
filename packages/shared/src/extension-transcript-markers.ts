@@ -32,11 +32,25 @@ export interface ExtensionTranscriptMarkerSource {
   readonly emitter: ExtensionTranscriptMarkerEmitter;
 }
 
+/**
+ * The fixed label per kind: `betweenTurns` for a marker that arrived between
+ * turns, `duringTurn` for one that arrived while a turn ran and is shown
+ * after that turn's rows.
+ */
 export const EXTENSION_TRANSCRIPT_MARKER_TEXT: Readonly<
-  Record<ExtensionTranscriptMarkerKind, string>
+  Record<
+    ExtensionTranscriptMarkerKind,
+    Readonly<{ betweenTurns: string; duringTurn: string }>
+  >
 > = Object.freeze({
-  'context-compacted': 'Context compacted',
-  'conversation-rewound': 'Rewound to an earlier prompt',
+  'context-compacted': Object.freeze({
+    betweenTurns: 'Context compacted',
+    duringTurn: 'Context compacted during this turn',
+  }),
+  'conversation-rewound': Object.freeze({
+    betweenTurns: 'Rewound to an earlier prompt',
+    duringTurn: 'Rewound to an earlier prompt during this turn',
+  }),
 });
 
 /** The part type a projected marker row carries. */

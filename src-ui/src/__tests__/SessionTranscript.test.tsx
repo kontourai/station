@@ -529,8 +529,8 @@ describe('conversationPartToContentParts (shared with chat)', () => {
 });
 
 describe('SessionTranscript transcript markers (station#3415)', () => {
-  test('a live compaction renders a marker line, not an empty speaker row', () => {
-    renderTranscript(true);
+  test('a live compaction waits for its turn to close, then renders a marker line after it', () => {
+    const view = renderTranscript(true);
     live([
       ev({ method: 'turn.started', turnId: 'm1', prompt: 'Long task' }),
       ev({ method: 'content.text-delta', turnId: 'm1', delta: 'Working.' }),
@@ -541,16 +541,30 @@ describe('SessionTranscript transcript markers (station#3415)', () => {
         type: 'context-compacted',
         payload: { source: 'provider-event' },
       } as Partial<CanonicalRuntimeEvent> & { method: string }),
-      ev({ method: 'content.text-delta', turnId: 'm1', delta: 'Still going.' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'm1',
+        delta: ' Still going.',
+      }),
     ]);
+    // While the turn is open the marker shows nothing and the turn is one row.
+    expect(view.container.querySelector('.transcript-marker')).toBeNull();
+    expect(screen.getAllByTestId('session-transcript-message')).toHaveLength(2);
+    live([ev({ method: 'turn.completed', turnId: 'm1' })]);
+    view.setStreaming(false);
     const marker = screen
-      .getByText('Context compacted')
+      .getByText('Context compacted during this turn')
       .closest('.transcript-marker')!;
     expect(marker).toBeTruthy();
     expect(marker.closest('[data-testid="session-transcript-message"]')).toBe(
       null,
     );
-    // Prompt, two halves of the answer; the marker is not one of the rows.
-    expect(screen.getAllByTestId('session-transcript-message')).toHaveLength(3);
+    // Prompt and the one answer row; the marker is not one of the rows.
+    const rows = screen.getAllByTestId('session-transcript-message');
+    expect(rows).toHaveLength(2);
+    expect(
+      rows[1]!.compareDocumentPosition(marker) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

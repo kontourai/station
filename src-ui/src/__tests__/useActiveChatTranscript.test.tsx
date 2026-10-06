@@ -1081,7 +1081,7 @@ describe('useActiveChatTranscript', () => {
     expect(filePart?.url).toBeUndefined();
   });
 
-  test('station#3415: a durable compaction marker reaches the dock as a system row in its place', async () => {
+  test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
       watermark: 5,
@@ -1103,22 +1103,53 @@ describe('useActiveChatTranscript', () => {
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
-    await waitFor(() => expect(result.current.messages).toHaveLength(4));
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
     expect(
       result.current.messages.map((message) => [
+        message.id,
         message.role,
         message.contentParts?.map((part) => `${part.type}:${part.content}`),
       ]),
     ).toEqual([
-      ['user', ['text:go']],
-      ['assistant', ['text:one']],
-      ['system', ['transcript-marker:Context compacted']],
-      ['assistant', ['text:two']],
+      ['e1:user', 'user', ['text:go']],
+      ['e1:assistant', 'assistant', ['text:onetwo']],
+      [
+        'e3:transcript-marker',
+        'system',
+        ['transcript-marker:Context compacted during this turn'],
+      ],
     ]);
-    // Distinct row identities: the dock keys rows by id.
+  });
+
+  test('station#3415: a marker inside the open turn renders nothing above the streaming turn', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'go' }),
+        event('e2', 'content.text-delta', { turnId: 'turn-1', delta: 'one' }),
+        event('e3', 'extension.notification', {
+          turnId: 'turn-1',
+          namespace: 'codex-rollout',
+          type: 'context-compacted',
+          payload: { source: 'provider-event' },
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-1',
+      } as ChatSession),
+    );
+    await waitFor(() =>
+      expect(result.current.messages[0]?.contentParts?.[0]?.content).toBe('go'),
+    );
     expect(
-      new Set(result.current.messages.map((message) => message.id)).size,
-    ).toBe(4);
+      result.current.messages.filter((message) => message.role === 'system'),
+    ).toEqual([]);
   });
 
   test('preserves durable tool-result event identity through replay mapping', async () => {

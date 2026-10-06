@@ -10,6 +10,7 @@ import type {
 import {
   EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
   EXTENSION_TRANSCRIPT_MARKER_TEXT,
+  type ExtensionTranscriptMarkerKind,
   extensionTranscriptMarker,
 } from './extension-transcript-markers.js';
 import { readHarnessQuestionnaire } from './harness-questions.js';
@@ -399,10 +400,21 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
-  const emitAssistantTurn = () => {
+  /** station#3415: markers that arrived during the open turn. */
+  let heldMarkers: Array<{
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
+    marker: ExtensionTranscriptMarkerKind;
+  }> = [];
+
+  /**
+   * `releaseMarkers` is false only for the open turn the window ends on: that
+   * turn has not closed, so its held markers are not shown yet.
+   */
+  const emitAssistantTurn = (releaseMarkers = true) => {
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    const closedTurnTimestamp = turnTimestamp;
     // A turn that produced nothing after its steer still needs an owner row,
     // or a late event for it would land on whatever turn is open next.
     const endedKey = turnKey(turnSessionId, turnIdentity);
@@ -437,6 +449,11 @@ export function projectRuntimeEventsToMessages(
     turnSessionId = undefined;
     turnAnswerEligible = false;
     turnAnchorEventId = undefined;
+    const held = heldMarkers;
+    heldMarkers = [];
+    if (releaseMarkers)
+      for (const { ev, marker } of held)
+        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
   };
 
   const stamp = (createdAt?: string) => {
@@ -481,33 +498,29 @@ export function projectRuntimeEventsToMessages(
 
   /**
    * station#3415: an extension notification the transcript shows as a marker
-   * line (`extension-transcript-markers.ts`). A marker can land inside a
-   * running turn (Codex compacts mid-turn), so what the turn produced so far
-   * is emitted first as its own row, exactly as for a steer, and the turn
-   * stays open: the marker then reads after what preceded it, and the turn's
-   * later content and provenance still belong to the same turn. Unlike a
-   * steer, a marker starts no turn, so the turn's last row keeps the
-   * canonical `observedAssistantMessageId` (Basis binds the answer by it) and
-   * the earlier segment takes an id derived from the marker's own event.
+   * line (`extension-transcript-markers.ts`). A marker never splits a turn:
+   * the turn stays one assistant row with its canonical id and its answer
+   * eligibility, exactly as without markers. One that arrives between turns
+   * is a row in place; one that arrives during a turn is held and emitted
+   * right after that turn's rows when the turn closes (`emitAssistantTurn`),
+   * labelled as having happened during it. While the turn is open it shows
+   * nothing, so a live marker never moves or remounts the open turn's row.
    */
-  const emitTranscriptMarker = (
+  const pushTranscriptMarker = (
     ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+    marker: ExtensionTranscriptMarkerKind,
+    duringTurn: boolean,
+    /**
+     * For a held marker, the closed turn's row timestamp: readers that merge
+     * rows by timestamp (the chat dock) then keep the marker after its turn
+     * rather than inside it.
+     */
+    turnRowTimestamp?: number,
   ) => {
-    const marker = extensionTranscriptMarker(ev.namespace, ev.type);
-    if (!marker) return;
-    if (turnOpen) {
-      flushReasoning();
-      flushText();
-      if (parts.length > 0) {
-        pushMessage('assistant', parts, undefined, true);
-        if (turnAnchorEventId && ev.eventId) {
-          messages[messages.length - 1]!.id =
-            `${ev.eventId}:assistant-before-marker`;
-        }
-        parts = [];
-      }
-    }
-    const timestamp = ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN;
+    const timestamp =
+      turnRowTimestamp ??
+      (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
+    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
     messages.push({
       id:
         options.stableIds && ev.eventId
@@ -517,11 +530,19 @@ export function projectRuntimeEventsToMessages(
       parts: [
         {
           type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
-          text: EXTENSION_TRANSCRIPT_MARKER_TEXT[marker],
+          text: duringTurn ? text.duringTurn : text.betweenTurns,
         },
       ],
       ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
     });
+  };
+  const emitTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+  ) => {
+    const marker = extensionTranscriptMarker(ev.namespace, ev.type);
+    if (!marker) return;
+    if (turnOpen) heldMarkers.push({ ev, marker });
+    else pushTranscriptMarker(ev, marker, false);
   };
 
   for (const ev of events) {
@@ -1161,7 +1182,7 @@ export function projectRuntimeEventsToMessages(
     }
   }
 
-  if (turnOpen) emitAssistantTurn();
+  if (turnOpen) emitAssistantTurn(false);
   return messages.map((message) => {
     if (
       message.role !== 'assistant' ||

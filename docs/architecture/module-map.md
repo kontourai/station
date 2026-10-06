@@ -1517,7 +1517,9 @@ are derived from the [marker table](../../packages/shared/src/extension-transcri
 that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
 reads: an attached-session source's context compaction or rewind becomes a
 system row with a fixed label, drawn as a quiet line, and the UI handler
-leaves it to the projection. One table entry binds and renders a tuple; the
+leaves it to the projection. A marker never splits a turn: one that arrives
+during a turn is held until the turn closes and follows its single answer row,
+so the turn keeps its canonical id and answer eligibility. One table entry binds and renders a tuple; the
 label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and

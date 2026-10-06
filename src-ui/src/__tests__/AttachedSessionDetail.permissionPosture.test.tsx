@@ -637,24 +637,19 @@ describe('AttachedSessionDetail transcript markers (station#3415)', () => {
   ];
 
   for (const presentation of ['chat', 'inspector'] as const) {
-    test(`a Codex compaction renders one marker line between the halves (${presentation})`, () => {
+    test(`a mid-turn Codex compaction renders one marker line after its whole turn (${presentation})`, () => {
       renderAttached({
         presentation,
         events: turnWith('codex-rollout', 'context-compacted'),
       });
-      const markers = screen.getAllByText('Context compacted');
+      const markers = screen.getAllByText('Context compacted during this turn');
       expect(markers).toHaveLength(1);
       const marker = markers[0]!.closest('.transcript-marker')!;
       expect(marker).toBeTruthy();
-      expect(marker.textContent).toBe('Context compacted');
-      const before = screen.getByText('First half.');
-      const after = screen.getByText('Second half.');
+      // The turn stays one row; the marker follows all of it.
+      const answer = screen.getByText(/First half\.\s*Second half\./);
       expect(
-        before.compareDocumentPosition(marker) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-      expect(
-        marker.compareDocumentPosition(after) &
+        answer.compareDocumentPosition(marker) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       // A marker is not a speaker row: no "You" label stands over it.

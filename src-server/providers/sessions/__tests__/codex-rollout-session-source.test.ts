@@ -358,19 +358,34 @@ describe('CodexRolloutSessionSource', () => {
     });
     expect(
       messages.map((message) => [
+        message.id,
         message.role,
-        // The source opens a later message with a paragraph break; the
-        // marker now sits between the two, so that break leads its row.
-        message.parts
-          .map((part) => `${part.type}:${part.text?.trim()}`)
-          .join('|'),
+        message.parts.map((part) => `${part.type}:${part.text}`).join('|'),
+        message.metadata?.answerEligible === true,
       ]),
     ).toEqual([
-      ['user', 'text:question'],
-      ['assistant', 'text:before'],
-      ['system', 'transcript-marker:Context compacted'],
-      ['assistant', 'text:after'],
-      ['system', 'transcript-marker:Context compacted'],
+      [expect.any(String), 'user', 'text:question', false],
+      // One canonical answer row for the turn: the compaction does not split it.
+      [
+        `${events[0]!.eventId}:assistant`,
+        'assistant',
+        'text:before\n\nafter',
+        true,
+      ],
+      // The mid-turn compaction follows its turn once the turn closed...
+      [
+        expect.any(String),
+        'system',
+        'transcript-marker:Context compacted during this turn',
+        false,
+      ],
+      // ...and the `compacted` record after it is a between-turns marker.
+      [
+        expect.any(String),
+        'system',
+        'transcript-marker:Context compacted',
+        false,
+      ],
     ]);
     // Never the engine's own summary text: the marker label is Station's.
     expect(JSON.stringify(messages)).not.toContain('summary of the earlier');
