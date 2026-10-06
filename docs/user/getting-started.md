@@ -463,6 +463,12 @@ is deleted while other Projects remain, it moves to **No project**. A conversati
 of a worktree outside the Project folder also lands in **No project**: Station
 follows the submodule's own `.git`, which belongs to a different repository.
 
+If a conversation ran in a folder on a network drive that has stopped
+responding, Station can't tell which Project it belongs to. A conversation
+Station has already filed keeps its Project. A new one is listed under
+**No project**, and Station tries the folder again about once a minute. Once
+the drive responds, the conversation moves to its Project.
+
 Station copies what it reads into its own history and search index, so a
 conversation stays in Activity and in search after the original transcript is
 gone. You can open these conversations, and so can every device you have

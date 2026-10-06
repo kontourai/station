@@ -450,7 +450,29 @@ attribution names is no longer configured while the project set is non-empty
 directory is missing, is not treated as a deletion). A repository match counts only a
 genuine checkout: a real `.git` directory that is its own common directory, or
 a linked worktree whose git-written `gitdir` back-pointer names that `.git`.
-A symlinked `.git` or a submodule's `.git` file matches by folder only. The
+A symlinked `.git` or a submodule's `.git` file matches by folder only.
+Discovery reads these folders (the real path of each cwd and Project
+directory, and the repository walk) in one helper process
+([`attached-session-path-probe.ts`](../../src-server/services/orchestration/attached-session-path-probe.ts)),
+never on the server's main thread. When that process answers nothing for
+1.5 seconds, as on a network or FUSE mount that has stopped responding, it is
+killed and replaced, and every folder it still owed is unread for that poll.
+An unread folder takes no part in matching: a transcript in one is followed
+as `unattributed` (which never replaces a recorded attribution), and a
+Project whose directory is unread is not matched. A folder that does not
+exist is different: it keeps its path as written. The folder the process was
+stuck on is not read again for 60 seconds, nor while that process is still
+alive. At most four killed helpers may still be alive before no new one
+starts; until one exits, which is logged, only folders under one they hung on
+are unread, and every other folder is matched as a missing folder is. A
+transcript in an unread folder that the log already files under a Project is
+still followed under it even where unattributed transcripts are not. The next
+poll that reads the folder corrects a new transcript's
+attribution. `adoptSession` still resolves its folder, and walks to its
+repository, with synchronous `realpath` and `lstat` calls on the main thread
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)),
+so adopting a transcript whose folder is on a hung mount can still block the
+server. The
 local operator owns every attached transcript whatever its attribution, so the
 operator's paired devices with `orchestration:read` can read it through
 `personalConversationAccess`. Imported turns enter the owner-scoped message
