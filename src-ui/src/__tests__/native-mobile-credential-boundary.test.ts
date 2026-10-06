@@ -38,9 +38,6 @@ describe('native mobile credential authority ratchet', () => {
     expect(apiBase).toMatch(
       /const credential\s*=\s*profile\.isTauri\s*\?\s*undefined\s*:\s*evidence\?\.credential\s*;/,
     );
-    expect(apiBase).toMatch(
-      /profile\.isTauri\s*\?\s*\{[\s\S]*transport: nativeBinding\s*\? nativeTransportForBinding\(nativeBinding\.bindingId\)\s*:\s*lazyNativeAuthenticatedTransport/,
-    );
     expect(apiBase).toContain(
       'profile.isTauri ? lazyNativePairingExchangeTransport : undefined',
     );

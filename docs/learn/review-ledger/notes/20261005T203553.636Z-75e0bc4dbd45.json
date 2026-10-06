@@ -1,0 +1,7 @@
+{
+  "revision": "80e9054a6d084703a9037b9a7194a378d9b17bca",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed against the mcp-manager.ts change: the native knowledge branch now casts its plain Station tools to Tool exactly as toStationMCPTool does for every other MCP tool; connection, adaptation, custody and catalog behavior are unchanged, so no prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/mcp/mcp-manager.ts"]}
+  ]
+}

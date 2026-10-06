@@ -369,6 +369,113 @@ const BIND_REFUSAL_STATUS: Record<BindProjectResourceRefusalCode, 400 | 409> = {
  */
 const PROJECT_WORKSPACE_ISOLATION_SCOPE = PAIRING_SCOPE_ORCHESTRATION_OPERATE;
 
+function memberProjectView(
+  project: Pick<ProjectConfig, 'id' | 'slug' | 'name' | 'icon' | 'description'>,
+  actions: readonly ProjectMemberAction[],
+) {
+  return {
+    version: 'station.member-project/v1' as const,
+    kind: 'member-project' as const,
+    id: project.id,
+    slug: project.slug,
+    name: project.name,
+    ...(project.icon ? { icon: project.icon } : {}),
+    ...(project.description ? { description: project.description } : {}),
+    actions: [...actions],
+  };
+}
+
+/**
+ * `GET /api/projects`: the Project catalogue a request may receive — every
+ * Project for the operator's own requests, and for an authenticated shared
+ * member only the Projects it currently reads, as member views, re-checked
+ * for currentness before delivery. Exported so `/api/boot`'s `projects`
+ * section answers from this same decision rather than a copy.
+ */
+export function createProjectCatalogueReader(
+  projectService: Pick<ProjectService, 'listProjects'>,
+  deps: Pick<
+    ProjectRouteDeps,
+    'memberProjectAdmissions' | 'projectCatalogueCurrent'
+  >,
+): (c: Context) => Promise<Response> {
+  return async (c) => {
+    try {
+      const admissions = await deps.memberProjectAdmissions?.(c);
+      const readable = admissions?.map(({ scope }) => scope);
+      const allowed = readable
+        ? new Set(
+            readable.map(
+              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
+            ),
+          )
+        : undefined;
+      const projects = await projectService.listProjects();
+      const currentAdmissions = allowed
+        ? ((await deps.memberProjectAdmissions?.(c)) ?? [])
+        : undefined;
+      const currentScopes = currentAdmissions?.map(({ scope }) => scope);
+      const currentReadable = currentScopes
+        ? new Set(
+            currentScopes.map(
+              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
+            ),
+          )
+        : undefined;
+      if (allowed) c.header('Cache-Control', 'no-store');
+      const response = c.json({
+        success: true,
+        data:
+          allowed && currentReadable && currentAdmissions
+            ? projects
+                .filter(
+                  (project) =>
+                    allowed.has(`${project.id}:${project.slug}`) &&
+                    currentReadable.has(`${project.id}:${project.slug}`),
+                )
+                .map((project) => {
+                  const admission = currentAdmissions.find(
+                    ({ scope }) =>
+                      scope.localProjectId === project.id &&
+                      scope.localProjectSlug === project.slug,
+                  )!;
+                  return memberProjectView(project, admission.actions);
+                })
+            : projects,
+      });
+      if (!allowed || !currentReadable || !readable || !currentScopes)
+        return response;
+      const admitted = readable.filter(
+        (scope) =>
+          projects.some(
+            (project) =>
+              project.id === scope.localProjectId &&
+              project.slug === scope.localProjectSlug,
+          ) &&
+          currentScopes.some(
+            (current) =>
+              current.localProjectId === scope.localProjectId &&
+              current.portableProjectId === scope.portableProjectId &&
+              current.localProjectSlug === scope.localProjectSlug,
+          ),
+      );
+      return await guardProjectResponse(response, async () =>
+        deps.projectCatalogueCurrent
+          ? await deps.projectCatalogueCurrent(c, admitted)
+          : false,
+      );
+    } catch (error: unknown) {
+      logger.error('Project storage list failed', {
+        error: error instanceof Error ? error.message : 'non-Error thrown',
+      });
+      return c.json(
+        { success: false, error: 'Project storage is unavailable' },
+        500,
+      );
+    }
+  };
+}
+
 export function createProjectRoutes(
   projectService: ProjectService,
   storageAdapter: IStorageAdapter,
@@ -377,6 +484,10 @@ export function createProjectRoutes(
 ) {
   const app = new Hono();
   const resolution = deps.resolution;
+  const listProjectCatalogue = createProjectCatalogueReader(
+    projectService,
+    deps,
+  );
   app.route(
     '/',
     createProjectIdentityRoutes(
@@ -594,25 +705,6 @@ export function createProjectRoutes(
     };
   }
 
-  function memberProjectView(
-    project: Pick<
-      ProjectConfig,
-      'id' | 'slug' | 'name' | 'icon' | 'description'
-    >,
-    actions: readonly ProjectMemberAction[],
-  ) {
-    return {
-      version: 'station.member-project/v1' as const,
-      kind: 'member-project' as const,
-      id: project.id,
-      slug: project.slug,
-      name: project.name,
-      ...(project.icon ? { icon: project.icon } : {}),
-      ...(project.description ? { description: project.description } : {}),
-      actions: [...actions],
-    };
-  }
-
   /**
    * #2144 slice 2, decision 4: a project's `defaultWorkspaceIsolation` is a
    * Station setting a project overrides, so writing it requires the scope
@@ -725,81 +817,7 @@ export function createProjectRoutes(
   );
 
   // List all projects
-  app.get('/', async (c) => {
-    try {
-      const admissions = await deps.memberProjectAdmissions?.(c);
-      const readable = admissions?.map(({ scope }) => scope);
-      const allowed = readable
-        ? new Set(
-            readable.map(
-              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
-            ),
-          )
-        : undefined;
-      const projects = await projectService.listProjects();
-      const currentAdmissions = allowed
-        ? ((await deps.memberProjectAdmissions?.(c)) ?? [])
-        : undefined;
-      const currentScopes = currentAdmissions?.map(({ scope }) => scope);
-      const currentReadable = currentScopes
-        ? new Set(
-            currentScopes.map(
-              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
-            ),
-          )
-        : undefined;
-      if (allowed) c.header('Cache-Control', 'no-store');
-      const response = c.json({
-        success: true,
-        data:
-          allowed && currentReadable && currentAdmissions
-            ? projects
-                .filter(
-                  (project) =>
-                    allowed.has(`${project.id}:${project.slug}`) &&
-                    currentReadable.has(`${project.id}:${project.slug}`),
-                )
-                .map((project) => {
-                  const admission = currentAdmissions.find(
-                    ({ scope }) =>
-                      scope.localProjectId === project.id &&
-                      scope.localProjectSlug === project.slug,
-                  )!;
-                  return memberProjectView(project, admission.actions);
-                })
-            : projects,
-      });
-      if (!allowed || !currentReadable || !readable || !currentScopes)
-        return response;
-      const admitted = readable.filter(
-        (scope) =>
-          projects.some(
-            (project) =>
-              project.id === scope.localProjectId &&
-              project.slug === scope.localProjectSlug,
-          ) &&
-          currentScopes.some(
-            (current) =>
-              current.localProjectId === scope.localProjectId &&
-              current.portableProjectId === scope.portableProjectId &&
-              current.localProjectSlug === scope.localProjectSlug,
-          ),
-      );
-      return await guardProjectResponse(response, async () =>
-        deps.projectCatalogueCurrent
-          ? await deps.projectCatalogueCurrent(c, admitted)
-          : false,
-      );
-    } catch (error: unknown) {
-      logger.error('Project storage list failed', {
-        error: error instanceof Error ? error.message : 'non-Error thrown',
-      });
-      return c.json(
-        { success: false, error: 'Project storage is unavailable' },
-        500,
-      );
-    }
-  });
+  app.get('/', listProjectCatalogue);
 
   // Create project
   app.post('/', validate(projectCreateSchema), async (c) => {

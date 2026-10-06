@@ -525,7 +525,7 @@ function installRemoteStationFetch(
   remoteFixture.ssh = {
     profile: {
       id: 'profile-1',
-      name: 'Brian media',
+      name: 'Home media',
       environmentId: 'environment-remote',
       remoteHome:
         discovery && 'remoteHome' in discovery
@@ -1071,7 +1071,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     const handle = delegationHandle({
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -2353,7 +2353,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       status: 'dispatched',
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -2402,7 +2402,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       status: 'running',
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -4968,5 +4968,293 @@ describe('readRelayingLocalRefusal', () => {
     await expect(
       readRelayingLocalRefusal({ kind: 'peer' }, async () => 42),
     ).resolves.toBe(42);
+  });
+});
+
+/**
+ * `delegatedInputAnswers`: an answer to a delegated task's open INPUT
+ * request is delivered only bound to that exact request. The executing
+ * Station checks the binding before dispatch and hands it to the
+ * orchestration service, which re-checks it at engine invocation; a sender
+ * forwards a bound answer only to a Station advertising the capability.
+ */
+describe('bound answers to a delegated input request (delegatedInputAnswers)', () => {
+  const BINDING = {
+    threadId: 'task-alpha',
+    requestId: 'request-alpha',
+    requestEventId: 'event-request-alpha',
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  function receiverService(open: boolean) {
+    const service = localDelegatedTaskService('needs_input');
+    const inspected: unknown[] = [];
+    return {
+      service: {
+        ...service,
+        inspectInputReplyContext: vi.fn((reference: unknown) => {
+          inspected.push(reference);
+          return open
+            ? { state: 'open', reference }
+            : { state: 'unavailable', reference };
+        }),
+      },
+      inspected,
+    };
+  }
+
+  test('the executing Station dispatches the answer carrying the binding', async () => {
+    installCurrentStationFetch();
+    const { service, inspected } = receiverService(true);
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await continueDelegatedTask(
+      {
+        taskId: 'task-alpha',
+        message: 'Use the staging bucket',
+        expectedInputRequest: BINDING,
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    expect(inspected).toEqual([BINDING]);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'sendTurn',
+        input: expect.objectContaining({ expectedInputRequest: BINDING }),
+      }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  test('a stale request id is refused before any dispatch', async () => {
+    installCurrentStationFetch();
+    const { service } = receiverService(false);
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'Too late',
+          expectedInputRequest: { ...BINDING, requestId: 'request-gone' },
+          readAuthority: hostedAuthority('alpha'),
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'input_request_changed' });
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('a bound answer with a model change is refused before any Session starts', async () => {
+    installCurrentStationFetch();
+    const { service, inspected } = receiverService(true);
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'Use staging',
+          model: 'another-model',
+          expectedInputRequest: BINDING,
+          readAuthority: hostedAuthority('alpha'),
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'input_binding_model_change' });
+    expect(inspected).toEqual([]);
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('a binding naming another Session than the task’s current one is refused', async () => {
+    installCurrentStationFetch();
+    const { service, inspected } = receiverService(true);
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'Elsewhere',
+          expectedInputRequest: { ...BINDING, threadId: 'some-other-session' },
+          readAuthority: hostedAuthority('alpha'),
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'input_request_changed' });
+    expect(inspected).toEqual([]);
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('the status read reports the open request’s event id and presented question', async () => {
+    installCurrentStationFetch();
+    const service = localDelegatedTaskService('needs_input');
+    const detail = await service.readSession(
+      'task-alpha',
+      hostedAuthority('alpha'),
+    );
+    (detail as { events: unknown[] }).events.push({
+      eventId: 'event-question',
+      method: 'request.opened',
+      requestId: 'request-question',
+      requestType: 'input',
+      title: 'Which bucket?',
+      description: 'The release needs a destination bucket.',
+    });
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    const snapshot = await observeDelegatedTask(
+      { taskId: 'task-alpha', readAuthority: hostedAuthority('alpha') },
+      service as never,
+    );
+    expect(snapshot.pendingRequest).toMatchObject({
+      id: 'request-question',
+      type: 'input',
+      eventId: 'event-question',
+      body: expect.stringContaining('destination bucket'),
+    });
+  });
+
+  function peerFetch(
+    capabilities: Record<string, boolean>,
+    continueStatus = 200,
+  ) {
+    const posted: Array<Record<string, unknown>> = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${REMOTE_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-remote', capabilities });
+      if (
+        url === `${REMOTE_API}/api/orchestration/delegations/task-peer/continue`
+      ) {
+        posted.push(JSON.parse(String(init?.body)));
+        if (continueStatus !== 200)
+          return json(
+            {
+              success: false,
+              error: 'peer prose',
+              code: 'input_request_changed',
+            },
+            continueStatus,
+          );
+        return json({
+          success: true,
+          data: {
+            conversationId: 'task-peer',
+            taskId: 'task-peer',
+            sessionId: 'peer-session',
+            currentSessionId: 'peer-session',
+            status: 'dispatched',
+            environment: {
+              id: 'environment-remote',
+              name: 'Station B',
+              kind: 'current',
+            },
+            target: { kind: 'agent', id: 'codex' },
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    return posted;
+  }
+
+  const PEER_BINDING = {
+    threadId: 'peer-session',
+    requestId: 'peer-request',
+    requestEventId: 'peer-event',
+  };
+
+  test('a Station without the capability never receives the answer', async () => {
+    const posted = peerFetch({ delegationAttemptClaims: true });
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask({
+        taskId: 'task-peer',
+        environmentId: 'environment-remote',
+        message: 'Use staging',
+        expectedInputRequest: PEER_BINDING,
+      }),
+    ).rejects.toMatchObject({ code: 'input_binding_unsupported' });
+    expect(posted).toEqual([]);
+  });
+
+  test('a handshake advertising the flag for another environment is refused', async () => {
+    const posted: unknown[] = [];
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${REMOTE_API}/.well-known/station/v1`)
+        return json({
+          environmentId: 'environment-somewhere-else',
+          capabilities: { delegatedInputAnswers: true },
+        });
+      if (url.endsWith('/continue')) posted.push(url);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask({
+        taskId: 'task-peer',
+        environmentId: 'environment-remote',
+        message: 'Use staging',
+        expectedInputRequest: PEER_BINDING,
+      }),
+    ).rejects.toMatchObject({ code: 'input_binding_unsupported' });
+    expect(posted).toEqual([]);
+  });
+
+  test('a Station advertising the capability receives the binding', async () => {
+    const posted = peerFetch({ delegatedInputAnswers: true });
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await continueDelegatedTask({
+      taskId: 'task-peer',
+      environmentId: 'environment-remote',
+      message: 'Use staging',
+      expectedInputRequest: PEER_BINDING,
+    });
+    expect(posted).toEqual([
+      { message: 'Use staging', expectedInputRequest: PEER_BINDING },
+    ]);
+  });
+
+  test('the receiver’s changed-request refusal keeps its code across the seam', async () => {
+    peerFetch({ delegatedInputAnswers: true }, 409);
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask({
+        taskId: 'task-peer',
+        environmentId: 'environment-remote',
+        message: 'Use staging',
+        expectedInputRequest: PEER_BINDING,
+      }),
+    ).rejects.toMatchObject({ code: 'input_request_changed' });
   });
 });

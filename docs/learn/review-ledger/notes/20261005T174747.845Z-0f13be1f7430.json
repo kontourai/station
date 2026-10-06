@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#3386 fix round: AppConfig gained attachedSessionsOutsideProjects, written through the existing app-config settings route with its schema entry; no route or response shape in this reference changed. No prose change.","inputs":["docs/reference/api.md","packages/contracts/src/config.ts"]}
+  ]
+}

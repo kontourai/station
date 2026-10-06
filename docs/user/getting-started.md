@@ -122,7 +122,9 @@ first; the two chips under the text box show what **Start** will use:
   list the Agents this project offers, each with its readiness and its setup
   action. An Agent's Model control opens the Model picker, including runtime
   options such as reasoning effort. Choosing a Model for an Agent also chooses
-  that Agent.
+  that Agent and closes the picker; changing the effort leaves it open. Once
+  you have chosen a Model, the picker's reset button names the default it
+  returns to, such as **Use project default**.
 - The **project** chip shows the project's colour and name, or **No
   project**. Open it to choose a project. The list shows each project's
   folder, and the folder this chat will run in. A project with no folder
@@ -410,12 +412,85 @@ Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
 
+## See Conversations Started Outside Station
+
+**Activity** also lists Claude Code and Codex conversations you ran in a
+terminal or another app on this machine. Station reads them; it never controls
+them. It looks in two places:
+
+- Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
+  `~/.claude` when that is not set.
+- Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
+  not set.
+
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_CODEX_SOURCE_ROOT`
+point Station at a different folder. Station checks every two seconds and reads
+the 128 most recently changed conversations from each place. Older ones stay in
+Activity once Station has read them, but new messages in them are not picked up
+until they are among the 128 again.
+
+Each conversation is filed under a Project by the folder it ran in:
+
+1. A Project whose folder contains that folder. When two Projects share the
+   folder, Activity names both rather than picking one.
+2. Otherwise, a Project whose folder is in the same git repository. Every
+   worktree of the repository counts, so a conversation in
+   `../station-worktrees/fix-login` or another tool's worktree folder files
+   under the Project on the main checkout. A Project on a subfolder of the
+   repository takes that same subfolder in every worktree.
+3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
+   filter to list these.
+
+A conversation keeps its Project after its worktree is removed. If its Project
+is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
+of a worktree outside the Project folder also lands in **No project**: Station
+follows the submodule's own `.git`, which belongs to a different repository.
+
+Station copies what it reads into its own history and search index, so a
+conversation stays in Activity and in search after the original transcript is
+gone. You can open these conversations, and so can every device you have
+paired with Activity read access, including a phone.
+
+To stop reading conversations from folders outside your Projects, turn off
+**Conversations outside projects** in **Settings → Advanced** (under Station host), then **Save**
+(`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
+next check, including for conversations it already lists: new messages in
+them no longer arrive. What it already read stays in Activity, in search and
+readable from your paired devices; turning the setting off removes nothing.
+Conversations inside a Project are read either way.
+
+A hosted Station never reads conversations outside your Projects. It reads the
+ones inside a Project, but no account can open them there.
+
 ## Continue an Attached Session
 
 Open an attached terminal Session in **Activity**, then choose **Continue in
 Station**. Claude and Codex create independent child Sessions; the original
 terminal Session can keep running. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
+
+The continuation always works in the folder the conversation ran in, and the
+engine is confined to that folder. Station checks the folder again when you
+continue:
+
+- A conversation filed under a Project continues under that Project. This
+  includes one in a worktree outside the Project folder: it continues in that
+  worktree. Station refuses if the worktree was removed or replaced, or if its
+  `.git` does not lead back to the Project's repository.
+- A conversation under **No project** continues as a **No project** chat
+  confined to its own folder, after you confirm that choice. This is allowed
+  only for a folder inside your home folder. Station refuses your home folder
+  itself, every folder outside it (system folders included), any hidden
+  folder directly in your home folder and everything in it (such as `.ssh`,
+  `.aws` or `.config`), `Library` on macOS and `AppData` on Windows, the
+  system temporary folder, and Station's own data folder. It also refuses
+  when the folder shown reaches another folder through a symbolic link
+  inside your home folder. To
+  continue such a conversation, add a Project for that folder or its
+  repository. Station does not move a conversation into another Project's folder,
+  because its history refers to files in the folder it ran in.
+
+A hosted Station does not continue conversations outside your Projects.
 
 An attached Session remains read only. Continuing opens a Station-owned child.
 If Station cannot confirm the result, use the offered retry for that same

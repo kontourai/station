@@ -2234,6 +2234,8 @@ station environment access deny [<request-id-or-offer-id>|--latest] [--force] [-
 station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
 station environment access scopes [--json]
+station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2311,6 +2313,18 @@ station environment peers remove <environment-id>
   it; re-running changes nothing already reset. A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
+- `access revoke` and `access remove` finish what the Paired devices panel
+  cannot do from a native host app (#3256), on the same host-only channel and
+  with the same device selector as `access scope` (id, unique id prefix, or
+  exact name; an ambiguous one is refused). `access revoke` ends a live
+  device's access immediately, closes its terminal and voice connections, and
+  resets to Ask what its full access had granted, printing the same report as
+  `--remove approval:full-access`; the device can pair again later. `access
+  remove` deletes the record of an already-revoked device; a device that is
+  still paired is refused (revoke it first). Both name the device before
+  acting and fail unless Station's answer names that same device as revoked.
+  Neither can be undone, so an interactive run asks first, and a run with no
+  terminal is refused before Station is contacted unless it passes `--force`.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
   opposed to the inbound device credentials `access`/pairing issues. `peers add`

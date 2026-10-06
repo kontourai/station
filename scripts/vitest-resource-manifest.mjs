@@ -129,6 +129,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-health.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
+  // Runs the advisory review gate as a real child against a loopback GitHub API.
+  'scripts/__tests__/advisory-review-gate.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
@@ -877,6 +879,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // repository whose own config plants a clean filter (execFileSync git).
   'src-server/services/checkpoints/__tests__/turn-checkpoint-capture.test.ts',
   'packages/cli/src/__tests__/checkpoints-command.test.ts',
+  // #3386: builds real Git repositories and worktrees through execFileSync to
+  // prove attached-session attribution by repository.
+  'src-server/services/orchestration/__tests__/attached-session-repository-attribution.test.ts',
+  // #3386: continues attached sessions from real Git worktrees (execFileSync
+  // git) through the real OrchestrationService.
+  'src-server/services/orchestration/__tests__/attached-session-continuation.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
   // under the four-worker ordinary corpus. Keep their feedback deterministic.

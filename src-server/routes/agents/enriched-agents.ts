@@ -475,6 +475,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       updatedAt: metadata.updatedAt,
       ...(engineDefault ? { engineDefault: true as const } : {}),
       ...(spec.project !== undefined ? { project: spec.project } : {}),
+      ...(spec.audience ? { audience: spec.audience } : {}),
       ...(ownership ? { ownership: { findings: [ownership] } } : {}),
       ...(connection
         ? {

@@ -29,7 +29,7 @@ import {
 } from '../openssh-launch-bootstrap.js';
 
 const INPUT = {
-  alias: 'brian-media',
+  alias: 'home-media',
   controlPath: '/private/control.sock',
   remoteProjectPath: '~/dev/github/kontourai/station',
   launchKey: '11111111-1111-4111-8111-111111111111',
@@ -55,7 +55,7 @@ describe('OpenSSH launch bootstrap argv/contract', () => {
       'RemoteCommand=none',
       '--',
     ]);
-    expect(args.at(-2)).toBe('brian-media');
+    expect(args.at(-2)).toBe('home-media');
     const command = args.at(-1) as string;
     expect(command).toBe(
       "sh -s -- '1' '~/dev/github/kontourai/station' '3141' '11111111-1111-4111-8111-111111111111'",
@@ -184,7 +184,7 @@ describe('OpenSSH launch bootstrap argv/contract', () => {
     // Bounded to <=200 chars, matching the cut -c1-200 truncation the real
     // script applies before ever handing this to fail().
     const message =
-      'ports overlap another live Station instance. Requested: 51234 server 51235 terminal - brian-media-dogfood reserves 3141 server 3142 terminal 3143 voice 3000 ui';
+      'ports overlap another live Station instance. Requested: 51234 server 51235 terminal - home-media-dogfood reserves 3141 server 3142 terminal 3143 voice 3000 ui';
     try {
       parseOpenSshLaunchResponse({
         stdout: '',
@@ -195,7 +195,7 @@ describe('OpenSSH launch bootstrap argv/contract', () => {
     } catch (error) {
       const launchError = error as OpenSshLaunchError;
       expect(launchError.reason).toBe('port-conflict');
-      expect(launchError.message).toContain('brian-media-dogfood');
+      expect(launchError.message).toContain('home-media-dogfood');
     }
   });
 
@@ -583,7 +583,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
     test('release/portable layout built under a NAMED operator instance is correctly detected as runnable, not requires-build', async () => {
       const rig = createRig();
       rig.writeRealNodeShim();
-      rig.markBuiltAs('brian-media-dogfood');
+      rig.markBuiltAs('home-media-dogfood');
       rig.writeStationFixture(fakeStationStartScript(rig.stationMarker));
       const targetPort = await reserveFreePort();
 
@@ -609,7 +609,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
     test('a managed launch always runs under its own feature-owned instance, never a discovered operator instance name', async () => {
       const rig = createRig();
       rig.writeRealNodeShim();
-      rig.markBuiltAs('brian-media-dogfood');
+      rig.markBuiltAs('home-media-dogfood');
       rig.writeStationFixture(fakeStationStartScript(rig.stationMarker));
       const targetPort = await reserveFreePort();
 
@@ -621,7 +621,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
         .trim()
         .split(' ');
       expect(invokedInstance).toBe(`ssh-launch-${INPUT.launchKey}`);
-      expect(invokedInstance).not.toBe('brian-media-dogfood');
+      expect(invokedInstance).not.toBe('home-media-dogfood');
 
       // The build was DERIVED (a symlink to the discovered operator build),
       // not copied and not a fresh build — proving the discovered bytes were
@@ -636,10 +636,10 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
       );
       expect(lstatSync(ownServerBuild).isSymbolicLink()).toBe(true);
       expect(readlinkSync(ownServerBuild)).toContain(
-        'dist-server-brian-media-dogfood',
+        'dist-server-home-media-dogfood',
       );
       expect(lstatSync(ownUiBuild).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(ownUiBuild)).toContain('dist-ui-brian-media-dogfood');
+      expect(readlinkSync(ownUiBuild)).toContain('dist-ui-home-media-dogfood');
     }, 20_000);
 
     test('a managed launch derives its own build from a bare default build too, still under its own instance name', async () => {
@@ -871,7 +871,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
       const conflictLines = [
         `echo "$$" >> "${rig.stationMarker}"`,
         "echo 'Error: start is blocked because the requested ports overlap another live Station instance.'",
-        "echo '  - brian-media-dogfood reserves 3141 server 3142 terminal 3143 voice 3000 ui'",
+        "echo '  - home-media-dogfood reserves 3141 server 3142 terminal 3143 voice 3000 ui'",
         'exit 1',
       ];
       rig.writeStationFixture(conflictLines.join('\n'));
@@ -887,7 +887,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
       } catch (error) {
         const launchError = error as OpenSshLaunchError;
         expect(launchError.reason).toBe('port-conflict');
-        expect(launchError.message).toContain('brian-media-dogfood');
+        expect(launchError.message).toContain('home-media-dogfood');
       }
     }, 20_000);
 
