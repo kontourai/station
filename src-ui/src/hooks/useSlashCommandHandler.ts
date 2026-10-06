@@ -38,28 +38,29 @@ export function useSlashCommandHandler() {
         context.autocomplete.closeAll();
         return command;
       }
-      let dispatch: typeof import('../slashCommands/dispatch');
       try {
-        dispatch = await import('../slashCommands/dispatch');
+        const { dispatchSlashCommand } = await import(
+          '../slashCommands/dispatch'
+        );
+        return dispatchSlashCommand(sessionId, command, context, {
+          apiBase,
+          chatState,
+          agents,
+          updateChat,
+          addEphemeralMessage,
+          queryClient,
+          runSkillMutation,
+          readSkillDetail,
+        });
       } catch (error) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Could not load Station's command handler, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
+          content: `Could not load Station's commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
         });
         updateChat(sessionId, { input: '' });
         context.autocomplete.closeAll();
         return true;
       }
-      return dispatch.dispatchSlashCommand(sessionId, command, context, {
-        apiBase,
-        chatState,
-        agents,
-        updateChat,
-        addEphemeralMessage,
-        queryClient,
-        runSkillMutation,
-        readSkillDetail,
-      });
     },
     [
       apiBase,
