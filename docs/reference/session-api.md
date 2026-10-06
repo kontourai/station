@@ -538,8 +538,10 @@ a turn is open (interjections, echoed host turns and direct `!command` runs) is
 imported as a steer on that turn and never starts or aborts one. A
 rewind appends a marker rather than removing turns; Station keeps the rewound
 turns, because a live follower has already published them and the event log
-has no retraction. The marker is recorded as an extension notification but is
-not shown in the transcript yet. A log
+has no retraction. The marker is recorded as an extension notification and
+shown in the transcript as a quiet line ("Rewound to an earlier prompt"), after
+its turn when it arrives during one; compaction markers from both sources are
+shown the same way ("Context compacted"). A log
 or summary in an unrecognized shape is skipped with one logged warning per
 file kind, never guessed at. Discovery skips every working directory that is one of
 Station's own ACP workspaces, for this or another Station home (the layout
