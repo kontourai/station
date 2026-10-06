@@ -89,6 +89,29 @@ async function composition() {
   });
   vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
   const eventStore = new EventStore(join(root, 'orchestration.sqlite'));
+  // A read-only attached session whose start stamped this project and whose
+  // directory is this project's worktree: everything the lookup would vouch
+  // for, except that an attached session's project is a later, correctable
+  // attribution only the full read model folds.
+  eventStore.appendEvent({
+    eventId: 'attached-started',
+    provider: 'codex',
+    threadId: 'attached-lane',
+    createdAt: '2026-10-06T00:00:00.000Z',
+    method: 'session.started',
+    sessionId: 'attached-lane',
+    initialState: 'created',
+    metadata: { projectSlug: 'alpha', userId: OWNER, cwd: worktree },
+  } as never);
+  eventStore.upsertSession({
+    provider: 'codex',
+    threadId: 'attached-lane',
+    status: 'running',
+    cwd: worktree,
+    controlMode: 'read-only-attached',
+    createdAt: '2026-10-06T00:00:00.000Z',
+    updatedAt: '2026-10-06T00:00:01.000Z',
+  });
   const service = new OrchestrationService({
     adapterRegistry: {
       get: (provider) => (provider === 'codex' ? adapter : undefined),
@@ -187,6 +210,13 @@ describe('file preview for an engine session through the runtime composition (#3
     expect((await json(response)).data).toMatchObject({
       content: 'worktree copy',
     });
+  });
+
+  test('a read-only attached session is refused even when its start names this project', async () => {
+    const { preview } = await composition();
+    const response = await preview({ path: 'app.ts', thread: 'attached-lane' });
+    expect(response.status).toBe(404);
+    expect(JSON.stringify(await json(response))).not.toContain('copy');
   });
 
   test('another project’s session, an unknown one, or one the reader may not read is refused', async () => {
