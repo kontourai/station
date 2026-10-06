@@ -1,0 +1,13 @@
+{
+  "revision": "7a7ee57bf6652ef7b4325cd9f1d577326b0e52f3",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed the local CacheAwareTokenComponents type import required by UsageObservation after the helper extraction. Re-exporting a type does not bind it locally; the new import restores the existing optional token fields. The shared type lane passed, and TypeScript transpilation proves emitted JavaScript byte-identical. Existing provider, cache, context, allocation and refusal declarations remain unchanged; no prose change is needed.","inputs":["docs/architecture.md","packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the local CacheAwareTokenComponents type import required by UsageObservation after the helper extraction. Re-exporting a type does not bind it locally; the new import restores the existing optional token fields. The shared type lane passed, and TypeScript transpilation proves emitted JavaScript byte-identical. Existing provider, cache, context, allocation and refusal declarations remain unchanged; no prose change is needed.","inputs":["docs/guides/monitoring.md","packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the local CacheAwareTokenComponents type import required by UsageObservation after the helper extraction. Re-exporting a type does not bind it locally; the new import restores the existing optional token fields. The shared type lane passed, and TypeScript transpilation proves emitted JavaScript byte-identical. Existing provider, cache, context, allocation and refusal declarations remain unchanged; no prose change is needed.","inputs":["docs/reference/sdk.md","packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the local CacheAwareTokenComponents type import required by UsageObservation after the helper extraction. Re-exporting a type does not bind it locally; the new import restores the existing optional token fields. The shared type lane passed, and TypeScript transpilation proves emitted JavaScript byte-identical. Existing provider, cache, context, allocation and refusal declarations remain unchanged; no prose change is needed.","inputs":["docs/reference/shared.md","packages/shared/src/usage-fold.ts"]}
+  ]
+}

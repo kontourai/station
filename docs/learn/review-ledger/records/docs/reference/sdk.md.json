@@ -560,7 +560,9 @@
 
     "packages/sdk/src/client/station-usage.ts",
 
-    "packages/shared/src/usage-semantics.ts"
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts"
   ],
 
   "checks": [

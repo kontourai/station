@@ -112,7 +112,9 @@
 
     "src-ui/src/core/pluginSharedRuntime.ts",
 
-    "packages/shared/src/usage-semantics.ts"
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts"
   ],
 
   "checks": [
