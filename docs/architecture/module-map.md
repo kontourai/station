@@ -1220,7 +1220,7 @@ the path argument of a successful call whose own `tool.completed` reported an
 `edit`, `delete` or `move` kind (and whether any call of the turn reported a
 kind at all), and the `pull-request` rows the turn declared.
 `EventStore.listThreadIdsStartedIn(projectId)` selects the threads that could
-be in one Project's scope from their start records, so the list narrows before
+be in one Project's scope from their start records (`session.started` and `session.configured`, as the scope owner reads them), so the list narrows before
 it folds; it is a candidate list, never the check.
 `digestTurn(facts, children)` bounds each field and `fitDigestPage(turns)` takes
 the longest prefix under 8 KiB, refusing (`DigestTurnTooLargeError`) rather
