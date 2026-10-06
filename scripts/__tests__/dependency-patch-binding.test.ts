@@ -3,9 +3,11 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -247,6 +249,27 @@ describe('machine-bound production residual acceptance', () => {
       },
     ],
     [
+      'caller-directory shadow copy',
+      (f: ReturnType<typeof fixture>) => {
+        const caller = 'node_modules/argparse/lib/help/formatter.js';
+        const copy = 'node_modules/argparse/lib/help/node_modules/sprintf-js';
+        f.write(caller, 'module.exports = require("sprintf-js");');
+        f.write(
+          copy + '/package.json',
+          JSON.stringify({
+            name: 'sprintf-js',
+            version: '1.0.3',
+            main: 'src/sprintf.js',
+          }),
+        );
+        f.write(copy + '/src/sprintf.js', 'unpatched caller shadow');
+        f.write(copy + '/dist/sprintf.min.js', 'unpatched caller shadow');
+        expect(createRequire(join(f.root, caller)).resolve('sprintf-js')).toBe(
+          realpathSync(join(f.root, copy, 'src/sprintf.js')),
+        );
+      },
+    ],
+    [
       'package identity',
       (f: ReturnType<typeof fixture>) =>
         f.write(
@@ -282,6 +305,10 @@ describe('machine-bound production residual acceptance', () => {
         /patch binding|ENOENT|Unresolved dependency/,
       );
       rmSync(join(f.root, 'node_modules/argparse/node_modules'), {
+        recursive: true,
+        force: true,
+      });
+      rmSync(join(f.root, 'node_modules/argparse/lib'), {
         recursive: true,
         force: true,
       });

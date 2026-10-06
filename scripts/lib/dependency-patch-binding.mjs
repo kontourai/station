@@ -123,8 +123,10 @@ function installedInstances(root, lock, name, version) {
   const seen = new Set();
   const found = [];
   let count = 0;
-  function scan(directory) {
-    if (++count > 20000) refuse('installed inventory bound exceeded');
+  let entries = 0;
+  function scan(directory, modules = false, depth = 0) {
+    if (++count > 50000 || depth > 64)
+      refuse('installed inventory bound exceeded');
     let stat;
     try {
       stat = lstatSync(directory);
@@ -137,37 +139,44 @@ function installedInstances(root, lock, name, version) {
     if (seen.has(directory)) return;
     seen.add(directory);
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name.startsWith('.')) continue;
+      if (++entries > 500000)
+        refuse('installed inventory entry bound exceeded');
       const child = join(directory, entry.name);
       if (entry.isSymbolicLink()) {
         const target = realpathSync(child);
         if (
+          modules &&
           importerRoots.has(target) &&
           json(root, join(target, 'package.json')).name !== name &&
           entry.name !== name
         )
           continue;
+        confined(root, target);
+        if (lstatSync(target).isFile()) continue;
         refuse('unaccounted linked dependency');
       }
       if (!entry.isDirectory()) continue;
-      if (entry.name.startsWith('@')) {
-        scan(child);
+      if (modules && entry.name.startsWith('@')) {
+        scan(child, true, depth + 1);
         continue;
       }
-      const manifest = json(root, join(child, 'package.json'));
-      if (
-        entry.name === name &&
-        (manifest.name !== name || manifest.version !== version)
-      )
-        refuse('installed package identity changed');
-      if (manifest.name === name && manifest.version === version)
-        found.push(child);
-      scan(join(child, 'node_modules'));
+      if (modules && !entry.name.startsWith('.')) {
+        const manifest = json(root, join(child, 'package.json'));
+        if (
+          entry.name === name &&
+          (manifest.name !== name || manifest.version !== version)
+        )
+          refuse('installed package identity changed');
+        if (manifest.name === name && manifest.version === version)
+          found.push(child);
+      }
+      // A require from lib/help also searches lib/help/node_modules, not just the package root.
+      scan(child, entry.name === 'node_modules', depth + 1);
     }
   }
   for (const importer of importerRoots) {
     if (importer !== root) confined(root, importer);
-    scan(join(importer, 'node_modules'));
+    scan(join(importer, 'node_modules'), true);
   }
   return found;
 }
