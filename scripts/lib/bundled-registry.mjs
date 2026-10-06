@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import {
   cpSync,
   lstatSync,
@@ -8,6 +7,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 
 const MANIFEST = 'examples/registry/default.json';
 
@@ -37,7 +37,7 @@ export function stageBundledRegistry({ projectRoot, outputRoot }) {
       roots.add(relative(root, source).split(sep).join('/'));
     }
   }
-  const paths = execFileSync(
+  const paths = execFileSyncBounded(
     'git',
     ['--literal-pathspecs', 'ls-files', '-z', '--', ...roots],
     { cwd: root, encoding: 'utf8', windowsHide: true },
