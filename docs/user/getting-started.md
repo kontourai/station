@@ -414,20 +414,24 @@ how Station preserves the same work identity through retries and response loss.
 
 ## See Conversations Started Outside Station
 
-**Activity** also lists Claude Code and Codex conversations you ran in a
+**Activity** also lists Claude Code, Codex and Grok conversations you ran in a
 terminal or another app on this machine. Station reads them; it never controls
-them. It looks in two places:
+them. It looks in three places:
 
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
   not set.
+- Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
+  is not set. A Grok session appears once it has a prompt. A subagent's own
+  session is not listed separately, and neither is a Grok chat you started in
+  Station, which is already there.
 
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_CODEX_SOURCE_ROOT`
-point Station at a different folder. Station checks every two seconds and reads
-the 128 most recently changed conversations from each place. Older ones stay in
-Activity once Station has read them, but new messages in them are not picked up
-until they are among the 128 again.
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` point Station at a different folder. Station
+checks every two seconds and reads the 128 most recently changed conversations
+from each place. Older ones stay in Activity once Station has read them, but new
+messages in them are not picked up until they are among the 128 again.
 
 Each conversation is filed under a Project by the folder it ran in:
 
@@ -469,9 +473,28 @@ Station**. Claude and Codex create independent child Sessions; the original
 terminal Session can keep running. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
 
-**Continue in Station** needs the conversation's folder to be inside a Project
-folder. A conversation filed by its repository, or under **No project**, shows
-the reason instead.
+The continuation always works in the folder the conversation ran in, and the
+engine is confined to that folder. Station checks the folder again when you
+continue:
+
+- A conversation filed under a Project continues under that Project. This
+  includes one in a worktree outside the Project folder: it continues in that
+  worktree. Station refuses if the worktree was removed or replaced, or if its
+  `.git` does not lead back to the Project's repository.
+- A conversation under **No project** continues as a **No project** chat
+  confined to its own folder, after you confirm that choice. This is allowed
+  only for a folder inside your home folder. Station refuses your home folder
+  itself, every folder outside it (system folders included), any hidden
+  folder directly in your home folder and everything in it (such as `.ssh`,
+  `.aws` or `.config`), `Library` on macOS and `AppData` on Windows, the
+  system temporary folder, and Station's own data folder. It also refuses
+  when the folder shown reaches another folder through a symbolic link
+  inside your home folder. To
+  continue such a conversation, add a Project for that folder or its
+  repository. Station does not move a conversation into another Project's folder,
+  because its history refers to files in the folder it ran in.
+
+A hosted Station does not continue conversations outside your Projects.
 
 An attached Session remains read only. Continuing opens a Station-owned child.
 If Station cannot confirm the result, use the offered retry for that same

@@ -6676,6 +6676,8 @@ export class OrchestrationService {
             // request's grant, like every other start, and (#1796) who
             // granted it. A grant naming no grantor is refused.
             adoptionConfinement(context?.fullAccessGrant),
+            // #3386: where a conversation no project claims continues.
+            command.target,
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke

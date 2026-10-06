@@ -18059,7 +18059,9 @@ describe('OrchestrationService', () => {
     await expect(
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
     ).rejects.toThrow(
-      `The attached session folder ${scratch} is not inside a project folder.`,
+      // #3386: a folder no project claims continues only when the caller
+      // chose a No project chat; the refusal names the folder and the choice.
+      "This conversation's folder belongs to no project. Choose to continue it as a No project chat",
     );
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });

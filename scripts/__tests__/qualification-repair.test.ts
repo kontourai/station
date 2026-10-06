@@ -17,9 +17,11 @@ import {
 } from '../actionlint-gate.mjs';
 import { eligibleLanding } from '../landing-automation.mjs';
 import {
+  NO_AGENT_REASON,
   nextRepairState,
   QUALIFICATION_GATE_JOB,
   qualificationConclusion,
+  repairAgent,
   repairState,
   validateRepairPaths,
   validateRepairRun,
@@ -451,6 +453,180 @@ fi
     }
   });
 
+  describe('repair agent selector', () => {
+    async function prepareWith(
+      agent: string | undefined,
+      opts: { conclusion?: string; existing?: object } = {},
+    ) {
+      const root = makeTempDir('station-repair-agent-');
+      const writes: Array<{ method: string; url: string; body: any }> = [];
+      const server = createServer(async (req, res) => {
+        let bytes = '';
+        for await (const chunk of req) bytes += chunk;
+        res.setHeader('content-type', 'application/json');
+        if (req.method !== 'GET')
+          writes.push({
+            method: req.method!,
+            url: req.url!,
+            body: bytes ? JSON.parse(bytes) : null,
+          });
+        if (req.url?.includes('/branches/main')) {
+          res.writeHead(503);
+          res.end('{}');
+          return;
+        }
+        if (req.url?.includes('/actions/runs/42/jobs')) {
+          res.end(
+            JSON.stringify({
+              jobs: [{ name: 'corpus', conclusion: 'failure' }],
+            }),
+          );
+          return;
+        }
+        if (req.url?.endsWith('/actions/runs/42')) {
+          res.end(
+            JSON.stringify({
+              ...run,
+              conclusion: opts.conclusion ?? 'failure',
+            }),
+          );
+          return;
+        }
+        if (req.url?.includes('/issues?')) {
+          res.end(JSON.stringify(opts.existing ? [opts.existing] : []));
+          return;
+        }
+        res.end(JSON.stringify({ number: 7, state: 'open' }));
+      });
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('No address');
+      const event = join(root, 'event.json');
+      writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+      const output = join(root, 'output');
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        GITHUB_REPOSITORY: 'owner/repo',
+        GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+        GITHUB_EVENT_PATH: event,
+        GITHUB_OUTPUT: output,
+        GITHUB_RUN_ID: '99',
+        GITHUB_RUN_ATTEMPT: '1',
+      };
+      delete env.QUALIFICATION_REPAIR_AGENT;
+      if (agent !== undefined) env.QUALIFICATION_REPAIR_AGENT = agent;
+      try {
+        const result = await exec(process.execPath, [script, 'prepare'], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        }).then(
+          () => ({ code: 0, stderr: '' }),
+          (error) => ({ code: error.code as number, stderr: error.stderr }),
+        );
+        let out = '';
+        try {
+          out = readFileSync(output, 'utf8');
+        } catch {}
+        return { ...result, out, writes };
+      } finally {
+        await new Promise<void>((done) => server.close(() => done()));
+      }
+    }
+
+    it.each([undefined, '', '  '])(
+      'records needs-owner without a claim or an invented owner when the agent is %j',
+      async (agent) => {
+        const result = await prepareWith(agent);
+        expect(result.code).toBe(0);
+        expect(result.out).toContain('claim=false');
+        expect(result.out).not.toContain('claim=true');
+        expect(result.writes).toHaveLength(1);
+        expect(result.writes[0]).toMatchObject({
+          method: 'POST',
+          url: '/repos/owner/repo/issues',
+        });
+        const body = result.writes[0].body.body as string;
+        expect(repairState(body)?.repairState).toBe('needs-owner');
+        expect(body).toContain(NO_AGENT_REASON);
+        expect(body).not.toContain('Owner: automated qualification repair');
+        expect(body).not.toContain('One bounded sweep');
+      },
+    );
+
+    it('keeps a claimed episode from before the opt-out parked at needs-owner', async () => {
+      const claimed = nextRepairState(null, run).state;
+      const existing = {
+        number: 7,
+        state: 'open',
+        title: 'Main qualification repair',
+        user: { login: 'github-actions[bot]' },
+        body: `<!-- station-qualification:${JSON.stringify(claimed)} -->`,
+      };
+      const result = await prepareWith(undefined, { existing });
+      expect(result.out).toContain('claim=false');
+      expect(result.writes[0].method).toBe('PATCH');
+      expect(repairState(result.writes[0].body.body)?.repairState).toBe(
+        'needs-owner',
+      );
+    });
+
+    it('still closes the issue on green with no agent configured', async () => {
+      const state = nextRepairState(null, run, { agent: false }).state;
+      const result = await prepareWith(undefined, {
+        conclusion: 'success',
+        existing: {
+          number: 7,
+          state: 'open',
+          title: 'Main qualification repair',
+          user: { login: 'github-actions[bot]' },
+          body: `<!-- station-qualification:${JSON.stringify({ ...state, lastStartedAt: '2026-10-01T00:00:00Z' })} -->`,
+        },
+      });
+      expect(result.code).toBe(0);
+      expect(result.writes).toEqual([
+        {
+          method: 'PATCH',
+          url: '/repos/owner/repo/issues/7',
+          body: { state: 'closed', state_reason: 'completed' },
+        },
+      ]);
+    });
+
+    it('claims a repair when the agent is codex', async () => {
+      const result = await prepareWith('codex');
+      // The branches/main stub fails after the claim, as in the settle test.
+      expect(result.out).toContain('claim=true');
+      const body = result.writes[0].body.body as string;
+      expect(repairState(body)?.repairState).toBe('claimed');
+      expect(body).toContain('Owner: automated qualification repair');
+    });
+
+    it('refuses an unknown agent and starts nothing', async () => {
+      for (const agent of ['Codex', 'claude', 'codex,claude']) {
+        const result = await prepareWith(agent);
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain('Unknown QUALIFICATION_REPAIR_AGENT');
+        expect(result.out).not.toContain('claim=true');
+        expect(result.writes).toEqual([]);
+      }
+    });
+
+    it('resolves the selector and withholds the claim in the state machine', () => {
+      expect(repairAgent(undefined)).toBeNull();
+      expect(repairAgent('')).toBeNull();
+      expect(repairAgent('codex')).toBe('codex');
+      expect(() => repairAgent('other')).toThrow(/Unknown/);
+      const first = nextRepairState(null, run, { agent: false });
+      expect(first.action).toBe('update');
+      expect(first.state.repairState).toBe('needs-owner');
+      expect(
+        nextRepairState(first.state, run, { agent: false, retry: true }).action,
+      ).toBe('update');
+    });
+  });
+
   it('settles an attempt whose preparation fails after claiming the durable episode', async () => {
     const root = makeTempDir('station-repair-prepare-');
     let body = '';
@@ -495,6 +671,7 @@ fi
       GITHUB_RUN_ID: '99',
       GITHUB_RUN_ATTEMPT: '1',
       REPAIR_ISSUE: '7',
+      QUALIFICATION_REPAIR_AGENT: 'codex',
     };
     try {
       await expect(

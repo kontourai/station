@@ -67,6 +67,9 @@ export class ACPManager {
     await Promise.all(
       configs.map((config) => this.addConnection(config, initiator)),
     );
+    // startAll runs again on every registry refresh; a stale timer would keep
+    // sweeping alongside the new one.
+    if (this.probeTimer) clearInterval(this.probeTimer);
     this.probeTimer = setInterval(() => void this.runProbes(), 60_000);
   }
 

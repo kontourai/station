@@ -178,8 +178,10 @@ HTTP status alone does not prove useful-work completion.
   creates no Task. A ready request creates the Task idempotently, then binds and
   fences dispatch. `state: "started"` can still contain unverified correlation
   or failed/indeterminate dispatch; read those fields before claiming execution.
-- **Continue a Session:** the body names only the Starter ID, operation ID, and
-  exact source Session ID. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+- **Continue a Session:** the body names the Starter ID, operation ID, and
+  exact source Session ID, plus an optional `target` for a Session no Project
+  claims (`adoptSession`'s `target`, [Session API](session-api.md)); it never
+  names a folder. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
   validates and adopts the source through the existing idempotency ledger.
   Its child Session/command receipt proves admission, not useful completion.
 - **Inspect approval/receipt:** candidate reads return exact typed references.
