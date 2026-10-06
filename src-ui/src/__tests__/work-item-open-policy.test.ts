@@ -7,6 +7,7 @@ import {
   resolveWorkItemOpenAction,
   workItemOpenFailureMessage,
 } from '../views/home/work-item-open-policy';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 function baseItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   return {
@@ -186,6 +187,42 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
   it('resolves to none for a row with neither a live tab nor a session', () => {
     const item = baseItem({ kind: 'task' });
     expect(resolveWorkItemOpenAction(item)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('a paired-Station record opens Activity, never a local chat', () => {
+  it('navigates to the record for a peer task', () => {
+    const [item] = buildOrchestrationItems([peerRecordSummary()] as never, []);
+    expect(item.delegationEnvironmentKind).toBe('peer');
+    expect(resolveWorkItemOpenAction(item)).toEqual({
+      kind: 'navigate',
+      threadId: 'peer-delegation:abc',
+    });
+  });
+
+  it('rehydrates the same shape when this Station runs the task (control)', () => {
+    const [item] = buildOrchestrationItems(
+      [
+        peerRecordSummary({
+          threadId: 'thread-local',
+          conversationId: 'conv-local',
+          delegation: {
+            taskId: 'task:local',
+            environmentKind: 'current',
+            targetKind: 'agent',
+            targetId: 'codex',
+          },
+        }),
+      ] as never,
+      [],
+    );
+    expect(item).not.toHaveProperty('delegationEnvironmentKind');
+    expect(resolveWorkItemOpenAction(item)).toMatchObject({
+      kind: 'rehydrate',
+      conversationId: 'conv-local',
+      agentSlug: 'codex',
+      threadId: 'thread-local',
+    });
   });
 });
 

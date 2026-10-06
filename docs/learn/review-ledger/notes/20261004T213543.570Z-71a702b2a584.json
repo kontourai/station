@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the new optional fields against attention.ts, orchestration.ts and environment-security.ts; all additive and absent on older Stations.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

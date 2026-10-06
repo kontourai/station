@@ -106,6 +106,7 @@ import {
   beginActionOperationTracking,
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
+import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -159,6 +160,7 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
@@ -367,6 +369,7 @@ const adoptSessionCommandSchema = z.object({
   type: z.literal('adoptSession'),
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
+  target: adoptSessionTargetSchema.optional(),
 });
 
 const interruptTurnCommandSchema = z.object({
@@ -888,11 +891,39 @@ const delegatedTaskEventsQuerySchema = z.object({
 
 export const continueDelegatedTaskBodySchema = z.object({
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+  // `delegatedInputAnswers`: deliver `message` only as the answer to this
+  // exact open input request on the task's current Session.
+  expectedInputRequest: inputRequestReferenceSchema.optional(),
   environmentId: z.string().min(1).max(512).optional(),
   model: z.string().min(1).max(512).optional(),
   // archive#978: per-invocation settings passthrough on a follow-up turn.
   modelOptions: z.record(z.unknown()).optional(),
 });
+
+/** Decorate a delegated-task snapshot's open request for the reading caller. */
+function withCallerCanRespond(
+  data: unknown,
+  mayAnswer: (taskId: string, requestType: string | undefined) => boolean,
+): unknown {
+  if (!data || typeof data !== 'object') return data;
+  const snapshot = data as {
+    taskId?: unknown;
+    pendingRequest?: { type?: unknown } & Record<string, unknown>;
+  };
+  if (typeof snapshot.taskId !== 'string' || !snapshot.pendingRequest)
+    return data;
+  const requestType =
+    typeof snapshot.pendingRequest.type === 'string'
+      ? snapshot.pendingRequest.type
+      : undefined;
+  return {
+    ...snapshot,
+    pendingRequest: {
+      ...snapshot.pendingRequest,
+      callerCanRespond: mayAnswer(snapshot.taskId, requestType),
+    },
+  };
+}
 
 const respondToDelegatedTaskBodySchema = z.object({
   requestId: z.string().min(1).max(512),
@@ -1572,6 +1603,19 @@ export function createOrchestrationRoutes(
     observeDelegatedTask?: (
       input: DelegatedTaskReferenceRequest,
     ) => Promise<unknown>;
+    /**
+     * `delegatedInputAnswers`: whether THIS request's caller passes this
+     * Station's gates on the route that answers a task's open request —
+     * `respond` (approve scope) for an approval, permission or
+     * confirmation, `continue` (execute scope) for an input question. Used
+     * to set `pendingRequest.callerCanRespond` on a task this Station serves
+     * itself; a model of those gates only, the handler can still refuse.
+     */
+    callerMayAnswerDelegatedRequest?: (
+      c: Context,
+      taskId: string,
+      requestType: string | undefined,
+    ) => boolean;
     refreshDelegatedTaskActivity?: (input: { userId: string }) => Promise<void>;
     observeDelegatedTaskEvents?: (
       input: DelegatedTaskEventsRequest,
@@ -3104,7 +3148,18 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
-      return c.json({ success: true, data });
+      // Only for a task this Station serves: a forwarded read carries the
+      // serving Station's own answer about this Station's credential.
+      return c.json({
+        success: true,
+        data:
+          parsed.data.environmentId === undefined &&
+          deps.callerMayAnswerDelegatedRequest
+            ? withCallerCanRespond(data, (taskId, requestType) =>
+                deps.callerMayAnswerDelegatedRequest!(c, taskId, requestType),
+              )
+            : data,
+      });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -3254,6 +3309,30 @@ export function createOrchestrationRoutes(
               code: portableRefusal,
             },
             403,
+          );
+        // `delegatedInputAnswers`: a bound answer whose request is gone or
+        // replaced, or a Station that cannot bind one. Closed codes only.
+        const bindingCode = errorCode(error);
+        if (bindingCode === 'input_binding_model_change')
+          return c.json(
+            { success: false, error: errorMessage(error), code: bindingCode },
+            400,
+          );
+        if (
+          bindingCode === 'input_request_changed' ||
+          bindingCode === 'request_event_changed' ||
+          bindingCode === 'input_binding_unsupported'
+        )
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code:
+                bindingCode === 'request_event_changed'
+                  ? 'input_request_changed'
+                  : bindingCode,
+            },
+            409,
           );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
@@ -4823,6 +4902,11 @@ export function createOrchestrationRoutes(
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
               ? { code: error.code, retryable: error.retryable }
+              : {}),
+            // #3386: a folder Station will not continue in; the same
+            // request is refused again, so clients offer no retry.
+            ...(error instanceof ContinuationPlaceRefusedError
+              ? { code: error.code, retryable: false }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError
               ? {

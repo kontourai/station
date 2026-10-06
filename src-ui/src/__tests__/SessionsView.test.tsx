@@ -3750,6 +3750,11 @@ describe('SessionsView', () => {
         {
           ...sessions[0],
           threadId: 'peer-delegation:847',
+          // The real writer's shape: the peer's target as the agent slug and
+          // the peer's conversation id.
+          assignedAgentSlug: 'codex',
+          conversationId: 'task-peer-847',
+          controlMode: 'station-owned',
           displayTitle: 'Run the peer checks',
           lifecycleState: 'queued',
           hasActiveTurn: false,
@@ -3769,6 +3774,8 @@ describe('SessionsView', () => {
       expect(rowNames(container)).toContain('Run the peer checks');
       // The paired Station owns the turn: no local Stop… on its row.
       expect(rowMenuItems('Run the peer checks')).not.toContain('Stop…');
+      // Its agent slug and conversation are the peer's: no local chat.
+      expect(rowMenuItems('Run the peer checks')).not.toContain('Open in chat');
     });
 
     test('every row carries a relative time', () => {

@@ -24,7 +24,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
-| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
+| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
@@ -37,7 +37,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. `usageProvisional` marks a terminal child whose usage is still its last running figure; settles that report usage replace it, and settled usage is otherwise sticky. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps the flag, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
@@ -583,7 +583,13 @@ Their absence means the task runs on this Station, or the server predates them.
 Station's checks on the delegated `respond` route. Both are additive and
 optional; neither feeds the local request routes. The source is
 `OrchestrationDelegationContext.peerPendingRequest` on the orchestration
-subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
+subpath, copied from the paired Station's status read and never derived here.
+With the `delegatedInputAnswers` capability (`StationCapabilityFlags` on the
+environment-security subpath) the reference also carries the paired Station's
+`threadId`, `requestEventId` and `callerCanRespond`, and
+`OrchestrationPeerPendingRequest` the matching `eventId`, `threadId`, `body`
+and `callerCanRespond`. All are optional; their absence means an older Station
+or no report, and clients then offer no bound answer. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)

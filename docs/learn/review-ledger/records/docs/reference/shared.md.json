@@ -78,6 +78,8 @@
 
     "packages/shared/src/parsers.ts",
 
+    "packages/shared/src/skill-experience-author.ts",
+
     "packages/shared/src/types.ts",
 
     "pnpm-lock.yaml",
@@ -108,11 +110,7 @@
 
     "src-ui/src/core/PluginRegistry.ts",
 
-    "src-ui/src/core/pluginSharedRuntime.ts",
-
-    "packages/shared/src/skill-experience-author.ts",
-
-    "packages/shared/src/display-text.ts"
+    "src-ui/src/core/pluginSharedRuntime.ts"
   ],
 
   "checks": [

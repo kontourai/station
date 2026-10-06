@@ -100,6 +100,7 @@ vi.mock('../auth/cli-auth.js', () => ({
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import {
   createStagedPreToolPolicyEvaluator,
   type StagedPreToolPolicyEvaluator,
@@ -602,6 +603,49 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('returns the actual proxy route with the same environment sent to the SDK', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const route = {
+      connectionId: 'proxy-home',
+      label: 'home-media',
+      endpoint: 'https://proxy.example',
+    };
+    const adapter = new ClaudeAdapter({
+      getConnectionLaunch: async () => ({
+        env: {
+          ANTHROPIC_BASE_URL: route.endpoint,
+          ANTHROPIC_AUTH_TOKEN: 'private-proxy-key',
+        },
+        args: [],
+        route,
+      }),
+    });
+    const session = await adapter.startSession({
+      provider: 'claude',
+      threadId: 'proxy-route-return',
+      cwd: '/tmp',
+      metadata: { modelRoute: { label: 'spoofed' } },
+    });
+    expect(session.modelRoute).toEqual(route);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          env: expect.objectContaining({
+            ANTHROPIC_AUTH_TOKEN: 'private-proxy-key',
+          }),
+        }),
+      }),
+    );
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    await events.next();
+    const configured = await events.next();
+    expect(configured.value).toMatchObject({
+      method: 'session.configured',
+      metadata: { modelRoute: route },
+    });
+    await events.return?.();
+  });
+
   test('deletes a fork when starting its query throws', async () => {
     mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
     mockQuery.mockImplementation(() => {
@@ -697,6 +741,66 @@ describe('ClaudeAdapter', () => {
       'tool.progress',
     ]);
   });
+
+  // station#3320: a resumed query() continues the cost total its transcript
+  // saved (Agent SDK 0.3.278 `total_cost_usd`; confirmed live with these
+  // figures), so the session's cost must be the latest figure, not the sum.
+  test.each([
+    ['resumes its transcript', 'native-transcript', 0.0324923],
+    ['restarts without resume', undefined, 0.030603 + 0.0324923],
+  ])(
+    'a second engine process that %s folds to the right session cost',
+    async (_label, resumeCursor, expectedCost) => {
+      const result = (total_cost_usd: number) => ({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'done',
+        stop_reason: 'end_turn',
+        num_turns: 1,
+        usage: { input_tokens: 10, output_tokens: 3 },
+        total_cost_usd,
+        uuid: `result-${crypto.randomUUID()}`,
+        session_id: 'native-transcript',
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const costEvents = () =>
+        events.filter(
+          (event) =>
+            event.method === 'token-usage.updated' &&
+            event.reportedCostUsd !== undefined,
+        );
+
+      mockQuery.mockReturnValueOnce(createMockQuery([result(0.030603)]));
+      await adapter.startSession({ provider: 'claude', threadId: 'cost' });
+      await vi.waitFor(() => expect(costEvents()).toHaveLength(1));
+      await adapter.stopSession('cost');
+
+      mockQuery.mockReturnValueOnce(createMockQuery([result(0.0324923)]));
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'cost',
+        ...(resumeCursor ? { resumeCursor } : {}),
+        // A marker copied from an earlier start must not claim a resume.
+        metadata: { nativeSessionResumed: true },
+      });
+      await vi.waitFor(() => expect(costEvents()).toHaveLength(2));
+      expect(mockQuery.mock.calls.at(-1)?.[0].options.resume).toBe(
+        resumeCursor,
+      );
+      await adapter.stopAll();
+      await drain;
+
+      expect(foldUsageEvents(events).reportedCostUsd).toBeCloseTo(
+        expectedCost,
+        10,
+      );
+    },
+  );
 
   test('sendTurn keeps the typed displayInput in turn.started while the SDK prompt queue receives the composed model input (#685)', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));

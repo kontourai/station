@@ -51,7 +51,7 @@ direction did not state, and they change the shape of the design:
 3. **"Nothing weaker" reaches the raw operator credential.** Today the scope
    and revoke routes accept the operator bootstrap credential as a bearer from
    any peer. The check is only `authority === 'operator-credential'`
-   (`src-server/runtime/routes/runtime-routes.ts:8301-8326`), and that
+   (`src-server/runtime/routes/runtime-routes.ts:8303-8328`), and that
    authority comes from the credential value alone
    (`runtime-routes.ts:1345-1352`). A remote browser that has that bearer is
    strictly weaker than passkey plus step-up. The design limits the
@@ -76,10 +76,10 @@ list never loads, whatever is pasted.
 
 | Route | Gate today | Evidence |
 |---|---|---|
-| `GET /api/pairing/devices` | Middleware only: `access:manage` family scope (`src-server/security/pairing-route-scopes.ts:879-884`), plus `authorizeCredential`, which admits the operator credential and local-grant-minted credentials and refuses every other device | `runtime-routes.ts:8627-8641`; `environment-security-service.ts:488, 498-509` |
-| `DELETE /api/pairing/devices/:id` | `currentOperator` (operator-credential authority + principal still current) | `runtime-routes.ts:8661-8682` |
-| `POST /api/pairing/devices/:id/scope` | `currentOperator`, checked twice; `expectedScope` makes the write conditional; drops live leases; resets full access | `runtime-routes.ts:8693-8781` |
-| `DELETE /api/pairing/devices/:id/record` | `currentOperator`; service also requires actor `operator-credential` | `runtime-routes.ts:8782-8804`; `src-server/services/ssh/device-pairing-service.ts:2316-2322` |
+| `GET /api/pairing/devices` | Middleware only: `access:manage` family scope (`src-server/security/pairing-route-scopes.ts:879-884`), plus `authorizeCredential`, which admits the operator credential and local-grant-minted credentials and refuses every other device | `runtime-routes.ts:8629-8643`; `environment-security-service.ts:488, 498-509` |
+| `DELETE /api/pairing/devices/:id` | `currentOperator` (operator-credential authority + principal still current) | `runtime-routes.ts:8663-8684` |
+| `POST /api/pairing/devices/:id/scope` | `currentOperator`, checked twice; `expectedScope` makes the write conditional; drops live leases; resets full access | `runtime-routes.ts:8695-8783` |
+| `DELETE /api/pairing/devices/:id/record` | `currentOperator`; service also requires actor `operator-credential` | `runtime-routes.ts:8784-8806`; `src-server/services/ssh/device-pairing-service.ts:2316-2322` |
 
 - The service-side approval vocabulary is
   `presented-credential | local-grant | ui-bootstrap | unauthenticated`
@@ -179,7 +179,7 @@ says otherwise for writes:
 
 - The desktop app self-provisions a **local-grant-minted device credential**
   (`station_local_self_provision`, `src-desktop/src/lib.rs`, reading the
-  per-boot secret at `:1821-1836` and exchanging it at
+  per-boot secret in `read_local_grant_secret` at `:1788-1802` and exchanging it at
   `/.well-known/station/v1/pairing/local-grant`), and stores it in the
   keychain under a `local-grant:` reference.
 - On desktop the panel adds no `Authorization` header
@@ -200,7 +200,11 @@ is source inspection only (**REASONED**). The panel's native-host text said
 the operator credential is "managed by" the host app, which describes a
 credential the desktop does not hold. For a scope change it now names the
 host CLI (`station environment access scope`, #3256). Revoke and record
-removal still carry the old text, because the CLI has no command for them yet.
+removal name `station environment access revoke <device>` and
+`station environment access remove <device>` (#3256): the same host-only
+operator channel and device selector as `scope`, a confirmation on a terminal
+or `--force` without one, and a refusal unless Station's answer names the
+device the operator chose.
 
 Consequence for the design: "host operator" via `isBoundLocalGrantMintedOperator`
 (section 3.1, item 5) is a **new** acceptance on the write routes, not the
@@ -233,7 +237,7 @@ operator passkey is rooted in a host confirmation.
 | T6 | Attacker on the tailnet who has a paired device | Enroll their own passkey | Enrollment requires host confirmation of a pending request. The host shows the requesting device's server-verified name, the RP ID, and a 6-digit code that the operator must match against their own browser. Residual: the operator approving the wrong request. This is the same residual pairing accepts. |
 | T7 | Lost or destroyed passkey | Lockout | The host channel always works (CLI, host desktop app). The operator enrolls a replacement from the host and revokes the lost one from the host. Two passkeys are recommended at enrollment. |
 | T8 | Leaked raw operator credential, used remotely | Administer devices | After D2 (S1b), the device-admin routes accept the raw credential only with proof of a host-only secret, not on network position, which a same-host proxy or tunnel can fake. Other uses of the credential are unchanged (out of scope). |
-| T9 | Racing operators or stale review | Re-grant what another operator removed | Keep `expectedScope` (`runtime-routes.ts:8712-8718`). The transaction fingerprint includes `expectedScope`, and the target is revalidated immediately before commit. |
+| T9 | Racing operators or stale review | Re-grant what another operator removed | Keep `expectedScope` (`runtime-routes.ts:8714-8720`). The transaction fingerprint includes `expectedScope`, and the target is revalidated immediately before commit. |
 | T10 | Downgrade: no HTTPS operator origin | Fall back to something weaker | Fail closed. Without an HTTPS operator origin, remote operator sign-in is unavailable and the panel says to use the host. No password, code, or bearer fallback. |
 
 Out of scope: a compromised host OS (it is the root), hosted multi-tenant
@@ -618,7 +622,7 @@ session expires after 15 minutes idle or 60 minutes absolute.
 
 | Event | Action | Who |
 |---|---|---|
-| Paired browser stolen | Revoke the device on the host. Bound operator sessions end, and live leases drop (existing `disconnectDevice`, `runtime-routes.ts:8670`). | host, or another operator session + step-up |
+| Paired browser stolen | Revoke the device on the host. Bound operator sessions end, and live leases drop (existing `disconnectDevice`, `runtime-routes.ts:8672`). | host, or another operator session + step-up |
 | Passkey lost | `station environment operator passkeys revoke <id>`. Sessions created with it end. | host (D8 for remote) |
 | Every passkey lost | Use the host. Device admin keeps working through the host CLI and desktop app. Enroll a new passkey with host confirmation. | host |
 | Suspected session theft | `DELETE /api/operator/sessions` (all), or `sessions revoke --all` on the host | host, or step-up |

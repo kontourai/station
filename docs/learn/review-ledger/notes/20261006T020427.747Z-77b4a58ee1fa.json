@@ -1,0 +1,17 @@
+{
+  "revision": "5b10213a069aba477b51cedc79ca96c87d1448d8",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3337: child-work row now says a field a settle reported stays sticky while usageRunningFields names other fields still running, and childWorkSettleFromItem keeps both flags. Checked against settledUsage/runningFieldsOf/normalizeRunningFields/childWorkSettleFromItem in packages/contracts/src/child-work.ts and the #3337 reducer test. Other rows unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/src/child-work.ts"]},
+
+    {"path":"docs/glossary.md","note":"#3337: only the contracts reference child-work row and child-work.ts usage tracking changed; glossary defines no child-work usage or provisional vocabulary. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3337: contracts reference child-work row gained usageRunningFields; this guide routes to the contracts reference and makes no child-work usage claim. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#3337: muse-serve-adapter tests now also assert Muse workflow children settle with their full accumulated usage (not provisional). The guide's Muse rows (serve per-turn usage; workflow subagent tokens Added, cost Not counted, child-work usage a separate projection) are unchanged by this; no consumer reads usageProvisional. No prose change.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#3337: routes to the contracts reference, whose child-work row changed; the routing and compatibility guidance still hold. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/README.md","note":"#3337: child-work.ts gained an optional usageRunningFields item/settle field and an exported ChildWorkUsageField type, still a pure reducer; README's pure-reducers claim holds. No prose change.","inputs":["packages/contracts/README.md","packages/contracts/src/child-work.ts"]}
+  ]
+}

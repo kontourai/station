@@ -230,12 +230,106 @@ describe('applyChildWorkDelta', () => {
         usage: { totalTokens: 41833, toolUses: 1, durationMs: 3677 },
       }),
     );
+    // #3337: the duration the first settle reported is sticky; only the
+    // running fields are replaced.
     expect(get(final, 'a')?.usage).toEqual({
       totalTokens: 41833,
       toolUses: 1,
-      durationMs: 3677,
+      durationMs: 3000,
     });
     expect(get(final, 'a')?.usageProvisional).toBeUndefined();
+  });
+
+  test('#3337 a field a settle reported stays sticky while other fields are still running figures', () => {
+    const partial = fold(
+      snapshot(item('a', { usage: { totalTokens: 100 } })),
+      settle('a', 'completed', { usage: { durationMs: 5 } }),
+    );
+    expect(get(partial, 'a')).toMatchObject({
+      usage: { totalTokens: 100, durationMs: 5 },
+      usageProvisional: true,
+      usageRunningFields: ['totalTokens'],
+    });
+    // A stale duration-only settle cannot move the reported duration.
+    const stale = applyChildWorkDelta(
+      partial,
+      settle('a', 'completed', { usage: { durationMs: 1 } }),
+    );
+    expect(stale).toBe(partial);
+    // The running token count is still replaced by a settle that reports it,
+    // and the duration stays the one first reported.
+    const final = applyChildWorkDelta(
+      partial,
+      settle('a', 'completed', { usage: { totalTokens: 120, durationMs: 9 } }),
+    );
+    expect(get(final, 'a')?.usage).toEqual({
+      totalTokens: 120,
+      durationMs: 5,
+    });
+    expect(get(final, 'a')?.usageProvisional).toBeUndefined();
+    expect(get(final, 'a')?.usageRunningFields).toBeUndefined();
+
+    // A replay keeps the split: the token count stays running, the duration
+    // sticky, cold and onto the live item.
+    const replay = childWorkSettleFromItem(get(partial, 'a') as ChildWorkItem);
+    expect(replay).toMatchObject({
+      usageProvisional: true,
+      usageRunningFields: ['totalTokens'],
+    });
+    expect(replay?.identity).not.toHaveProperty('usageRunningFields');
+    const cold = fold(replay as ChildWorkDelta);
+    expect(get(cold, 'a')).toEqual(get(partial, 'a'));
+    expect(applyChildWorkDelta(partial, replay as ChildWorkDelta)).toBe(
+      partial,
+    );
+    expect(
+      get(
+        fold(
+          replay as ChildWorkDelta,
+          settle('a', 'completed', { usage: { durationMs: 1 } }),
+        ),
+        'a',
+      )?.usage,
+    ).toEqual({ totalTokens: 100, durationMs: 5 });
+    // An empty or unknown-only running list is not a settled report: the
+    // replay restates running figures, and the real final figure still wins.
+    const live = fold(
+      snapshot(item('d', { usage: { totalTokens: 40141 } })),
+      settle('d', 'completed'),
+    );
+    for (const usageRunningFields of [[], ['bogus']] as never[]) {
+      const replayed = applyChildWorkDelta(
+        live,
+        settle('d', 'completed', {
+          usage: { totalTokens: 1 },
+          usageProvisional: true,
+          usageRunningFields,
+        }),
+      );
+      expect(replayed).toBe(live);
+      const coldReplay = fold(
+        settle('d', 'completed', {
+          usage: { totalTokens: 1 },
+          usageProvisional: true,
+          usageRunningFields,
+        }),
+        settle('d', 'completed', { usage: { totalTokens: 41833 } }),
+      );
+      expect(get(coldReplay, 'd')?.usage).toEqual({ totalTokens: 41833 });
+      expect(get(coldReplay, 'd')?.usageProvisional).toBeUndefined();
+    }
+    // Producers cannot claim the field split: identity never carries it.
+    const tomb = fold(
+      settle('c', 'completed', {
+        usage: { totalTokens: 3 },
+        identity: {
+          usageProvisional: true,
+          usageRunningFields: ['totalTokens'],
+        } as never,
+      }),
+    );
+    expect(get(tomb, 'c')).not.toHaveProperty('usageRunningFields');
+    expect(get(tomb, 'c')?.usageProvisional).toBeUndefined();
   });
 
   test('#3308 childWorkSettleFromItem keeps provisional usage provisional through a replay', () => {
