@@ -1884,6 +1884,7 @@ export function e2eProviderConfigEnv(suite, roots, inheritedEnv = process.env) {
   return {
     STATION_EXTERNAL_CLAUDE_SOURCE_ROOT: roots.claude,
     STATION_EXTERNAL_CODEX_SOURCE_ROOT: roots.codex,
+    STATION_EXTERNAL_OPENCODE_SOURCE_ROOT: roots.opencode,
     CLAUDE_CONFIG_DIR:
       suite === 'smoke-live' ? inheritedEnv.CLAUDE_CONFIG_DIR : roots.claude,
     CODEX_HOME: suite === 'smoke-live' ? inheritedEnv.CODEX_HOME : roots.codex,
@@ -2100,6 +2101,7 @@ async function main() {
   // The live server can retain CLI authentication without importing host history.
   const claudeConfigDir = mkdtempSync(join(tmpdir(), `${instance}-claude-`));
   const codexConfigDir = mkdtempSync(join(tmpdir(), `${instance}-codex-`));
+  const openCodeDataDir = mkdtempSync(join(tmpdir(), `${instance}-opencode-`));
   const suitePorts = E2E_SUITE_PORTS[suite];
   // station#1177: de-herd concurrent sessions off the shared preferred block.
   const jitter = portBiasJitter(Math.random, suite);
@@ -2182,6 +2184,7 @@ async function main() {
                 ...e2eProviderConfigEnv(suite, {
                   claude: claudeConfigDir,
                   codex: codexConfigDir,
+                  opencode: openCodeDataDir,
                 }),
               },
               onSpawn: (child) => {
@@ -2273,6 +2276,7 @@ async function main() {
   if (runFailure) {
     rmSync(claudeConfigDir, { recursive: true, force: true });
     rmSync(codexConfigDir, { recursive: true, force: true });
+    rmSync(openCodeDataDir, { recursive: true, force: true });
     // The coordinator supplies a unique root only for the full coverage run.
     // Retain each failed bucket's screenshots, traces, and bounded logs before
     // its runner-local cleanup can reclaim the instance directory.
@@ -2444,6 +2448,7 @@ async function main() {
         }
         rmSync(claudeConfigDir, { recursive: true, force: true });
         rmSync(codexConfigDir, { recursive: true, force: true });
+        rmSync(openCodeDataDir, { recursive: true, force: true });
         if (!runFailure && cleanup.errors.length === 0) {
           try {
             removeE2ETestResults(process.cwd(), instance);

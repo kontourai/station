@@ -2,6 +2,8 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
+import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
@@ -760,6 +762,7 @@ export class StationRuntime {
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
   private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
     resolveSourceHome: (affinity) =>
@@ -3659,6 +3662,8 @@ export class StationRuntime {
           attachedSessionSources: [
             this.claudeTranscriptSource,
             this.codexRolloutSource,
+            new GrokSessionSource({ logger: this.logger }),
+            this.openCodeSessionSource,
           ],
           port: this.port,
           host: this.host,

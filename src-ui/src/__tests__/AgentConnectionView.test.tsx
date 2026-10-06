@@ -1698,7 +1698,7 @@ test('guided proxy setup saves a reference and checks only saved settings', asyn
       id: 'proxy-home',
       kind: 'model',
       type: 'openai-compat',
-      name: 'brian-media',
+      name: 'home-media',
       enabled: true,
       config: { apiKeyConfigured: true },
       capabilities: ['llm'],

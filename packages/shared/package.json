@@ -60,6 +60,7 @@
     "./source-watch": "./src/source-watch.ts",
     "./conversation-message": "./src/conversation-message.ts",
     "./runtime-event-projection": "./src/runtime-event-projection.ts",
+    "./extension-transcript-markers": "./src/extension-transcript-markers.ts",
     "./request-settlement": "./src/request-settlement.ts",
     "./usage-fold": "./src/usage-fold.ts",
     "./usage-measurement": "./src/usage-measurement.ts",
@@ -77,6 +78,7 @@
     "./instance-registry": "./src/instance-registry.ts",
     "./notification-priority": "./src/notification-priority.ts",
     "./notification-envelope": "./src/notification-envelope.ts",
+    "./client-protocol": "./src/client-protocol.ts",
     "./native-shell-origin": "./src/native-shell-origin.ts",
     "./answer-share-projection": "./src/answer-share-projection.ts",
     "./thread-projection": "./src/thread-projection.ts",
@@ -113,7 +115,7 @@
   "dependencies": {
     "@kontourai/station-contracts": "^0.8.0",
     "@kontourai/thread": "0.5.0",
-    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/client": "2.2.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
     "jose": "6.2.12"

@@ -7,6 +7,12 @@ import type {
   ConversationMessage,
   MessagePart,
 } from './conversation-message.js';
+import {
+  EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+  EXTENSION_TRANSCRIPT_MARKER_TEXT,
+  type ExtensionTranscriptMarkerKind,
+  extensionTranscriptMarker,
+} from './extension-transcript-markers.js';
 import { readHarnessQuestionnaire } from './harness-questions.js';
 import { readMcpElicitationForm } from './mcp-elicitation.js';
 import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
@@ -395,10 +401,29 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
-  const emitAssistantTurn = () => {
+  /** station#3415: markers that arrived during the open turn. */
+  let heldMarkers: Array<{
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
+    marker: ExtensionTranscriptMarkerKind;
+  }> = [];
+
+  /**
+   * True once the open turn's Session exited: no terminal will ever close
+   * that turn, so its held markers are shown after it even though the window
+   * ends with the turn still open (someone quit the engine mid-turn).
+   */
+  let openTurnSessionExited = false;
+
+  /**
+   * `releaseMarkers` is false only for the open turn the window ends on: that
+   * turn has not closed, so its held markers are not shown yet — unless its
+   * Session already exited (`openTurnSessionExited`).
+   */
+  const emitAssistantTurn = (releaseMarkers = true) => {
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    const closedTurnTimestamp = turnTimestamp;
     // A turn that produced nothing after its steer still needs an owner row,
     // or a late event for it would land on whatever turn is open next.
     const endedKey = turnKey(turnSessionId, turnIdentity);
@@ -433,6 +458,12 @@ export function projectRuntimeEventsToMessages(
     turnSessionId = undefined;
     turnAnswerEligible = false;
     turnAnchorEventId = undefined;
+    const held = heldMarkers;
+    heldMarkers = [];
+    openTurnSessionExited = false;
+    if (releaseMarkers)
+      for (const { ev, marker } of held)
+        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
   };
 
   const stamp = (createdAt?: string) => {
@@ -473,6 +504,55 @@ export function projectRuntimeEventsToMessages(
       const index = list.indexOf(toolPart);
       if (index >= 0) return void list.splice(index + 1, 0, ...files);
     }
+  };
+
+  /**
+   * station#3415: an extension notification the transcript shows as a marker
+   * line (`extension-transcript-markers.ts`). A marker never splits a turn:
+   * the turn stays one assistant row with its canonical id and its answer
+   * eligibility, exactly as without markers. One that arrives between turns
+   * is a row in place; one that arrives during a turn is held and emitted
+   * right after that turn's rows when the turn closes (`emitAssistantTurn`),
+   * labelled as having happened during it. While the turn is open it shows
+   * nothing, so a live marker never moves or remounts the open turn's row.
+   */
+  const pushTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+    marker: ExtensionTranscriptMarkerKind,
+    duringTurn: boolean,
+    /**
+     * For a held marker, the closed turn's row timestamp: readers that merge
+     * rows by timestamp (the chat dock) then keep the marker after its turn
+     * rather than inside it.
+     */
+    turnRowTimestamp?: number,
+  ) => {
+    const timestamp =
+      turnRowTimestamp ??
+      (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
+    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
+    messages.push({
+      id:
+        options.stableIds && ev.eventId
+          ? `${ev.eventId}:transcript-marker`
+          : `proj-${messages.length}`,
+      role: 'system',
+      parts: [
+        {
+          type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+          text: duringTurn ? text.duringTurn : text.betweenTurns,
+        },
+      ],
+      ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
+    });
+  };
+  const emitTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+  ) => {
+    const marker = extensionTranscriptMarker(ev.namespace, ev.type);
+    if (!marker) return;
+    if (turnOpen) heldMarkers.push({ ev, marker });
+    else pushTranscriptMarker(ev, marker, false);
   };
 
   for (const ev of events) {
@@ -1077,6 +1157,15 @@ export function projectRuntimeEventsToMessages(
         noteModelGeneration(sessionModel, sessionReportedModelFromEvent);
         break;
       }
+      case 'extension.notification':
+        emitTranscriptMarker(ev);
+        break;
+      case 'session.exited':
+        // The turn row itself is unchanged (it is still emitted as it
+        // stands at the end); only its held markers are now owed a place.
+        if (turnOpen && (!turnSessionId || turnSessionId === ev.threadId))
+          openTurnSessionExited = true;
+        break;
       case 'session.state-changed': {
         // station#4080 slice 1 (review round 1, M3): gate on
         // `interruptedTurnBoundary` — a field documented as written ONLY by
@@ -1114,7 +1203,7 @@ export function projectRuntimeEventsToMessages(
     }
   }
 
-  if (turnOpen) emitAssistantTurn();
+  if (turnOpen) emitAssistantTurn(openTurnSessionExited);
   return messages.map((message) => {
     if (
       message.role !== 'assistant' ||

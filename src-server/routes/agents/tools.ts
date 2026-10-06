@@ -52,6 +52,12 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
+import {
+  changesAny,
+  launchesCommand,
+  refuseUngrantedCommandChoice,
+  submitsAnyEntry,
+} from '../working-directory-authority.js';
 
 /**
  * Optional collaborators for the MCP-UI tool-call proxy (S2 approval+audit).
@@ -198,6 +204,9 @@ function integrationReadProjection(
     ),
   };
 }
+
+/** The fields whose values reach a launched tool server's environment. */
+const ENV_FIELDS = ['env', 'secretEnv'] as const;
 
 export function createToolRoutes(
   mcpService: MCPService,
@@ -379,6 +388,23 @@ export function createToolRoutes(
   app.post('/', validate(integrationSchema), async (c) => {
     try {
       const input = getBody(c) as ToolDef;
+      // A tool server's command, arguments and environment decide what
+      // Station will spawn and with what in its environment (the child gets
+      // `env` and the resolved secret env, mcp-manager.ts
+      // `withResolvedMCPEnvironment`), so setting any of them takes the
+      // authority to choose a command. No key list: any value can steer a
+      // launched program (NODE_OPTIONS, PATH, LD_PRELOAD, ...).
+      const stored = await mcpService
+        .getIntegration(input.id)
+        .catch(() => undefined);
+      if (
+        changesAny(input, undefined, ['command', 'args']) ||
+        (submitsAnyEntry(input, ENV_FIELDS) &&
+          launchesCommand({ ...stored, ...input }))
+      ) {
+        const commandRefused = refuseUngrantedCommandChoice(c);
+        if (commandRefused) return commandRefused;
+      }
       const { env, ...safe } = input;
       delete safe.storedEnvNames;
       if (env)
@@ -771,6 +797,17 @@ export function createToolRoutes(
         delete update.env;
       }
       const existing = await mcpService.getIntegration(id);
+      const next = { ...existing, ...update };
+      if (
+        changesAny(update, existing, ['command', 'args']) ||
+        // A record that holds a command but did not launch it (a URL
+        // transport) starts launching it: that is choosing the command.
+        (launchesCommand(next) && !launchesCommand(existing)) ||
+        (submitsAnyEntry(update, ENV_FIELDS) && launchesCommand(next))
+      ) {
+        const commandRefused = refuseUngrantedCommandChoice(c);
+        if (commandRefused) return commandRefused;
+      }
       // GET intentionally redacts env, so an ordinary edit round-trip omits it.
       // Omission and partial submission preserve untouched stored secrets.
       const merged: ToolDef = { ...existing, ...update, id };

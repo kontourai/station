@@ -525,7 +525,7 @@ function installRemoteStationFetch(
   remoteFixture.ssh = {
     profile: {
       id: 'profile-1',
-      name: 'Brian media',
+      name: 'Home media',
       environmentId: 'environment-remote',
       remoteHome:
         discovery && 'remoteHome' in discovery
@@ -1071,7 +1071,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     const handle = delegationHandle({
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -1100,6 +1100,59 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url).includes('/api/orchestration/commands'),
       ),
     ).toBe(false);
+  });
+
+  test("answers a receiver's folder refusal with this Station's own sentence, never the receiver's text", async () => {
+    installRemoteStationFetch('/api/orchestration/delegations', {});
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === `${REMOTE_API}/api/orchestration/delegations`
+        ? json(
+            {
+              success: false,
+              code: 'working-directory-not-granted',
+              error: 'RECEIVER-TEXT must not be relayed',
+            },
+            403,
+          )
+        : base(input, init),
+    );
+    const { delegateTask, REMOTE_FOLDER_NOT_GRANTED_MESSAGE } = await import(
+      '../station-control-delegation.js'
+    );
+
+    const failure = await delegateTask({
+      prompt: 'Run tests',
+      target: savedTarget(),
+    }).catch((error: unknown) => error as Error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(REMOTE_FOLDER_NOT_GRANTED_MESSAGE);
+    expect((failure as Error).message).not.toContain('RECEIVER-TEXT');
+    expect((failure as Error).message).toContain('coding:exec');
+    expect((failure as Error).message).toContain('--project');
+  });
+
+  test('keeps the generic answer for a receiver 403 that is not the folder refusal', async () => {
+    installRemoteStationFetch('/api/orchestration/delegations', {});
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === `${REMOTE_API}/api/orchestration/delegations`
+        ? json({ success: false, code: 'other-refusal', error: 'x' }, 403)
+        : base(input, init),
+    );
+    const { delegateTask, REMOTE_FOLDER_NOT_GRANTED_MESSAGE } = await import(
+      '../station-control-delegation.js'
+    );
+
+    const failure = await delegateTask({
+      prompt: 'Run tests',
+      target: savedTarget(),
+    }).catch((error: unknown) => error as Error);
+
+    expect((failure as Error).message).not.toBe(
+      REMOTE_FOLDER_NOT_GRANTED_MESSAGE,
+    );
   });
 
   test('records a peer dispatch on the delegating Station only after the peer accepts it (#847)', async () => {
@@ -1975,6 +2028,32 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test("answers a receiver's folder refusal on a remote foreground send with this Station's own sentence", async () => {
+    installRemoteStationFetch('/api/orchestration/chat', {});
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === `${REMOTE_API}/api/orchestration/chat`
+        ? json(
+            {
+              success: false,
+              code: 'working-directory-not-granted',
+              error: 'RECEIVER-TEXT must not be relayed',
+            },
+            403,
+          )
+        : base(input, init),
+    );
+    const { executeExecutionTargetMessage, REMOTE_FOLDER_NOT_GRANTED_MESSAGE } =
+      await import('../station-control-delegation.js');
+
+    const failure = await executeExecutionTargetMessage({
+      target: savedTarget(),
+      message: 'Inspect',
+    }).catch((error: unknown) => error as Error);
+
+    expect((failure as Error).message).toBe(REMOTE_FOLDER_NOT_GRANTED_MESSAGE);
+  });
+
   test('executes a local foreground message through the injected service', async () => {
     installCurrentStationFetch();
     const service = localService();
@@ -2274,7 +2353,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       status: 'dispatched',
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
@@ -2323,7 +2402,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       status: 'running',
       environment: {
         id: 'environment-remote',
-        name: 'Brian media',
+        name: 'Home media',
         kind: 'ssh',
       },
       target: { kind: 'agent', id: 'codex' },
