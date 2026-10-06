@@ -5,9 +5,9 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { openCodeAgentReader } from '../../services/acp/opencode-approval-verify.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
-import { openCodeAgentReader } from '../../services/acp/opencode-approval-verify.js';
 
 /**
  * #3290: Station's approval mode governs OpenCode over ACP.
