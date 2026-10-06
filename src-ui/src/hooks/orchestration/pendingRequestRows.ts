@@ -107,47 +107,48 @@ export function unansweredApprovalRequests(
         bound.add(requestKey(part.approvalThreadId, part.approvalId));
     }
   }
-  const unanswered = open.filter(
-    (request) =>
-      readHarnessQuestionnaire(request.payload?.questionnaire) !== null ||
-      readMcpElicitationForm(request.payload?.mcpElicitation) !== null ||
-      !bound.has(requestKey(request.threadId, request.requestId)),
-  );
-  if (unanswered.length === 0) return NO_REQUESTS;
-  return unanswered.map((request) => {
-    const { toolName, toolInput } = toolRequestFromPayload(request.payload);
+  const unanswered = open.flatMap((request) => {
+    const questionnaire = readHarnessQuestionnaire(
+      request.payload?.questionnaire,
+    );
     const mcpElicitation = readMcpElicitationForm(
       request.payload?.mcpElicitation,
     );
+    if (
+      !questionnaire &&
+      !mcpElicitation &&
+      bound.has(requestKey(request.threadId, request.requestId))
+    )
+      return [];
+    const { toolName, toolInput } = toolRequestFromPayload(request.payload);
     const toolCallId = request.payload?.toolCallId;
-    return {
-      type: 'tool-invocation',
-      toolCallId:
-        typeof toolCallId === 'string'
-          ? toolCallId
-          : `request:${request.requestId}`,
-      // A request with no reported tool keeps its title as the display name
-      // only, so the grant label never names a command line.
-      ...(toolName ? { toolName } : { name: request.title }),
-      ...(toolName ? { approvalToolName: toolName } : {}),
-      ...(typeof request.payload?.toolKind === 'string'
-        ? { toolKind: request.payload.toolKind }
-        : {}),
-      ...(toolInput !== undefined ? { args: toolInput } : {}),
-      state: 'awaiting-approval',
-      needsApproval: true,
-      approvalId: request.requestId,
-      ...(readHarnessQuestionnaire(request.payload?.questionnaire)
-        ? {
-            questionnaire: readHarnessQuestionnaire(
-              request.payload?.questionnaire,
-            )!,
-          }
-        : {}),
-      ...(mcpElicitation ? { mcpElicitation } : {}),
-      approvalThreadId: request.threadId,
-      approvalEventId: request.eventId,
-      approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
-    };
+    return [
+      {
+        type: 'tool-invocation',
+        toolCallId:
+          typeof toolCallId === 'string'
+            ? toolCallId
+            : `request:${request.requestId}`,
+        // A request with no reported tool keeps its title as the display name
+        // only, so the grant label never names a command line.
+        ...(toolName ? { toolName } : { name: request.title }),
+        ...(toolName ? { approvalToolName: toolName } : {}),
+        ...(typeof request.payload?.toolKind === 'string'
+          ? { toolKind: request.payload.toolKind }
+          : {}),
+        ...(toolInput !== undefined ? { args: toolInput } : {}),
+        state: 'awaiting-approval',
+        needsApproval: true,
+        approvalId: request.requestId,
+        ...(questionnaire ? { questionnaire } : {}),
+        ...(mcpElicitation ? { mcpElicitation } : {}),
+        approvalThreadId: request.threadId,
+        approvalEventId: request.eventId,
+        approvalSessionGrant: toolRequestSessionGrantFromPayload(
+          request.payload,
+        ),
+      },
+    ];
   });
+  return unanswered.length === 0 ? NO_REQUESTS : unanswered;
 }

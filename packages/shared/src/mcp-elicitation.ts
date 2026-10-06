@@ -145,7 +145,6 @@ export function mcpElicitationFormFromRequest(
   if (entries.length > MCP_ELICITATION_MAX_FIELDS) return null;
   const fields: unknown[] = [];
   for (const [name, property] of entries) {
-    if (!name || name.length > MAX_NAME_CHARS) return null;
     const field = fieldFromSchema(name, property, required.includes(name));
     if (!field) return null;
     fields.push(field);
