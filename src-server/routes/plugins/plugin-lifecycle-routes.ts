@@ -491,7 +491,9 @@ export function registerPluginLifecycleRoutes(
 
   // Updating pulls and runs new code: the person check on the route, and the
   // authority to choose a command ahead of it.
-  app.use('/:name/update', commandChoiceOnly);
+  // (The person check also stays on the route; it runs first here so its
+  // refusal is the one a delegated or unconfirmed device reads.)
+  app.use('/:name/update', personOnly('update a plugin'), commandChoiceOnly);
   app.post('/:name/update', personOnly('update a plugin'), async (c) => {
     const name = param(c, 'name');
     try {

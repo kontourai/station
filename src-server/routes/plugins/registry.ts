@@ -152,6 +152,18 @@ function stripDisplayNameQualifiers(value: string): string {
   return parts.join('').trim();
 }
 
+/**
+ * Who may install a plugin from the registry: a person (not Station's own
+ * agent tools or another Station), and, because installing runs the package's
+ * code, one with the authority to run commands.
+ */
+function refusePluginInstallCaller(c: Context): Response | undefined {
+  return (
+    refuseInternalControlCaller(c, 'install a plugin') ??
+    refuseUngrantedCommandChoice(c)
+  );
+}
+
 export function createRegistryRoutes(
   configLoader: ConfigLoader,
   refreshACPModes: () => Promise<void>,
@@ -1218,12 +1230,8 @@ export function createRegistryRoutes(
   ) => {
     // #2323 S5: the plugin install path for both catalog faces, so the
     // person-only refusal lives here rather than on each route.
-    const refused = refuseInternalControlCaller(c, 'install a plugin');
+    const refused = refusePluginInstallCaller(c);
     if (refused) return refused;
-    // Installing runs the package's code: the person check above is not the
-    // authority to run commands.
-    const commandRefused = refuseUngrantedCommandChoice(c);
-    if (commandRefused) return commandRefused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {
       id,
