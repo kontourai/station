@@ -170,8 +170,8 @@
 
     {"path":"src-ui/AGENTS.md","note":"Source change(s): the module map gained a SessionDigest index row and section. Searched this document for claims about the station-control tool set, the session read model, the status words, pairing route scopes, route mounts and the module list: it makes none that these affect, so no prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
 
-    {"path":"docs/learn/media/inspect-request.png","note":"Binary capture (an image or video of the inspect-request flow); no textual claims are affected. The source change is an optional read-model narrowing that the captured flow (inspecting a request) does not use.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture of the inspect-request flow; OrchestrationService.listSessionReadModel gained an optional `threadIds` narrowing (existing callers and results unchanged). The captured flow (inspecting a request) uses none of it, so the capture is unaffected.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
 
-    {"path":"docs/learn/media/inspect-request.webm","note":"Binary capture (an image or video of the inspect-request flow); no textual claims are affected. The source change is an optional read-model narrowing that the captured flow (inspecting a request) does not use.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture of the inspect-request flow; OrchestrationService.listSessionReadModel gained an optional `threadIds` narrowing (existing callers and results unchanged). The captured flow (inspecting a request) uses none of it, so the capture is unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
   ]
 }
