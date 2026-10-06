@@ -34,6 +34,10 @@ import {
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
+import {
+  type AttachedPathProbe,
+  sharedAttachedPathProbe,
+} from './attached-session-path-probe.js';
 import { PollSessionSnapshot } from './attached-session-poll-snapshot.js';
 import {
   createPollRepositoryLookup,
@@ -260,6 +264,12 @@ interface AttachedSessionFollowServiceOptions {
    */
   invalidateSessionOwner?: (threadId: string) => void;
   /**
+   * #3406: where a poll reads session and project folders (real path and
+   * repository), off the main thread and with a deadline. Defaults to the
+   * process's shared probe; tests pass their own.
+   */
+  pathProbe?: AttachedPathProbe;
+  /**
    * #3386: follow a session no project claims, with no project (the UI's
    * "No project"), instead of dropping it. It is owned by the local operator
    * exactly like an attributed one, so it is readable by nobody else.
@@ -370,9 +380,17 @@ export class AttachedSessionFollowService {
 
   private async poll(): Promise<void> {
     const projectRoots = await this.projectRoots();
-    const repositories = createPollRepositoryLookup(
-      this.options.locateRepository,
+    // #3406: every folder this poll matches is read in the probe's child
+    // process, never synchronously here, so a hung mount cannot stall it.
+    const paths = (
+      this.options.pathProbe ?? sharedAttachedPathProbe()
+    ).forPoll();
+    await paths.prepare(
+      projectRoots.map((project) => project.workingDirectory),
     );
+    const repositories = this.options.locateRepository
+      ? createPollRepositoryLookup(this.options.locateRepository)
+      : paths.repository;
     const projectSlugs = new Set(projectRoots.map((project) => project.slug));
     // Read only when a poll finds a session outside every project.
     let outsideProjects: Promise<boolean> | undefined;
@@ -410,6 +428,7 @@ export class AttachedSessionFollowService {
         source: sourceLabel(source),
         outcome: discovered.outcome,
       });
+      await paths.prepare(discovered.sessions.map((observed) => observed.cwd));
       let followedSessions = 0;
       for (const observed of discovered.sessions) {
         if (
@@ -438,6 +457,7 @@ export class AttachedSessionFollowService {
           session.cwd,
           projectRoots,
           repositories,
+          paths.canonical,
         );
         attachedSessionProjectAttribution.add(1, {
           source: sourceLabel(source),
@@ -1155,10 +1175,11 @@ export async function resolveAttachedSessionProject(
   cwd: string,
   projects: AttachedProjectRoot[],
   repositories: RepositoryLookup,
+  canonicalize: CanonicalizePath = canonicalPath,
 ): Promise<AttachedProjectAttribution> {
-  const byFolder = resolveAttachedProjectRoot(cwd, projects);
+  const byFolder = resolveAttachedProjectRoot(cwd, projects, canonicalize);
   if (byFolder.state !== 'unattributed') return byFolder;
-  const canonicalCwd = canonicalPath(cwd);
+  const canonicalCwd = canonicalize(cwd);
   if (!canonicalCwd) return byFolder;
   const session = await repositories(canonicalCwd);
   if (!session) return byFolder;
@@ -1167,7 +1188,7 @@ export async function resolveAttachedSessionProject(
   let candidates: string[] = [];
   for (const project of projects) {
     if (!project.workingDirectory) continue;
-    const root = canonicalPath(project.workingDirectory);
+    const root = canonicalize(project.workingDirectory);
     if (!root) continue;
     const repository = await repositories(root);
     if (
@@ -1211,17 +1232,25 @@ function attributionFrom(
   };
 }
 
+/**
+ * How a folder is made comparable: {@link canonicalPath} by default (a
+ * synchronous `realpath`); the poll passes the answers its path probe read
+ * off the main thread (#3406), with the same lexical fallback.
+ */
+type CanonicalizePath = (path: string) => string | undefined;
+
 export function resolveAttachedProjectRoot(
   cwd: string,
   projects: AttachedProjectRoot[],
+  canonicalize: CanonicalizePath = canonicalPath,
 ): AttachedProjectAttribution {
-  const canonicalCwd = canonicalPath(cwd);
+  const canonicalCwd = canonicalize(cwd);
   if (!canonicalCwd) return { state: 'unattributed' };
   let workingDirectory: string | undefined;
   let candidates: string[] = [];
   for (const project of projects) {
     if (!project.workingDirectory) continue;
-    const root = canonicalPath(project.workingDirectory);
+    const root = canonicalize(project.workingDirectory);
     if (!root || !isContainedBy(canonicalCwd, root)) continue;
     if (
       workingDirectory === undefined ||
