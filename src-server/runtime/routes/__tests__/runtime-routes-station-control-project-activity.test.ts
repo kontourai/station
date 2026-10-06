@@ -125,6 +125,7 @@ const PROJECT_1_SESSIONS = [
   'a-peer',
   'a-running',
   'a-stopped',
+  'cfg-only',
 ];
 
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
@@ -339,6 +340,30 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     startSession('g-caller', A, undefined);
     startSession('a-global', A, undefined);
     startSession('carol-p1', CAROL, p1);
+    // A Session whose only start record is a `session.configured` carrying its
+    // Project: the scope owner reads that record when no `session.started`
+    // has metadata, so the list's narrowing must keep it as a candidate.
+    store.appendEvent({
+      eventId: 'cfg-only:configured',
+      threadId: 'cfg-only',
+      sessionId: 'cfg-only',
+      provider: 'codex',
+      method: 'session.configured',
+      createdAt: at(),
+      metadata: {
+        userId: A,
+        agentSlug: 'codex-agent',
+        [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: p1.id,
+        projectSlug: p1.slug,
+      },
+    } as never);
+    store.upsertSession({
+      threadId: 'cfg-only',
+      provider: 'codex',
+      status: 'ready',
+      createdAt: at(),
+      updatedAt: at(),
+    } as never);
     // A Session whose Project cannot be confirmed (a slug with no recorded
     // Project id): its own scope is unreadable, so it matches nothing.
     startSession('u-caller', A, undefined, {
@@ -346,6 +371,10 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     });
 
     writeTurn('a-caller', 1, { end: 'completed', prompt: 'CALLER-WORK' });
+    writeTurn('cfg-only', 1, {
+      end: 'completed',
+      prompt: 'CONFIGURED-ONLY-WORK',
+    });
     writeTurn('a-host', 1, { end: 'completed', prompt: 'HOST-SECRET' });
     writeTurn('a-running', 1, {
       end: 'open',

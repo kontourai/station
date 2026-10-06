@@ -336,8 +336,10 @@ inputs: nothing names a Project, an owner, or a host.
   `nextCursor` back as `cursor`. A branch Station did not record is absent: it is
   not read from the folder. The call narrows to the caller's Project BEFORE it
   folds anything (candidates come from the Sessions' recorded start Project), so
-  its cost follows that Project and not the Station; every row is still held to
-  the scope rule, which narrowing never replaces.
+  its cost follows that Project and not the Station. The narrowing is a superset
+  filter (it reads both `session.started` and `session.configured` start records,
+  as the scope owner does) that never drops a row the scope check would admit;
+  every row is still held to the scope rule, which narrowing never replaces.
 - `get_session_digest` summarizes one Session from what the event store
   recorded. No model summarizes, and a fact that was not recorded is absent.
   The `session` has `title`, `projectSlug`, `engine`, `agent`, `status`, and
@@ -350,7 +352,9 @@ inputs: nothing names a Project, an owner, or a host.
   or move kind and a path argument, and a path is never guessed from a tool's
   name), `filesReported: false` on a turn that called tools none of which carried
   an engine-reported tool kind (a missing `files` there means unknown, not none;
-  Claude Code and Codex report no tool kinds today), `pullRequests` declared
+  Claude Code and Codex report no tool kinds today; a turn still running may
+  show it briefly, before its first tool completes, and a turn where only some
+  calls carried a kind shows no marker, so its `files` may be partial), `pullRequests` declared
   in the turn (`declare_pull_request` or `declare_output`), and
   `delegatedChildren`, the Sessions Station itself derived as launched from this
   conversation that started within the turn's window (after it began, before

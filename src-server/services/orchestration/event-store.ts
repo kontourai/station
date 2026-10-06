@@ -4671,12 +4671,15 @@ export class EventStore {
    * own Sessions and every Session whose start names none; absent means the
    * global space: only Sessions whose start names none.
    *
-   * A candidate list, never the check. A Session with no Project can still be
-   * scoped to a Project by its folder, and one with a Project of another
-   * Project's name is excluded here; the caller decides each Session's scope
-   * with `stationControlScopeRefusal` and the scope owner, not from this.
-   * Every `session.started` of a thread counts, so a thread is left out only
-   * when ALL of its starts name another Project.
+   * A candidate list, never the check, and always a SUPERSET of what the scope
+   * check would admit. The scope owner reads a thread's first start record:
+   * its `session.started` metadata, else its `session.configured` metadata
+   * (`firstStartedRecordOfThread`). So every `session.started` AND
+   * `session.configured` row counts here, and a thread is left out only when
+   * ALL of them name another Project: a Session recorded only by a
+   * `session.configured` is a candidate too. A Session with no Project can
+   * still be scoped to a Project by its folder; the caller decides each
+   * Session's scope with `stationControlScopeRefusal`, not from this.
    */
   // Called by the Project activity route through a `Pick<EventStore>`
   // parameter, which the dead-code audit cannot trace to this class.
@@ -4685,7 +4688,8 @@ export class EventStore {
     const rows = this.db
       .prepare(
         `SELECT DISTINCT thread_id FROM orchestration_events
-          WHERE method = 'session.started' AND json_valid(payload)
+          WHERE method IN ('session.started', 'session.configured')
+            AND json_valid(payload)
             AND (json_extract(payload, '$.metadata.localProjectId') IS NULL
               ${projectId === undefined ? '' : "OR json_extract(payload, '$.metadata.localProjectId') = ?"})`,
       )
