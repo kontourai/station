@@ -1,27 +1,74 @@
-name: Advisory PR review
+name: "PR: Advisory review"
 
-# Secret Scan is the existing no-secret pull-request ingress. Listening to its
+# PR: Secret scan is the existing no-secret pull-request ingress. Listening to its
 # completed run keeps this workflow definition on the protected default branch;
 # a candidate cannot rewrite the credentialed review job that evaluates it.
+#
+# The review engine spends credits on every run, so the `gate` job admits a
+# pull request only when scripts/advisory-review-gate.mjs says so: it was
+# requested (the `advisory-review` label set, or a person dispatched this
+# workflow for it; armed auto-merge alone is not a request), it is still at
+# the head the Secret Scan run saw, it changes more than generated output,
+# and no review exists for that exact head. The gate reads the GitHub API only and runs the default-branch
+# copy of the script; it never checks out or executes pull-request code.
 on:
   workflow_run:
-    workflows: [Secret Scan]
+    workflows: ["PR: Secret scan"]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review at its current head
+        required: true
+        type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: codex-pr-review-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
-  cancel-in-progress: true
-
 jobs:
+  gate:
+    name: Admit review
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.event == 'pull_request' &&
+           github.event.workflow_run.pull_requests[0].number) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      admit: ${{ steps.gate.outputs.admit }}
+      same_repository: ${{ steps.gate.outputs.same_repository }}
+      head_repository: ${{ steps.gate.outputs.head_repository }}
+      number: ${{ steps.gate.outputs.number }}
+      head_sha: ${{ steps.gate.outputs.head_sha }}
+      base_sha: ${{ steps.gate.outputs.base_sha }}
+    steps:
+      - name: Check out the trusted default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Decide whether this head is worth a review
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST: ${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/advisory-review-gate.mjs
+
   review:
     name: Advisory review
+    needs: gate
     if: >-
-      ${{ github.event.workflow_run.event == 'pull_request' &&
-          github.event.workflow_run.head_repository.full_name == github.repository &&
-          github.event.workflow_run.pull_requests[0].number }}
+      ${{ needs.gate.outputs.admit == 'true' &&
+          needs.gate.outputs.same_repository == 'true' }}
+    concurrency:
+      group: codex-pr-review-${{ needs.gate.outputs.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     permissions:
@@ -31,8 +78,8 @@ jobs:
       - name: Check out the exact same-repository PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ github.event.workflow_run.head_repository.full_name }}
-          ref: ${{ github.event.workflow_run.head_sha }}
+          repository: ${{ needs.gate.outputs.head_repository }}
+          ref: ${{ needs.gate.outputs.head_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -59,9 +106,9 @@ jobs:
           openai-api-key: ${{ secrets.CODEX_REVIEW_API_KEY || secrets.OPENAI_API_KEY }}
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          pull-request: ${{ github.event.workflow_run.pull_requests[0].number }}
-          base-sha: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
-          head-sha: ${{ github.event.workflow_run.head_sha }}
+          pull-request: ${{ needs.gate.outputs.number }}
+          base-sha: ${{ needs.gate.outputs.base_sha }}
+          head-sha: ${{ needs.gate.outputs.head_sha }}
           model: gpt-5.6-sol
           effort: xhigh
 
@@ -77,10 +124,13 @@ jobs:
 
   record-fork-gap:
     name: Record fork review gap
+    needs: gate
     if: >-
-      ${{ github.event.workflow_run.event == 'pull_request' &&
-          github.event.workflow_run.head_repository.full_name != github.repository &&
-          github.event.workflow_run.pull_requests[0].number }}
+      ${{ needs.gate.outputs.admit == 'true' &&
+          needs.gate.outputs.same_repository != 'true' }}
+    concurrency:
+      group: codex-pr-review-${{ needs.gate.outputs.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -90,15 +140,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
+          ref: ${{ needs.gate.outputs.base_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Attach the exact untrusted fork head as read-only review data
         shell: bash
         env:
-          CANDIDATE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
-          CANDIDATE_HEAD: ${{ github.event.workflow_run.head_sha }}
+          CANDIDATE_REPOSITORY: ${{ needs.gate.outputs.head_repository }}
+          CANDIDATE_HEAD: ${{ needs.gate.outputs.head_sha }}
         run: |
           if [[ ! "$CANDIDATE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
              [[ ! "$CANDIDATE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
@@ -119,9 +169,9 @@ jobs:
           openai-api-key: ""
           github-token: ""
           repository: ${{ github.repository }}
-          pull-request: ${{ github.event.workflow_run.pull_requests[0].number }}
-          base-sha: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
-          head-sha: ${{ github.event.workflow_run.head_sha }}
+          pull-request: ${{ needs.gate.outputs.number }}
+          base-sha: ${{ needs.gate.outputs.base_sha }}
+          head-sha: ${{ needs.gate.outputs.head_sha }}
           model: gpt-5.6-sol
           effort: xhigh
 

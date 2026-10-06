@@ -21,10 +21,13 @@ device receipts for current availability.
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
 **Cadence: about once a day, with native publication only when `main` moved.**
-Nightly runs daily at 06:43 UTC. Main qualification runs every six hours, and
-a passing run also calls Nightly for the commit it just qualified, at most
-about once a day. The scheduled run admits exact-source qualification evidence
-or runs fresh qualification. See [the release procedure](releasing.md#release-procedure). The scheduled job compares `HEAD`
+`Main: Qualification` owns the schedule: it runs every six hours and a passing
+run calls Nightly for the commit it just qualified, at most about once a day.
+Nightly has no independent schedule and does not rerun regression on that
+qualified path. Manual dispatch retains exact-source qualification for recovery.
+The hourly qualification-health watchdog reports stale or missing qualification
+and failed delivery; see [the release procedure](releasing.md#release-procedure).
+The cohort decision compares its source
 against the rolling `nightly` tag (the commit the last published nightly was
 cut from) and builds nothing when they match and the deploy ledger records
 that ship: a new version number over identical content is a version number
@@ -33,12 +36,11 @@ by design. The tag alone is not the evidence — the macOS marker moves before
 its publish is verified, so the decision also requires a ledger row per
 platform at the tag's commit
 (see [Native Nightly cohort](./native-releases.md#native-nightly-cohort)).
-Scheduled same-day ships of new content automatically take the next reserved
-version code. Manual `rebuild_index` remains the exception for rebuilding a
+Admitted ships of new content take the next reserved version code. Manual `rebuild_index` remains the exception for rebuilding a
 commit that already shipped, below.
 
 **What a tester should expect.** Queueing, separate stage timeouts, signing and
-provider processing determine delivery time. The daily schedule is not a
+provider processing determine delivery time. The qualification schedule is not a
 promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.

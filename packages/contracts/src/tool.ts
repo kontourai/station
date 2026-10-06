@@ -110,6 +110,21 @@ export interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /**
+   * #3279 connected accounts. Absent means the integration uses the shared
+   * `instance` credential exactly as before. `principal` means each person
+   * connects their own account: a turn uses only the credential owned by the
+   * principal it runs as (a Project-narrowed credential for the Agent's
+   * Project first, then the person's own), and a person with no credential
+   * gets a "connect your account" refusal. The shared instance credential is
+   * used for such a turn only when `allowInstanceFallback` is true.
+   */
+  credentialOwnership?: ToolCredentialOwnership;
+}
+
+export interface ToolCredentialOwnership {
+  owner: 'principal';
+  allowInstanceFallback?: boolean;
 }
 
 export interface ToolServerProbeResult {
@@ -566,9 +581,13 @@ export interface AgentConnectionSettings {
   enabled?: boolean;
   /**
    * Engine-connection runtime config. Claude and Codex connections accept
-   * two additional keys (station#2072, for routing a connection through a
+   * additional keys (station#2072, for routing a connection through a
    * local model proxy):
    *
+   * - `proxyConnectionId`: an explicitly selected saved OpenAI-compatible model
+   *   connection. Its current address/key are resolved at launch; credentials
+   *   are not copied into this engine configuration. Missing or disabled proxies
+   *   refuse launch. Native Codex provider arguments preserve the config home.
    * - `env`: map of environment-variable name → string value, merged into
    *   every engine subprocess the connection spawns (sessions, model
    *   discovery, quota probes, source-home maintenance; adoption/login

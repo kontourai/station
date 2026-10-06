@@ -21,6 +21,12 @@ They do not replace foreground chat or the Task's current-session association.
 
 ---
 
+Execution summaries can include `modelRoute: {connectionId, label, endpoint}`.
+It is a safe route snapshot from the engine launch: `endpoint` is an HTTP(S)
+origin without credentials, and no proxy key is included. Older sessions may
+omit it. Changing saved connection settings alone does not rewrite the snapshot;
+a new configured execution records its actual route.
+
 ## Visual Skill presentation
 
 Installed [Skill experiences](skill-experiences.md) use this same foreground
@@ -1029,6 +1035,16 @@ answer it instead of offering a local reply. The field is absent for work this
 Station runs. A server that predates the field omits it; a reply sent to a peer
 record through that server is still refused, not delivered elsewhere.
 
+The same record also opens in Activity from every work-item surface: Home's
+continue action and lists, the dock inbox, the mobile task switcher, the
+Sessions list, and a project's live work. Its agent slug and conversation id
+are the paired Station's, so rehydrating it as a local chat would show an empty
+transcript whose composer cannot reach the task. Home's work items carry
+`delegationEnvironmentKind: 'peer'` for this. The workspace Home projection
+record names that field, so a Home role grant made before it no longer covers
+the projection, and Home falls back to the built-in view until the grant is
+approved again.
+
 The paired Station's own open request reaches this Station through its
 delegated-task status read (`GET /api/orchestration/delegations/:taskId`,
 field `pendingRequest`). Each status refresh records it on the peer record as
@@ -1039,10 +1055,10 @@ for that request id. The attention item then carries `peerRequestReference`:
 request on the paired Station. It never carries `requestReference` or
 `inputReference`, so local request inspection and `respondToRequest` cannot use it.
 
-`viewerCanRespond` models two gates this Station applies before the
-`POST /api/orchestration/delegations/:taskId/respond` handler: the credential
-and pairing-scope gate for that path, then the station-control dispatch scope
-with the `approve` action. The handler can still refuse, for example an inbound
+`viewerCanRespond` models two gates this Station applies before the handler of
+the answering route: the credential and pairing-scope gate for that path, then
+the station-control dispatch scope. That is `respond` with `approve` for a
+decision, and `continue` with `execute` for an input answer. The handler can still refuse, for example an inbound
 delegation peer, hosted mode, or an environment that is not the task's
 recorded host. Absent means unknown, and clients offer nothing. For an
 `approval` or `permission` request with `viewerCanRespond: true`, clients post
@@ -1050,8 +1066,56 @@ recorded host. Absent means unknown, and clients offer nothing. For an
 re-checks the request is open and decides it there. When the paired Station
 answers 403, the route reports "The paired Station refused this decision" in
 this Station's words; the paired Station's own diagnostics are not relayed.
-`input` and `confirmation` requests keep the note, because `respond` carries a
-decision, not an answer.
+`confirmation` requests keep the note.
+
+### Bound answers to a paired Station's question
+
+An `input` request is answered with a bound follow-up instead of a decision,
+because `respond` carries a decision, not text. A Station that advertises
+`capabilities.delegatedInputAnswers: true` in its public handshake
+(`GET /.well-known/station/v1`) accepts an optional `expectedInputRequest` on
+`POST /api/orchestration/delegations/:taskId/continue`:
+
+```json
+{
+  "message": "Use the staging bucket",
+  "environmentId": "environment-peer",
+  "expectedInputRequest": {
+    "threadId": "<the task's current Session on the serving Station>",
+    "requestId": "<its open request id>",
+    "requestEventId": "<its request.opened event id>"
+  }
+}
+```
+
+The executing Station delivers the message only as the answer to that
+request: the binding must name the task's current Session and an input request
+that is still open there, and the orchestration service checks it again right
+before invoking the engine. Otherwise the route answers HTTP 409 with
+`code: "input_request_changed"` and nothing is sent. A bound answer cannot
+also carry `model` or `modelOptions`, because a model change can start a
+successor Session before the binding is checked. That combination answers
+HTTP 400 with `code: "input_binding_model_change"`. A Station forwarding the
+answer first reads the selected Station's handshake. It sends the binding only
+when the handshake names that environment and advertises the capability,
+refusing with HTTP 409 and `code: "input_binding_unsupported"` otherwise. An
+older Station would drop the unknown field and deliver an unbound turn, so it
+never receives one. A forwarded `input_request_changed` keeps its code; the
+serving Station's prose does not cross.
+
+A Station with the capability also adds to the delegated-task snapshot's
+`pendingRequest`: `eventId`, `body` (the question as `presentOpenRequest`
+presents it), and, for a read it serves itself, `callerCanRespond`. That last
+field models the HTTP boundary and station-control dispatch scope of the
+answering route for the reading credential: `continue` with `execute` for an
+input request, `respond` with `approve` otherwise. A delegator records these
+fields on its peer record (body bounded to 4,000 code points; the binding stored
+only whole and within 1,024 code points per id). The attention item's
+`peerRequestReference` then carries `threadId`, `requestEventId` and
+`callerCanRespond`. Clients offer an answer box only for an `input` request
+with that binding, `viewerCanRespond: true`, and `callerCanRespond` not
+`false`. Without the binding, the item keeps the note. When `callerCanRespond`
+is absent, clients offer the action and show any refusal.
 
 The route forwards a decision only to the environment this Station recorded as
 hosting the task. A body naming another environment is refused before any
