@@ -824,14 +824,14 @@ describe.skipIf(process.platform === 'win32')(
     });
 
     describe('a passed start preflight stands only for the same start, briefly', () => {
-      function counted(clock: { now: number }) {
+      function counted(started: Harness, clock: { now: number }) {
         const reads: string[] = [];
         const adapter = new AcpAdapter({
           getConnections: async () => [
             {
               id: 'engine-under-test',
               name: 'OpenCode',
-              command: h.command,
+              command: started.command,
               args: ['acp'],
               enabled: true,
             } as never,
@@ -865,7 +865,7 @@ describe.skipIf(process.platform === 'win32')(
         h = harness('opencode');
         const other = join(h.cwd, 'other');
         mkdirSync(other);
-        const { adapter, reads, input } = counted({ now: 0 });
+        const { adapter, reads, input } = counted(h, { now: 0 });
         try {
           await adapter.preflightStart(input('moved', h.cwd));
           const preflightReads = reads.length;
@@ -879,7 +879,7 @@ describe.skipIf(process.platform === 'win32')(
       test('a preflight older than the window is checked again; one inside it is not', async () => {
         h = harness('opencode');
         const clock = { now: 1_000 };
-        const { adapter, reads, input } = counted(clock);
+        const { adapter, reads, input } = counted(h, clock);
         try {
           await adapter.preflightStart(input('inside', h.cwd));
           let before = reads.length;
