@@ -500,7 +500,7 @@ describe('executeForegroundMessage', () => {
     );
   });
 
-  test('#3290: a carried approval pick names the engine connection, which decides an ACP thread\'s approval control', async () => {
+  test("#3290: a carried approval pick names the engine connection, which decides an ACP thread's approval control", async () => {
     const deps = dependencies();
     deps.getAgent = vi.fn(async (_access, id) => ({
       slug: id,
