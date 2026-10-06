@@ -120,6 +120,23 @@ function launches(
   );
 }
 
+/** The pid of each engine process launched, in order. */
+function pids(h: Harness): number[] {
+  return records(h)
+    .filter((entry) => 'pid' in entry)
+    .map((entry) => Number(entry.pid));
+}
+
+function alive(pid: number | undefined): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The session ids a relaunched engine resumed (`session/resume`). */
 function resumes(h: Harness): unknown[] {
   return records(h)
@@ -219,6 +236,7 @@ describe.skipIf(process.platform === 'win32')(
         OPENCODE_CONFIG_CONTENT: process.env.OPENCODE_CONFIG_CONTENT,
         FAKE_OPENCODE_USER_CONFIG: process.env.FAKE_OPENCODE_USER_CONFIG,
         FAKE_OPENCODE_RECORD: process.env.FAKE_OPENCODE_RECORD,
+        FAKE_OPENCODE_REFUSE_RESUME: process.env.FAKE_OPENCODE_REFUSE_RESUME,
       };
       delete process.env.OPENCODE_CONFIG_CONTENT;
       process.env.FAKE_OPENCODE_USER_CONFIG = USER_CONFIG;
@@ -466,6 +484,88 @@ describe.skipIf(process.platform === 'win32')(
       });
       expect(edit.asked).toBeUndefined();
       expect(JSON.stringify(edit.started)).not.toContain('edit ran');
+    });
+
+    test('a takeover whose resume fails keeps the old engine running on its own settings, says so, and claims nothing', async () => {
+      h = harness('opencode');
+      await start(h, 'takeover-fails');
+      await turn(h, 'takeover-fails', 'run: echo native');
+      const [oldPid] = pids(h);
+      expect(alive(oldPid)).toBe(true);
+
+      process.env.FAKE_OPENCODE_REFUSE_RESUME = '1';
+      const from = h.events.length;
+      const failed = await turn(h, 'takeover-fails', 'run: echo after', {
+        approvalMode: 'ask',
+      });
+      // The second process was started on the floor, refused the resume and
+      // was discarded; the old one answered this turn on the user's rules.
+      expect(launches(h).map(buildRules)).toEqual([
+        undefined,
+        expect.objectContaining({ bash: 'ask' }),
+      ]);
+      expect(alive(oldPid)).toBe(true);
+      const discardedPid = pids(h)[1];
+      await waitFor(
+        () => (alive(discardedPid) ? undefined : true),
+        'the discarded process to exit',
+      );
+      expect(failed.asked).toBeUndefined();
+      expect(JSON.stringify(failed.started)).toContain('bash ran');
+      const started = turnStarted(failed.started);
+      expect(started?.metadata).not.toHaveProperty('approvalMode');
+      expect(started?.metadata?.approvalTakeoverFailed).toBe(true);
+      expect(
+        h.events
+          .slice(from)
+          .find((event) => event.method === 'runtime.warning'),
+      ).toMatchObject({
+        code: 'acp-approval-takeover-failed',
+        message:
+          "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings.",
+        details: { requestedApprovalMode: 'ask' },
+      });
+
+      // Still usable: the next turn runs on the same old process.
+      const next = await turn(h, 'takeover-fails', 'run: echo again');
+      expect(JSON.stringify(next.started)).toContain('bash ran');
+      expect(alive(oldPid)).toBe(true);
+    });
+
+    test('a takeover whose resume succeeds stops the old engine process', async () => {
+      h = harness('opencode');
+      await start(h, 'takeover-ok');
+      await turn(h, 'takeover-ok', 'run: echo native');
+      const [oldPid] = pids(h);
+      await turn(h, 'takeover-ok', 'run: echo governed', {
+        approvalMode: 'ask',
+        answer: 'accept',
+      });
+      const newPid = pids(h)[1];
+      expect(alive(newPid)).toBe(true);
+      await waitFor(
+        () => (alive(oldPid) ? undefined : true),
+        'the replaced process to exit',
+      );
+    });
+
+    test('a failed move off full access refuses the turn instead of running it with full access', async () => {
+      h = harness('opencode');
+      await start(h, 'full-stuck', 'never', 'host');
+      process.env.FAKE_OPENCODE_REFUSE_RESUME = '1';
+      await expect(
+        turn(h, 'full-stuck', 'run: echo hi', {
+          approvalMode: 'ask',
+          confinement: 'host',
+        }),
+      ).rejects.toThrow(/still running with full access/);
+      delete process.env.FAKE_OPENCODE_REFUSE_RESUME;
+      const retried = await turn(h, 'full-stuck', 'run: echo hi', {
+        approvalMode: 'ask',
+        confinement: 'host',
+        answer: 'accept',
+      });
+      expect(retried.asked).toBeDefined();
     });
 
     test('a mode at start (a pick or a configured default) launches on the floor', async () => {

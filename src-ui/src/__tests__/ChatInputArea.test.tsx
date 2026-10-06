@@ -1642,6 +1642,27 @@ describe('ChatInputArea', () => {
       ).toMatch(/Default — Ask first/);
     });
 
+    test('a pick OpenCode could not be switched to is shown as not applied, never as the pick', () => {
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station' as const,
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: [],
+        approvalModeOverride: { mode: 'ask', state: 'not-applied' },
+        onApprovalModeChange: vi.fn(),
+      });
+      const chip = screen.getByRole('button', { name: /^Approval mode:/ });
+      expect(chip.textContent).toContain('Default');
+      expect(chip.textContent).not.toContain('Ask');
+      expect(chip.getAttribute('aria-label')).toMatch(
+        /Default — OpenCode's own settings — Ask first was not applied/,
+      );
+    });
+
     test('an engine that decides for itself says so, and its explanation opens', async () => {
       renderChatInputArea({
         executionMode: 'external',

@@ -708,6 +708,17 @@ export function unsupportedModelOptionError(
 export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
   'approval-escalation-requires-restart';
 
+/**
+ * #3290: `RuntimeWarningEvent.code` published when Station could not move an
+ * ACP engine (OpenCode) onto the launch rules a picked approval mode needs.
+ * The session kept its engine process and its posture (`details.
+ * appliedApprovalMode`, absent while the engine's own settings decide);
+ * `details.requestedApprovalMode` names the mode that did not apply. The
+ * same turn's `turn.started` metadata carries `approvalTakeoverFailed:
+ * true`, so the composer chip does not show the pick as applied.
+ */
+export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
+
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 

@@ -22,13 +22,17 @@
 // `fetch: <url>` or `task: <subagent>` (OpenCode keys the task permission on
 // the subagent's name). Each process appends the `OPENCODE_CONFIG_CONTENT` it
 // was launched with to `FAKE_OPENCODE_RECORD`, one JSON line per launch, and
-// a `{ "resumed": <sessionId> }` line when it resumes a session (#3290).
+// a `{ "resumed": <sessionId> }` line when it resumes a session, plus a
+// `{ "pid": <pid> }` line per launch (#3290). With
+// `FAKE_OPENCODE_REFUSE_RESUME=1` in its environment it refuses
+// `session/resume` with a JSON-RPC error, as an engine that advertised
+// resume but cannot resume this session would.
 import { appendFileSync } from 'node:fs';
 
 if (process.env.FAKE_OPENCODE_RECORD) {
   appendFileSync(
     process.env.FAKE_OPENCODE_RECORD,
-    `${JSON.stringify({ OPENCODE_CONFIG_CONTENT: process.env.OPENCODE_CONFIG_CONTENT ?? null })}\n`,
+    `${JSON.stringify({ OPENCODE_CONFIG_CONTENT: process.env.OPENCODE_CONFIG_CONTENT ?? null })}\n${JSON.stringify({ pid: process.pid })}\n`,
   );
 }
 
@@ -276,6 +280,13 @@ async function handle(message) {
       write({ id, result: { configOptions: configOptions() } });
       return;
     case 'session/resume':
+      if (process.env.FAKE_OPENCODE_REFUSE_RESUME === '1') {
+        write({
+          id,
+          error: { code: -32603, message: 'Internal error: session not found' },
+        });
+        return;
+      }
       if (process.env.FAKE_OPENCODE_RECORD) {
         appendFileSync(
           process.env.FAKE_OPENCODE_RECORD,

@@ -41,6 +41,7 @@ import type {
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
@@ -67,6 +68,7 @@ import {
   type AcpInboundExtensionRefusalReason,
   createAcpInboundExtensionRequestHandler,
 } from '../../services/acp/acp-inbound-extension-policy.js';
+import { COLD_START_OPERATION_TIMEOUT_MS } from '../../services/acp/acp-probe.js';
 import {
   ACPProcess,
   type ACPProcessOptions,
@@ -310,6 +312,12 @@ export function acpConnectionDefaultCwd(config: {
 
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
+  /**
+   * #3290: how long a new engine process may take to start and resume the
+   * session when the approval floor changes. Defaults to the cold-start
+   * bound an engine probe allows (`COLD_START_OPERATION_TIMEOUT_MS`).
+   */
+  approvalRelaunchTimeoutMs?: number;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -657,7 +665,12 @@ export class AcpAdapter implements ProviderAdapterShape {
   private readonly toolUpdateBudget = new AcpToolUpdateGlobalBudget();
   private shuttingDown = false;
 
-  constructor(private readonly options: AcpAdapterOptions) {}
+  private readonly approvalRelaunchTimeoutMs: number;
+
+  constructor(private readonly options: AcpAdapterOptions) {
+    this.approvalRelaunchTimeoutMs =
+      options.approvalRelaunchTimeoutMs ?? COLD_START_OPERATION_TIMEOUT_MS;
+  }
 
   private async resolvePreToolPolicy(
     input: ProviderSessionStartInput,
@@ -1641,6 +1654,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: the server sends the conversation's posture on a turn that
     // changes it; from here on the session answers requests with it.
     const turnApprovalMode = readApprovalMode(input.modelOptions);
+    let approvalTakeoverFailed = false;
     if (turnApprovalMode) {
       if (record.approvalControl !== 'station') {
         throw new SendTurnRefusedError(ACP_ENGINE_DECIDES_APPROVAL_MESSAGE);
@@ -1652,19 +1666,50 @@ export class AcpAdapter implements ProviderAdapterShape {
       // Station takes over from the engine's own configuration, or moves
       // between floors: relaunch on the floor and resume the same session.
       const floor = acpApprovalFloor(applied);
-      if (floor !== record.approvalFloor) {
-        await this.relaunchOnApprovalFloor(record, floor);
+      const switched =
+        floor === record.approvalFloor ||
+        (await this.relaunchOnApprovalFloor(record, floor));
+      if (switched) {
+        record.approvalMode = applied;
+        // A credential re-establishment restarts from `recoveryStart`; it
+        // must come back in the mode the session runs now.
+        record.recoveryStart = {
+          ...record.recoveryStart,
+          modelOptions: {
+            ...record.recoveryStart.modelOptions,
+            approvalMode: turnApprovalMode,
+          },
+        };
+      } else if (record.approvalFloor === 'full') {
+        // A failed move OFF full access would run this turn looser than the
+        // pick. Refuse it; the next send retries the switch.
+        throw new SendTurnRefusedError(
+          "Couldn't switch OpenCode to Station's approval rules for this mode; it is still running with full access, so this message was not sent.",
+        );
+      } else {
+        // The session keeps the process, floor and mode it had: OpenCode's
+        // own settings, or the stricter confined floor. Say so, and report
+        // nothing as applied that is not.
+        approvalTakeoverFailed = true;
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+          message: record.approvalFloor
+            ? "Couldn't switch OpenCode to Station's full-access rules; it's still asking first as before."
+            : "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings.",
+          details: {
+            requestedApprovalMode: applied,
+            ...(record.approvalMode
+              ? { appliedApprovalMode: record.approvalMode }
+              : {}),
+          },
+        });
       }
-      record.approvalMode = applied;
-      // A credential re-establishment restarts from `recoveryStart`; it
-      // must come back in the mode the session runs now.
-      record.recoveryStart = {
-        ...record.recoveryStart,
-        modelOptions: {
-          ...record.recoveryStart.modelOptions,
-          approvalMode: turnApprovalMode,
-        },
-      };
     }
     const turnCatalog = record.acpModeCatalog ?? { modes: [] };
     // #2569: see startSession.
@@ -1746,8 +1791,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
           ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
           : {}),
-        // #3290: the mode this turn's permission requests are answered with.
+        // #3290: the mode this turn's permission requests are answered with,
+        // and whether the mode the turn asked for could not be switched to.
         ...(record.approvalMode ? { approvalMode: record.approvalMode } : {}),
+        ...(approvalTakeoverFailed ? { approvalTakeoverFailed: true } : {}),
       },
     });
 
@@ -2344,49 +2391,65 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   /**
    * #3290: move a live session onto another launch configuration. OpenCode
-   * reads its permission rules only at launch, so Station replaces the engine
-   * process and resumes the same ACP session in the new one: `session/resume`
-   * when advertised (no history replay), else `session/load` with its replay
-   * dropped. The session's mode and model are re-applied if the resumed
-   * session reports others. Runs between turns only (`sendTurn` refuses a
-   * send while one is active). A failure leaves the session unusable, and
-   * says so, rather than running on a floor it did not ask for.
+   * reads its permission rules only at launch, so Station starts a second
+   * engine process on the new floor and resumes the same ACP session in it:
+   * `session/resume` when advertised (no history replay), else
+   * `session/load` with its replay dropped. Only once that has succeeded does
+   * the new process replace the old one, which is then stopped. Two
+   * `opencode acp` processes can hold one session at once (checked against
+   * OpenCode 1.18.18: the second resumed while the first still answered a
+   * turn), so the old one keeps running until the swap.
+   *
+   * Returns `false`, and leaves the session exactly as it was (the old
+   * process, its floor and its mode), when the switch fails: the engine
+   * cannot resume a session, it refuses or fails the resume, or start plus
+   * resume outlasts `approvalRelaunchTimeoutMs` (the cold-start bound an
+   * engine probe already allows). The new process is discarded. The session's
+   * Mode and model are re-applied after the swap if the resumed session
+   * reports others. Runs between turns only (`sendTurn` refuses a send while
+   * one is active).
    */
   private async relaunchOnApprovalFloor(
     record: AcpSessionRecord,
     floor: OpenCodeApprovalFloor | undefined,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const cursor = record.session.resumeCursor;
     const capabilities = record.process.initResult?.agentCapabilities as
       | { loadSession?: boolean; sessionCapabilities?: { resume?: unknown } }
       | undefined;
     const canResume = !!capabilities?.sessionCapabilities?.resume;
+    const logger = this.options.logger ?? console;
     if (
       !record.relaunch ||
       !isAcpResumeCursor(cursor) ||
       (!canResume && capabilities?.loadSession !== true)
     ) {
-      throw new SendTurnRefusedError(
-        'Station cannot apply this approval mode: the engine cannot resume this session in a new process.',
+      logger.warn?.(
+        {
+          threadId: record.session.threadId,
+          connectionId: record.connectionId,
+        },
+        'ACP approval floor not switched: the engine cannot resume this session in a new process',
       );
+      return false;
     }
     const cwd = record.session.cwd ?? '';
     const previous = record.process;
-    await previous.destroy();
     const next = record.relaunch(floor);
-    record.process = next;
-    record.approvalFloor = floor;
+    let configOptions: unknown[] | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await next.start();
-      let configOptions: unknown[] | undefined;
-      if (canResume) {
-        const resumed = await next.resumeSession(
-          cursor.acpSessionId,
-          cwd,
-          record.mcpServers ?? [],
-        );
-        configOptions = resumed.configOptions ?? undefined;
-      } else {
+      const establish = (async () => {
+        await next.start();
+        if (canResume) {
+          const resumed = await next.resumeSession(
+            cursor.acpSessionId,
+            cwd,
+            record.mcpServers ?? [],
+          );
+          configOptions = resumed.configOptions ?? undefined;
+          return;
+        }
         record.suppressSessionUpdates = true;
         try {
           await next.loadSession(
@@ -2397,9 +2460,55 @@ export class AcpAdapter implements ProviderAdapterShape {
         } finally {
           record.suppressSessionUpdates = false;
         }
-      }
-      if (configOptions) {
-        record.configOptions = configOptions;
+      })();
+      establish.catch(() => undefined);
+      await Promise.race([
+        establish,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `the new engine process did not resume the session within ${this.approvalRelaunchTimeoutMs}ms`,
+                ),
+              ),
+            this.approvalRelaunchTimeoutMs,
+          );
+        }),
+      ]);
+    } catch (error) {
+      logger.warn?.(
+        {
+          threadId: record.session.threadId,
+          connectionId: record.connectionId,
+        },
+        'ACP approval floor not switched; the session keeps its current engine process',
+        error,
+      );
+      await next.destroy().catch((destroyError: unknown) => {
+        logger.warn?.(
+          { threadId: record.session.threadId },
+          'ACP approval relaunch: the discarded engine process did not stop cleanly',
+          destroyError,
+        );
+      });
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+
+    record.process = next;
+    record.approvalFloor = floor;
+    await previous.destroy().catch((error: unknown) => {
+      logger.warn?.(
+        { threadId: record.session.threadId },
+        'ACP approval relaunch: the replaced engine process did not stop cleanly',
+        error,
+      );
+    });
+    if (configOptions) {
+      record.configOptions = configOptions;
+      try {
         const catalog = advertisedAcpSessionModes({ configOptions });
         if (
           record.currentModeId &&
@@ -2431,14 +2540,15 @@ export class AcpAdapter implements ProviderAdapterShape {
             ?.configOptions;
           if (options) record.configOptions = options;
         }
+      } catch (error) {
+        // The rules already apply; a session that came back in another
+        // Mode or model is refused rather than run unnoticed.
+        throw new SendTurnRefusedError(
+          `The engine restarted with Station's approval rules but did not keep this chat's mode or model: ${errorMessage(error)}`,
+        );
       }
-    } catch (error) {
-      record.session.status = 'error';
-      record.session.updatedAt = new Date().toISOString();
-      throw new Error(
-        `Station could not restart the engine to apply this approval mode: ${errorMessage(error)}`,
-      );
     }
+    return true;
   }
 
   private handleSessionUpdate(

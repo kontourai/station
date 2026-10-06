@@ -337,8 +337,10 @@ export interface SessionApprovalOverride {
    * - `refused`: a recorded full access the engine refused because the
    *   session was not spawned with it (Claude); it needs a session restart.
    * - `confirmed`: the engine's latest report shows it applied.
+   * - `not-applied`: the engine's latest turn could not be moved onto the
+   *   rules this mode needs (#3290, OpenCode); it kept what it ran before.
    */
-  state: 'requested' | 'refused' | 'confirmed';
+  state: 'requested' | 'refused' | 'confirmed' | 'not-applied';
 }
 
 /** The approval-posture fields of a chat (#2436). */
@@ -352,6 +354,8 @@ export interface ApprovalPostureState {
   lastAppliedApprovalMode?: ApprovalMode;
   /** The engine refused the recorded full access on its latest turn. */
   approvalEscalationRejected?: boolean;
+  /** #3290: the engine's latest turn could not take the recorded posture. */
+  approvalTakeoverFailed?: boolean;
 }
 
 /**
@@ -375,8 +379,9 @@ export function sessionApprovalOverride(
     return { mode: posture, state: 'confirmed' };
   return {
     mode: posture,
-    state:
-      posture === 'never' && chat.approvalEscalationRejected
+    state: chat.approvalTakeoverFailed
+      ? 'not-applied'
+      : posture === 'never' && chat.approvalEscalationRejected
         ? 'refused'
         : 'requested',
   };

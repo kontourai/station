@@ -12,3 +12,8 @@ mode; any other ACP engine decides for itself, and its approval control says
 so instead of offering a mode. `PROVIDER_MODEL_OPTION_SUPPORT` is unchanged:
 `approvalMode` stays unsupported for the `acp` provider as a whole, and the
 server admits it only for an ACP connection whose control is `station`.
+
+`provider` adds `ACP_APPROVAL_TAKEOVER_FAILED_CODE`, the `runtime.warning`
+code an ACP adapter publishes when it could not move the engine onto the
+launch rules a picked approval mode needs and the session kept what it ran
+before.

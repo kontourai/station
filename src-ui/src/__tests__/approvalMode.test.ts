@@ -7,6 +7,7 @@ import {
   approvalModeDescription,
   approvalModeKnobSupported,
   resolveEffectiveApprovalMode,
+  sessionApprovalOverride,
 } from '../utils/approvalMode';
 
 describe('approvalModeKnobSupported', () => {
@@ -347,5 +348,20 @@ describe('acpApprovalFor (#3290)', () => {
   test('no ACP connection is no ACP answer', () => {
     expect(acpApprovalFor(undefined)).toBeUndefined();
     expect(acpApprovalFor(null)).toBeUndefined();
+  });
+});
+
+describe('sessionApprovalOverride: a pick the engine could not take (#3290)', () => {
+  test('is not-applied, not requested', () => {
+    expect(
+      sessionApprovalOverride({
+        approvalPosture: 'ask',
+        approvalTakeoverFailed: true,
+      }),
+    ).toEqual({ mode: 'ask', state: 'not-applied' });
+    expect(sessionApprovalOverride({ approvalPosture: 'ask' })).toEqual({
+      mode: 'ask',
+      state: 'requested',
+    });
   });
 });
