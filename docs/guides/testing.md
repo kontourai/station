@@ -213,14 +213,14 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events. |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events; merge queue. |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | PR events (path filtered); manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -321,7 +321,7 @@ comments into a trend table; `--json` also works for history.
 | Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
-| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. |
+| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
 Runs are selected by creation time in the half-open window; all job durations
 and available attempts for those runs are counted, even when completion lies
@@ -664,6 +664,17 @@ classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
 
+The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
+executes the workflow's PowerShell staging body in a temporary directory and
+checks the configured resource-source directories at the Cargo boundary,
+including bundled examples. This proves directory staging, not Rust compilation
+or bundled file contents. The same focused step runs the
+[Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
+checking real installed npm/local Tauri versions and explicit missing
+prerequisites on Windows. These tooling checks do not establish native app
+startup, packaging or device behavior. A repair to this base-controlled workflow must land
+on `main` before a dependent PR's head can use it.
+
 The hosted Windows floor always uploads its existing redacted verification
 receipts and output, including failed runs. A cleanup record with one surviving
 owned child is a boolean failure to prove settlement, not an enumerated live PID.
@@ -831,6 +842,18 @@ identical across every screen, including `motion-reduced-notification`
 (previously the one hand-marked `volatile: true` exception) — its
 `volatile` marker has been removed.
 
+Before photographing, the gallery also waits up to 15 seconds for branded
+identity tiles to contain their SVG, image element or explicit glyph. An empty
+lazy-mark tile fails capture rather than becoming a reference. This checks
+artwork presence, not whether an external image has decoded. The Settings
+explanation capture records the main column's scroll metrics in `capture.json`
+so a shifted frame can be diagnosed without resetting or hiding its state.
+The Settings explanation capture also requires the application frame to stay
+at scroll position zero with its toolbar in view. Phone Settings checks at
+320px and 390px exercise real wheel scrolling in the nested content while the
+outer frame stays bounded. These are Chromium checks; the older-WebView
+fallback remains outside that execution proof.
+
 Baseline artifacts (both committed):
 
 - `tests/screenshots.baseline.json` — small, diffable manifest: per screen,
@@ -923,9 +946,11 @@ DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on pull requests, in the same container (#2428), so a PR that moves a screen
-finds out before it merges instead of reddening the next nightly. Its
-`classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
+on pull requests and synthesized merge-queue candidates, in the same container
+(#2428, #3342). PRs compare their exact head; the queue compares the combined
+candidate. A gallery-relevant change must carry reviewed reference images from
+that renderer. Irrelevant changes skip the capture job, producing GitHub's
+successful skipped check without a browser run. The `classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
@@ -939,9 +964,14 @@ diff scripts; the nightly on main, running trusted code, remains the
 authoritative check. The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
-complete is reported separately and must not be re-baselined. The check
-compares the PR head against its own baseline, so combinations of PRs are
-still only caught nightly.
+complete is reported separately and must not be re-baselined. The check compares
+each PR head against its own baseline and checks combinations again on the
+merge-queue candidate. Enable `Gallery exact-pixel diff` as a main ruleset requirement after observing
+its PR and merge-queue contexts from the installed workflow;
+a red advisory check alone cannot prevent visual drift from landing.
+`Main: Health` tracks a failed `Nightly: Gallery` run as one main incident and
+clears it only when the capture and exact-diff job passes. Skipping the optional
+API image review does not hide that completed pixel check.
 
 Two consequences worth stating plainly:
 

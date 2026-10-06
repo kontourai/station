@@ -1,0 +1,7 @@
+{
+  "revision": "0371f7dc7c6adc213a577809267f86740b64a676",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed #2962 header carriage through shared client-protocol policy, serverHealth and checkHostCompatibility. Successful advertisement then 404, invalid JSON or transport failure leaves no cross-origin header; observations remain process-local. Protocol denials spend existing auth budget while 400/426 responses continue. Native Rust and WebSocket gaps remain explicit.","inputs":["docs/reference/connect.md"]}
+  ]
+}

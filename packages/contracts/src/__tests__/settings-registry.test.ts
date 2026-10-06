@@ -287,6 +287,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // nothing stored Station genuinely defers to the connection, and
         // 'connection-default' is that behavior's name rather than a guess.
         'defaultApprovalMode',
+        // #3386: confirmed against `attachedSessionsOutsideProjectsEnabled`
+        // (`!== false`) — absent follows them.
+        'attachedSessionsOutsideProjects',
         'defaultChatFontSize',
         'defaultMaxTurns',
         // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`

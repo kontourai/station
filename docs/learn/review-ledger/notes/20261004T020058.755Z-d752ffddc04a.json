@@ -1,0 +1,7 @@
+{
+  "revision": "5fc0d1eb02ed621a76f2ea35734a8670de67879e",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Delta review for #2962 only: compared the Connect-reference changes to the glossary definitions of Station, Device, credential, account identity and connection. Separate protocol audit accounting and latest-started handshake header acceptance change neither those definitions nor authority. Local focused protocol/overlap baseline executed: 96 passed, Duration 66.12s. Unrelated glossary claims, hosted CI and deployed runtime NOT_VERIFIED in this delta review.","inputs":["docs/glossary.md"]}
+  ]
+}

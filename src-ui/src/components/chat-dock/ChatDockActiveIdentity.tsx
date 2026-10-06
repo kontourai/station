@@ -23,6 +23,7 @@ interface ChatDockActiveIdentityProps {
    * the header then names none rather than inventing one.
    */
   modelLabel?: string | null;
+  routeLabel?: string;
   inputOrigin?: OrchestrationInputOrigin;
   onClose: (id: string) => void;
 }
@@ -52,6 +53,7 @@ export function ChatDockActiveIdentity({
   session,
   agent,
   modelLabel,
+  routeLabel,
   originLabel,
   originProvider,
   inputOrigin,
@@ -114,7 +116,13 @@ export function ChatDockActiveIdentity({
   // known, so the row names nothing it cannot derive.
   const engineTrail =
     originLabel ??
-    [engineChipLabel(engineChip), modelLabel].filter(Boolean).join(' · ');
+    [
+      engineChipLabel(engineChip),
+      modelLabel,
+      routeLabel ? `via ${routeLabel}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   return (
     <div className="chat-dock__active-identity">

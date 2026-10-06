@@ -1,0 +1,7 @@
+{
+  "revision": "92d7e8ed802362c72136e0072b5d16c4a4bf84b4",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Delta review for #2962: checked protocol-before-credential admission, separate audit limiter instance, 1024-peer cap and direct socket key against the runtime and limiter owners; focused HTTP tests executed and passed for audit bounds and corrected deployment-account admission. Exempt routes and authority checks unchanged. Unrelated backend patterns, hosted CI and release NOT_VERIFIED.","inputs":["docs/patterns/backend.md"]}
+  ]
+}

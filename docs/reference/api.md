@@ -178,8 +178,10 @@ HTTP status alone does not prove useful-work completion.
   creates no Task. A ready request creates the Task idempotently, then binds and
   fences dispatch. `state: "started"` can still contain unverified correlation
   or failed/indeterminate dispatch; read those fields before claiming execution.
-- **Continue a Session:** the body names only the Starter ID, operation ID, and
-  exact source Session ID. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+- **Continue a Session:** the body names the Starter ID, operation ID, and
+  exact source Session ID, plus an optional `target` for a Session no Project
+  claims (`adoptSession`'s `target`, [Session API](session-api.md)); it never
+  names a folder. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
   validates and adopts the source through the existing idempotency ledger.
   Its child Session/command receipt proves admission, not useful completion.
 - **Inspect approval/receipt:** candidate reads return exact typed references.
@@ -566,6 +568,31 @@ values; clients use the returned metadata when editing. A failed lookup returns
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
 service refuses changes that would create a shadow copy.
+
+### Connected accounts (#3279)
+
+An integration whose definition sets `credentialOwnership: {owner: "principal"}`
+uses each person's own account instead of the shared Station credential. A turn
+uses only the credential of the principal it runs as (a credential narrowed to the
+Agent's Project first, then the person's own). A person without one gets a
+"connect your account" refusal; the shared credential is used only when
+`allowInstanceFallback` is `true`. The owner is the request's resolved human
+`PrincipalRef.id`; a paired device without a person, a non-human principal, and a
+hosted request cannot own an account.
+
+`POST /integrations/:id/oauth/authorize` and `POST /integrations/:id/oauth/callback`
+accept optional `owner` (`"self"` or, when fallback is allowed, `"instance"`) and
+`projectSlug`. A person's consent flow is keyed by the principal who started it, so
+only that principal's callback can complete it, and it never changes the
+integration's shared `probe.authorization`. A successful first connection records
+the tool catalog Agents load that integration's tools from.
+
+`GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+owner and availability only, never a token. `DELETE /integrations/:id/account`
+removes the caller's own credential; the next call that needs it refuses.
+
+MCP Apps reads and calls are not available yet for these integrations.
 
 ### Delete Integration
 
@@ -1012,6 +1039,11 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
+Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
+OpenAI-compatible Model connection; its current address/key are resolved at
+launch. `config.modelRoute` is a secret-free discovery projection, not an
+editable credential. Selecting a missing/disabled proxy refuses launch.
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.
@@ -3052,6 +3084,40 @@ credential does not by itself authorize every operation. See
 [endpoints](endpoints.md) for the route/auth authorities and
 [deployment authentication](../guides/deployment-authentication.md) for identity.
 
+### Client API protocol admission
+
+Clients using the SDK (including CLI requests through that seam), the pairing
+client, and the UI health probe declare `X-Station-Client-Protocol`. The
+[protocol contract](../../packages/contracts/src/environment-security.ts)
+accepts one decimal integer from 1 to 9999, without a sign or leading zero.
+Absence means legacy protocol 1; a malformed value returns
+`400 {error: {code: "client_protocol_invalid", message}}`.
+
+For paired-scope HTTP routes and the public pairing request, access-request,
+and exchange, a value below the advertised `minClientProtocol` returns
+`426 {error: {code: "client_protocol_unsupported", message, clientProtocol,
+minClientProtocol, protocolVersion, serverVersion}}` before credential checks.
+Both refusals emit `station.auth.failure` with the refusal code as reason;
+only the parsed protocol is recorded, never the raw header. This compatibility
+signal grants no authority, and passing it does not skip authentication.
+A separate direct-socket-peer audit limiter bounds emission to 10 audits per
+60-second window by default, using `RuntimeAuthFailureLimiter` and its
+1,024-peer cap. The cap evicts live entries, so refusals from more than 1,024
+distinct peers can reset a peer's count and let it emit more than 10 audits in
+one window; memory stays bounded either way. Exhaustion suppresses only audits; every refusal still receives
+400/426. Protocol refusals neither consult nor consume the authentication
+budget, so correcting the header permits account verification even after many
+refusals from the same proxy or NAT.
+
+The public handshake and proof remain reachable. The landing page, `/doc`,
+`/ui`, and integration icons are exempt because navigation and image requests
+cannot attach this header. Other capability families, attested internal
+loopback callers, and the separate terminal/voice WebSocket listeners are
+outside this HTTP check. Exemptions follow the capability table, not a blanket
+exception for every iframe, image, or link request. See the
+[admission owner](../../src-server/security/client-protocol-admission.ts) and
+[threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962).
+
 ### CORS
 
 The running Station uses the exact browser origins assembled by
@@ -3062,6 +3128,15 @@ are refused before route dispatch. This is not the permissive helper used when
 HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
+
+The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
+browser callers send it only after observing
+`compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
+handshake. The UI forgets the prior origin observation before re-handshaking;
+non-OK responses, invalid JSON and transport errors leave it cleared.
+Older or unobserved hosts receive an unlabelled request, interpreted
+as protocol 1. Same-origin requests, Node callers and host-owned transports
+can carry it without that preflight condition.
 
 ---
 

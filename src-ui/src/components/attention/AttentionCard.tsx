@@ -27,7 +27,10 @@ import {
   useNotificationActionMutation,
   useQueryClient,
 } from '@kontourai/station-sdk';
-import { respondToDelegatedTaskRequest } from '@kontourai/station-sdk/client';
+import {
+  continueDelegatedTask,
+  respondToDelegatedTaskRequest,
+} from '@kontourai/station-sdk/client';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
@@ -525,6 +528,8 @@ function PeerHostedAction({
     <>
       {decision.kind === 'decide' ? (
         <PeerRequestDecisionActions reference={decision.reference} />
+      ) : decision.kind === 'answer' ? (
+        <PeerInputAnswer reference={decision.reference} itemId={item.id} />
       ) : (
         <div
           className="attention-item__detail"
@@ -596,6 +601,93 @@ function PeerRequestDecisionActions({
           Deny
         </button>
       </div>
+      <MutationError error={mutation.error} />
+    </>
+  );
+}
+
+/**
+ * A reply to the paired Station's own open input question, delivered through
+ * `POST /api/orchestration/delegations/:taskId/continue` with the record's
+ * `environmentId` and `expectedInputRequest` naming exactly that request on
+ * the paired Station. This Station forwards it only to a Station that
+ * advertises enforcing the binding; the paired Station refuses it when the
+ * question was answered or replaced, and that refusal is shown.
+ */
+function PeerInputAnswer({
+  reference,
+  itemId,
+}: {
+  reference: AttentionPeerRequestReference & {
+    threadId: string;
+    requestEventId: string;
+  };
+  itemId: string;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  const [answer, setAnswer] = useState('');
+  const mutation = useMutation({
+    mutationFn: (message: string) => {
+      if (!scope?.isCurrent())
+        throw new Error('Reconnect to this Station to answer this request.');
+      return continueDelegatedTask(
+        scope.apiBase,
+        reference.taskId,
+        {
+          message,
+          environmentId: reference.environmentId,
+          expectedInputRequest: {
+            threadId: reference.threadId,
+            requestId: reference.requestId,
+            requestEventId: reference.requestEventId,
+          },
+        },
+        { requestScope: scope },
+      );
+    },
+    onSuccess: async () => {
+      setAnswer('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['attention'] }),
+        queryClient.invalidateQueries({ queryKey: ['orchestration-sessions'] }),
+      ]);
+    },
+  });
+  return (
+    <>
+      <form
+        className="attention-answer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (answer.trim()) mutation.mutate(answer);
+        }}
+      >
+        {/* Same scale as the item's own detail line, and the same compact
+            action row as Allow/Deny. */}
+        <label
+          className="attention-item__detail"
+          htmlFor={`attention-peer-answer-${itemId}`}
+        >
+          Answer on the paired Station
+        </label>
+        <textarea
+          id={`attention-peer-answer-${itemId}`}
+          value={answer}
+          onChange={(event) => setAnswer(event.target.value)}
+        />
+        <div className="attention-item__actions">
+          <button
+            type="submit"
+            className="attention-item__action attention-item__action--primary"
+            disabled={
+              !answer.trim() || mutation.isPending || mutation.isSuccess
+            }
+          >
+            Send answer
+          </button>
+        </div>
+      </form>
       <MutationError error={mutation.error} />
     </>
   );

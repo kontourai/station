@@ -47,6 +47,21 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
    * is that the label distinguishing this chat from the last one is no longer
    * the first thing to vanish.
    */
+  test('shows the execution route alongside the reported model', () => {
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={codex}
+        modelLabel="GPT-6.1 Sol"
+        routeLabel="home-media"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      document.querySelector('.chat-dock__active-identity-engine')?.textContent,
+    ).toBe('Claude Code · GPT-6.1 Sol · via home-media');
+  });
+
   test('leads with the agent, then the title, with engine and model as one token behind it', () => {
     render(
       <ChatDockActiveIdentity
