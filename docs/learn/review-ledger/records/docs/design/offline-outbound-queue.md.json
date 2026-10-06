@@ -10,6 +10,14 @@
   "limits": "Current queue/send ownership and dedicated log-level route/client were checked. The broad historical reconnect language does not authorize replay of possible effects; not a review of every configuration mutation or queue durability case.",
 
   "sources": [
+    "packages/sdk/src/app-config.ts",
+
+    "src-server/routes/system/config.ts",
+
+    "src-server/services/config/log-level-edit-service.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
     "src-ui/src/lib/outboundQueue.ts"
   ],
 

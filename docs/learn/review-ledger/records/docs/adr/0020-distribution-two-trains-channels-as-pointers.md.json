@@ -10,6 +10,52 @@
   "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
 
   "sources": [
+    "install.sh",
+
+    "packages/shared/src/service-launcher-protocol.ts",
+
+    "src-server/routes/system/archive-update.ts",
+
+    "packages/contracts/src/environment-security.ts",
+
+    "src-ui/src/lib/compatibility.ts",
+
+    "packages/shared/src/station-home-schema.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "config/release-manifest-keys.json",
+
+    "config/channel-ports.json",
+
+    "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
+
+    "packaging/portable-server/bin/station-launcher.mjs",
+
+    "scripts/portable-nightly-publication.mjs",
+
+    "src-desktop/tauri.conf.json",
+
+    "src-desktop/tauri.beta.conf.json",
+
+    "src-desktop/tauri.nightly.conf.json",
+
+    "packages/connect/src/core/pairingDeepLink.ts",
+
+    "src-server/routes/system/build-provenance.ts",
+
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "packages/shared/src/release-manifest.mjs",
+
+    "packages/shared/src/prebuilt-archive.ts",
+
+    "scripts/lib/portable-publication.mjs",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
     "src-server/runtime/__tests__/client-protocol-admission.test.ts"
   ],
 

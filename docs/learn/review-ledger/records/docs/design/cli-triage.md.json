@@ -10,6 +10,18 @@
   "limits": "No real installed agent, provider, remote diagnostics or keyring journey. Flags request read-only behavior; they do not independently establish installed-agent enforcement or arbitrary secret detection.",
 
   "sources": [
+    "docs/reference/cli.md",
+
+    "packages/cli/src/__tests__/triage.test.ts",
+
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/commands/triage.ts",
+
+    "packages/shared/src/redaction.ts",
+
+    "scripts/station-cli-implementation.ts",
+
     "scripts/station-cli.ts"
   ],
 

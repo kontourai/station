@@ -10,6 +10,36 @@
   "limits": "Historical comparative research and slice acceptance remain dated; the target model is not a claim that every setting, migration or physical-platform interaction was exercised anew.",
 
   "sources": [
+    "docs/reference/config.md",
+
+    "docs/reference/settings-deep-links.md",
+
+    "packages/cli/src/commands/config.ts",
+
+    "packages/contracts/src/project-settings-overrides.ts",
+
+    "packages/contracts/src/settings-registry.ts",
+
+    "packages/sdk/src/__tests__/update-app-config.test.ts",
+
+    "packages/sdk/src/app-config.ts",
+
+    "src-server/domain/settings-effective.ts",
+
+    "src-server/knowledge-store/conversation-root-bootstrap.ts",
+
+    "src-server/routes/system/config.ts",
+
+    "src-ui/src/components/project-sidebar/CustomizeDialog.tsx",
+
+    "src-ui/src/lib/device-settings-store.ts",
+
+    "src-ui/src/views/SettingsView.tsx",
+
+    "src-ui/src/views/settings/SettingDescription.tsx",
+
+    "src-ui/src/views/settings/settings-catalog.ts",
+
     "src-ui/src/views/settings/settings-pages.ts"
   ],
 

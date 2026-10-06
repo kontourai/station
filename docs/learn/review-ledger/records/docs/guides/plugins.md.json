@@ -10,6 +10,106 @@
   "limits": "Local tests cover development boundary, registry/permission decisions, MCP, server modules and durable-event fixtures. No fresh full installed-provider/native journey, live enterprise integration, remote npm availability or performance benchmark. Build dependency preparation may fail or time out; an attempted dev install is not readiness. Source review is complete for published guide claims, not every private security path. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}}].\n\nAdditional existing main limits (preserved verbatim): Local tests cover development boundary, registry/permission decisions, MCP, server modules and durable-event fixtures. No fresh full installed-provider/native journey, live enterprise integration, remote npm availability or performance benchmark. Build dependency preparation may fail or time out; an attempted dev install is not readiness. Source review is complete for published guide claims, not every private security path.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/guides/plugins.md\",\"ours\":{\"digest\":\"5ff1ca32c4a8610a038c7011a8c026fc7d78d722c154e2150421ba36168a3080\",\"revision\":\"e6eb64ae0f00f85467f76030389782093ac47a0d\"},\"theirs\":{\"digest\":\"210ccfdc9f5a6eb1eb14bcf5726de104aa5ad6c407032e7febfc67b3fb3089e8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"digest\":\"210ccfdc9f5a6eb1eb14bcf5726de104aa5ad6c407032e7febfc67b3fb3089e8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"}},{\"path\":\"packages/shared/src/build.ts\",\"ours\":{\"path\":\"packages/shared/src/build.ts\",\"digest\":\"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630\",\"revision\":\"1e6450e0caa47975d33f505a1348bdc01ae1382e\"},\"theirs\":{\"path\":\"packages/shared/src/build.ts\",\"digest\":\"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783\",\"revision\":\"e78cdc9c00d09b69f333e1609821d8fa70bce58c\"},\"active\":{\"path\":\"packages/shared/src/build.ts\",\"digest\":\"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783\",\"revision\":\"e78cdc9c00d09b69f333e1609821d8fa70bce58c\"}},{\"path\":\"src-server/routes/agents/tools.ts\",\"ours\":{\"path\":\"src-server/routes/agents/tools.ts\",\"digest\":\"ef02a09260c2b91f77b416528575d09c9af58ede133897fa2229aae2b66f44d7\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/routes/agents/tools.ts\",\"digest\":\"e816aa362002e9b79be62094d7e7837e81f85cbeb065a0c8386a1f21f1570c27\",\"revision\":\"8d715b7bee77e593e64a1e0b2af99956571c9795\"},\"active\":{\"path\":\"src-server/routes/agents/tools.ts\",\"digest\":\"ef02a09260c2b91f77b416528575d09c9af58ede133897fa2229aae2b66f44d7\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"src-server/routes/plugins/plugin-public-routes.ts\",\"ours\":{\"path\":\"src-server/routes/plugins/plugin-public-routes.ts\",\"digest\":\"a93e9484a3c0d16b9f5a08b1aad59b4eee4ff89afc725a4b24e5281d308d7564\",\"revision\":\"8540fafb86b969775254b898711ad3ae40ccc39d\"},\"theirs\":{\"path\":\"src-server/routes/plugins/plugin-public-routes.ts\",\"digest\":\"7de524772cc3b8e671daf850826cc85bdc33e9cc5634ffa697263905cbe4a8d3\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/routes/plugins/plugin-public-routes.ts\",\"digest\":\"7de524772cc3b8e671daf850826cc85bdc33e9cc5634ffa697263905cbe4a8d3\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}},{\"path\":\"src-server/routes/plugins/registry.ts\",\"ours\":{\"path\":\"src-server/routes/plugins/registry.ts\",\"digest\":\"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6\",\"revision\":\"47fbbbd8f767858f60a0a323b74e26cb60abce62\"},\"theirs\":{\"path\":\"src-server/routes/plugins/registry.ts\",\"digest\":\"472ef054a5948150ed8f52bb59fbef9ce19c9ec29964a4c2fa78d8d8ef3d8fbc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/routes/plugins/registry.ts\",\"digest\":\"472ef054a5948150ed8f52bb59fbef9ce19c9ec29964a4c2fa78d8d8ef3d8fbc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}},{\"path\":\"src-server/services/agents/skill-service.ts\",\"ours\":{\"path\":\"src-server/services/agents/skill-service.ts\",\"digest\":\"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6\",\"revision\":\"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f\"},\"theirs\":{\"path\":\"src-server/services/agents/skill-service.ts\",\"digest\":\"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6\",\"revision\":\"569b7dcead02252ba2786c9f326bb54daebbbde2\"},\"active\":{\"path\":\"src-server/services/agents/skill-service.ts\",\"digest\":\"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6\",\"revision\":\"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f\"}},{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"ours\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61\",\"revision\":\"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa\"},\"theirs\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}}]",
 
   "sources": [
+    "config/plugin-scaffold-dependencies.json",
+
+    "examples/registry/default.json",
+
+    "packages/cli/src/commands/build.ts",
+
+    "packages/cli/src/dev/server.ts",
+
+    "packages/contracts/src/catalog.ts",
+
+    "packages/sdk/src/agent/index.ts",
+
+    "packages/sdk/src/api-core.ts",
+
+    "packages/sdk/src/hooks/operations.ts",
+
+    "packages/shared/src/agent-plugin-manifest.ts",
+
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/mcp-connection.ts",
+
+    "packages/shared/src/mcp-local-custody.ts",
+
+    "packages/shared/src/mcp-ui-csp.ts",
+
+    "packages/shared/src/plugin-scaffold.ts",
+
+    "schemas/app.schema.json",
+
+    "src-server/domain/config-loader-app.ts",
+
+    "src-server/domain/config-loader.ts",
+
+    "src-server/providers/plugin-provider-loader.ts",
+
+    "src-server/providers/provider-interfaces.ts",
+
+    "src-server/providers/registries/filesystem-skill-registry.ts",
+
+    "src-server/providers/registries/json-manifest-registry.ts",
+
+    "src-server/providers/registries/registry-catalog-installed-state.ts",
+
+    "src-server/providers/registries/registry-source-configuration.ts",
+
+    "src-server/providers/registries/registry-source-manager.ts",
+
+    "src-server/routes/agents/tools.ts",
+
+    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
+
+    "src-server/routes/plugins/plugin-public-routes.ts",
+
+    "src-server/routes/plugins/registry.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/runtime/mcp/mcp-apps-metadata.ts",
+
+    "src-server/runtime/mcp/mcp-ui-frame-server.ts",
+
+    "src-server/runtime/mcp/mcp-ui-resolver.ts",
+
+    "src-server/runtime/plugins/plugin-operational-event-subscriptions.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/services/operational-events/operational-event-subscriptions.ts",
+
+    "src-server/services/plugins/mcp-service.ts",
+
+    "src-server/services/plugins/mcp-ui-permissions.ts",
+
+    "src-server/services/plugins/package-mcp-admission.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts",
+
+    "src-server/services/plugins/plugin-installation-generation-fence.ts",
+
+    "src-server/services/plugins/plugin-installation-local.ts",
+
+    "src-server/services/plugins/plugin-installation-service.ts",
+
+    "src-server/services/plugins/plugin-permissions.ts",
+
+    "src-server/services/plugins/plugin-public-server.ts",
+
+    "src-server/services/plugins/plugin-source.ts",
+
+    "src-server/services/plugins/registry-acquisition.ts",
+
+    "src-server/services/plugins/registry-supply-chain.ts",
+
+    "src-server/services/plugins/registry-trust-policy.ts",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+
+    "src-ui/src/components/plugins/plugin-frame-runtime.ts",
+
     "src-ui/src/core/PluginRegistry.ts"
   ],
 

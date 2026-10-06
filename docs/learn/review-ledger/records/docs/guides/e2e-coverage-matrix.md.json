@@ -10,6 +10,86 @@
   "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
 
   "sources": [
+    ".github/workflows/ci-extended.yml",
+
+    "package.json#/scripts/test:e2e:product",
+
+    "package.json#/scripts/verify",
+
+    "package.json#/scripts/verify:e2e:full",
+
+    "scripts/__tests__/e2e-coverage.test.ts",
+
+    "scripts/__tests__/e2e-manifest.test.ts",
+
+    "scripts/run-e2e-coverage.mjs",
+
+    "scripts/run-e2e-suite.mjs",
+
+    "scripts/verification-lanes.mjs",
+
+    "src-server/providers/llm/defaults.ts",
+
+    "src-server/runtime/bootstrap/runtime-initialize.ts",
+
+    "src-server/services/connections/connection-service.ts",
+
+    "tests/agents-copy-existing.spec.ts",
+
+    "tests/agents-editor-gates.spec.ts",
+
+    "tests/agents-editor-roundtrip.spec.ts",
+
+    "tests/agents-new-cli-turn.spec.ts",
+
+    "tests/agents-new-model-turn.spec.ts",
+
+    "tests/agents-new-muse-echo-turn.spec.ts",
+
+    "tests/agents-pane.spec.ts",
+
+    "tests/agents-readiness-board.spec.ts",
+
+    "tests/android/mobile-layout.spec.ts",
+
+    "tests/coding-layout-plan-panel.spec.ts",
+
+    "tests/connect-modal.spec.ts",
+
+    "tests/connect-reconnect-banner.spec.ts",
+
+    "tests/connect-remote-auth-recovery.spec.ts",
+
+    "tests/connections-crud.spec.ts",
+
+    "tests/default-agent-workflow.spec.ts",
+
+    "tests/e2e-manifest.mjs",
+
+    "tests/mobile-chat-composer.spec.ts",
+
+    "tests/monitoring.spec.ts",
+
+    "tests/plugin-preview.spec.ts",
+
+    "tests/plugin-update.spec.ts",
+
+    "tests/project-architecture.spec.ts",
+
+    "tests/project-forms.spec.ts",
+
+    "tests/project-lifecycle.spec.ts",
+
+    "tests/registry.spec.ts",
+
+    "tests/root-route-restore.spec.ts",
+
+    "tests/schedule-runs.spec.ts",
+
+    "tests/schedule.spec.ts",
+
+    "tests/skills.spec.ts",
+
     "tests/task-first-home.spec.ts"
   ],
 

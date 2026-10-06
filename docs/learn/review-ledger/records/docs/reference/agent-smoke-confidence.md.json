@@ -10,6 +10,42 @@
   "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
 
   "sources": [
+    "docs/learn/media.json#/captures/2",
+
+    "docs/learn/media/connections-models.png",
+
+    "scripts/station-agent-smoke.mjs",
+
+    "src-server/services/connections/connection-readiness-evidence.ts",
+
+    "src-server/services/connections/connection-service.ts",
+
+    "src-server/services/connections/connection-smoke-evidence-store.ts",
+
+    "src-server/services/orchestration/connection-smoke.ts",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/components/SplitPaneLayout.css",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/AgentConnectionView.tsx",
+
+    "src-ui/src/views/ConnectionsSectionFrame.tsx",
+
+    "src-ui/src/views/page-layout.css",
+
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
+
+    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
+
+    "src-ui/src/views/ProviderSettingsView.tsx",
+
     "tests/connections-crud.spec.ts"
   ],
 

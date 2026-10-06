@@ -10,6 +10,46 @@
   "limits": "Browser-matrix descriptions name source coverage, not a newly executed full Playwright matrix. No live engine steering or physical native-device result; redaction preserves protocol fields and is not arbitrary sensitive-text detection.",
 
   "sources": [
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-server/providers/adapters/acp-steer.ts",
+
+    "src-server/providers/adapters/codex-adapter.ts",
+
+    "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
+
+    "src-ui/src/components/chat/ChatSettingsPanel.tsx",
+
+    "src-ui/src/components/chat/ReasoningSection.tsx",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-ui/src/hooks/orchestration/eventHandlers.ts",
+
+    "src-ui/src/hooks/orchestration/queueDrain.ts",
+
+    "src-ui/src/hooks/orchestration/replay/controller.ts",
+
+    "src-ui/src/hooks/orchestration/replay/limits.ts",
+
+    "src-ui/src/hooks/orchestration/replay/player.ts",
+
+    "src-ui/src/hooks/orchestration/replay/recorder.ts",
+
+    "src-ui/src/hooks/orchestration/replay/render-observation.ts",
+
+    "src-ui/src/hooks/orchestration/replay/replay-registry.ts",
+
+    "src-ui/src/hooks/orchestration/replay/scroll-observation.ts",
+
+    "src-ui/src/hooks/orchestration/replay/tape-file.ts",
+
+    "src-ui/src/hooks/orchestration/replay/tape-validation.ts",
+
+    "src-ui/src/hooks/orchestration/replay/timeline.ts",
+
+    "src-ui/src/index.css",
+
     "tests/chat-replay.spec.ts"
   ],
 

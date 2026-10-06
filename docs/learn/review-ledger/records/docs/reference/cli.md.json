@@ -10,7 +10,189 @@
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
   "sources": [
-    "packages/shared/src/sqlite-store-integrity.ts"
+    ".github/workflows/publish-release.yml",
+
+    ".github/workflows/release.yml",
+
+    "install.sh",
+
+    "packages/cli/bundle-externals.mjs",
+
+    "packages/cli/package.json",
+
+    "packages/cli/src/__tests__/cloud-project-import-durability.test.ts",
+
+    "packages/cli/src/__tests__/cloud-project-import.test.ts",
+
+    "packages/cli/src/__tests__/cloud-target.test.ts",
+
+    "packages/cli/src/__tests__/cloud.test.ts",
+
+    "packages/cli/src/__tests__/operate-shell.test.ts",
+
+    "packages/cli/src/__tests__/portability.test.ts",
+
+    "packages/cli/src/__tests__/project-identity.test.ts",
+
+    "packages/cli/src/__tests__/surface-http.test.ts",
+
+    "packages/cli/src/__tests__/triage.test.ts",
+
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/commands/checkpoints.ts",
+
+    "packages/cli/src/commands/cloud-project-import.ts",
+
+    "packages/cli/src/commands/cloud-target.ts",
+
+    "packages/cli/src/commands/cloud.ts",
+
+    "packages/cli/src/commands/core-api.ts",
+
+    "packages/cli/src/commands/core.ts",
+
+    "packages/cli/src/commands/environment.ts",
+
+    "packages/cli/src/commands/export.ts",
+
+    "packages/cli/src/commands/helpers.ts",
+
+    "packages/cli/src/commands/import.ts",
+
+    "packages/cli/src/commands/init.ts",
+
+    "packages/cli/src/commands/install-registry.ts",
+
+    "packages/cli/src/commands/install.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/cli/src/commands/model-options.ts",
+
+    "packages/cli/src/commands/operate/derive.ts",
+
+    "packages/cli/src/commands/operate/index.ts",
+
+    "packages/cli/src/commands/operate/render.ts",
+
+    "packages/cli/src/commands/operate/shell.ts",
+
+    "packages/cli/src/commands/operate/state.ts",
+
+    "packages/cli/src/commands/portability-io.ts",
+
+    "packages/cli/src/commands/profile-store.ts",
+
+    "packages/cli/src/commands/project-identity.ts",
+
+    "packages/cli/src/commands/service.ts",
+
+    "packages/cli/src/commands/session-client.ts",
+
+    "packages/cli/src/commands/surfaces.ts",
+
+    "packages/cli/src/commands/triage.ts",
+
+    "packages/cli/src/commands/version.ts",
+
+    "packages/cli/src/dev/http.ts",
+
+    "packages/cli/src/dev/security.ts",
+
+    "packages/cli/src/dev/server.ts",
+
+    "packages/cli/src/dev/watchers.ts",
+
+    "packages/cli/src/distribution.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "packages/sdk/src/client/cloud-move.ts",
+
+    "packages/sdk/src/client/http.ts",
+
+    "packages/sdk/src/client/reviews.ts",
+
+    "packages/sdk/src/client/runs.ts",
+
+    "packages/shared/src/__tests__/cloud-move.test.ts",
+
+    "packages/shared/src/__tests__/portability.test.ts",
+
+    "packages/shared/src/__tests__/station-home-archive.test.ts",
+
+    "packages/shared/src/__tests__/workspace-package.test.ts",
+
+    "packages/shared/src/cloud-aws-ec2.ts",
+
+    "packages/shared/src/cloud-move.ts",
+
+    "packages/shared/src/portability.ts",
+
+    "packages/shared/src/sqlite-store-integrity.ts",
+
+    "packages/shared/src/station-home-archive.ts",
+
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "packages/shared/src/workspace-package-io.ts",
+
+    "packages/shared/src/workspace-package.ts",
+
+    "scripts/__tests__/release-artifacts.test.ts",
+
+    "scripts/__tests__/release-sbom-generation.test.ts",
+
+    "scripts/__tests__/release-sboms.test.ts",
+
+    "scripts/generate-release-sboms.mjs",
+
+    "scripts/lib/portable-server-archive.mjs",
+
+    "scripts/lib/release-artifacts.mjs",
+
+    "scripts/lib/release-sbom-generation.mjs",
+
+    "scripts/lib/release-sboms.mjs",
+
+    "scripts/release-container-sbom-source.mjs",
+
+    "scripts/station-cli-implementation.ts",
+
+    "scripts/station-dev.mjs",
+
+    "src-server/providers/adapters/acp-adapter.ts",
+
+    "src-server/routes/evidence/flow-runs.ts",
+
+    "src-server/routes/operations/monitoring.ts",
+
+    "src-server/routes/orchestration/dispatch-scope.ts",
+
+    "src-server/routes/orchestration/runs.ts",
+
+    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
+
+    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
+
+    "src-server/services/evidence/review-evidence-module.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
+
+    "src-server/services/execution-target/execution-target-resolver.ts",
+
+    "src-server/services/flow/flow-run-service.ts",
+
+    "src-server/services/orchestration/run-service.ts",
+
+    "src-server/tools/station-control-policy.ts",
+
+    "src-server/utils/path-containment.ts",
+
+    "station"
   ],
 
   "checks": [

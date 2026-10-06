@@ -10,6 +10,102 @@
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/guides/machine-relationships.md\",\"ours\":{\"digest\":\"108f08839833e66e6ac3d7c5b61bc59c9cb7de5dc999f58ee6aa52ac5aa52441\",\"revision\":\"2ab3c6e171e1cae8222f85e17416538a99019390\"},\"main\":{\"digest\":\"69873a4bf7c123c8bb46b4a0014745b8725334684e864ae804226275accf966d\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"src-server/routes/system/application-session-routes.ts\",\"ours\":{\"digest\":\"b0b5c1e9a36ae0ae059a0bb7631b42088812ed79a1b810e33a16211a8ffd74dd\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"digest\":\"757cba2b71a472030ed65add072db04fb2ccfca48b590198d65da5c3b384ffa2\",\"revision\":\"7abc84fcb97288d80f1b25cfc99de23d93817d4c\"}},{\"path\":\"src-server/runtime/bootstrap/account-bound-device-gate.ts\",\"ours\":{\"digest\":\"16db09cabf3a70c43e5e25fa61a771e945851743c465607b69cbbdeb431f6eb0\",\"revision\":\"623ff3525e54ab5b505d1c4f4790da5a0b3aec24\"},\"main\":{\"digest\":\"d646b2bcba9f2f84c4c64246612e4a8899a7e11258c9834d53b1d3f52e502561\",\"revision\":\"7abc84fcb97288d80f1b25cfc99de23d93817d4c\"}},{\"path\":\"src-server/services/identity/application-session-service.ts\",\"ours\":{\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"digest\":\"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62\",\"revision\":\"7abc84fcb97288d80f1b25cfc99de23d93817d4c\"}},{\"path\":\"src-server/services/identity/deployment-authentication-service.ts\",\"ours\":{\"digest\":\"eb023af1d1face7507dd72175cd61e35c62328b8b5d1520db2609aeb1a649b3e\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"d71b6a106a14a8973a991fe44d08cf869c8ba299d516c6628a2e8d80b7c6fe9b\",\"revision\":\"d9aea82e4b47472834f0aaafaf34579ba122b60a\"}},{\"path\":\"src-server/tools/station-control-delegation.ts\",\"ours\":{\"digest\":\"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"main\":{\"digest\":\"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/machine-relationships.md\",\"ours\":{\"digest\":\"108f08839833e66e6ac3d7c5b61bc59c9cb7de5dc999f58ee6aa52ac5aa52441\",\"revision\":\"2ab3c6e171e1cae8222f85e17416538a99019390\"},\"main\":{\"digest\":\"69873a4bf7c123c8bb46b4a0014745b8725334684e864ae804226275accf966d\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"active\":{\"digest\":\"108f08839833e66e6ac3d7c5b61bc59c9cb7de5dc999f58ee6aa52ac5aa52441\",\"revision\":\"2ab3c6e171e1cae8222f85e17416538a99019390\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/routes/system/application-session-routes.ts\",\"ours\":{\"path\":\"src-server/routes/system/application-session-routes.ts\",\"digest\":\"b0b5c1e9a36ae0ae059a0bb7631b42088812ed79a1b810e33a16211a8ffd74dd\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"path\":\"src-server/routes/system/application-session-routes.ts\",\"digest\":\"757cba2b71a472030ed65add072db04fb2ccfca48b590198d65da5c3b384ffa2\",\"revision\":\"7abc84fcb97288d80f1b25cfc99de23d93817d4c\"},\"active\":{\"path\":\"src-server/routes/system/application-session-routes.ts\",\"digest\":\"b0b5c1e9a36ae0ae059a0bb7631b42088812ed79a1b810e33a16211a8ffd74dd\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/account-bound-device-gate.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/account-bound-device-gate.ts\",\"digest\":\"16db09cabf3a70c43e5e25fa61a771e945851743c465607b69cbbdeb431f6eb0\",\"revision\":\"623ff3525e54ab5b505d1c4f4790da5a0b3aec24\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/account-bound-device-gate.ts\",\"digest\":\"d646b2bcba9f2f84c4c64246612e4a8899a7e11258c9834d53b1d3f52e502561\",\"revision\":\"7abc84fcb97288d80f1b25cfc99de23d93817d4c\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/account-bound-device-gate.ts\",\"digest\":\"16db09cabf3a70c43e5e25fa61a771e945851743c465607b69cbbdeb431f6eb0\",\"revision\":\"623ff3525e54ab5b505d1c4f4790da5a0b3aec24\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/identity/application-session-service.ts\",\"ours\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"main\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62\",\"revision\":\"7abc84fcb97288d80f1b25cfc99de23d93817d4c\"},\"active\":{\"path\":\"src-server/services/identity/application-session-service.ts\",\"digest\":\"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e\",\"revision\":\"d4b8f59be510d5eb8220bc5a883dd1691cfa2679\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/services/identity/deployment-authentication-service.ts\",\"ours\":{\"path\":\"src-server/services/identity/deployment-authentication-service.ts\",\"digest\":\"eb023af1d1face7507dd72175cd61e35c62328b8b5d1520db2609aeb1a649b3e\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"path\":\"src-server/services/identity/deployment-authentication-service.ts\",\"digest\":\"d71b6a106a14a8973a991fe44d08cf869c8ba299d516c6628a2e8d80b7c6fe9b\",\"revision\":\"d9aea82e4b47472834f0aaafaf34579ba122b60a\"},\"active\":{\"path\":\"src-server/services/identity/deployment-authentication-service.ts\",\"digest\":\"eb023af1d1face7507dd72175cd61e35c62328b8b5d1520db2609aeb1a649b3e\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"decision\":\"oursMatch\"},{\"path\":\"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx\",\"ours\":{\"path\":\"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx\",\"digest\":\"531ad6208755dc723e632d2405099689ff32b94fc99beb2e5fcd918957d8f7ef\",\"revision\":\"d9aea82e4b47472834f0aaafaf34579ba122b60a\"},\"main\":{\"path\":\"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx\",\"digest\":\"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e\",\"revision\":\"3eb0ca8d962b21e22b041e6b0d92af2a0d178054\"},\"active\":{\"path\":\"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx\",\"digest\":\"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e\",\"revision\":\"3eb0ca8d962b21e22b041e6b0d92af2a0d178054\"},\"decision\":\"mainMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}}]",
 
   "sources": [
+    "docs/guides/connections.md",
+
+    "packages/connect/src/core/applicationChannel.ts",
+
+    "packages/connect/src/core/applicationChannelFrames.ts",
+
+    "packages/connect/src/core/brokerRouteEnrollment.ts",
+
+    "packages/connect/src/core/browserPionConnection.ts",
+
+    "packages/connect/src/core/connectionTrust.ts",
+
+    "packages/connect/src/core/selfHostedApplicationTransport.ts",
+
+    "packages/connect/src/core/selfHostedBrokerBrowserClient.ts",
+
+    "packages/sdk/src/client/application-session.ts",
+
+    "packages/sdk/src/client/projects.ts",
+
+    "packages/shared/src/connection-proof.ts",
+
+    "src-server/routes/inference/fleet-inference.ts",
+
+    "src-server/routes/projects/project-shared-tasks.ts",
+
+    "src-server/routes/system/application-session-routes.ts",
+
+    "src-server/routes/system/config.ts",
+
+    "src-server/routes/system/relay-enrollment-routes.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/connections/fleet-contribution-manifest.ts",
+
+    "src-server/services/identity/application-session-service.ts",
+
+    "src-server/services/identity/deployment-authentication-service.ts",
+
+    "src-server/services/identity/deployment-authentication-validation.ts",
+
+    "src-server/services/identity/relay-enrollment-service.ts",
+
+    "src-server/services/inference/fleet-inference-service.ts",
+
+    "src-server/services/projects/project-membership-service.ts",
+
+    "src-server/services/projects/project-membership-store.ts",
+
+    "src-server/services/projects/project-response-guard.ts",
+
+    "src-server/services/projects/project-shared-task-service.ts",
+
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "src-server/services/ssh/remote-session-reader.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-ui/src/lib/browserRelayEnrollmentController.ts",
+
+    "src-ui/src/lib/browserRelayProjectInvitation.ts",
+
+    "src-ui/src/lib/browserRelayRouteRuntime.ts",
+
+    "src-ui/src/lib/browserRelayTurnCustody.ts",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayApplicationRuntime.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "src-ui/src/views/account/account-entry-continuation.ts",
+
+    "src-ui/src/views/account/AccountEntryView.tsx",
+
+    "src-ui/src/views/account/guest-account-authority.ts",
+
+    "src-ui/src/views/account/GuestDeviceOnboarding.tsx",
+
+    "src-ui/src/views/account/GuestProjectAccessView.tsx",
+
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
+
+    "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+
     "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx"
   ],
 

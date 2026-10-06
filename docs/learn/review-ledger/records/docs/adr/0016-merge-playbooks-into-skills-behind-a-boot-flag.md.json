@@ -10,6 +10,14 @@
   "limits": "No user-home migration or rollback was executed. The historical vocabulary-count claim, all legacy fixtures, upgrade paths and every skill consumer were not exhaustively verified. This is not evidence of a current published package or live migration.",
 
   "sources": [
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/help.ts",
+
+    "src-server/routes/schemas/schema-definitions/content.ts",
+
+    "src-server/services/agents/playbook-skill-migration-cli.ts",
+
     "src-server/services/agents/playbook-skill-migration.ts"
   ],
 

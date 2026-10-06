@@ -10,6 +10,38 @@
   "limits": "Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/reference/cli.md\",\"ours\":{\"digest\":\"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"main\":{\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"neitherMatch\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"ours\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"active\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/reference/cli.md\",\"ours\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"active\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"decision\":\"mainMatch\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"ours\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"active\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"decision\":\"mainMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}},{\"path\":\"docs/reference/cli.md\",\"ours\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd\",\"revision\":\"19aff2a08b9739ad9ffbda39ff8cb19b026fda82\"},\"theirs\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}}]",
 
   "sources": [
+    "Dockerfile",
+
+    "docker-compose.yml",
+
+    "docs/architecture/module-map.md",
+
+    "docs/guides/deployment.md",
+
+    "docs/guides/nightly.md",
+
+    "docs/guides/release-channel-ports.md",
+
+    "docs/privacy-policy.md",
+
+    "docs/reference/cli.md",
+
+    "install.sh",
+
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/cli/src/distribution.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-server/services/orchestration/flow-policy-sidecar.ts",
+
+    "src-server/services/privacy-inventory.ts",
+
+    "src-ui/src/hooks/voiceWsUrl.ts",
+
     "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
   ],
 
