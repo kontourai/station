@@ -549,7 +549,7 @@ import { ProjectResourceResolver } from '../../services/projects/project-resourc
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
-import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
+import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
@@ -5210,6 +5210,11 @@ export function configureRuntimeRoutes(
       );
     },
   } satisfies Parameters<typeof createProjectCatalogueReader>[1];
+  const sessionWorkspaceDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: conversationReadAuthorityForRequest,
+    projects: context.projectService,
+  });
   const projectCatalogue = createProjectCatalogueReader(
     context.projectService,
     projectCatalogueDeps,
@@ -5225,32 +5230,7 @@ export function configureRuntimeRoutes(
         kitObservabilityRegistry,
         terminalService: context.terminalService,
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
-          sessionWorkspaceDirectoryFor(
-            {
-              canRead: (id) =>
-                context.orchestrationService.canUserReadSession(
-                  id,
-                  conversationReadAuthorityForRequest(routeContext.req.raw),
-                ),
-              listSessions: () =>
-                context.orchestrationService.listSessions(
-                  INTERNAL_SESSION_READ_SCOPE,
-                ),
-              projectDirectory: async (slug) => {
-                try {
-                  const configured =
-                    context.projectService.getProject(slug).workingDirectory;
-                  return configured
-                    ? resolve(expandTilde(configured))
-                    : undefined;
-                } catch {
-                  return undefined;
-                }
-              },
-            },
-            projectSlug,
-            thread,
-          ),
+          sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
         // route answers from, so the Pane catalogue, the nav entry and the
         // route guard cannot drift into three answers.
