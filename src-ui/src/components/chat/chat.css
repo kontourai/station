@@ -2150,10 +2150,13 @@
   margin-bottom: 0;
 }
 
-/* Below ~one short word of room the phone header's project control only ever
-   read "New ch… / No…", so it collapses to its folder glyph; the button's
-   aria-label carries the project name either way. The base header rules live
-   in index.css; these are parent-qualified so source order cannot decide. */
+/* A long chat title leaves the phone header's project control 40px of content
+   width (measured at 320, 390 and 412px), where it only ever read "New ch… /
+   No …"; there it collapses to its folder glyph, and the button's aria-label
+   still names the project. The shortest title ("Chat") leaves 56px at 320px,
+   where "No pr…" still reads, so the cut sits between the two at 48px. The
+   base header rules live in index.css; these are parent-qualified so source
+   order cannot decide. */
 .chat-dock__mobile-header .chat-dock__mobile-project {
   container: chat-dock-mobile-project / inline-size;
 }
@@ -2161,7 +2164,7 @@
   display: none;
   color: var(--text-secondary);
 }
-@container chat-dock-mobile-project (max-width: 88px) {
+@container chat-dock-mobile-project (max-width: 48px) {
   .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
     display: inline-flex;
   }
