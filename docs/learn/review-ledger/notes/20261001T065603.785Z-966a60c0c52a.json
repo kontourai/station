@@ -1,0 +1,11 @@
+{
+  "revision": "569b2089287d33b204561dbc9b7c416a6f323459",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed added engine-account action inventory entry against existing shared-action, theme-token and authority/SDK patterns. Only a covered browser surface is added; no policy exemption, new breakpoint, API authority or native proof is introduced."},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed added engine-account action inventory entry against existing shared-action, theme-token and authority/SDK patterns. Only a covered browser surface is added; no policy exemption, new breakpoint, API authority or native proof is introduced."},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed added engine-account action inventory entry against existing shared-action, theme-token and authority/SDK patterns. Only a covered browser surface is added; no policy exemption, new breakpoint, API authority or native proof is introduced."}
+  ]
+}

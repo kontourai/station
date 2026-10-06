@@ -1,9 +1,0 @@
-{
-  "revision": "870fc1303b91c738a6849de24d801db1d3e08a18",
-
-  "notes": [
-    {"path":"docs/reference/settings-deep-links.md","note":"docs/architecture/module-map.md changed on this branch (Browser and Shared live surface sections) and on main (native application signaling and account-proof sections). Correction of this record's first note, which overstated what these pages do with the module map: this page lists the module map among its sources but describes only the settings deep-link URL shape and catalog endpoint; I grepped it for browser, dialog, lease, live-surface, signaling and relay and found nothing. No prose change.","inputs":["docs/reference/settings-deep-links.md"]},
-
-    {"path":"examples/repository-knowledge-graph/README.md","note":"docs/architecture/module-map.md changed on this branch (Browser and Shared live surface sections) and on main (native application signaling and account-proof sections). Correction of this record's first note, which overstated what these pages do with the module map: this example exports the module map as an excerpted graph; its README hard-codes no module names or counts (line 30 says atlas membership determines the module set) and names no Browser or signaling module; grep for browser, live-surface, dialog and signaling finds only a 'browser receipts' remark at line 133. No prose change.","inputs":["examples/repository-knowledge-graph/README.md"]}
-  ]
-}

@@ -1,0 +1,21 @@
+{
+  "revision": "ea487d452ddc3d64a93bfe2b70abe2bc2ef558c6",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed each referenced capture and its document ownership. Replaced the whole media manifest binding with existing JSON Pointer value bindings for every referenced/owned capture object. Image/video source bindings remain, and each full capture object includes path, digest, revision, evidence and owners. An unrelated capture update no longer changes these claims; relevant capture or index changes still fail freshness. No validator/policy/baseline change."}
+  ]
+}

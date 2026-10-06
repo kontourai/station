@@ -1,7 +1,0 @@
-{
-  "revision": "64afbffd54fe70c4a2c79ba901fd99a13d3a6014",
-
-  "notes": [
-    {"path":"docs/learn/walkthroughs.md","note":"Reviewed Projects/Tasks walkthrough and composition/CSS delta. Preserved original capture provenance and explicitly labeled older appearance; current objective/room-first layout and responsive textareas described from source. Old captures do not verify new layout or full #2844 completion.","inputs":["docs/learn/walkthroughs.md"]}
-  ]
-}

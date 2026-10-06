@@ -1,0 +1,7 @@
+{
+  "revision": "ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Re-read against #2975 (src-server/routes/system/archive-update.ts follows https-only redirects, at most 5, when checking the signed release manifest, because GitHub serves release assets through a 302; signature verification unchanged) and #3013 (scripts/portable-nightly-publication.mjs re-verify retries only a stale older rolling manifest, for up to 5 minutes). The ADR's pointer/channel decisions and its line about repointing installer URLs describe neither behavior; no prose change needed."}
+  ]
+}

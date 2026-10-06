@@ -1,0 +1,7 @@
+{
+  "revision": "28ee475ceed3623c147d918bcd6c30d99a49bc00",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge.png","note":"src-ui/src/index.css changed on this branch by removing 68 rules whose class names appear in no markup, test, fixture or doc (agent-selector menu internals, chat-dock scope/settings/empty/model/session-info/new-icon/active filter pill/360px drawer toggle, provider-overview grid and card internals, new-chat-modal agent description and state chip, agent-editor steps/content/actions, the ACP session badge, workspace-tabs label, workspace-default empty/title/actions, knowledge status item, chat-settings active button, streaming-loading), and earlier by moving the Browser pane's icon-button rule out of the entry sheet into the pane's own chunk. Checked each deleted selector literally across the repository and against every template-literal and concatenation prefix in src-ui and src-server; nothing this capture renders carries any of them, so its pixels are unaffected. No re-capture."}
+  ]
+}

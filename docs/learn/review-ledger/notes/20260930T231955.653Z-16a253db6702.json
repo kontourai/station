@@ -1,0 +1,13 @@
+{
+  "revision": "693d3c2389b988f5d65373a769a45c5d63094aaa",
+
+  "notes": [
+    {"path":"packages/cli/CHANGELOG.md","note":"Reviewed generated version notes; removed whitespace-only blank lines without changing note text or Markdown hard breaks. These changelog entries describe release intent/source changes, not a registry publication receipt."},
+
+    {"path":"packages/contracts/CHANGELOG.md","note":"Reviewed generated version notes; removed whitespace-only blank lines without changing note text or Markdown hard breaks. These changelog entries describe release intent/source changes, not a registry publication receipt."},
+
+    {"path":"packages/sdk/CHANGELOG.md","note":"Reviewed generated version notes; removed whitespace-only blank lines without changing note text or Markdown hard breaks. These changelog entries describe release intent/source changes, not a registry publication receipt."},
+
+    {"path":"packages/shared/CHANGELOG.md","note":"Reviewed generated version notes; removed whitespace-only blank lines without changing note text or Markdown hard breaks. These changelog entries describe release intent/source changes, not a registry publication receipt."}
+  ]
+}

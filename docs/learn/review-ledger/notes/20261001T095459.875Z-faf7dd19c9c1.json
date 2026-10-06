@@ -1,9 +1,0 @@
-{
-  "revision": "6f12f85a362de9345606a3f962adb32b36f99cb1",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Corrective integration review at 6f12f85a3 supersedes the unconditional allow-once claim in the prior 0f03cc647 note. Independent reviewer directly invoked mapAcpDecisionToOutcome with only allow_always and observed selected. Inspected acp-adapter-events.ts preferredKinds: accept selects allow_once first, then allow_always. The reference now states that Station mints no session grant but cannot guarantee the agent applies a one-call decision. Historical ADR remains superseded and its current-reference link is accurate. No provider/browser/deployment proof; no approval behavior changed.","inputs":["docs/reference/session-api.md"]},
-
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Corrective integration review at 6f12f85a3 supersedes the unconditional allow-once claim in the prior 0f03cc647 note. Independent reviewer directly invoked mapAcpDecisionToOutcome with only allow_always and observed selected. Inspected acp-adapter-events.ts preferredKinds: accept selects allow_once first, then allow_always. The reference now states that Station mints no session grant but cannot guarantee the agent applies a one-call decision. Historical ADR remains superseded and its current-reference link is accurate. No provider/browser/deployment proof; no approval behavior changed.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]}
-  ]
-}

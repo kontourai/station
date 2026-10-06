@@ -1,9 +1,0 @@
-{
-  "revision": "66ae5ea6b03d3b796ebd4185e2031ce16ee0a597",
-
-  "notes": [
-    {"path":"docs/guides/documentation.md","note":"#2936: review-ledger-store.mjs only made its legacy-conversion and media-join helpers module-private; the layout, loader refusals and read API described in Ledger layout and merges are unchanged.","inputs":["docs/guides/documentation.md"]},
-
-    {"path":"docs/learn/README.md","note":"#2936: review-ledger-store.mjs only made its legacy-conversion and media-join helpers module-private; the capture-review description is unchanged.","inputs":["docs/learn/README.md"]}
-  ]
-}

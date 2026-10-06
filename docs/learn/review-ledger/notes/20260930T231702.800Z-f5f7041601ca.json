@@ -1,7 +1,0 @@
-{
-  "revision": "26b51492632d81e2d767e2f4729d214b514403ac",
-
-  "notes": [
-    {"path":"docs/design/registry-trust-policy.md","note":"Reviewed ConfigLoader atomic update delta: builtin runtime identity is overlaid only inside the locked synchronous callback and stripped before durable write. Registry policy CAS, epoch fences, signature policy and hosted limits remain unchanged. Focused identity/custody tests pass.","inputs":["docs/design/registry-trust-policy.md"]}
-  ]
-}

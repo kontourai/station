@@ -1,9 +1,0 @@
-{
-  "revision": "6834c8272c12f1d98125b4f21c8d2617d9113b08",
-
-  "notes": [
-    {"path":"docs/design/conduit-runtime-integration.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added.","inputs":["docs/design/conduit-runtime-integration.md"]},
-
-    {"path":"docs/design/conduit-runtime-integration.md","note":"Bounded #599 hook-test update: the existing genuine-denial chain still asserts the safe reason, call identity and policy badge, and now expects raw output to be absent after normalization. Its previous output expectation pinned the disclosed leak. No hook invocation, authority, denial composition or monitoring behavior changes.","inputs":["docs/design/conduit-runtime-integration.md"]}
-  ]
-}

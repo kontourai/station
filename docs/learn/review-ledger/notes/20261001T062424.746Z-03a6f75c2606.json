@@ -1,0 +1,19 @@
+{
+  "revision": "d7f3dc8591b9993d2fbf1d8156cbc27a3219af11",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"tests/skills.spec.ts: a comment was moved back above the test it describes; no test was added, removed or changed. The Skills row is still accurate."},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Updated after the delta review and re-read against the sources: ResponsiveDialogSurface now provides OverlayLayerContext (added to the list of what it owns; nothing else in that list changed); ActionOverflowMenu takes its layer from hostLayerOf (ancestor z-index plus the overlay chain), batches placement per frame and closes when the trigger leaves the viewport; ActionRow's lone trigger shows the first word of overflowLabel; the ratchet counts a ternary once per arm, needs a static string for role/class exemptions and counts a slotless ActionRow as one; visible-action-count exempts only true/menu/listbox haspopup."},
+
+    {"path":"docs/guides/theming.md","note":"ResponsiveDialogSurface gained an OverlayLayerContext provider around its panel (#3045). It renders no element and changes no class, style, token or theme attribute, so nothing this page says about theming the surface changed."},
+
+    {"path":"docs/patterns/backend.md","note":"ResponsiveDialogSurface gained an OverlayLayerContext provider around its panel (#3045): a UI-only change with no server, route or data effect. Nothing on this page depends on it."},
+
+    {"path":"docs/patterns/frontend.md","note":"ResponsiveDialogSurface gained an OverlayLayerContext provider around its panel (#3045). The two statements here still hold: it still writes its viewport and anchor values through `style`, and a custom consumer still supplies its own visual styles."},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs: the comment on the dialog-layering test's existing classification now says it bundles an entry with esbuild in memory. No classification was added and no instruction in this file changed."},
+
+    {"path":"src-ui/AGENTS.md","note":"ResponsiveDialogSurface gained an OverlayLayerContext provider around its panel (#3045). 'supplies behavior and geometry only; a custom consumer must own its overlay, background, and foreground styles' still holds: the context carries no style."}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "revision": "75ef817fd8b4a0ad20fe2f453007ae759255c437",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"The fold section now also says the command carries a branch's in-place edits to earlier checks (such as a redaction) where ours still has the base text, and keeps ours and names the record where both sides edited one check. Checked against foldEntry's carried/edited logic and main()'s report line in migrate-review-ledger.mjs, and the new carry/report test."},
+
+    {"path":".veritas/README.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."},
+
+    {"path":"docs/README.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."},
+
+    {"path":"docs/guides/development.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."},
+
+    {"path":"docs/guides/testing.md","note":"Re-reviewed after the documentation guide changed again: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change adds only a fold-section sentence about in-place check edits, so every linked claim still holds."}
+  ]
+}

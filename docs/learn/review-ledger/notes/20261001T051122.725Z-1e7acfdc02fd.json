@@ -1,0 +1,7 @@
+{
+  "revision": "76ca3dd2cbe8eabd1c34c8f575ff1c63a19659a4",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Review after merging main (through #3032) into the @kontourai/ui 1.18.0 bump. This supersedes this branch's two earlier notes for this document: the one-sentence wording edit they describe was withdrawn, so the document's bytes are main's. Source change reviewed: src-ui/src/lib/branding-theme.ts drops Station's own --k-brand surface-text rule (the package's validateBrandOverride rates the brand as text at 4.5:1 on page, panel and raised panel from 1.18) and keeps the --k-action rule. The branding theme paragraph's claims hold: the same five allowed keys, hex-only values, the package's checks plus Station's stricter text checks (the action fill on the page and on the panel) in both modes, all-or-nothing acceptance, and an unvalidated pass-through route."}
+  ]
+}

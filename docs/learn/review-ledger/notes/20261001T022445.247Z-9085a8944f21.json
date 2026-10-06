@@ -1,7 +1,0 @@
-{
-  "revision": "d663d1be12c5e2fc585b2bcfcbaacbe56014795a",
-
-  "notes": [
-    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed merged walkthrough: retains historical selected-hover defect evidence while identifying upstream selected tint/normal text treatment; explicit whole-consumer runtime contrast limits remain. Shared Task evidence stays single-human and does not close #2844.","inputs":["docs/architecture/abstraction-review.md"]}
-  ]
-}

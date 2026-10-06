@@ -1,0 +1,7 @@
+{
+  "revision": "569b2089287d33b204561dbc9b7c416a6f323459",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Delta review: account actions now use ResponsiveSurfaceActions; intrinsic flex wrapping replaces a page-local breakpoint. Four operator/delegated UI flows pass; 390px component preview still has44px buttons and no horizontal overflow. Prior feature evidence and live-provider/native limitations remain."}
+  ]
+}

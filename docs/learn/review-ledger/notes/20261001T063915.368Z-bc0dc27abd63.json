@@ -1,0 +1,7 @@
+{
+  "revision": "eefd7ec897cef43dde8e89f5420a32d50eec12f7",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Inspected the retained Models image. This engine-only account UI addition does not change its model setup scene or sample-data limits; capture identity and date remain original, with no new engine-login proof."}
+  ]
+}

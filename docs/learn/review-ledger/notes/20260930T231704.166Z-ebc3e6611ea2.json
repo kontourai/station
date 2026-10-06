@@ -1,7 +1,0 @@
-{
-  "revision": "26b51492632d81e2d767e2f4729d214b514403ac",
-
-  "notes": [
-    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Reviewed ConfigLoader builtin integration projection delta against installation lifecycle and materialization contract. Durable builtin files remain instance independent; read-only package ownership, generation fences and projection mutation lock remain unchanged. Focused identity, custody and MCP service tests pass.","inputs":["docs/design/plugin-installation-lifecycle.md"]}
-  ]
-}

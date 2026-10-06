@@ -1,7 +1,0 @@
-{
-  "revision": "c525c30acd15673439ffd4c4218c22b0e77c5d3b",
-
-  "notes": [
-    {"path":"docs/patterns/backend.md","note":"docs/ui/responsive-action-surfaces.txt: this branch records the Activity filter bar, SessionsView and RunBoardSummary action rows and removes the entries of the deleted coordinator/collaborators/evidence-button/project-pill components. The document describes the inventory mechanism, not individual entries; claims remain accurate.","inputs":["docs/patterns/backend.md"]}
-  ]
-}

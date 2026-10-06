@@ -1,7 +1,0 @@
-{
-  "revision": "51eff3e3c132dc9d4816cc9f1cd62fc9c48764b6",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Formatting-only multiline Empty props delta inspected; no API, authority, query or user-visible behavior change.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

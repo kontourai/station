@@ -1,7 +1,0 @@
-{
-  "revision": "2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Delta review of ProjectTasksSection: creation and first-task/Starter contracts unchanged; board is enabled only through TasksLayout. Existing first-task instructions remain accurate. No live provider or release claim added.","inputs":["docs/user/getting-started.md"]}
-  ]
-}

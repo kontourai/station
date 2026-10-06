@@ -1,7 +1,0 @@
-{
-  "revision": "841509ddd903096c3d994b5b2fdfe008b36ec0eb",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Checked the claim that new child-process tests are classified in scripts/vitest-resource-manifest.mjs: added coding-git-read-confinement.routes.test.ts to PROCESS_HEAVY_VITEST_FILES beside coding-git-security.routes.test.ts. No prose change.","inputs":["scripts/AGENTS.md"]}
-  ]
-}

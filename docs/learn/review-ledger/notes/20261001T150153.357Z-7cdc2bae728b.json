@@ -1,0 +1,7 @@
+{
+  "revision": "7313e2e5010c88deda8f65df663a7b85c6f7380e",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx changed on this branch only by rendering its toolbar icon controls (Back, Forward, Reload, Console) through BrowserIconButton, the pane-owned round ghost Button sized by --browser-pane-control, instead of a shared Button variant; same roles, names, sizing and behaviour. Searched this document for toolbar, icon-button and Button-variant claims; none is affected. No prose change."}
+  ]
+}

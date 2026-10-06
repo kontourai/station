@@ -1,0 +1,17 @@
+{
+  "revision": "5e564120522181c6fa726b474c138b229b00b95c",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."},
+
+    {"path":"docs/design/settings-architecture.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."},
+
+    {"path":"docs/reference/api.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."},
+
+    {"path":"docs/reference/config.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."}
+  ]
+}

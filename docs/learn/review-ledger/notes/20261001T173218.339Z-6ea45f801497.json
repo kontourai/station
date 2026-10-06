@@ -1,7 +1,0 @@
-{
-  "revision": "9c30c877c4899bcf6510ce6c7ada4c9c47fbc102",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"After merging origin/main 66848daad: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (scripts/vitest-resource-manifest.mjs) is unchanged since its last review, whose finding is carried forward, not re-derived: The vitest resource manifest lists the read-confinement and checkpoint own-repository test files as process-heavy; no guidance in scripts/AGENTS.md changes","inputs":["scripts/AGENTS.md"]}
-  ]
-}

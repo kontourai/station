@@ -1,7 +1,0 @@
-{
-  "revision": "6c3604888394821808a5617ddd044c6e61d86fc2",
-
-  "notes": [
-    {"path":"docs/guides/documentation.md","note":"#2936: review-binding.mjs only made splitBinding module-private; the value-binding rules described here are unchanged.","inputs":["docs/guides/documentation.md"]}
-  ]
-}

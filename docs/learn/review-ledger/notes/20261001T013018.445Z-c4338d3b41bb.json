@@ -1,0 +1,7 @@
+{
+  "revision": "404008de59f4664e8d5c4822bddfb0d3e39ef9a2",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed walkthrough delta: original capture appearance remains historical; current Task-room ordering/sizing is described with explicit limits. Abstraction review retains its source observations and scoped next-evidence claims; no underlying authority or architecture change in this UI slice."}
+  ]
+}

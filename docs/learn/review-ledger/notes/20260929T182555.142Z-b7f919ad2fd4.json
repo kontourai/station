@@ -1,9 +1,0 @@
-{
-  "revision": "87da9649c58121a1929fe000c54d94c6b7d4cf1e",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed after the documentation guide changed: this page only links the documentation maintenance workflow by name, and the guide change touches only its fold-a-branch section (media.json conflict resolution), so the link and its description still hold.","inputs":["docs/guides/integrating-station.md"]},
-
-    {"path":"docs/guides/testing.md","note":"Re-reviewed after the documentation guide changed: this page only links the documentation maintenance workflow by name, and the guide change touches only its fold-a-branch section (media.json conflict resolution), so the link and its description still hold.","inputs":["docs/guides/testing.md"]}
-  ]
-}

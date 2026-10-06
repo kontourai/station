@@ -1,7 +1,0 @@
-{
-  "revision": "84ed23307041981e18b353f7183f41374a3ad504",
-
-  "notes": [
-    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed corrected activity claim against the existing usage-rollup access:manage leaf, which localOnly cannot lower. UI gates activity by management permission; tests caught and restored the previous read-only403 behavior. No scope expansion or global-account login is introduced.","inputs":["docs/security/remote-access-threat-model.md"]}
-  ]
-}

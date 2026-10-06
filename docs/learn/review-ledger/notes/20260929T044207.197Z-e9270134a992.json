@@ -1,9 +1,0 @@
-{
-  "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
-
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
-  ]
-}

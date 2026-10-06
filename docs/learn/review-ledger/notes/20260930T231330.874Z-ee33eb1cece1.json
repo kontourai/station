@@ -1,0 +1,115 @@
+{
+  "revision": "ece4f42854766f406dd0bf7264086aa157c25370",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"deploy/public-ingress/README.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/README.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/architecture.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/architecture/module-map.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed delegated sign-in profile read through live HTTP admission, minimal DTO, SDK authority-partitioned query and UI branch. Documented exact operator exception and retained management/manual-enrolment gates; HTTP revocation and mounted UI tests pass. No claim of a completed provider approval or physical-device sign-in."},
+
+    {"path":"docs/design/inference-fleet.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/glossary.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/agents.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed delegated sign-in profile read through live HTTP admission, minimal DTO, SDK authority-partitioned query and UI branch. Documented exact operator exception and retained management/manual-enrolment gates; HTTP revocation and mounted UI tests pass. No claim of a completed provider approval or physical-device sign-in."},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/deployment.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/repository-layout.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/starter-work.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/theming.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/work-board-security.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/patterns/backend.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/patterns/frontend.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/reference/api.md","note":"Reviewed delegated sign-in profile read through live HTTP admission, minimal DTO, SDK authority-partitioned query and UI branch. Documented exact operator exception and retained management/manual-enrolment gates; HTTP revocation and mounted UI tests pass. No claim of a completed provider approval or physical-device sign-in."},
+
+    {"path":"docs/reference/config.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/reference/connect.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/reference/env-vars.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed delegated sign-in profile read through live HTTP admission, minimal DTO, SDK authority-partitioned query and UI branch. Documented exact operator exception and retained management/manual-enrolment gates; HTTP revocation and mounted UI tests pass. No claim of a completed provider approval or physical-device sign-in."},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed delegated sign-in profile read through live HTTP admission, minimal DTO, SDK authority-partitioned query and UI branch. Documented exact operator exception and retained management/manual-enrolment gates; HTTP revocation and mounted UI tests pass. No claim of a completed provider approval or physical-device sign-in."},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Bounded delegated engine-sign-in delta review: checked changed route composition/currentness and exact scope exceptions against this page’s affected claims. The new profile read and UI delegation do not change this page’s other route families, deployment, storage, or historical evidence. This is not a new whole-page audit or live provider qualification."}
+  ]
+}

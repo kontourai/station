@@ -1,7 +1,0 @@
-{
-  "revision": "fe2da6beb94c16aa250c7207cbd814b4f4d4fb08",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"activity-list fix round: removed the deleted SessionsView.projectPill.overflow test's entry from vitest-resource-manifest.mjs (the file no longer exists). scripts/AGENTS.md describes the manifest's classification rule, not individual entries; still accurate.","inputs":["scripts/AGENTS.md"]}
-  ]
-}

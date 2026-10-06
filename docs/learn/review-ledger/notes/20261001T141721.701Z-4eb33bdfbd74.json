@@ -1,7 +1,0 @@
-{
-  "revision": "c5a2f2b898fa940af8a42a387f7894dffb7195e2",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"The review workspace source changed how it checks out (judged config copy as the common directory); no route shape, status or code in the API reference changed in this delta","inputs":["docs/reference/api.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "fc4302eecd8c0a42f5177b23f44847383bc862b3",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Resolved competing manifest bindings by reviewing the merged resource list: retained owned browser-code relay process test plus upstream bounded button-cap and Chromium action/menu probes. Both sets remain process-heavy, without duplicate paths or schedule-policy changes. Rebound the actual merged bytes; no previous binding is retained as completion.","inputs":["scripts/AGENTS.md"]}
-  ]
-}

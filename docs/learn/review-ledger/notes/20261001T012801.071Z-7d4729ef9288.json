@@ -1,7 +1,0 @@
-{
-  "revision": "64afbffd54fe70c4a2c79ba901fd99a13d3a6014",
-
-  "notes": [
-    {"path":"docs/glossary.md","note":"Reviewed Task/Task workspace/Task experience/Session definitions against composition delta. Durable identity, existing room and reference owners, declared optional boundaries and direct-chat distinction remain accurate. No new agent-channel or public-sharing behavior claimed.","inputs":["docs/glossary.md"]}
-  ]
-}

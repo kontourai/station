@@ -1,7 +1,0 @@
-{
-  "revision": "841509ddd903096c3d994b5b2fdfe008b36ec0eb",
-
-  "notes": [
-    {"path":"docs/security/remote-access-threat-model.md","note":"Added two coding-route bullets and checked each claim against the code and its tests: git reads resolve one discovery, require the Commit/Push git-directory verdict, name the pair on every call, confirm the above-Project repository from the folder above, answer 409 git-dir-outside-project without a host path, and re-check after the read (git-read-repository.ts, git-directory-confinement.ts, coding-git-read-confinement.routes.test.ts); non-network git commands get no transport, no lazy fetch and no credential helper, and partial clones and program/network config keys are refused (git-exec.ts, git-repository-config.ts, git-exec.hardening.test.ts). Stated limits: change-time detection is not an atomic open, hard links are not covered, checkout still discovers. Other sections not re-reviewed.","inputs":["docs/security/remote-access-threat-model.md"]}
-  ]
-}

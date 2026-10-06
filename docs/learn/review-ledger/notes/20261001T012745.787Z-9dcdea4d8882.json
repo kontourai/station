@@ -1,7 +1,0 @@
-{
-  "revision": "06b6e52074502f71a5703f21ad83a96b62e272bd",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Merge of origin/main (review-ledger restructure #2967 and later) into feat/activity-a11y: media.json's connections-models entry keeps this branch's re-capture (bb07a2df8); the document references that capture and makes no claim about selected-row styling, row accessible names, keyboard model or touch sizing, so it remains accurate.","inputs":["docs/user/getting-started.md"]}
-  ]
-}

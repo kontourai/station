@@ -1,0 +1,11 @@
+{
+  "revision": "89c06ec35cd222b1ffda4aa84b66b43aca6d3670",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"ChatSettingsPanel only gained aria-labels on its three font-size buttons (#3045); the 'Step through this conversation' entry this page cites is unchanged. Also re-read the ReplayTransport sentence: Back, Step, Play/Pause, speed, seek and Run until issue all still exist under those names; Back and Play/Pause are now icon buttons carrying them as accessible names."},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Rewrote the Action rows section for ActionRow, ActionOverflowMenu, per-row baseline reasons and the rendered helper. Checked each sentence against the sources: primary/secondary/overflow props and required overflowLabel; danger items last behind a separator; disabledReason shown under the label; always-on 44px hit area in ActionRow.css and ActionOverflowMenu.css; the ratchet's run/identity/--record/--report behaviour; the exclusive-guard and card rules; and that actionRowsOverCap is exercised only by its own Chromium test."},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gained one classification, for src-ui/src/__tests__/visible-action-count.rendered.test.tsx (#3045), beside the other real-Chromium UI tests. No instruction in this file changed."}
+  ]
+}

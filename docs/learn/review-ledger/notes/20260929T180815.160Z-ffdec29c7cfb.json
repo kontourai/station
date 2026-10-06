@@ -1,0 +1,9 @@
+{
+  "revision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Desktop application signaling commands: replaced 'No renderer adapter ... currently invokes these names' because this branch adds createNativeApplicationSignalingBridge, which invokes station_native_relay_application_binding/open/read for one exact saved-profile revision and validates binding, open receipt and answer shapes (exact keys match the host's deny_unknown_fields serde structs in native_relay_redemption.rs). No ordinary native application caller composes it (grep: only its test). Command-side limits (no DataChannel, proof verification, route selection, sign-in or enrollment) unchanged. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC or packaged-platform receipt."},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Merge of main (#2886 rewrite) into the native application UI bridge branch: resolved the native-adapter conflict to main's wording after re-reading the merged owners. The production Pion runtime passes nativeOfferPolling = (native adapter configured) (self-hosted-broker-pion-runtime.ts) and the lifecycle calls pollNative only under that flag (self-hosted-broker-runtime.ts), so 'additionally calls pollNative() for that opt-in surface' is accurate where the branch's 'own explicit opt-in' overstated a separate switch. Corrected 'application names have no renderer caller': this branch adds createNativeApplicationSignalingBridge, which wraps the three application commands for one saved-profile revision; grep finds no non-test caller composing it. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC, packaged app or live broker."}
+  ]
+}

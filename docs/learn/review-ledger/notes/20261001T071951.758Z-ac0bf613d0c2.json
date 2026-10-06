@@ -1,9 +1,0 @@
-{
-  "revision": "20c5a81766e320fec9bb7f5353030ec38c5d1a19",
-
-  "notes": [
-    {"path":"docs/design/project-task-room-history.md","note":"Fixture cleanup follow-up only: new request and commit-race tests now allocate via trackTempDirs, which owns after-hook cleanup on assertion failure. Production behavior and all tested positive/negative invariants are unchanged. The selected module/HTTP/runtime three-file suite passed 65 cases after migration; this remains controlled source/fixture evidence, not model/browser/team acceptance.","inputs":["docs/design/project-task-room-history.md"]},
-
-    {"path":"docs/design/task-room-agent-requests.md","note":"Fixture cleanup follow-up only: new request and commit-race tests now allocate via trackTempDirs, which owns after-hook cleanup on assertion failure. Production behavior and all tested positive/negative invariants are unchanged. The selected module/HTTP/runtime three-file suite passed 65 cases after migration; this remains controlled source/fixture evidence, not model/browser/team acceptance.","inputs":["docs/design/task-room-agent-requests.md"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "3059a6573285c28a92a51e39842ccb7ff8474651",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"Replaced shared-document capture and preserved Project capture history. Verified actual current brief/room-first composition, saved multi-paragraph document and human room message, reopened persisted state, and measured 390px textareas. Explicitly retains external-agent/two-human/native/public and remaining #2844 limits."}
+  ]
+}

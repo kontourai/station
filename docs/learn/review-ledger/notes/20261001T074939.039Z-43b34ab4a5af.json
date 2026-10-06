@@ -1,7 +1,0 @@
-{
-  "revision": "b33994d36d5492c2851cb286795a21bbc245a4d8",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Merged bytes of scripts/vitest-resource-manifest.mjs after #3073: this branch's removal of the deleted SessionsView.projectPill.overflow test entry and main's additions are both present; the document's description of the manifest is unaffected.","inputs":["scripts/AGENTS.md"]}
-  ]
-}

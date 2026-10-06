@@ -1,0 +1,7 @@
+{
+  "revision": "c525c30acd15673439ffd4c4218c22b0e77c5d3b",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"The table row that pointed at the deleted DelegatedTaskCoordinator send path is removed; the remaining rows were checked against their cited files. No other claim changed."}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "1e5f63186142dd36fcb720deb7660808dbf2f56b",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Correction to the note recorded with the @kontourai/ui 1.18.0 bump (commit 1e5f63186): the useBrandingQuery paragraph does mention the white-label overrides, by pointing at examples/custom-branding for the shape and rules; it states no rule itself. That pointer and the 'unvalidated, parse before use' claim remain accurate: the SDK request is untouched and the README it links to was updated in the same change. packages/sdk/package.json and pnpm-lock.yaml changed only in the @kontourai/ui range and resolved version.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

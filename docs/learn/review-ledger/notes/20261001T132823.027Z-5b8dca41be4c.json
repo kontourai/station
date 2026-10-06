@@ -1,0 +1,7 @@
+{
+  "revision": "9bb9a7b5bcbf355997862b00d0bacc08f130739a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Merged bytes of tests/e2e-manifest.mjs: this branch's updated rationale for tests/activity-pane.spec.ts (sidebar row opens the Activity page; deep link still docks; desktop maximized-dock cases) is present with main's entries; the document's coverage statements remain accurate."}
+  ]
+}

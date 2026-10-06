@@ -1,7 +1,0 @@
-{
-  "revision": "9bb9a7b5bcbf355997862b00d0bacc08f130739a",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Merged bytes of CommandPalette.tsx: this branch only changed which opener the palette's region-surface destinations call (useShowSurfacePage) and a comment; the document does not describe that behaviour and remains accurate.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

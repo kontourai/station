@@ -1,7 +1,0 @@
-{
-  "revision": "29fa8649d8b61deb25adf50c4424d9ed0154c5ab",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-reviewed after a type-only cast in fast-checks-shard-cli.test.ts's premise check (matching the file's other selectChangedVerification calls); no behavior or guide claim changed.","inputs":["docs/guides/testing.md"]}
-  ]
-}

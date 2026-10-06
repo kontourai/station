@@ -1,7 +1,0 @@
-{
-  "revision": "841509ddd903096c3d994b5b2fdfe008b36ec0eb",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Re-read useGitStatusQuery and useGitLogQuery against packages/sdk/src/query-domains/projectData.ts and the changed coding read routes: a refused repository (409 git-dir-outside-project or repository-config-refused) is still a success:false envelope, which the hooks map to null and [] as documented; request shape and admission claims unchanged. No prose change.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

@@ -1,0 +1,35 @@
+{
+  "revision": "c8f80c629fca13479b0010de84094ad0a13332c1",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Combined PR: the only repo-standards change is the documentation-source-currentness contextLinks path, now docs/learn/review-ledger/ledger.json; no rule, stage or evidence requirement this page describes changed."},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Combined PR: the active repo standards only repoint the documentation rule's context link to the review ledger index; this dated activation record's approvals and controls are unchanged."},
+
+    {"path":"AGENTS.md","note":"Combined PR: orchestration-transfer-gate.mjs now keeps every registered lane's merge base with origin/main when pruning baselines; the transfer-gate and baseline guidance here is unchanged."},
+
+    {"path":"docs/guides/code-quality.md","note":"Combined PR: the repo-standards edit only repoints a context link, and testing.md gained the fan-out deferral and job-event notes; this guide's quality and freshness claims are unchanged."},
+
+    {"path":"docs/guides/development.md","note":"Combined PR: added that gh-app-token refuses to print a token to a terminal and prefixes refusals with a stable reason code, checked against scripts/gh-app-token.mjs and its terminal, in-repository config and key tests; the repo-standards edit only repoints a context link."},
+
+    {"path":"docs/guides/documentation.md","note":"Combined PR: the repo-standards documentation rule's context link now points at docs/learn/review-ledger/ledger.json, matching this guide's layout section; no other claim is affected."},
+
+    {"path":"docs/guides/testing.md","note":"Combined PR: added the 16-test spawned-script fan-out deferral to test-full (test-impact-manifest.mjs SPAWNED_SCRIPT_FANOUT_LIMIT and run-changed-verification.mjs deferredLanes, spawned-script-selection.test.ts) and the JOB_ENV job-event exception to the worker scrub (vitest.setup.ts, docs-freshness-job-env.probe.test.ts); changed-verification.test.ts now uses learning-markdown.mjs as its inline path."},
+
+    {"path":"docs/reference/station-docs.md","note":"Combined PR: station-docs-mcp-server.test.ts widened the agent-install guard to passive voice, named engines and an agent performing the installation; the shipped topics still pass it, so this reference's content is unchanged."},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Combined PR: run-changed-verification.mjs adds a supplemental edge's deferredLanes to the selection's lanes; a deferred selection still produces the same provisional receipt this reference describes."},
+
+    {"path":"scripts/AGENTS.md","note":"Combined PR: testing.md gained the fan-out deferral and job-event notes; this routing file's claims are unchanged."},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Combined PR: the CLI integration test and its 120-second liveness limit are unchanged; changed-verification.test.ts only moved its deadline cases to an inline path, and the selector's deferredLanes support does not touch the narrow-diff fixture."},
+
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Combined PR: the gate now keeps every registered lane's merge-base baseline when pruning; the transfer fixture's capture contract described here is unchanged."},
+
+    {"path":"src-server/AGENTS.md","note":"Combined PR: development.md and testing.md gained token-refusal, fan-out and job-event notes; the routing here is unchanged."},
+
+    {"path":"src-ui/AGENTS.md","note":"Combined PR: testing.md gained fan-out and job-event notes; the routing here is unchanged."},
+
+    {"path":"tests/AGENTS.md","note":"Combined PR: testing.md gained fan-out and job-event notes; the routing and fixture rules here are unchanged."}
+  ]
+}

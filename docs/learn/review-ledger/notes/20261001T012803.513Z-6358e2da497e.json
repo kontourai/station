@@ -1,7 +1,0 @@
-{
-  "revision": "64afbffd54fe70c4a2c79ba901fd99a13d3a6014",
-
-  "notes": [
-    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed current acceptance scope and TaskWorkspaceView/CSS delta. Existing room/editor/conversation and retained exact revision controls remain mounted; composition reordered and textareas resized. Focused component proof does not establish two-browser/restart/provider acceptance; those explicit limits remain.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md"]}
-  ]
-}

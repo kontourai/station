@@ -1,0 +1,7 @@
+{
+  "revision": "fc7f2bc0dd66aa96e64b5b7e50f76504d98a2638",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted and served failed-turn markers, mid-stream error-part handling, provider-error unwrapping) and the combined outward stream-chunk rule. The document makes no claim about chat failure text, failed-turn markers or SSE frame contents (near matches: log-reader redaction, auth-health runtime.error supersession — unaffected); claims remain accurate."}
+  ]
+}

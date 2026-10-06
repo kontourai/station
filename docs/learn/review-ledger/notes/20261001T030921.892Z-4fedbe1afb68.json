@@ -1,7 +1,0 @@
-{
-  "revision": "c525c30acd15673439ffd4c4218c22b0e77c5d3b",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"scripts/vitest-resource-manifest.mjs lost the entry for the deleted SessionsView.projectPill.overflow test; the document's description of the manifest is unaffected.","inputs":["scripts/AGENTS.md"]}
-  ]
-}

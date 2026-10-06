@@ -1,7 +1,0 @@
-{
-  "revision": "69084a9bc52c93cbb54e1abf3c1d09a0813474d4",
-
-  "notes": [
-    {"path":"docs/security/remote-access-threat-model.md","note":"Rewrote the coding-route git bullets after the third review round and checked each claim against code, tests and measured probes: one discovery, guard verdict, named pair, above-Project confirmation and the other guarded services (git-read-repository.ts, verified-worktrees.ts, worktree-provisioning-service.ts, git-review-workspace-source.ts, review-lens-router.ts, checkpoint-ref-store.ts, checkpoint-restore.ts, project-service.ts; confinement test file); after-read stamps including ancestor folders and steering files (git-directory-confinement.ts; deterministic swap tests); write pre-check and identity comparison with measured rates 16 and 12 of 150 before, 0 of 600 after; config snapshot via GIT_COMMON_DIR and --no-ext-diff/--no-textconv with measured 139 of 300 before, 0 of 600 after; submodule flags (git-exec.ts and hardening tests); worktree listing guard; partial clone and refusal list (git-repository-config.ts). The STILL OPEN statements were taken from a call-site inventory of src-server and are stated as open, not verified exhaustively. Older git stated NOT_VERIFIED. Sections outside the coding routes were not re-reviewed.","inputs":["docs/security/remote-access-threat-model.md"]}
-  ]
-}

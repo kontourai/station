@@ -1,0 +1,17 @@
+{
+  "revision": "25e49629d9894a7e601ae2923a53cfe932560dd8",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"2026-09-29: re-read against the glossary change (new designed-not-built section for distribution manifests, kernel, required slot, safe mode, layout subject). This page only routes readers to the glossary for vocabulary and makes no claim about those terms; still accurate."},
+
+    {"path":"CONTEXT-MAP.md","note":"2026-09-29 merge of origin/main: both sides' notes retained; this page's content is unchanged by this branch and still routes vocabulary to the glossary."},
+
+    {"path":"CONTEXT.md","note":"2026-09-29: re-read against the glossary change (new designed-not-built section for distribution manifests, kernel, required slot, safe mode, layout subject). This page defers vocabulary to the glossary and names none of the added terms; still accurate."},
+
+    {"path":"CONTEXT.md","note":"2026-09-29 merge of origin/main: both sides' notes retained; this page's content is unchanged by this branch and still defers vocabulary to the glossary."},
+
+    {"path":"docs/glossary.md","note":"2026-09-29: added a 'Shell kernel and distribution manifests (designed, not built)' section: Distribution disambiguation (ADR 0020 release distribution; existing DistributionProfile; designed distribution manifest), Kernel, Required slot, Safe mode (checked none exists; distinguished from the --safe-mode flag in packages/cli/src/commands/triage.ts), Layout subject (no field exists in layout.ts). Rest of glossary unchanged."},
+
+    {"path":"docs/glossary.md","note":"2026-09-29 merge of origin/main (a4dfd0454, e27600d1f): kept main's #2991/#2990 review note and this branch's glossary-section note; digests recomputed on the merged bytes, which contain this branch's added section unchanged."}
+  ]
+}

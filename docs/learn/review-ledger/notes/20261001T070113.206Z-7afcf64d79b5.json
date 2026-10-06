@@ -1,0 +1,7 @@
+{
+  "revision": "69084a9bc52c93cbb54e1abf3c1d09a0813474d4",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-read useGitStatusQuery, useGitLogQuery and the workspace checkpoint restore section against the changed coding routes, checkpoint-restore.ts and project-service.ts: git read refusals stay success:false envelopes mapped to null and []; restore preview/confirm shapes are unchanged (a folder whose repository is not its own surfaces as the existing workspace_changed failure). No prose change."}
+  ]
+}

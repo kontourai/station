@@ -1,7 +1,0 @@
-{
-  "revision": "c5a2f2b898fa940af8a42a387f7894dffb7195e2",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Checkpoint restore and the review workspace: the restore's work-tree snapshot now builds objects in quarantine and the review's worktree add runs on Station's judged config copy (GIT_COMMON_DIR); the map's module descriptions and links are unchanged by this delta","inputs":["docs/architecture/module-map.md"]}
-  ]
-}

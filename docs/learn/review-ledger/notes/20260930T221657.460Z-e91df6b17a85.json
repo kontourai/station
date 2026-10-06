@@ -1,0 +1,9 @@
+{
+  "revision": "754e48394b02f670894b419807274752fd9676d4",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Independent source-delta review of opt-in native Device/account/Project-read admission and separate operator binding management. This document describes a different subsystem, dated rationale, instructions or navigation; its affected claims remain accurate. Native authority creates no generic identity source, operator/home-possession authority, fleet execution/inference, ordinary native UI or enrollment. Full StationRuntime startup and physical/packaged delivery remain unexecuted."},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged."}
+  ]
+}

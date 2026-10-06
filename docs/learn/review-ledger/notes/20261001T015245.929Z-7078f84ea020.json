@@ -1,7 +1,0 @@
-{
-  "revision": "42019764437469e865189dfd8ad8b1762b77a97a",
-
-  "notes": [
-    {"path":"docs/patterns/frontend.md","note":"Merge of origin/main into feat/activity-detail: docs/ui/responsive-action-surfaces.txt gained this branch's two session-detail action rows (header actions and the Details link form) as recorded exceptions. The document describes the inventory mechanism, not individual entries; claims remain accurate.","inputs":["docs/patterns/frontend.md"]}
-  ]
-}

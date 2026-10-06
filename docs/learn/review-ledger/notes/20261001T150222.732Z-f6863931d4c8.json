@@ -1,7 +1,0 @@
-{
-  "revision": "1d15be0990f70f7084b46d53f5c38de7b34472dc",
-
-  "notes": [
-    {"path":"docs/guides/browser-workspace.md","note":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx changed on this branch only by rendering its toolbar icon controls (Back, Forward, Reload, Console) through BrowserIconButton, the pane-owned round ghost Button sized by --browser-pane-control, instead of a shared Button variant; same roles, names, sizing and behaviour. The pane-chrome 44px and no-wrap claims were re-read against BrowserPane.css and still hold. Prose change: the float-over-chat sentence now says Open in pane is an icon-only control with a 44px target on a coarse pointer, which BrowserPageDialog.touch-target.test.tsx measures in Chromium (float and pane, phone and tablet widths).","inputs":["docs/guides/browser-workspace.md"]}
-  ]
-}

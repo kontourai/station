@@ -1,7 +1,0 @@
-{
-  "revision": "84ed23307041981e18b353f7183f41374a3ad504",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Live390px app exposed rollup read403 for a login-only device carrying orchestration:read. Kept the existing access:manage API floor and gated Activity accordingly; both provider cases now fail before the fix and pass after, with no forbidden rollup request. Live Codex and Claude default quota rendered; real isolated Claude profile CLI reached browser-code prompt and was cancelled without OAuth completion. Earlier platform and billing limits remain.","inputs":["docs/guides/connections.md"]}
-  ]
-}

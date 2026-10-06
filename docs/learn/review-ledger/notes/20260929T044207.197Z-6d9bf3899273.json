@@ -1,9 +1,0 @@
-{
-  "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
-
-  "notes": [
-    {"path":"docs/guides/native-shell-verification.md","note":"Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/native-shell-verification.md"]},
-
-    {"path":"docs/user/native-recovery.md","note":"Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Native recovery boot paths are unchanged. Prose accurate. Source review is separate from executed test evidence.","inputs":["docs/user/native-recovery.md"]}
-  ]
-}

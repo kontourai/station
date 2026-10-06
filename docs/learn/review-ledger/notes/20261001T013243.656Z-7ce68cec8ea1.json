@@ -1,7 +1,0 @@
-{
-  "revision": "3059a6573285c28a92a51e39842ccb7ff8474651",
-
-  "notes": [
-    {"path":"docs/learn/media/shared-task-document.png","note":"Replaced original image with actual isolated fbb464a6f production capture after human UI document save, room send and reopen. Bound changed TaskWorkspaceView/CSS bytes; 390px geometry observed separately. No external provider, two-human, public or native acceptance claim.","inputs":["docs/learn/media/shared-task-document.png"]}
-  ]
-}

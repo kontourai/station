@@ -1,7 +1,0 @@
-{
-  "revision": "2dee75143bca994a270d7038965d1a825bbde516",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Merged bytes of tests/task-first-home.spec.ts after main gained the detail change: the list lane's edits (the row menu's Delegate subtask… journey, the 44px menu-trigger check, the renamed test) and the detail lane's edits (Details opened before the workflow line, composer button Send) are both present; the document's coverage statements for these journeys remain accurate.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
-  ]
-}

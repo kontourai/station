@@ -1,7 +1,0 @@
-{
-  "revision": "83c8a939477cac34dca05ff55958e55e0a498fd6",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the merged contracts export map: task-room-work remains exported beside the new independent engine-accounts types. Task-room request identity, journal admission, actor currentness and stated participation limits are unchanged by the account export. No publisher release or live-provider completion is inferred.","inputs":["docs/design/task-room-agent-requests.md"]}
-  ]
-}

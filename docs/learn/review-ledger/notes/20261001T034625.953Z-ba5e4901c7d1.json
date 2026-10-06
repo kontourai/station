@@ -1,0 +1,11 @@
+{
+  "revision": "f8bb70b8ec8ba9fc398882075bb9d5ed55ec9cd3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Bounded merge review after the task-board/shared-workspace change: sign-in admission, delayed currentness, minimal profile projection and credential-management separation remain unchanged. Preserved both source/note histories and retained task-board documentation/capture scope. Prior evidence remains revision-bound; no provider approval, package publication or physical-device qualification is claimed."},
+
+    {"path":"docs/glossary.md","note":"Bounded merge review after the task-board/shared-workspace change: sign-in admission, delayed currentness, minimal profile projection and credential-management separation remain unchanged. Preserved both source/note histories and retained task-board documentation/capture scope. Prior evidence remains revision-bound; no provider approval, package publication or physical-device qualification is claimed."},
+
+    {"path":"docs/guides/starter-work.md","note":"Bounded merge review after the task-board/shared-workspace change: sign-in admission, delayed currentness, minimal profile projection and credential-management separation remain unchanged. Preserved both source/note histories and retained task-board documentation/capture scope. Prior evidence remains revision-bound; no provider approval, package publication or physical-device qualification is claimed."}
+  ]
+}

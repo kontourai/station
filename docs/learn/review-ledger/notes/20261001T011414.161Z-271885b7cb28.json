@@ -1,9 +1,0 @@
-{
-  "revision": "5aa5a00ce0147c5344f5da916b2441329b3fae89",
-
-  "notes": [
-    {"path":"docs/design/plugin-authority-model.md","note":"2026-09-29: added a dated amendment banner pointing to shell-plugins-distributions.md (answers open question 2; update re-prompt). Historical body unchanged; the banner claims only the new record's decisions.","inputs":["docs/design/plugin-authority-model.md"]},
-
-    {"path":"docs/design/plugin-authority-model.md","note":"2026-09-29: amendment banner reworded so the publisher-signed default reads as pending the owner, and to note the new record's tier-2 statement. Historical body unchanged.","inputs":["docs/design/plugin-authority-model.md"]}
-  ]
-}

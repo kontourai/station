@@ -1,7 +1,0 @@
-{
-  "revision": "eefd7ec897cef43dde8e89f5420a32d50eec12f7",
-
-  "notes": [
-    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed retained Models/Engines tour and current engine view diff. Existing captured setup scene is historical sample data; the added account overview is outside this capture. Preserve capture identity, date and no-provider-login limitation; this is not new account-page evidence.","inputs":["docs/learn/media/connections-tour.webm"]}
-  ]
-}

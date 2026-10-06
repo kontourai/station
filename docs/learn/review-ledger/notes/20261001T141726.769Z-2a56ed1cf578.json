@@ -1,7 +1,0 @@
-{
-  "revision": "c5a2f2b898fa940af8a42a387f7894dffb7195e2",
-
-  "notes": [
-    {"path":"docs/user/workspace-checkpoints.md","note":"Capture and restore build their objects in a Station-owned directory and move them into the repository after the pre-write check; the user-facing contract (queued capture, retention, restore preview and confirmation) is unchanged","inputs":["docs/user/workspace-checkpoints.md"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "63055062f4e1fef01fc321be8dc8c16a108961b6",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rewrote the coding-route git bullets after merging origin/main and checked each claim against code and tests: reads and checkout resolve one discovery, require the Commit/Push git-directory verdict, name the pair on every call and confirm the above-Project repository from above (git-read-repository.ts, coding.ts, coding-git-read-confinement.routes.test.ts); reads are checked again by stamps after they run and writes are not (git-directory-confinement.ts unchanged(), readProjectRepository tests); the worktree listing answers only when the Project repository passes (verified-worktrees.ts; planted-root tests expect 403 outside-project on file routes, exec, checkout and reads); non-network commands get no transport, lazy fetch or helper, a partial clone is read and a missing object answers 409 object-not-available, Commit and Push refuse a partial clone (git-exec.ts, git-repository-config.ts and their tests). Git versions: hardening suite run on 2.50.1, 2.54.0, 2.55.0; older git stated NOT_VERIFIED. The section main changed in #3032 was not re-reviewed by me."}
+  ]
+}

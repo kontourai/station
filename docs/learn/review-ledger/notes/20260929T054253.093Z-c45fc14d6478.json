@@ -1,0 +1,7 @@
+{
+  "revision": "7d0db8b99047c5438ebb92994628ab1eb03d3545",
+
+  "notes": [
+    {"path":"examples/knowledge-library/README.md","note":"Merge review through 7d0db8b99: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this README makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."}
+  ]
+}

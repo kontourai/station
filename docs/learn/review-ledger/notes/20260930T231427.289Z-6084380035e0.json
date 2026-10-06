@@ -1,0 +1,7 @@
+{
+  "revision": "ece4f42854766f406dd0bf7264086aa157c25370",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed preserved screenshot against the delegated-sign-in delta: Models scene does not mount credential profiles; model configuration and caption remain accurate. Capture remains historical controlled-fixture evidence, not live provider sign-in."}
+  ]
+}

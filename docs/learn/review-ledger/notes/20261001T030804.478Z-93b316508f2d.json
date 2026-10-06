@@ -1,7 +1,0 @@
-{
-  "revision": "c525c30acd15673439ffd4c4218c22b0e77c5d3b",
-
-  "notes": [
-    {"path":"docs/glossary.md","note":"After merging main (#2984 Live lanes entry): this branch's Activity and Run entries describe lanes generically through SESSION_LANE_ORDER/SESSION_LANE_LABELS, the dated history stream, filters for kind/project/origin, and the run pull-up exception with its label; verified against SessionsView.tsx, activity-list-model.ts and run-groups.ts at this revision, and consistent with main's Live lanes entry.","inputs":["docs/glossary.md"]}
-  ]
-}

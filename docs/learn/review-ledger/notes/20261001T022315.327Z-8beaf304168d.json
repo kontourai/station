@@ -1,0 +1,21 @@
+{
+  "revision": "ce24f8c26d86cbeee9ed42127b2f1c70960c9829",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"docs/guides/knowledge.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"docs/guides/starter-work.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"docs/user/getting-started.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."},
+
+    {"path":"examples/knowledge-library/README.md","note":"Post-merge review of combined media manifest and source unions: preserves the actual single-human Task capture at fbb464a6f and the upstream fixture Connections capture at bb07a2df, each with its separate digest/evidence. Inspected both images and merged metadata; unrelated captures unchanged. Preserved all source owners from both records and reviewed Task composition versus upstream SplitPane/MCP changes. No new provider, two-human, public, native or release proof."}
+  ]
+}

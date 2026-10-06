@@ -1,0 +1,7 @@
+{
+  "revision": "4f47664e668c1f24b247e87c0d755ecbf61cba25",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Behavior-neutral code-health follow-up: storage failure class is now module-private; it has no outside consumer. Request persistence, error uncertainty and authorizer behavior are unchanged. Prior source/runtime limits remain in force."}
+  ]
+}

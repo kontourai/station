@@ -1,0 +1,13 @@
+{
+  "revision": "bbd3c6c0797cce19e15b36627f182f79baa7e025",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Latest-main fold review: docs browser assertions now distinguish module h2 titles from valid h3 subsections and explicitly verify question content. The reader already renders nested headings; source snapshots, review labels, media and browsing instructions remain accurate. Existing focused browser tests were executed on the feature lane; this record does not extend that evidence to a new runtime."},
+
+    {"path":"scripts/AGENTS.md","note":"Latest-main fold review: resource manifest adds the actual release producer-admission bash fixture to the process-heavy class. This follows the existing classified-spawn policy; command routing, ownership, deadlines and evidence rules remain accurate."},
+
+    {"path":"examples/README.md","note":"Latest-main fold review: typecheck:examples now includes the new headless-agent tsconfig along with every prior example. Read the new index row and aggregate script; the complete-example compilation statement remains accurate."},
+
+    {"path":"examples/docs-snippets/README.md","note":"Latest-main fold review: typecheck:examples adds headless-agent and retains docs-snippets tsconfig. The guide/file equality and compile-checked-snippet claims are unchanged; no runtime or provider qualification is implied."}
+  ]
+}
