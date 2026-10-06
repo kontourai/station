@@ -273,7 +273,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(content.agent.build.permission).toMatchObject({
         'bas?': 'ask',
         'edi?': 'ask',
-        '*_*': 'ask',
+        '*_**': 'ask',
         'tas?': 'deny',
       });
       expect(content.agent.plan.permission['edi?']).toMatchObject({
@@ -674,6 +674,45 @@ describe.skipIf(process.platform === 'win32')(
       // Default (OpenCode's own settings) still starts.
       await start(h, 'overridden-native');
       expect(launches(h)).toHaveLength(1);
+    });
+
+    test("P5: a user's own MCP allows (`*_*`, `github_*`) do not let an MCP tool run unasked in Ask", async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        agent: {
+          build: {
+            permission: { '*_*': 'allow', github_create_issue: 'allow' },
+          },
+        },
+      });
+      h = harness('opencode');
+      await start(h, 'mcp-user-allows', 'ask');
+      const call = await turn(
+        h,
+        'mcp-user-allows',
+        'mcp: github_create_issue',
+        {
+          answer: 'decline',
+        },
+      );
+      expect(call.asked).toMatchObject({ title: 'github_create_issue' });
+      expect(JSON.stringify(call.started)).not.toContain(
+        'github_create_issue ran',
+      );
+    });
+
+    test("P5: an MCP allow evaluated after Station's rule is caught by verification, not sampled past", async () => {
+      // The user holds Station's own key, so OpenCode keeps the user's
+      // position for it and the user's later `github_*` allow comes after:
+      // Station's MCP rule is effective for every tool but github_*.
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        agent: {
+          build: { permission: { '*_**': 'ask', 'github_*': 'allow' } },
+        },
+      });
+      h = harness('opencode');
+      await expect(start(h, 'mcp-later-allow', 'ask')).rejects.toThrow(
+        /for MCP tools in the build agent \(github_\* would run without asking\)/,
+      );
     });
 
     test('full access: a subagent rule that could ask refuses full access instead of risking a hang', async () => {

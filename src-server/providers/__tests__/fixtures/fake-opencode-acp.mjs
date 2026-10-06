@@ -108,11 +108,19 @@ if (debugAgent !== undefined) {
     process.stderr.write(`Agent ${debugAgent} not found\n`);
     process.exit(1);
   }
-  process.stdout.write(
-    `${JSON.stringify({
-      name: debugAgent,
-      permission: resolvedRules(debugAgent),
-      tools: AGENT_TOOLS[debugAgent] ?? {
+  const rules = resolvedRules(debugAgent);
+  // OpenCode's `Permission.disabled`: a tool whose last rule (by permission
+  // only) denies every pattern is hidden, reported as `false`.
+  const disabled = (tool) => {
+    const permission = tool === 'write' ? 'edit' : tool;
+    const last = rules.findLast((rule) =>
+      wildcard(permission, rule.permission),
+    );
+    return last?.pattern === '*' && last.action === 'deny';
+  };
+  const tools = Object.fromEntries(
+    Object.keys(
+      AGENT_TOOLS[debugAgent] ?? {
         bash: true,
         edit: true,
         write: true,
@@ -121,7 +129,10 @@ if (debugAgent !== undefined) {
         read: true,
         webfetch: true,
       },
-    })}\n`,
+    ).map((tool) => [tool, !disabled(tool)]),
+  );
+  process.stdout.write(
+    `${JSON.stringify({ name: debugAgent, permission: rules, tools })}\n`,
   );
   process.exit(0);
 }
@@ -208,16 +219,23 @@ const ACTIONS = {
     title: 'task',
     key: 'subagent_type',
   },
+  // An MCP tool: its permission is the tool's own `<server>_<tool>` name.
+  mcp: { permission: undefined, kind: 'other', title: 'mcp', key: 'tool' },
 };
 
 let callCounter = 0;
 async function prompt(sessionId, text) {
   // The action is the last `<verb>: <target>` line: Station may put its own
   // context ahead of the typed text.
-  const match = [...text.matchAll(/^(run|edit|fetch|task):\s*(.+)$/gm)].at(-1);
+  const match = [...text.matchAll(/^(run|edit|fetch|task|mcp):\s*(.+)$/gm)].at(
+    -1,
+  );
   if (!match) return { stopReason: 'end_turn' };
-  const action = ACTIONS[match[1]];
   const target = match[2].trim();
+  const action =
+    match[1] === 'mcp'
+      ? { ...ACTIONS.mcp, permission: target, title: target }
+      : ACTIONS[match[1]];
   const toolCallId = `call_fixture_${++callCounter}`;
   const rawInput = { [action.key]: target };
   update(sessionId, {
@@ -229,7 +247,11 @@ async function prompt(sessionId, text) {
     locations: [],
     rawInput: {},
   });
-  const verdict = evaluate(mode, action.permission, target);
+  const verdict = evaluate(
+    mode,
+    action.permission,
+    match[1] === 'mcp' ? '*' : target,
+  );
   let allowed = verdict === 'allow';
   if (verdict === 'ask') {
     const response = await request('session/request_permission', {

@@ -91,11 +91,15 @@ function rules(
  * - `bash`, `edit` (which covers write, edit and apply_patch), `webfetch`,
  *   `websearch`, `codesearch`, `external_directory` (any path outside the
  *   project, read or write) ask before they run.
- * - `*_*`: an MCP tool is keyed `<server>_<tool>` (`mcp/catalog.ts`
- *   `toolName`), so this covers every MCP tool, Station's own included. It
- *   also covers `doom_loop`, `plan_enter`, `plan_exit` and
- *   `workflow_tool_approval`, which then ask as well. It is already a key a
- *   user is unlikely to have, so it is written as is.
+ * - MCP tools ask: an MCP tool is keyed `<server>_<tool>` (`mcp/catalog.ts`
+ *   `toolName`), so the rule is written under `*_**`, which OpenCode's
+ *   wildcard matches against exactly the names `*_*` does (every name with
+ *   an underscore), Station's own MCP tools included. It also covers
+ *   `doom_loop`, `plan_enter`, `plan_exit` and `workflow_tool_approval`,
+ *   which then ask as well. Not `*_*` itself: a user can hold that key (a
+ *   project `{"*_*": "allow"}` kept its earlier position and let an MCP tool
+ *   run unasked), and not `*_?`, which matches only one character after the
+ *   underscore.
  * - `task` is denied: a subagent runs in a child session. OpenCode's ACP
  *   server forwards permission requests only for sessions it created
  *   (`acp/permission.ts` drops the rest without a reply, so the child would
@@ -108,6 +112,8 @@ function rules(
  * `todowrite`, `question`. A built-in tool a later OpenCode adds without an
  * underscore in its name is not covered until it is named here.
  */
+export const OPENCODE_MCP_RULE_KEY = '*_**';
+
 export const OPENCODE_ASK_PERMISSIONS = [
   'bash',
   'edit',
@@ -126,7 +132,7 @@ const ASK_BEFORE_ACTING: OpenCodePermissionRules = {
       ]),
     ),
   ),
-  '*_*': 'ask',
+  [OPENCODE_MCP_RULE_KEY]: 'ask',
   ...rules({ task: 'deny' }),
 };
 

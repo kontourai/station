@@ -39,7 +39,7 @@ describe('withStationOpenCodeApprovalConfig', () => {
       'websearc?': 'ask',
       'codesearc?': 'ask',
       'external_director?': 'ask',
-      '*_*': 'ask',
+      '*_**': 'ask',
       'tas?': 'deny',
     });
     expect(agent.plan?.permission).toEqual({

@@ -27,7 +27,7 @@ const STATION_CONFINED = [
   r('websearc?', 'ask'),
   r('codesearc?', 'ask'),
   r('external_director?', 'ask'),
-  r('*_*', 'ask'),
+  r('*_**', 'ask'),
   r('tas?', 'deny'),
 ];
 const OPENCODE_DEFAULTS = [
@@ -51,7 +51,10 @@ function reader(agents: Record<string, OpenCodeResolvedAgent>) {
   };
 }
 
+// OpenCode hides `task` when Station's `tas?: deny` resolves as written.
+const HIDDEN_TASK = { tools: { task: false, bash: true } };
 const confinedPlan = {
+  ...HIDDEN_TASK,
   permission: [
     ...OPENCODE_DEFAULTS,
     ...STATION_CONFINED,
@@ -68,6 +71,7 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         'confined',
         reader({
           build: {
+            ...HIDDEN_TASK,
             permission: [
               ...OPENCODE_DEFAULTS,
               ...STATION_CONFINED,
@@ -87,6 +91,7 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         reader({
           // The user's later `*` wins over Station's `edit: ask`.
           build: {
+            ...HIDDEN_TASK,
             permission: [
               ...OPENCODE_DEFAULTS,
               r('edit', 'ask'),
@@ -108,6 +113,7 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
       'confined',
       reader({
         build: {
+          ...HIDDEN_TASK,
           permission: [
             ...OPENCODE_DEFAULTS,
             ...STATION_CONFINED,
@@ -129,6 +135,7 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         'confined',
         reader({
           build: {
+            ...HIDDEN_TASK,
             permission: [
               ...OPENCODE_DEFAULTS,
               ...STATION_CONFINED,
@@ -146,6 +153,7 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
       'confined',
       reader({
         build: {
+          ...HIDDEN_TASK,
           permission: [
             ...OPENCODE_DEFAULTS,
             ...STATION_CONFINED,
@@ -201,7 +209,13 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         r('tas?', 'allow', 'explore'),
         ...extra,
       ],
-      tools: { bash: true, edit: true, read: true, question: true, task: true },
+      tools: {
+        bash: true,
+        edit: true,
+        read: true,
+        question: false,
+        task: true,
+      },
     });
     const explore = {
       permission: [
@@ -255,7 +269,11 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         reader({
           build: primary(['general', 'explore']),
           plan: primary(['explore']),
-          general: general([r('question', 'allow')]),
+          general: {
+            ...general([r('question', 'allow')]),
+            // OpenCode shows question again once a later rule allows it.
+            tools: { bash: true, question: true, task: true },
+          },
           explore,
         }),
       );
@@ -275,6 +293,130 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
         }),
       );
       expect(result.ok ? '' : result.reason).toMatch(/it could start reviewer/);
+    });
+  });
+
+  describe('MCP tools (P5)', () => {
+    const build = (extra: OpenCodeRule[]) => ({
+      ...HIDDEN_TASK,
+      permission: [...OPENCODE_DEFAULTS, ...STATION_CONFINED, ...extra],
+    });
+    test("an allow for some MCP tools after Station's rule is caught, not sampled past", async () => {
+      const result = await verifyOpenCodeApprovalFloor(
+        'confined',
+        reader({ build: build([r('github_*', 'allow')]), plan: confinedPlan }),
+      );
+      expect(result.ok ? '' : result.reason).toMatch(
+        /for MCP tools in the build agent \(github_\* would run without asking\)/,
+      );
+    });
+    test('one MCP tool by name, too', async () => {
+      const result = await verifyOpenCodeApprovalFloor(
+        'confined',
+        reader({
+          build: build([r('github_create_issue', 'allow')]),
+          plan: confinedPlan,
+        }),
+      );
+      expect(result.ok ? '' : result.reason).toMatch(/github_create_issue/);
+    });
+    test("user MCP allows before Station's rule, and a non-MCP later allow, pass", async () => {
+      await expect(
+        verifyOpenCodeApprovalFloor(
+          'confined',
+          reader({
+            build: {
+              ...HIDDEN_TASK,
+              permission: [
+                ...OPENCODE_DEFAULTS,
+                r('*_*', 'allow'),
+                r('github_*', 'allow'),
+                ...STATION_CONFINED,
+                r('read', 'allow', 'docs/*'),
+                TOOL_OUTPUT,
+              ],
+            },
+            plan: confinedPlan,
+          }),
+        ),
+      ).resolves.toEqual({ ok: true });
+    });
+    test('with no rule covering every MCP tool, MCP is not governed', async () => {
+      const result = await verifyOpenCodeApprovalFloor(
+        'confined',
+        reader({
+          build: {
+            ...HIDDEN_TASK,
+            permission: [
+              ...OPENCODE_DEFAULTS,
+              ...STATION_CONFINED.filter((rule) => rule.permission !== '*_**'),
+            ],
+          },
+          plan: confinedPlan,
+        }),
+      );
+      expect(result.ok ? '' : result.reason).toMatch(/for MCP tools/);
+    });
+  });
+
+  describe("observing the engine's own wildcard matching", () => {
+    test('an OpenCode that did not hide task under `tas?: deny` is refused', async () => {
+      const result = await verifyOpenCodeApprovalFloor(
+        'confined',
+        reader({
+          build: {
+            tools: { task: true },
+            permission: [...OPENCODE_DEFAULTS, ...STATION_CONFINED],
+          },
+          plan: confinedPlan,
+        }),
+      );
+      expect(result.ok ? '' : result.reason).toMatch(
+        /did not apply Station's task rule for the build agent as written/,
+      );
+    });
+    test("at full access, general's question must be hidden", async () => {
+      const result = await verifyOpenCodeApprovalFloor(
+        'full',
+        reader({
+          build: {
+            permission: [
+              ...OPENCODE_DEFAULTS,
+              r('*?', 'allow'),
+              r('external_director?', 'allow'),
+              r('tas?', 'deny'),
+              r('tas?', 'allow', 'general'),
+              r('tas?', 'allow', 'explore'),
+            ],
+          },
+          plan: {
+            permission: [
+              ...OPENCODE_DEFAULTS,
+              r('*?', 'allow'),
+              r('external_director?', 'allow'),
+              r('tas?', 'deny'),
+              r('tas?', 'allow', 'explore'),
+            ],
+          },
+          general: {
+            permission: [
+              ...OPENCODE_DEFAULTS,
+              r('*?', 'allow'),
+              r('questio?', 'deny'),
+              r('tas?', 'deny'),
+              r('tas?', 'allow', 'explore'),
+            ],
+            tools: { bash: true, question: true },
+          },
+          explore: {
+            permission: [r('*', 'deny'), r('rea?', 'allow')],
+            tools: { read: true },
+          },
+        }),
+      );
+      expect(result.ok ? '' : result.reason).toMatch(
+        /did not apply Station's question rule for the general agent/,
+      );
     });
   });
 });

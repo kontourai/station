@@ -133,12 +133,71 @@ function why(agent: string, permission: string, detail: string): string {
   return `your OpenCode configuration overrides Station's approval rules for ${permission} in the ${agent} agent (${detail})`;
 }
 
+/** An MCP tool's name: `<server>_<tool>`, both sanitized (`mcp/catalog.ts`). */
+const MCP_NAME = /^[A-Za-z0-9_-]+_[A-Za-z0-9_-]+$/;
+/** Names a rule must match to cover every MCP tool. */
+const MCP_SAMPLES = ['a_b', 'github_create_issue', 'my-server_x-y', 'a__b'];
+
+/**
+ * Whether a rule's permission pattern can match some MCP tool name. A glob's
+ * matches always include one of these witnesses when they include any MCP
+ * name: `*` taken as a name piece with an underscore inside, or as a single
+ * letter, and `?` as a letter or an underscore.
+ */
+function canMatchMcpName(pattern: string): boolean {
+  const witnesses = new Set<string>();
+  for (const star of ['a_a', 'a']) {
+    for (const one of ['a', '_']) {
+      witnesses.add(pattern.replaceAll('*', star).replaceAll('?', one));
+    }
+  }
+  return [...witnesses].some(
+    (name) => MCP_NAME.test(name) && wildcard(name, pattern),
+  );
+}
+
+/**
+ * Every MCP tool asks: the last rule covering every MCP name (for every
+ * request pattern) asks or denies, and no rule after it allows any name an
+ * MCP tool could have. Checked against the rules, not one sample name: a
+ * user's `github_*: allow` after Station's rule allows only some tools.
+ */
+function checkMcp(
+  agent: string,
+  rules: readonly OpenCodeRule[],
+): string | undefined {
+  let floor = -1;
+  rules.forEach((rule, index) => {
+    if (
+      rule.pattern === '*' &&
+      MCP_SAMPLES.every((name) => wildcard(name, rule.permission))
+    ) {
+      floor = index;
+    }
+  });
+  const floorRule = rules[floor];
+  if (!floorRule || floorRule.action === 'allow') {
+    return why(agent, 'MCP tools', 'they would run without asking');
+  }
+  const later = rules
+    .slice(floor + 1)
+    .find(
+      (rule) =>
+        rule.action === 'allow' &&
+        !isToolOutputAllow(rule) &&
+        canMatchMcpName(rule.permission),
+    );
+  return later
+    ? why(agent, 'MCP tools', `${later.permission} would run without asking`)
+    : undefined;
+}
+
 /** Below full access: each governed action asks, and no subagent starts. */
 function checkConfined(
   agent: string,
   rules: readonly OpenCodeRule[],
 ): string | undefined {
-  for (const permission of [...OPENCODE_ASK_PERMISSIONS, 'mcp_tool']) {
+  for (const permission of OPENCODE_ASK_PERMISSIONS) {
     const exemptPlanFile = (rule: OpenCodeRule) =>
       agent === 'plan' &&
       permission === 'edit' &&
@@ -150,13 +209,11 @@ function checkConfined(
       (rule) => isToolOutputAllow(rule) || exemptPlanFile(rule),
     );
     if (action === 'allow') {
-      return why(
-        agent,
-        permission === 'mcp_tool' ? 'MCP tools' : permission,
-        'it would run without asking',
-      );
+      return why(agent, permission, 'it would run without asking');
     }
   }
+  const mcp = checkMcp(agent, rules);
+  if (mcp) return mcp;
   const subagents = allowedSubagents(rules);
   if (subagents.length > 0) {
     return why(agent, 'task', `it could start ${subagents.join(', ')}`);
@@ -266,8 +323,38 @@ export async function verifyOpenCodeApprovalFloor(
           ? checkFullPrimary(agent, rules)
           : checkFullSubagent(agent, entry ?? {});
     if (failure) return { ok: false, reason: failure };
+    const unobserved = wildcardUnobserved(floor, agent, entry ?? {});
+    if (unobserved) return { ok: false, reason: unobserved };
   }
   return { ok: true };
+}
+
+/**
+ * The check above evaluates OpenCode's rules with a model of its wildcard
+ * matching; this observes the engine's own. OpenCode hides a tool whose last
+ * matching rule denies every pattern, and reports that in `debug agent`'s
+ * `tools` (`Permission.disabled`). Station writes such a rule under a
+ * `?`-spelled key (`tas?: deny` below full access, `questio?: deny` for
+ * `general` at full access), so the tool is hidden only if this OpenCode
+ * matches `?` keys the way the model assumes (checked against 1.18.18). An
+ * engine that does not is refused, whatever its version: a version range
+ * would refuse a compatible release and admit an incompatible one.
+ */
+function wildcardUnobserved(
+  floor: OpenCodeApprovalFloor,
+  agent: string,
+  resolved: OpenCodeResolvedAgent,
+): string | undefined {
+  const tool =
+    floor === 'confined'
+      ? agent === 'build' || agent === 'plan'
+        ? 'task'
+        : undefined
+      : agent === 'general'
+        ? 'question'
+        : undefined;
+  if (!tool || resolved.tools?.[tool] === false) return undefined;
+  return `this OpenCode did not apply Station's ${tool} rule for the ${agent} agent as written, so Station cannot rely on how it reads its approval rules`;
 }
 
 /** How long one `debug agent` read may take (a cold OpenCode start is ~1-2s). */
