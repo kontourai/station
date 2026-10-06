@@ -125,6 +125,14 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
+A start or send that Station cannot run under the chat's approval mode on
+OpenCode is refused before any engine effect with
+`code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
+Station's, or the chat runs an agent Station does not govern
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+The message names the setting. The same request is refused again until that
+configuration or the chat's mode changes, so it is not a retry candidate.
+
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
 prompt history reads existing authorized native memory segments across that
