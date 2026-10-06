@@ -4354,12 +4354,12 @@ test('configured sessions retain their actual safe proxy route and a direct re-l
     });
   apply({
     connectionId: 'proxy-home',
-    label: 'brian-media',
+    label: 'home-media',
     endpoint: 'https://proxy.example:8317/v1',
   });
   expect(sessions.get('proxy-route')?.modelRoute).toEqual({
     connectionId: 'proxy-home',
-    label: 'brian-media',
+    label: 'home-media',
     endpoint: 'https://proxy.example:8317',
   });
   apply({
@@ -4370,7 +4370,7 @@ test('configured sessions retain their actual safe proxy route and a direct re-l
   expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
   apply({
     connectionId: 'proxy-home',
-    label: 'brian-media',
+    label: 'home-media',
     endpoint: 'https://proxy.example',
   });
   apply();
@@ -4380,7 +4380,7 @@ test('configured sessions retain their actual safe proxy route and a direct re-l
 test('session summaries expose the captured route when the loaded runtime has no new route field', () => {
   const route = {
     connectionId: 'proxy-home',
-    label: 'brian-media',
+    label: 'home-media',
     endpoint: 'https://proxy.example',
   };
   const loaded: ProviderSession = {

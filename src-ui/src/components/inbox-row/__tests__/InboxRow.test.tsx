@@ -444,7 +444,7 @@ describe('the chip line exists only when a chip does', () => {
       ...base,
       item: {
         ...base.item,
-        environmentLabel: 'brian-media',
+        environmentLabel: 'home-media',
         chatSessionId: 'chat-with-draft',
       },
     };
@@ -456,7 +456,7 @@ describe('the chip line exists only when a chip does', () => {
         chip.textContent,
       ]),
     ).toEqual([
-      ['remote', 'brian-media'],
+      ['remote', 'home-media'],
       ['draft', 'Unsent draft'],
       ['woke', 'Woke from snooze'],
     ]);
@@ -498,11 +498,11 @@ describe('two sizes and two chromes', () => {
   it('a slim remote row still names its machine', () => {
     const base = rowFor();
     renderRow(
-      { ...base, item: { ...base.item, environmentLabel: 'brian-media' } },
+      { ...base, item: { ...base.item, environmentLabel: 'home-media' } },
       { size: 'slim' },
     );
     expect(document.querySelector('.inbox-row__slim-remote')?.textContent).toBe(
-      'brian-media',
+      'home-media',
     );
   });
 

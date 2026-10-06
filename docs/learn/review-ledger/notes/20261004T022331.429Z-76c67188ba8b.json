@@ -1,0 +1,9 @@
+{
+  "revision": "5e5ddefd9b617d89663f79e2842e0d1547833e72",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Compared the protocol-refusal audit paragraph with runtime-http.ts audit limiter and RuntimeAuthFailureLimiter eviction in src-server/security/runtime-request-security.ts (~930): the cap evicts live entries, so >1,024 distinct peers can let one peer exceed 10 audits per window (reviewer reproduced an 11th audit); qualified the bound."},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Compared the protocol audit budget paragraph with RuntimeAuthFailureLimiter eviction at capacity in runtime-request-security.ts (~930): per-peer bound holds only while fewer than 1,024 peers are tracked; added that qualification; memory bound unchanged."}
+  ]
+}

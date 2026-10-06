@@ -413,10 +413,10 @@ The remaining controls are defined by
   and discard a Draft; it is not a general Session deletion.
 
 The other lifecycle controls are `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
-`alreadyAdopted: true`),
+`alreadyAdopted: true`; `target` is described below),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
 
@@ -450,7 +450,29 @@ attribution names is no longer configured while the project set is non-empty
 directory is missing, is not treated as a deletion). A repository match counts only a
 genuine checkout: a real `.git` directory that is its own common directory, or
 a linked worktree whose git-written `gitdir` back-pointer names that `.git`.
-A symlinked `.git` or a submodule's `.git` file matches by folder only. The
+A symlinked `.git` or a submodule's `.git` file matches by folder only.
+Discovery reads these folders (the real path of each cwd and Project
+directory, and the repository walk) in one helper process
+([`attached-session-path-probe.ts`](../../src-server/services/orchestration/attached-session-path-probe.ts)),
+never on the server's main thread. When that process answers nothing for
+1.5 seconds, as on a network or FUSE mount that has stopped responding, it is
+killed and replaced, and every folder it still owed is unread for that poll.
+An unread folder takes no part in matching: a transcript in one is followed
+as `unattributed` (which never replaces a recorded attribution), and a
+Project whose directory is unread is not matched. A folder that does not
+exist is different: it keeps its path as written. The folder the process was
+stuck on is not read again for 60 seconds, nor while that process is still
+alive. At most four killed helpers may still be alive before no new one
+starts; until one exits, which is logged, only folders under one they hung on
+are unread, and every other folder is matched as a missing folder is. A
+transcript in an unread folder that the log already files under a Project is
+still followed under it even where unattributed transcripts are not. The next
+poll that reads the folder corrects a new transcript's
+attribution. `adoptSession` still resolves its folder, and walks to its
+repository, with synchronous `realpath` and `lstat` calls on the main thread
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)),
+so adopting a transcript whose folder is on a hung mount can still block the
+server. The
 local operator owns every attached transcript whatever its attribution, so the
 operator's paired devices with `orchestration:read` can read it through
 `personalConversationAccess`. Imported turns enter the owner-scoped message
@@ -459,8 +481,75 @@ following unattributed transcripts from the next poll, already listed ones
 included; it deletes no imported event, search entry or read grant. A hosted runtime
 (`STATION_HOSTED_TENANT_REGISTRY_FILE` set) never follows unattributed
 transcripts. It does follow attributed ones, but without a tenant binding no
-account can read them. `adoptSession` resolves the Project by working directory only, so
-it refuses a transcript attributed by repository or not at all.
+account can read them.
+
+`adoptSession` decides where the child runs from the transcript's cwd at
+adoption time, not from the stored attribution
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)).
+The cwd must still exist as a directory; it is symlink-resolved and attributed
+again with `resolveAttachedSessionProject` and a fresh repository lookup, and
+checked once more just before the engine is started. The child's cwd is always
+that resolved folder, and the engine is confined to it under the request's
+`workspace`/`host` grant as for any adoption. Station never relocates a
+conversation to another folder.
+
+- Attributed (by folder, or by repository from a worktree outside the Project
+  folder): the child records the Project's `projectSlug` and `localProjectId`.
+  `target` may be omitted or `{ kind: 'project', projectSlug }` naming that
+  same Project; `{ kind: 'own-folder' }` is refused.
+- Ambiguous: refused, naming the candidates.
+- Unattributed: refused unless `target` is `{ kind: 'own-folder' }`, which
+  creates a No project child (no `projectSlug`) confined to the cwd. That is
+  refused on a hosted runtime. Otherwise the resolved cwd must be strictly
+  inside the resolved home folder (`noProjectFolderRefusal`), and not inside a
+  dot-folder directly under home (every one, not a list of credential
+  stores), `~/Library` or `~/AppData`, not the system temporary folder or a
+  folder containing it, and not overlapping the Station runtime home. The
+  recorded cwd must not reach its folder through a symbolic link inside the
+  home folder, so the folder the person confirmed is the one the child runs
+  in. A different letter case or Unicode normalization of the same folder,
+  and links above the home folder (a linked or automounted home), are
+  accepted. Every refusal message names no path.
+  `{ kind: 'project', projectSlug }` is refused, because the cwd is not part of
+  any Project.
+
+Every adopted child records its resolved folder as
+`dispatchCanonicalCwd`, so a later engine start for it (a restart's
+recovery) refuses a folder that no longer resolves there
+(`assertDispatchCwdUnmoved`).
+
+An adopted child also records the execution binding a chat started from the
+dock records: the engine's own Agent (`agentSlug`, `targetKind: 'agent'`,
+`targetId`, `connectionId`, found by the rule New Chat's Enable uses, never
+created by adoption), this Station's `environmentId`, and itself as its
+`conversationId`. A child in a Project also records
+`workspaceIsolation: { mode: 'shared' }`. `GET /api/conversations/:id/open`
+then resolves it, and a `POST /api/orchestration/chat` follow-up whose
+workspace names only the child's Project continues it in its recorded
+`dispatchCanonicalCwd` (the Project folder, a folder inside it, or a
+worktree), never the Project folder instead. A follow-up that names a folder
+or an isolation meets the ordinary exact checks. A later Session of the
+conversation, started after the child's engine exited, starts in that same
+recorded folder, even a worktree outside the Project folder, only while the
+folder still resolves to the record and still passes adoption's check (the
+Project folder or a genuine worktree of its repository); otherwise it is
+refused as outside the Project. When the engine has no Agent
+on this Station, the child is created without a binding: Activity continues
+it, and the dock reports why it cannot open it.
+
+A refusal of the folder or Project answers 400 with
+`code: 'continuation_place_refused'` and `retryable: false`: the same request
+is refused again until the folder or the Projects change, so clients show the
+reason and offer no retry. The Starter Work launch reports it with
+`retrySafe: false`. An engine that fails its readiness check before
+anything is created answers 400 with `code: 'continuation_engine_not_ready'`,
+`retryable: true` and the engine's readiness report in `error`; the Starter
+Work launch settles it as `failed` with `retrySafe: true`. Other adoption
+failures keep their retryable answers.
+
+`target` accepts only these two shapes; any other field, such as a path, is
+refused at the route. The Starter Work `continue-session` launch accepts the
+same `target`.
 Encrypted content and subagent sidechain traversal are outside this importer.
 Additional user input after observed assistant or tool activity keeps the same
 native turn identity and is marked as steering. When the rollout does not
@@ -471,6 +560,47 @@ as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
+
+Grok observation reads `GROK_HOME/sessions` (`~/.grok/sessions` by default)
+through the same bounded, read-only follower
+([`grok-session-source.ts`](../../src-server/providers/sessions/grok-session-source.ts)).
+Each session's `updates.jsonl` is Grok's append-only log of ACP session updates,
+so a byte offset resumes it. The working directory comes from the session's
+`summary.json`, never from its folder name, which Grok shortens to a lossy
+slug-plus-hash for long paths. A session is listed once its log holds a user
+prompt; this excludes the prompt-less sessions Station's own engine probes
+leave behind. Subagent child sessions are not listed. A Station chat on the
+Grok engine runs through ACP; the follower treats the Grok session named by its
+resume cursor as Station-owned and does not import it again. Prompts, reasoning,
+assistant messages, tool calls and results with their success or failure,
+plans, per-turn token usage, stop reasons and compaction markers are imported;
+a mid-turn interjection is a steer. Where Grok records what the user typed
+separately (`displayText`, for interjections and locally expanded slash
+skills), Station shows that rather than the model-facing text. A new prompt
+after a turn that never recorded its completion ends that turn as aborted and
+its open tools as unresolved. User text Grok writes without a prompt index while
+a turn is open (interjections, echoed host turns and direct `!command` runs) is
+imported as a steer on that turn and never starts or aborts one. A
+rewind appends a marker rather than removing turns; Station keeps the rewound
+turns, because a live follower has already published them and the event log
+has no retraction. The marker is recorded as an extension notification and
+shown in the transcript as a quiet line ("Rewound to an earlier prompt"), after
+its turn when it arrives during one; compaction markers from both sources are
+shown the same way ("Context compacted"). A log
+or summary in an unrecognized shape is skipped with one logged warning per
+file kind, never guessed at. Discovery skips every working directory that is one of
+Station's own ACP workspaces, for this or another Station home (the layout
+`runtime/acp-workspaces/<session|probe>/<digest>` that
+[`managed-acp-workspace.ts`](../../src-server/services/acp/managed-acp-workspace.ts)
+creates), before reading it. Of the rest, it re-reads a working directory's
+folder list only when it changed, newest first, and per poll reads at most
+131,072 entries, stats at most 16,384 folders and inspects at most 1,024. New
+folders in a changed working directory and folders with new activity come
+first, so a new session is found on the poll it appears. The index holds at
+most 131,072 folders; past that it slides over the tree no faster than it can
+inspect, so an untouched old session in such a tree can take a few minutes to
+appear. A single working directory with more session folders than that is
+only partly listed.
 
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
@@ -510,9 +640,11 @@ usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
-`STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
-can select separate history roots for observation. Each root contains the engine's
-`sessions` or `projects` directory, respectively. Discovery does not change the
+`STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` can select separate history roots for
+observation. Each root contains the engine's `sessions`, `projects` or
+`sessions` directory, respectively. Grok observation otherwise uses `GROK_HOME`,
+then `~/.grok`; Grok sessions offer no continuation. Discovery does not change the
 process environment or ordinary launch configuration. Continuation has an
 additional binding: Codex adoption and resume set the child process's
 `CODEX_HOME` to the verified source home, ahead of a credential-profile home.
@@ -520,7 +652,9 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. See the
+the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+selects the folder holding OpenCode's session database for observation only;
+OpenCode sessions have no continuation. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 

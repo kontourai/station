@@ -183,7 +183,7 @@ Do not re-document per-field shapes here — read them from the contract file di
 - `_kiro.dev/mcp/oauth_request` → a clickable **Open authentication page** link to the supplied URL when an MCP server the engine depends on needs the user to sign in.
 - `_kiro.dev/compaction/status` / `_kiro.dev/clear/status` → a plain status line (`"Context compacted."` / `"History cleared."`).
 
-Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity; namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
+Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
 ### Turn-failure enrichment from a co-reported notification
 
@@ -419,7 +419,7 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. |
+| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. It may not be an id a native runtime engine already answers to (such as `codex` or `claude`): `POST /acp/connections` and `POST /acp/registry/:id/install` refuse one with a 400 that names the engine already using it, because engine attribution keys on the connection id and would label the native engine's Agents `acp`. A connection stored with such an id before this check still loads; attribution keeps the native engine for that id and the server logs a warning naming it, so delete that connection and add it again under a different id (an update cannot change a connection's id). |
 | `name` | ✓ | Display name shown in the UI. |
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |

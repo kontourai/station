@@ -103,7 +103,10 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
-import type { DispatchCwdAdmission } from '../services/orchestration/dispatch-cwd-admission.js';
+import {
+  DISPATCH_CANONICAL_CWD_METADATA_KEY,
+  type DispatchCwdAdmission,
+} from '../services/orchestration/dispatch-cwd-admission.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
@@ -6227,6 +6230,16 @@ export async function executeExecutionTargetMessage(
           : {}),
         ...(typeof rootDetail.session.cwd === 'string'
           ? { cwd: rootDetail.session.cwd }
+          : {}),
+        // #3429: the folder this conversation was admitted into, recorded
+        // by the server alone (an adopted attached conversation, or a scoped
+        // dispatch). A follow-up naming only the project continues there.
+        ...(typeof metadata[DISPATCH_CANONICAL_CWD_METADATA_KEY] === 'string'
+          ? {
+              admittedCwd: metadata[
+                DISPATCH_CANONICAL_CWD_METADATA_KEY
+              ] as string,
+            }
           : {}),
         ...(metadata.workspaceIsolation &&
         typeof metadata.workspaceIsolation === 'object' &&

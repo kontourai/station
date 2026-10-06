@@ -34,6 +34,11 @@ import {
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
+import {
+  type AttachedPathProbe,
+  type AttachedPollPaths,
+  sharedAttachedPathProbe,
+} from './attached-session-path-probe.js';
 import { PollSessionSnapshot } from './attached-session-poll-snapshot.js';
 import {
   createPollRepositoryLookup,
@@ -239,6 +244,11 @@ interface AttachedSessionFollowServiceOptions {
    */
   resolveProjectRoots?: () => Promise<AttachedProjectRoot[]>;
   pollIntervalMs?: number;
+  /**
+   * How long `stop()` waits for a poll in flight before closing the sources
+   * anyway. Default 5 s; bounded so a hung source call cannot block shutdown.
+   */
+  stopPollWaitMs?: number;
   now?: () => Date;
   /** Testable lower bound for the fixed production deduplication cache. */
   maxSeenEventIds?: number;
@@ -259,6 +269,12 @@ interface AttachedSessionFollowServiceOptions {
    * event. Optional only so isolated tests can construct the service.
    */
   invalidateSessionOwner?: (threadId: string) => void;
+  /**
+   * #3406: where a poll reads session and project folders (real path and
+   * repository), off the main thread and with a deadline. Defaults to the
+   * process's shared probe; tests pass their own.
+   */
+  pathProbe?: AttachedPathProbe;
   /**
    * #3386: follow a session no project claims, with no project (the UI's
    * "No project"), instead of dropping it. It is owned by the local operator
@@ -290,8 +306,11 @@ interface AttachedSessionFollowServiceOptions {
  * only the observed file scan time and transcript records are retained after
  * their source disappears.
  */
+const DEFAULT_STOP_POLL_WAIT_MS = 5_000;
+
 export class AttachedSessionFollowService {
   private readonly pollIntervalMs: number;
+  private readonly stopPollWaitMs: number;
   private readonly maxSeenEventIds: number;
   private readonly followStates = new Map<string, FollowState>();
   private timer: NodeJS.Timeout | undefined;
@@ -308,6 +327,11 @@ export class AttachedSessionFollowService {
     this.pollIntervalMs = boundedPollInterval(
       options.pollIntervalMs ?? resolveAttachedSessionPollInterval(),
     );
+    this.stopPollWaitMs =
+      Number.isSafeInteger(options.stopPollWaitMs) &&
+      (options.stopPollWaitMs as number) >= 0
+        ? (options.stopPollWaitMs as number)
+        : DEFAULT_STOP_POLL_WAIT_MS;
     this.maxSeenEventIds =
       Number.isInteger(options.maxSeenEventIds) &&
       (options.maxSeenEventIds ?? 0) > 0
@@ -322,10 +346,47 @@ export class AttachedSessionFollowService {
     this.timer.unref?.();
   }
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = undefined;
+  async stop(): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+    // A poll in flight could open a source's store handle after it closed;
+    // let it finish first (its own failures are not the stop's), but only
+    // for a bounded time: a hung source call must not block shutdown.
+    const poll = this.activePoll;
+    if (poll) {
+      let timer: NodeJS.Timeout | undefined;
+      const settled = await Promise.race([
+        poll.then(
+          () => 'settled' as const,
+          () => 'settled' as const,
+        ),
+        new Promise<'timed-out'>((resolve) => {
+          timer = setTimeout(() => resolve('timed-out'), this.stopPollWaitMs);
+          timer.unref?.();
+        }),
+      ]);
+      clearTimeout(timer);
+      if (settled === 'timed-out') {
+        this.options.logger?.warn(
+          'Attached-session poll did not finish before stop; closing sources anyway',
+          { waitedMs: this.stopPollWaitMs },
+        );
+      }
+    }
+    // A source may hold store handles (OpenCode's SQLite connections) between
+    // polls; none should outlive following.
+    for (const source of this.options.sources) {
+      try {
+        source.close?.();
+      } catch (error) {
+        this.options.logger?.warn('Attached-session source failed to close', {
+          source: sourceLabel(source),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   /**
@@ -370,9 +431,17 @@ export class AttachedSessionFollowService {
 
   private async poll(): Promise<void> {
     const projectRoots = await this.projectRoots();
-    const repositories = createPollRepositoryLookup(
-      this.options.locateRepository,
+    // #3406: every folder this poll matches is read in the probe's child
+    // process, never synchronously here, so a hung mount cannot stall it.
+    const paths = (
+      this.options.pathProbe ?? sharedAttachedPathProbe()
+    ).forPoll();
+    await paths.prepare(
+      projectRoots.map((project) => project.workingDirectory),
     );
+    const repositories = this.options.locateRepository
+      ? createPollRepositoryLookup(this.options.locateRepository)
+      : paths.repository;
     const projectSlugs = new Set(projectRoots.map((project) => project.slug));
     // Read only when a poll finds a session outside every project.
     let outsideProjects: Promise<boolean> | undefined;
@@ -410,6 +479,12 @@ export class AttachedSessionFollowService {
         source: sourceLabel(source),
         outcome: discovered.outcome,
       });
+      await prepareSessionFolders(
+        paths,
+        repositories,
+        discovered.sessions,
+        projectRoots,
+      );
       let followedSessions = 0;
       for (const observed of discovered.sessions) {
         if (
@@ -438,6 +513,7 @@ export class AttachedSessionFollowService {
           session.cwd,
           projectRoots,
           repositories,
+          paths.canonical,
         );
         attachedSessionProjectAttribution.add(1, {
           source: sourceLabel(source),
@@ -448,17 +524,26 @@ export class AttachedSessionFollowService {
         // does NOT get is a slug it hasn't earned (archive#1462). The same
         // holds for an unattributed one (#3386), except on a hosted Station
         // or when the operator turned it off.
+        // #3406 delta D1: a session whose folder could not be read this poll
+        // is unattributed only for want of an answer. If the log already
+        // names its project it is still followed, and `follow()` keeps that
+        // project; anything else outside every project is skipped as before.
+        let onlyWithStoredProject = false;
         if (
           attribution.state === 'unattributed' &&
           !(await followOutsideProjects())
-        )
-          continue;
+        ) {
+          if (!session.cwd || paths.canonical(session.cwd) !== undefined)
+            continue;
+          onlyWithStoredProject = true;
+        }
         await this.follow(
           source,
           session,
           attribution,
           sessions(),
           projectSlugs,
+          onlyWithStoredProject,
         );
         followedSessions += 1;
         // `follow()` performs synchronous EventStore reads and writes. Its
@@ -478,6 +563,7 @@ export class AttachedSessionFollowService {
     attribution: AttachedProjectAttribution,
     snapshot: PollSessionSnapshot,
     projectSlugs: ReadonlySet<string>,
+    onlyWithStoredProject = false,
   ): Promise<void> {
     const persisted = snapshot.get(descriptor.threadId);
     // A stable Station thread id may outlive the configured source home (Claude
@@ -497,7 +583,7 @@ export class AttachedSessionFollowService {
     // check and the alias lookup. Every scan is synchronous sqlite + JSON
     // parsing on the main thread, so the snapshot is passed into followState
     // (and, #3386 F2, shared by every session of the poll).
-    if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
+    if (this.isStationOwnedProviderCursor(source, descriptor, snapshot)) {
       const alias = snapshot.get(descriptor.threadId);
       if (alias?.controlMode === 'read-only-attached') {
         this.deleteAttachedAlias(descriptor.threadId);
@@ -520,6 +606,13 @@ export class AttachedSessionFollowService {
       state.storedAttribution !== undefined &&
       (projectSlugs.size === 0 ||
         storedProjectsStillExist(state.storedAttribution, projectSlugs));
+    // #3406 delta D1: with sessions outside projects not followed, an
+    // unreadable folder's session continues only under the project it has.
+    if (
+      onlyWithStoredProject &&
+      !(keepsStoredAttribution && state.storedAttribution !== 'unattributed')
+    )
+      return;
     if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
       for (const event of attachedSessionEnvelope(
@@ -666,7 +759,7 @@ export class AttachedSessionFollowService {
   ): FollowState {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
-      if (this.isStationOwnedProviderCursor(descriptor, snapshot)) {
+      if (this.isStationOwnedProviderCursor(source, descriptor, snapshot)) {
         const alias = snapshot.get(descriptor.threadId);
         if (alias?.controlMode === 'read-only-attached') {
           this.deleteAttachedAlias(descriptor.threadId);
@@ -680,6 +773,7 @@ export class AttachedSessionFollowService {
 
     const persisted = snapshot.get(descriptor.threadId);
     const isStationOwnedProviderCursor = this.isStationOwnedProviderCursor(
+      source,
       descriptor,
       snapshot,
     );
@@ -736,6 +830,7 @@ export class AttachedSessionFollowService {
   }
 
   private isStationOwnedProviderCursor(
+    source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     snapshot: PollSessionSnapshot,
   ): boolean {
@@ -753,7 +848,9 @@ export class AttachedSessionFollowService {
           (reservation) =>
             reservation.provider === descriptor.provider &&
             matchesDescriptor(reservation.providerResumeCursor),
-        ) || snapshot.ownsNativeSession(descriptor, adapter)
+        ) ||
+      snapshot.ownsNativeSession(descriptor, adapter) ||
+      snapshot.ownedThroughSource(source, descriptor)
     );
   }
 
@@ -1155,10 +1252,11 @@ export async function resolveAttachedSessionProject(
   cwd: string,
   projects: AttachedProjectRoot[],
   repositories: RepositoryLookup,
+  canonicalize: CanonicalizePath = canonicalPath,
 ): Promise<AttachedProjectAttribution> {
-  const byFolder = resolveAttachedProjectRoot(cwd, projects);
+  const byFolder = resolveAttachedProjectRoot(cwd, projects, canonicalize);
   if (byFolder.state !== 'unattributed') return byFolder;
-  const canonicalCwd = canonicalPath(cwd);
+  const canonicalCwd = canonicalize(cwd);
   if (!canonicalCwd) return byFolder;
   const session = await repositories(canonicalCwd);
   if (!session) return byFolder;
@@ -1167,7 +1265,7 @@ export async function resolveAttachedSessionProject(
   let candidates: string[] = [];
   for (const project of projects) {
     if (!project.workingDirectory) continue;
-    const root = canonicalPath(project.workingDirectory);
+    const root = canonicalize(project.workingDirectory);
     if (!root) continue;
     const repository = await repositories(root);
     if (
@@ -1192,6 +1290,38 @@ export async function resolveAttachedSessionProject(
   return attributionFrom(canonicalCwd, workingDirectory, candidates);
 }
 
+/**
+ * #3406: read every folder a source's sessions will be matched by before
+ * matching them one at a time: each session's real path, then the
+ * repository of each session no project folder contains and of every
+ * project. They are asked all at once, so the probe's child answers them
+ * back to back rather than one IPC round trip per session; the matching
+ * below then finds them in the poll's lookup.
+ */
+async function prepareSessionFolders(
+  paths: AttachedPollPaths,
+  repositories: RepositoryLookup,
+  sessions: readonly { cwd: string }[],
+  projects: AttachedProjectRoot[],
+): Promise<void> {
+  await paths.prepare(sessions.map((session) => session.cwd));
+  const outside = sessions.filter(
+    (session) =>
+      resolveAttachedProjectRoot(session.cwd, projects, paths.canonical)
+        .state === 'unattributed',
+  );
+  if (outside.length === 0) return;
+  await Promise.all(
+    [
+      ...outside.map((session) => session.cwd),
+      ...projects.map((project) => project.workingDirectory),
+    ].map((folder) => {
+      const canonical = folder ? paths.canonical(folder) : undefined;
+      return canonical ? repositories(canonical) : undefined;
+    }),
+  );
+}
+
 function attributionFrom(
   cwd: string,
   workingDirectory: string | undefined,
@@ -1211,17 +1341,28 @@ function attributionFrom(
   };
 }
 
+/**
+ * How a folder is made comparable: {@link canonicalPath} by default (a
+ * synchronous `realpath`); the poll passes the answers its path probe read
+ * off the main thread (#3406). Those keep the lexical fallback for a folder
+ * that does not exist, and answer `undefined` for one that could not be read
+ * this poll, so it matches nothing: an unread cwd is unattributed and an
+ * unread Project root is skipped.
+ */
+type CanonicalizePath = (path: string) => string | undefined;
+
 export function resolveAttachedProjectRoot(
   cwd: string,
   projects: AttachedProjectRoot[],
+  canonicalize: CanonicalizePath = canonicalPath,
 ): AttachedProjectAttribution {
-  const canonicalCwd = canonicalPath(cwd);
+  const canonicalCwd = canonicalize(cwd);
   if (!canonicalCwd) return { state: 'unattributed' };
   let workingDirectory: string | undefined;
   let candidates: string[] = [];
   for (const project of projects) {
     if (!project.workingDirectory) continue;
-    const root = canonicalPath(project.workingDirectory);
+    const root = canonicalize(project.workingDirectory);
     if (!root || !isContainedBy(canonicalCwd, root)) continue;
     if (
       workingDirectory === undefined ||
