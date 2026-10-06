@@ -35,12 +35,10 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
 import { resolveHomeDir } from '../../utils/paths.js';
 import { automationConfigurationProblems } from './automation-config-validation.js';
 
-export const AUTOMATION_CONFIG_FILE = 'automations.json';
+const AUTOMATION_CONFIG_FILE = 'automations.json';
 
 /** Home-relative persistent location; defaults to `STATION_HOME`. */
-export function automationConfigPath(
-  homeDir: string = resolveHomeDir(),
-): string {
+function automationConfigPath(homeDir: string = resolveHomeDir()): string {
   return join(homeDir, 'security', AUTOMATION_CONFIG_FILE);
 }
 
@@ -112,7 +110,7 @@ const EMPTY_CONFIGURATION: AutomationConfiguration = Object.freeze({
 });
 
 /** Removes the webhook secret; every API surface must project through this. */
-export function projectAutomationSource(
+function projectAutomationSource(
   source: AutomationSource,
 ): AutomationSourceProjection {
   if (source.kind === 'github-poll') return structuredClone(source);

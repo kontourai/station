@@ -16,7 +16,6 @@ import {
   AUTOMATION_EVENT_FIELDS,
   AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_SCHEMA_VERSION,
-  type AutomationConfiguration,
   type AutomationEventType,
   type AutomationRule,
   type AutomationSource,
@@ -453,10 +452,4 @@ export function automationConfigurationProblems(value: unknown): string[] {
     }
   });
   return problems;
-}
-
-export function isAutomationConfiguration(
-  value: unknown,
-): value is AutomationConfiguration {
-  return automationConfigurationProblems(value).length === 0;
 }
