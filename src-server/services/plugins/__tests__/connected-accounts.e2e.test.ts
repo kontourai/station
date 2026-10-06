@@ -102,6 +102,8 @@ const DEVICES = {
     },
   },
   'kiosk-credential': { id: 'device-kiosk', name: 'Kiosk' },
+  // A device the operator allowed to run commands (coding:exec).
+  'exec-credential': { id: 'device-exec', name: 'Exec' },
 } as const;
 type Credential = keyof typeof DEVICES;
 
@@ -141,7 +143,11 @@ function runtimeContext(
       verifyCredential: (credential: string) => credential in DEVICES,
       verifyOperatorCredential: () => false,
       resolveGrantedScope: (credential: string) =>
-        credential in DEVICES ? GRANTED_SCOPE : undefined,
+        credential === 'exec-credential'
+          ? `${GRANTED_SCOPE} coding:exec`
+          : credential in DEVICES
+            ? GRANTED_SCOPE
+            : undefined,
       identifyDevice,
       devicePairing,
       pseudonymizePairingAuditSource: () => 'connected-accounts-e2e',
@@ -774,11 +780,23 @@ test('two principals each reach the MCP server with their own token and cannot u
     ).toEqual(PERSON_GRANT);
     expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toBeUndefined();
 
-    // An instance binding binds exactly as before, for anyone.
-    const crmBind = await post(
+    // An instance binding on a command-launching server is the environment of
+    // a command Station will run, so a person without the operator's
+    // coding:exec grant cannot attach one, whatever their account...
+    const refusedBind = await post(
       app,
       '/api/secret-bindings/shared-crm/bind',
       'bob-credential',
+      consumer('CRM_TOKEN', 1),
+    );
+    expect(refusedBind.status, JSON.stringify(refusedBind.body)).toBe(403);
+    expect(refusedBind.body.code).toBe('command-not-granted');
+    expect((await loader.loadIntegration(LOCAL)).secretEnvRefs).toBeUndefined();
+    // ...and binds exactly as before for a device that holds the grant.
+    const crmBind = await post(
+      app,
+      '/api/secret-bindings/shared-crm/bind',
+      'exec-credential',
       consumer('CRM_TOKEN', 1),
     );
     expect(crmBind.status, JSON.stringify(crmBind.body)).toBe(200);

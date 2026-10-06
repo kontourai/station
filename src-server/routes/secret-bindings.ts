@@ -241,7 +241,7 @@ async function respondBindingMutation(
   if (input.kind !== 'acp-provider-header') {
     // Attaching a value to a command's environment chooses that command's
     // environment; detaching one only removes it.
-    if (operation === 'bind') {
+    if (operation === 'bind' && (await bindingMayAttach(service, id, viewer))) {
       const refused = await refuseIfLaunching(c, input.integrationId);
       if (refused) return refused;
     }
@@ -261,6 +261,25 @@ async function respondBindingMutation(
       ...(viewer ? { viewer } : {}),
     }),
   );
+}
+
+/**
+ * Whether the command check applies to a bind of binding `id`. It does not
+ * when the service will answer first and nothing can attach: a binding the
+ * caller cannot see answers exactly as a missing id (404, so the check must
+ * not turn it into a 403 that tells them apart), and the service refuses
+ * every grant of a person-owned binding to a shared integration (400,
+ * `SECRET_BINDING_PERSON_GRANT_MESSAGE`). A lookup that fails counts as
+ * visible and instance-owned, so the check applies.
+ */
+async function bindingMayAttach(
+  service: SecretBindingAdministration,
+  id: string,
+  viewer: SecretBindingViewer | undefined,
+): Promise<boolean> {
+  const seen = await service.get(id, viewer).catch(() => undefined);
+  if (seen === null) return false;
+  return !(seen?.owner && seen.owner.kind !== 'instance');
 }
 
 async function respondConsumer(

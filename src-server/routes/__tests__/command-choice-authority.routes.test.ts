@@ -22,6 +22,10 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  SecretBindingNotFoundError,
+  SecretBindingPersonGrantError,
+} from '../../services/secrets/secret-binding-administration.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../utils/logger.js';
 import { createToolRoutes } from '../agents/tools.js';
@@ -243,12 +247,21 @@ async function fixture() {
       },
     ],
   };
-  const bindConsumer = vi.fn(async () => ({
-    outcome: 'complete' as const,
-    binding,
-    integrationId: 'x',
-    envName: 'TOKEN',
-  }));
+  const personOwned = {
+    ...binding,
+    id: 'b-person',
+    owner: { kind: 'principal', principalId: 'person-1' },
+  };
+  const bindConsumer = vi.fn(async (input: { id: string }) => {
+    if (input.id === 'missing') throw new SecretBindingNotFoundError();
+    if (input.id === 'b-person') throw new SecretBindingPersonGrantError();
+    return {
+      outcome: 'complete' as const,
+      binding,
+      integrationId: 'x',
+      envName: 'TOKEN',
+    };
+  });
   const unbindConsumer = vi.fn(async () => ({
     outcome: 'complete' as const,
     binding,
@@ -267,6 +280,8 @@ async function fixture() {
         list: async () => [binding],
         get: async (id: string) => {
           if (id === 'b-unreadable') throw new Error('store unreadable');
+          if (id === 'missing') return null;
+          if (id === 'b-person') return personOwned;
           return id === 'b-stdio'
             ? boundToStdio
             : id === 'b-url'
@@ -783,6 +798,40 @@ describe("/api/secret-bindings: a bound value is a launched command's environmen
       },
     );
     expect(header.status).toBe(200);
+  });
+
+  test('a binding the caller cannot see, or that does not exist, still answers 404, never the command refusal', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    const res = await f.send(
+      device,
+      'POST',
+      '/api/secret-bindings/missing/bind',
+      {
+        integrationId: 'tool-1',
+        envName: 'NODE_OPTIONS',
+        expectedRevision: 1,
+      },
+    );
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBeUndefined();
+  });
+
+  test('a person-owned binding keeps the service refusal (it can never be granted to a shared server), not the command refusal', async () => {
+    const f = await fixture();
+    const device = f.pair('default-grant');
+    const res = await f.send(
+      device,
+      'POST',
+      '/api/secret-bindings/b-person/bind',
+      {
+        integrationId: 'tool-1',
+        envName: 'NODE_OPTIONS',
+        expectedRevision: 1,
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBeUndefined();
   });
 
   test('an integration that cannot be read counts as launching one', async () => {
