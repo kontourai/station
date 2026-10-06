@@ -14,7 +14,7 @@ import {
   extensionTranscriptMarker,
 } from './extension-transcript-markers.js';
 import { readHarnessQuestionnaire } from './harness-questions.js';
-import { readMcpElicitationForm } from './mcp-elicitation.js';
+import { readMcpElicitationForm } from './mcp-elicitation-form.js';
 import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 

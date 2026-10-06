@@ -1,6 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
-import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
+import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation-form';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
