@@ -138,6 +138,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import {
+  ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
@@ -8361,7 +8362,8 @@ export class OrchestrationService {
         // as a definitive rejection.
         // An attachment refusal's code is forwarded (NOT retryable) so the
         // client can say the same send will be refused again instead of
-        // offering a blind retry.
+        // offering a blind retry. #3290: so is an approval-governance
+        // refusal, whose next step is a configuration or mode change.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
@@ -8369,7 +8371,8 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
-          error instanceof AttachmentInputUnsupportedError
+          error instanceof AttachmentInputUnsupportedError ||
+          error instanceof ApprovalGovernanceRefusedError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );

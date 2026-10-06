@@ -29,6 +29,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { ApprovalGovernanceRefusedError } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
@@ -43,6 +44,8 @@ class RecordingAdapter implements ProviderAdapterShape {
   readonly sessions = new Map<string, ProviderSession>();
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
+  /** Thrown by the next `sendTurn`, before it has any effect. */
+  nextTurnError: Error | undefined;
   private turnCount = 0;
 
   constructor(readonly provider: 'claude' | 'codex' | 'acp') {
@@ -83,6 +86,9 @@ class RecordingAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    const refusal = this.nextTurnError;
+    this.nextTurnError = undefined;
+    if (refusal) throw refusal;
     this.turns.push(input);
     this.turnCount += 1;
     return { threadId: input.threadId, turnId: `turn-${this.turnCount}` };
@@ -696,6 +702,16 @@ describe('server-ordered approval posture (#2436)', () => {
       await decide('t-claude-respawn', 'connection-default');
       await turn('t-claude-respawn');
       expect(claude.lastTurnMode()).toBeUndefined();
+    });
+
+    test('a governance refusal keeps its code through the command seam, so clients withhold Retry', async () => {
+      await startOn('t-opencode-refused', 'opencode');
+      acp.nextTurnError = new ApprovalGovernanceRefusedError(
+        "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings, so this message was not sent: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+      );
+      await expect(turn('t-opencode-refused')).rejects.toMatchObject({
+        code: 'acp_approval_governance_refused',
+      });
     });
 
     test('full access on a confined Station-governed engine applies Auto', async () => {
