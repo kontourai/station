@@ -22,7 +22,9 @@
 
     "src-server/providers/adapters/acp-approval-mode.ts",
 
-    "src-server/services/acp/opencode-approval-launch.ts"
+    "src-server/services/acp/opencode-approval-launch.ts",
+
+    "src-server/services/acp/opencode-approval-verify.ts"
   ],
 
   "checks": [
