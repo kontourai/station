@@ -572,6 +572,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // with a real registered worktree — a fixture would pin whatever the parser
   // assumed rather than what git prints.
   'src-server/services/projects/__tests__/session-workspace-directory.test.ts',
+  // #3412: the same check through the runtime composition (a real
+  // orchestration service and Codex adapter) needs the same real repository
+  // and registered worktree.
+  'src-server/routes/projects/__tests__/workspace-pane-previews.session-composition.test.ts',
   // #2144 slice 5: the `settingsRow` literal reverse guard enumerates its
   // scan scope through one single-shot `git ls-files`, same shape and same
   // reason as the placement ratchet above — a glob pathspec silently drops
