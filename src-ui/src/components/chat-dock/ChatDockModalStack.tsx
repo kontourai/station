@@ -48,7 +48,9 @@ const loadChatSettingsPanel = () =>
     default: m.ChatSettingsPanel,
   }));
 const loadNewChatModal = () =>
-  import('./DockNewChatModal').then((m) => ({ default: m.DockNewChatModal }));
+  import('./DockStartComposer').then((m) => ({
+    default: m.DockStartComposer,
+  }));
 const loadSessionPickerModal = () =>
   import('../modals/SessionPickerModal').then((m) => ({
     default: m.SessionPickerModal,

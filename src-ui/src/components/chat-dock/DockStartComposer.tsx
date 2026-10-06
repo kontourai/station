@@ -8,7 +8,7 @@ import { NewChatModal } from '../modals/NewChatModal';
  * while the composer is open: the dock and the Project list never wait on a
  * project folder, and the composer names the stored folder until it answers.
  */
-export function DockNewChatModal(
+export function DockStartComposer(
   props: Omit<ComponentProps<typeof NewChatModal>, 'projectRunLocations'>,
 ) {
   const projectRunLocations = useScopedProjectRunLocationsQuery().data;
