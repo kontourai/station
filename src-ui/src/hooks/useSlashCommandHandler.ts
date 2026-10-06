@@ -2,7 +2,6 @@ import type { Skill } from '@kontourai/station-contracts/catalog';
 import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
 import {
   agentMcpPromptsQueryKey,
-  runAgentMcpPrompt,
   useRunSkill,
   useSkillDetailReader,
 } from '@kontourai/station-sdk';
@@ -188,53 +187,21 @@ export function useSlashCommandHandler() {
         (candidate) => candidate.command.toLowerCase() === cmd,
       );
       if (prompt && chatState.agentSlug) {
-        const assignment = assignSkillVariableArgs(
-          prompt.arguments.map((argument) => ({ name: argument.name })),
+        const { runMcpPromptCommand } = await import(
+          '../slashCommands/mcpPrompt'
+        );
+        const outcome = await runMcpPromptCommand(
+          chatState.agentSlug,
+          prompt,
           args,
         );
-        if (!assignment.ok) {
+        if ('refusal' in outcome)
           addEphemeralMessage(sessionId, {
             role: 'system',
-            content: `/${prompt.command}: ${assignment.error} — nothing was sent`,
+            content: outcome.refusal,
           });
-          cleanup();
-          return true;
-        }
-        const provided = Object.fromEntries(
-          Object.entries(assignment.provided).filter(
-            (entry): entry is [string, string] =>
-              typeof entry[1] === 'string' && entry[1].trim() !== '',
-          ),
-        );
-        const missing = prompt.arguments
-          .filter(
-            (argument) => argument.required && !(argument.name in provided),
-          )
-          .map((argument) => `<${argument.name}>`);
-        if (missing.length) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `/${prompt.command} needs a value for ${missing.join(', ')} — nothing was sent`,
-          });
-          cleanup();
-          return true;
-        }
-        try {
-          const run = await runAgentMcpPrompt(chatState.agentSlug, {
-            serverId: prompt.serverId,
-            name: prompt.name,
-            arguments: provided,
-          });
-          cleanup();
-          return run.text;
-        } catch (error) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `Could not run /${prompt.command}: ${error instanceof Error ? error.message : 'unknown error'}`,
-          });
-          cleanup();
-          return true;
-        }
+        cleanup();
+        return 'text' in outcome ? outcome.text : true;
       }
 
       // 3. Check registered commands
