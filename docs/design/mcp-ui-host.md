@@ -184,13 +184,23 @@ pinned to the exact opened event; the service validates accepted content
 against that form and refuses invalid content with a reason, and the bridge
 re-checks it before the server sees it. Nothing is coerced or truncated.
 
+Live and rehydrated approval toasts suppress one-click answers for payloads
+with a string `serverId` and an array of `fields`. This small shape check
+keeps the full form reader out of the toast path; the event projection and
+pending-request cards still validate stored forms with the shared reader.
+A payload with that shape that fails the full reader follows ordinary request
+presentation without a one-click toast. Answer validation remains on the
+server and bridge paths described above.
+
 Truthfulness rules: `accept` only with content the person entered; `decline`
 only when they declined; a timeout (10 minutes, or the server's own request
 timeout), a stopped turn, a server cancellation or a stopped session all
 return `cancel`. A form that cannot be rendered, or a hosted turn with no
 bound session, is an error to the server, never a fabricated answer. The
-agent audience rule for member-facing turns named in #3284 has no runtime
-concept to bind to yet and is not implemented.
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+now refuses Project member callers' Agent turns and pending-approval answers
+until the intersected-scope turn path in #3277 is implemented. See
+[Project membership](project-membership.md) for its covered routes and limits.
 
 ## App metadata
 
