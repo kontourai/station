@@ -1,0 +1,29 @@
+diff --git a/src/sprintf.js b/src/sprintf.js
+--- a/src/sprintf.js
++++ b/src/sprintf.js
+@@ -30,6 +30,8 @@
+             }
+             else if (node_type === "array") {
+                 match = parse_tree[i] // convenience purposes only
++                // Bound numeric precision before the built-ins; oversized format input must not throw RangeError.
++                var precision = match[7] ? Math.min(Number(match[7]), 100) : undefined
+                 if (match[2]) { // keyword argument
+                     arg = argv[cursor]
+                     for (k = 0; k < match[2].length; k++) {
+@@ -73,13 +75,13 @@
+                         arg = JSON.stringify(arg, null, match[6] ? parseInt(match[6]) : 0)
+                     break
+                     case "e":
+-                        arg = match[7] ? arg.toExponential(match[7]) : arg.toExponential()
++                        arg = match[7] ? arg.toExponential(precision) : arg.toExponential()
+                     break
+                     case "f":
+-                        arg = match[7] ? parseFloat(arg).toFixed(match[7]) : parseFloat(arg)
++                        arg = match[7] ? parseFloat(arg).toFixed(precision) : parseFloat(arg)
+                     break
+                     case "g":
+-                        arg = match[7] ? parseFloat(arg).toPrecision(match[7]) : parseFloat(arg)
++                        arg = match[7] ? parseFloat(arg).toPrecision(Math.max(precision, 1)) : parseFloat(arg)
+                     break
+                     case "o":
+                         arg = arg.toString(8)
