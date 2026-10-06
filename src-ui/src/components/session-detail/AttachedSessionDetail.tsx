@@ -32,6 +32,10 @@ import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import {
+  TranscriptMarker,
+  transcriptMarkerLabel,
+} from '../chat/TranscriptMarker';
 import { Dialog } from '../Dialog';
 import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
@@ -585,6 +589,9 @@ export function AttachedSessionDetail({
               const contentParts = message.parts
                 .flatMap(conversationPartToContentParts)
                 .map(withoutApprovalBinding);
+              const marker = transcriptMarkerLabel(contentParts);
+              if (marker)
+                return <TranscriptMarker key={message.id} label={marker} />;
               if (presentation === 'chat')
                 return (
                   <MessageBubble
