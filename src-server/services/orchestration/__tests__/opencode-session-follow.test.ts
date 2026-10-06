@@ -252,3 +252,43 @@ test('stop waits for a poll in flight before closing the sources', async () => {
     store.close();
   }
 });
+
+test('stop closes the sources after a bounded wait when a poll hangs', async () => {
+  const order: string[] = [];
+  const source = {
+    provider: 'opencode',
+    kind: 'opencode-session',
+    // A source call that never settles.
+    discover: () => {
+      order.push('discover-start');
+      return new Promise<never>(() => {});
+    },
+    read: async () => ({ outcome: 'ok' as const, events: [], cursor: 0 }),
+    close: () => {
+      order.push('close');
+    },
+  };
+  const warn = vi.fn();
+  const directory = realpathSync(tempDir('station-opencode-stop-hung-'));
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  try {
+    const follow = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+      stopPollWaitMs: 50,
+      logger: { warn },
+    });
+    void follow.pollNow();
+    await vi.waitFor(() => expect(order).toContain('discover-start'));
+    await follow.stop();
+    expect(order).toEqual(['discover-start', 'close']);
+    expect(warn).toHaveBeenCalledWith(
+      'Attached-session poll did not finish before stop; closing sources anyway',
+      { waitedMs: 50 },
+    );
+  } finally {
+    store.close();
+  }
+});

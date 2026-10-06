@@ -239,6 +239,11 @@ interface AttachedSessionFollowServiceOptions {
    */
   resolveProjectRoots?: () => Promise<AttachedProjectRoot[]>;
   pollIntervalMs?: number;
+  /**
+   * How long `stop()` waits for a poll in flight before closing the sources
+   * anyway. Default 5 s; bounded so a hung source call cannot block shutdown.
+   */
+  stopPollWaitMs?: number;
   now?: () => Date;
   /** Testable lower bound for the fixed production deduplication cache. */
   maxSeenEventIds?: number;
@@ -290,8 +295,11 @@ interface AttachedSessionFollowServiceOptions {
  * only the observed file scan time and transcript records are retained after
  * their source disappears.
  */
+const DEFAULT_STOP_POLL_WAIT_MS = 5_000;
+
 export class AttachedSessionFollowService {
   private readonly pollIntervalMs: number;
+  private readonly stopPollWaitMs: number;
   private readonly maxSeenEventIds: number;
   private readonly followStates = new Map<string, FollowState>();
   private timer: NodeJS.Timeout | undefined;
@@ -308,6 +316,11 @@ export class AttachedSessionFollowService {
     this.pollIntervalMs = boundedPollInterval(
       options.pollIntervalMs ?? resolveAttachedSessionPollInterval(),
     );
+    this.stopPollWaitMs =
+      Number.isSafeInteger(options.stopPollWaitMs) &&
+      (options.stopPollWaitMs as number) >= 0
+        ? (options.stopPollWaitMs as number)
+        : DEFAULT_STOP_POLL_WAIT_MS;
     this.maxSeenEventIds =
       Number.isInteger(options.maxSeenEventIds) &&
       (options.maxSeenEventIds ?? 0) > 0
@@ -328,8 +341,29 @@ export class AttachedSessionFollowService {
       this.timer = undefined;
     }
     // A poll in flight could open a source's store handle after it closed;
-    // let it finish first (its own failures are not the stop's).
-    await this.activePoll?.catch(() => undefined);
+    // let it finish first (its own failures are not the stop's), but only
+    // for a bounded time: a hung source call must not block shutdown.
+    const poll = this.activePoll;
+    if (poll) {
+      let timer: NodeJS.Timeout | undefined;
+      const settled = await Promise.race([
+        poll.then(
+          () => 'settled' as const,
+          () => 'settled' as const,
+        ),
+        new Promise<'timed-out'>((resolve) => {
+          timer = setTimeout(() => resolve('timed-out'), this.stopPollWaitMs);
+          timer.unref?.();
+        }),
+      ]);
+      clearTimeout(timer);
+      if (settled === 'timed-out') {
+        this.options.logger?.warn(
+          'Attached-session poll did not finish before stop; closing sources anyway',
+          { waitedMs: this.stopPollWaitMs },
+        );
+      }
+    }
     // A source may hold store handles (OpenCode's SQLite connections) between
     // polls; none should outlive following.
     for (const source of this.options.sources) {
