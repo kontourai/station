@@ -1,4 +1,5 @@
 import {
+  type CacheAwareTokenComponents,
   CUMULATIVE_USAGE_PROVIDERS,
   isValidContextObservation,
 } from './usage-semantics.js';
