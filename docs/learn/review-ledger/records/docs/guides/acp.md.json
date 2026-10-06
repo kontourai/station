@@ -18,7 +18,11 @@
 
     "src-server/services/acp/acp-probe.ts",
 
-    "src-shared/extension-notification-bindings.ts"
+    "src-shared/extension-notification-bindings.ts",
+
+    "src-server/providers/adapters/acp-approval-mode.ts",
+
+    "src-server/services/acp/opencode-approval-launch.ts"
   ],
 
   "checks": [

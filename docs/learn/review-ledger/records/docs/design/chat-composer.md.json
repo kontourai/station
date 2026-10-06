@@ -86,7 +86,9 @@
 
     "src-ui/src/components/modals/NewChatModal.tsx",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/badges/EngineApprovalDisclosureChip.tsx"
   ],
 
   "checks": [
