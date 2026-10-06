@@ -1,0 +1,326 @@
+/**
+ * #3290: check that Station's approval rules are what OpenCode will actually
+ * enforce, before Station claims to govern an OpenCode session.
+ *
+ * Station writes its rules into `OPENCODE_CONFIG_CONTENT`
+ * (`opencode-approval-launch.ts`), but whether they win is decided by
+ * OpenCode's own resolution: the user's and the project's files, an
+ * organisation's managed configuration, the user's own spelling of the same
+ * keys, or a binary named `opencode` that ignores inline content at all. So
+ * Station asks the engine itself. `opencode debug agent <name>`, run with the
+ * same environment and working directory as the session, prints the agent's
+ * resolved permission rules in evaluation order (`cli/cmd/debug/agent.ts`,
+ * OpenCode 1.18.18); Station evaluates them the way OpenCode does (last
+ * matching rule wins, `*` and `?` wildcards, an unmatched request asks) and
+ * refuses to govern unless every rule it depends on is effective.
+ *
+ * The check is per permission, over every possible request pattern, not a
+ * sample: after the last rule that covers a permission for every pattern
+ * (pattern `*`), only rules no looser than Station's may follow.
+ */
+import { spawn } from 'node:child_process';
+import {
+  OPENCODE_ASK_PERMISSIONS,
+  OPENCODE_EXPLORE_TOOLS,
+  OPENCODE_PLAN_FILE_PATTERN,
+  type OpenCodeApprovalFloor,
+} from './opencode-approval-launch.js';
+
+export type OpenCodeRule = {
+  permission: string;
+  pattern: string;
+  action: string;
+};
+
+export type OpenCodeResolvedAgent = {
+  name?: string;
+  permission?: OpenCodeRule[];
+  tools?: Record<string, boolean>;
+};
+
+/** Runs `<command> debug agent <name>` in the session's environment. */
+export type OpenCodeAgentReader = (
+  agent: string,
+) => Promise<OpenCodeResolvedAgent>;
+
+export type OpenCodeFloorVerification =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+/** OpenCode's wildcard (`util/wildcard.ts`): `*` any run, `?` one char. */
+function wildcard(input: string, pattern: string): boolean {
+  let escaped = pattern
+    .replaceAll('\\', '/')
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  if (escaped.endsWith(' .*')) escaped = `${escaped.slice(0, -3)}( .*)?`;
+  return new RegExp(`^${escaped}$`, 's').test(input.replaceAll('\\', '/'));
+}
+
+const STRICTNESS: Record<string, number> = { allow: 0, ask: 1, deny: 2 };
+
+/**
+ * The loosest action `permission` can resolve to, for any request pattern,
+ * ignoring rules `exempt` names. `undefined` when some request could match no
+ * rule at all, which OpenCode answers with `ask`.
+ */
+function loosest(
+  rules: readonly OpenCodeRule[],
+  permission: string,
+  exempt: (rule: OpenCodeRule) => boolean = () => false,
+): { action: string; covered: boolean } {
+  const matching = rules.filter((rule) =>
+    wildcard(permission, rule.permission),
+  );
+  let catchAll = -1;
+  matching.forEach((rule, index) => {
+    if (rule.pattern === '*') catchAll = index;
+  });
+  const effective = (
+    catchAll >= 0 ? matching.slice(catchAll) : matching
+  ).filter((rule, index) => index === 0 || !exempt(rule));
+  const actions = effective.map((rule) => rule.action);
+  if (catchAll < 0) actions.push('ask');
+  const action = actions.reduce((current, next) =>
+    (STRICTNESS[next] ?? 0) < (STRICTNESS[current] ?? 0) ? next : current,
+  );
+  return { action, covered: catchAll >= 0 };
+}
+
+/** The strictest action `permission` can resolve to, for any pattern. */
+function strictest(rules: readonly OpenCodeRule[], permission: string): string {
+  const matching = rules.filter((rule) =>
+    wildcard(permission, rule.permission),
+  );
+  let catchAll = -1;
+  matching.forEach((rule, index) => {
+    if (rule.pattern === '*') catchAll = index;
+  });
+  const actions = (catchAll >= 0 ? matching.slice(catchAll) : matching).map(
+    (rule) => rule.action,
+  );
+  if (catchAll < 0) actions.push('ask');
+  return actions.reduce((current, next) =>
+    (STRICTNESS[next] ?? 0) > (STRICTNESS[current] ?? 0) ? next : current,
+  );
+}
+
+/** OpenCode appends its own tool-output directory as an allowed outside path. */
+function isToolOutputAllow(rule: OpenCodeRule): boolean {
+  return (
+    rule.permission === 'external_directory' &&
+    rule.action === 'allow' &&
+    /[\\/]tool-output[\\/]\*$/.test(rule.pattern)
+  );
+}
+
+/** The `task` patterns (subagent names) a ruleset allows. */
+function allowedSubagents(rules: readonly OpenCodeRule[]): string[] {
+  const matching = rules.filter((rule) => wildcard('task', rule.permission));
+  let catchAll = -1;
+  matching.forEach((rule, index) => {
+    if (rule.pattern === '*') catchAll = index;
+  });
+  if (catchAll < 0 || matching[catchAll]?.action === 'allow') return ['*'];
+  return matching
+    .slice(catchAll + 1)
+    .filter((rule) => rule.action !== 'deny')
+    .map((rule) => rule.pattern);
+}
+
+function why(agent: string, permission: string, detail: string): string {
+  return `your OpenCode configuration overrides Station's approval rules for ${permission} in the ${agent} agent (${detail})`;
+}
+
+/** Below full access: each governed action asks, and no subagent starts. */
+function checkConfined(
+  agent: string,
+  rules: readonly OpenCodeRule[],
+): string | undefined {
+  for (const permission of [...OPENCODE_ASK_PERMISSIONS, 'mcp_tool']) {
+    const exemptPlanFile = (rule: OpenCodeRule) =>
+      agent === 'plan' &&
+      permission === 'edit' &&
+      rule.action === 'allow' &&
+      rule.pattern === OPENCODE_PLAN_FILE_PATTERN;
+    const { action } = loosest(
+      rules,
+      permission,
+      (rule) => isToolOutputAllow(rule) || exemptPlanFile(rule),
+    );
+    if (action === 'allow') {
+      return why(
+        agent,
+        permission === 'mcp_tool' ? 'MCP tools' : permission,
+        'it would run without asking',
+      );
+    }
+  }
+  const subagents = allowedSubagents(rules);
+  if (subagents.length > 0) {
+    return why(agent, 'task', `it could start ${subagents.join(', ')}`);
+  }
+  return undefined;
+}
+
+/** Full access, primary agents: only the built-in subagents may start. */
+function checkFullPrimary(
+  agent: string,
+  rules: readonly OpenCodeRule[],
+): string | undefined {
+  const permitted = agent === 'plan' ? ['explore'] : ['general', 'explore'];
+  const extra = allowedSubagents(rules).filter(
+    (name) => !permitted.includes(name),
+  );
+  if (extra.length > 0) {
+    return why(agent, 'task', `it could start ${extra.join(', ')}`);
+  }
+  if (strictest(rules, 'external_directory') === 'ask') {
+    // A child inherits this rule; an `ask` there would hang it.
+    return why(agent, 'external_directory', 'a subagent could ask and hang');
+  }
+  return undefined;
+}
+
+/** OpenCode keys these tools' permission by another name (`Permission.disabled`). */
+const TOOL_PERMISSION: Record<string, string> = {
+  write: 'edit',
+  apply_patch: 'edit',
+  list_mcp_resources: 'read',
+  list_mcp_resource_templates: 'read',
+  read_mcp_resource: 'read',
+};
+
+/** Full access, subagents: nothing they can do may ask (it would hang). */
+function checkFullSubagent(
+  agent: string,
+  resolved: OpenCodeResolvedAgent,
+): string | undefined {
+  const rules = resolved.permission ?? [];
+  const tools = Object.entries(resolved.tools ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([tool]) => TOOL_PERMISSION[tool] ?? tool);
+  const universe = new Set([
+    ...tools,
+    ...(agent === 'explore' ? OPENCODE_EXPLORE_TOOLS : []),
+    'external_directory',
+    'doom_loop',
+  ]);
+  for (const permission of universe) {
+    if (permission === 'task' || permission === 'question') continue;
+    if (strictest(rules, permission) === 'ask') {
+      return why(agent, permission, 'a subagent could ask and hang');
+    }
+  }
+  if (
+    universe.has('question') &&
+    loosest(rules, 'question').action !== 'deny'
+  ) {
+    return why(agent, 'question', 'a subagent could ask and hang');
+  }
+  const extra = allowedSubagents(rules).filter((name) => name !== 'explore');
+  if (universe.has('task') && extra.length > 0) {
+    return why(agent, 'task', `it could start ${extra.join(', ')}`);
+  }
+  return undefined;
+}
+
+/**
+ * Whether `floor`'s rules are what OpenCode resolved for every agent they
+ * cover. Any failure to read an agent (an older OpenCode, another binary, a
+ * timeout) is a failed check: Station does not claim what it cannot see.
+ */
+export async function verifyOpenCodeApprovalFloor(
+  floor: OpenCodeApprovalFloor,
+  read: OpenCodeAgentReader,
+): Promise<OpenCodeFloorVerification> {
+  const agents =
+    floor === 'full'
+      ? ['build', 'plan', 'general', 'explore']
+      : ['build', 'plan'];
+  let resolved: OpenCodeResolvedAgent[];
+  try {
+    resolved = await Promise.all(agents.map((agent) => read(agent)));
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `Station could not read OpenCode's resolved approval rules (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+  for (const [index, agent] of agents.entries()) {
+    const entry = resolved[index];
+    const rules = entry?.permission;
+    if (!Array.isArray(rules)) {
+      return {
+        ok: false,
+        reason: `OpenCode did not report resolved approval rules for the ${agent} agent`,
+      };
+    }
+    const failure =
+      floor === 'confined'
+        ? checkConfined(agent, rules)
+        : agent === 'build' || agent === 'plan'
+          ? checkFullPrimary(agent, rules)
+          : checkFullSubagent(agent, entry ?? {});
+    if (failure) return { ok: false, reason: failure };
+  }
+  return { ok: true };
+}
+
+/** How long one `debug agent` read may take (a cold OpenCode start is ~1-2s). */
+export const OPENCODE_AGENT_READ_TIMEOUT_MS = 20_000;
+const MAX_OUTPUT_BYTES = 1024 * 1024;
+
+/**
+ * Reads agents by running `<command> debug agent <name>` with `env` in `cwd`,
+ * the same environment and directory the session's engine is launched with.
+ */
+export function openCodeAgentReader(input: {
+  command: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+}): OpenCodeAgentReader {
+  return (agent) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(input.command, ['debug', 'agent', agent], {
+        cwd: input.cwd,
+        env: input.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      let stdout = '';
+      let settled = false;
+      const finish = (error?: Error, value?: OpenCodeResolvedAgent) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(value ?? {});
+      };
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        finish(new Error(`debug agent ${agent} timed out`));
+      }, input.timeoutMs ?? OPENCODE_AGENT_READ_TIMEOUT_MS);
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+        if (stdout.length > MAX_OUTPUT_BYTES) {
+          child.kill('SIGKILL');
+          finish(new Error(`debug agent ${agent} printed too much`));
+        }
+      });
+      child.on('error', (error) => finish(error));
+      child.on('close', (code) => {
+        if (code !== 0) {
+          finish(new Error(`debug agent ${agent} exited with code ${code}`));
+          return;
+        }
+        try {
+          finish(undefined, JSON.parse(stdout) as OpenCodeResolvedAgent);
+        } catch {
+          finish(new Error(`debug agent ${agent} printed no JSON`));
+        }
+      });
+    });
+}

@@ -398,7 +398,8 @@ export function approvalPickUpdate(
   mode: ApprovalMode,
 ): Partial<ApprovalPostureState> | undefined {
   if (chat?.queuedApprovalMode === mode) return undefined;
-  return { queuedApprovalMode: mode };
+  // #3290: a new pick is not the one the engine failed to take.
+  return { queuedApprovalMode: mode, approvalTakeoverFailed: undefined };
 }
 
 /**
@@ -418,6 +419,12 @@ export function foldApprovalPosture(
   return {
     approvalPosture: approvalMode,
     approvalPostureSequence: sequence,
+    // #3290: a newly recorded decision has not failed yet; the engine's next
+    // turn or warning says whether it took it.
+    ...(chat?.approvalPosture !== approvalMode ||
+    sequence !== chat?.approvalPostureSequence
+      ? { approvalTakeoverFailed: undefined }
+      : {}),
   };
 }
 

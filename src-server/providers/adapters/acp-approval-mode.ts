@@ -70,3 +70,18 @@ export function acpApprovalModeAllows(
 /** Why an approval mode is refused on an ACP engine that decides for itself. */
 export const ACP_ENGINE_DECIDES_APPROVAL_MESSAGE =
   "This engine decides which of its actions ask before they run, so Station's approval mode does not apply to it.";
+
+/**
+ * #3290: the OpenCode agents Station sets approval rules for. A user's own
+ * primary agent (or a project `default_agent`) keeps its own rules, so while
+ * Station governs a session it runs only these.
+ */
+const OPENCODE_GOVERNED_MODES: readonly string[] = ['build', 'plan'];
+
+export function isOpenCodeGovernedMode(modeId: string): boolean {
+  return OPENCODE_GOVERNED_MODES.includes(modeId);
+}
+
+export function governedModeRefusal(modeId: string): string {
+  return `Station's approval modes cover OpenCode's build and plan agents only; the ${modeId} agent keeps its own permission rules. Switch Mode to build or plan, or pick Default to use OpenCode's own settings.`;
+}

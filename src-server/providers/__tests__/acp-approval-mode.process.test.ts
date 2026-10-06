@@ -38,6 +38,7 @@ type Harness = {
   events: CanonicalRuntimeEvent[];
   recordPath: string;
   cwd: string;
+  command: string;
   stop: () => Promise<void>;
 };
 
@@ -82,6 +83,7 @@ function harness(command: 'opencode' | 'kiro-cli'): Harness {
     events,
     recordPath,
     cwd,
+    command: connection.command,
     stop: async () => {
       await adapter.stopAll();
       await drained;
@@ -269,12 +271,16 @@ describe.skipIf(process.platform === 'win32')(
       });
       // Station's rules are added to build and plan.
       expect(content.agent.build.permission).toMatchObject({
-        bash: 'ask',
-        edit: 'ask',
+        'bas?': 'ask',
+        'edi?': 'ask',
         '*_*': 'ask',
-        task: 'deny',
+        'tas?': 'deny',
       });
-      expect(content.agent.plan.permission.edit).toMatchObject({ '*': 'deny' });
+      expect(content.agent.plan.permission['edi?']).toMatchObject({
+        '*': 'deny',
+      });
+      // Pinned, so a user or project default_agent cannot start elsewhere.
+      expect(content.default_agent).toBe('build');
     });
 
     test('Ask: a shell command waits for a person, although the user allows everything', async () => {
@@ -332,7 +338,7 @@ describe.skipIf(process.platform === 'win32')(
     test('Full access in a host session: nothing asks, and a built-in subagent may start', async () => {
       h = harness('opencode');
       await start(h, 'full', 'never', 'host');
-      expect(buildRules(launches(h)[0])).toMatchObject({ '*': 'allow' });
+      expect(buildRules(launches(h)[0])).toMatchObject({ '*?': 'allow' });
       const shell = await turn(h, 'full', 'run: echo hi', {
         confinement: 'host',
       });
@@ -374,7 +380,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(shell.asked).toBeDefined();
       expect(turnStarted(shell.started)?.metadata?.approvalMode).toBe('auto');
       // Confined full access is Auto's floor: no subagent.
-      expect(buildRules(launches(h)[0])).toMatchObject({ task: 'deny' });
+      expect(buildRules(launches(h)[0])).toMatchObject({ 'tas?': 'deny' });
       const task = await turn(h, 'full-confined', 'task: general');
       expect(JSON.stringify(task.started)).not.toContain('task ran');
     });
@@ -405,9 +411,9 @@ describe.skipIf(process.platform === 'win32')(
       // Full access runs on its own floor: each crossing relaunched and
       // resumed the same session.
       expect(launches(h).map(buildRules)).toEqual([
-        expect.objectContaining({ bash: 'ask' }),
-        expect.objectContaining({ '*': 'allow' }),
-        expect.objectContaining({ bash: 'ask' }),
+        expect.objectContaining({ 'bas?': 'ask' }),
+        expect.objectContaining({ '*?': 'allow' }),
+        expect.objectContaining({ 'bas?': 'ask' }),
       ]);
       expect(resumes(h)).toEqual([
         'ses_fixture00000000000000000',
@@ -474,7 +480,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(turnStarted(governed.started)?.metadata?.approvalMode).toBe('ask');
       expect(launches(h).map(buildRules)).toEqual([
         undefined,
-        expect.objectContaining({ bash: 'ask' }),
+        expect.objectContaining({ 'bas?': 'ask' }),
       ]);
       expect(resumes(h)).toEqual(['ses_fixture00000000000000000']);
       // The new process came back in `build`; the session's `plan` was
@@ -486,7 +492,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(JSON.stringify(edit.started)).not.toContain('edit ran');
     });
 
-    test('a takeover whose resume fails keeps the old engine running on its own settings, says so, and claims nothing', async () => {
+    test('a takeover whose resume fails keeps the old engine, says so, and refuses the turn rather than run looser than the pick', async () => {
       h = harness('opencode');
       await start(h, 'takeover-fails');
       await turn(h, 'takeover-fails', 'run: echo native');
@@ -495,14 +501,18 @@ describe.skipIf(process.platform === 'win32')(
 
       process.env.FAKE_OPENCODE_REFUSE_RESUME = '1';
       const from = h.events.length;
-      const failed = await turn(h, 'takeover-fails', 'run: echo after', {
-        approvalMode: 'ask',
-      });
+      // OpenCode's own settings are not known to be as strict as Ask (here
+      // they allow everything), so the turn is not sent at all.
+      await expect(
+        turn(h, 'takeover-fails', 'run: echo after', { approvalMode: 'ask' }),
+      ).rejects.toThrow(
+        /still using its own settings, so this message was not sent: the new engine process did not resume the session/,
+      );
       // The second process was started on the floor, refused the resume and
-      // was discarded; the old one answered this turn on the user's rules.
+      // was discarded; the old one is untouched.
       expect(launches(h).map(buildRules)).toEqual([
         undefined,
-        expect.objectContaining({ bash: 'ask' }),
+        expect.objectContaining({ 'bas?': 'ask' }),
       ]);
       expect(alive(oldPid)).toBe(true);
       const discardedPid = pids(h)[1];
@@ -510,26 +520,46 @@ describe.skipIf(process.platform === 'win32')(
         () => (alive(discardedPid) ? undefined : true),
         'the discarded process to exit',
       );
-      expect(failed.asked).toBeUndefined();
-      expect(JSON.stringify(failed.started)).toContain('bash ran');
-      const started = turnStarted(failed.started);
-      expect(started?.metadata).not.toHaveProperty('approvalMode');
-      expect(started?.metadata?.approvalTakeoverFailed).toBe(true);
+      const since = h.events.slice(from);
+      expect(since.some((event) => event.method === 'turn.started')).toBe(
+        false,
+      );
       expect(
-        h.events
-          .slice(from)
-          .find((event) => event.method === 'runtime.warning'),
+        since.find((event) => event.method === 'runtime.warning'),
       ).toMatchObject({
         code: 'acp-approval-takeover-failed',
-        message:
-          "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings.",
         details: { requestedApprovalMode: 'ask' },
       });
+      expect(
+        (
+          since.find((event) => event.method === 'runtime.warning') as {
+            message?: string;
+          }
+        )?.message,
+      ).toMatch(
+        /^Couldn't switch OpenCode to Station's approval rules; it's still using its own settings: /,
+      );
 
-      // Still usable: the next turn runs on the same old process.
+      // Still usable on its own settings (a Default pick sends no mode): the
+      // next turn runs on the same old process.
       const next = await turn(h, 'takeover-fails', 'run: echo again');
       expect(JSON.stringify(next.started)).toContain('bash ran');
       expect(alive(oldPid)).toBe(true);
+    });
+
+    test('a failed move from Ask to full access still runs, at Ask, and says the pick did not apply', async () => {
+      h = harness('opencode');
+      await start(h, 'ask-to-full', 'ask', 'host');
+      process.env.FAKE_OPENCODE_REFUSE_RESUME = '1';
+      const failed = await turn(h, 'ask-to-full', 'run: echo hi', {
+        approvalMode: 'never',
+        confinement: 'host',
+        answer: 'accept',
+      });
+      expect(failed.asked).toBeDefined();
+      const started = turnStarted(failed.started);
+      expect(started?.metadata?.approvalMode).toBe('ask');
+      expect(started?.metadata?.approvalTakeoverFailed).toBe(true);
     });
 
     test('a takeover whose resume succeeds stops the old engine process', async () => {
@@ -568,11 +598,120 @@ describe.skipIf(process.platform === 'win32')(
       expect(retried.asked).toBeDefined();
     });
 
+    test("finding 1: a user's default_agent cannot start a governed session outside build", async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        permission: 'allow',
+        default_agent: 'helper',
+        agent: { helper: { mode: 'primary', permission: { '*': 'allow' } } },
+      });
+      h = harness('opencode');
+      await start(h, 'default-agent', 'ask');
+      // Station pinned build, so the shell command asks.
+      const shell = await turn(h, 'default-agent', 'run: echo hi', {
+        answer: 'accept',
+      });
+      expect(shell.asked).toBeDefined();
+      // And the user's own agent is refused while Station governs.
+      await expect(
+        h.adapter.sendTurn({
+          provider: 'acp',
+          threadId: 'default-agent',
+          input: 'run: echo helper',
+          confinement: 'workspace',
+          modelOptions: { mode: 'helper' },
+        } as never),
+      ).rejects.toThrow(/the helper agent keeps its own permission rules/);
+    });
+
+    test("finding 1: a takeover is refused while the chat runs the user's own agent", async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        permission: 'allow',
+        default_agent: 'helper',
+        agent: { helper: { mode: 'primary', permission: { '*': 'allow' } } },
+      });
+      h = harness('opencode');
+      await start(h, 'helper-native');
+      const native = await turn(h, 'helper-native', 'run: echo native');
+      expect(native.asked).toBeUndefined();
+      await expect(
+        turn(h, 'helper-native', 'run: echo pick', { approvalMode: 'ask' }),
+      ).rejects.toThrow(/the helper agent keeps its own permission rules/);
+      expect(launches(h)).toHaveLength(1);
+    });
+
+    test("finding 2: Station's rules are evaluated after the user's, whatever their key order", async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        agent: { build: { permission: { edit: 'allow', '*': 'allow' } } },
+      });
+      h = harness('opencode');
+      await start(h, 'user-order', 'ask');
+      const edit = await turn(h, 'user-order', 'edit: f2.txt', {
+        answer: 'decline',
+      });
+      expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+      expect(JSON.stringify(edit.started)).not.toContain('edit ran');
+    });
+
+    test('finding 2: when the resolved rules still let an action run unasked, Station refuses to govern and names it', async () => {
+      // The user's own `*?` comes after Station's rules in this agent.
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        agent: { build: { permission: { 'bas?': 'allow', '*?': 'allow' } } },
+      });
+      h = harness('opencode');
+      await expect(start(h, 'overridden', 'ask')).rejects.toThrow(
+        /overrides Station's approval rules for bash in the build agent \(it would run without asking\)/,
+      );
+      expect(launches(h)).toHaveLength(0);
+      // Default (OpenCode's own settings) still starts.
+      await start(h, 'overridden-native');
+      expect(launches(h)).toHaveLength(1);
+    });
+
+    test('full access: a subagent rule that could ask refuses full access instead of risking a hang', async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        agent: { general: { permission: { '*?': 'ask', 'bas?': 'ask' } } },
+      });
+      h = harness('opencode');
+      await expect(start(h, 'general-asks', 'never', 'host')).rejects.toThrow(
+        /for bash in the general agent \(a subagent could ask and hang\)/,
+      );
+    });
+
+    test('an engine that cannot report its resolved rules is not governed', async () => {
+      h = harness('opencode');
+      const { command, cwd } = h;
+      const adapter = new AcpAdapter({
+        getConnections: async () => [
+          {
+            id: 'engine-under-test',
+            name: 'OpenCode',
+            command,
+            args: ['acp'],
+            enabled: true,
+          } as never,
+        ],
+        readOpenCodeAgents: () => async () => {
+          throw new Error('unknown command: debug');
+        },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'acp',
+          threadId: 'unreadable',
+          cwd,
+          confinement: 'workspace',
+          metadata: { connectionId: 'engine-under-test' },
+          modelOptions: { approvalMode: 'ask' },
+        } as never),
+      ).rejects.toThrow(/could not read OpenCode's resolved approval rules/);
+      await adapter.stopAll();
+    });
+
     test('a mode at start (a pick or a configured default) launches on the floor', async () => {
       h = harness('opencode');
       await start(h, 'configured', 'auto');
       expect(launches(h)).toHaveLength(1);
-      expect(buildRules(launches(h)[0])).toMatchObject({ bash: 'ask' });
+      expect(buildRules(launches(h)[0])).toMatchObject({ 'bas?': 'ask' });
       expect(resumes(h)).toEqual([]);
     });
 

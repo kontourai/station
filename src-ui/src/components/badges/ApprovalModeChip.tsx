@@ -201,8 +201,11 @@ export function ApprovalModeChip({
       ? `${approvalModeChipLabel(displayedMode)} · ${isRefused ? 'needs restart' : 'pending'}`
       : isOverride
         ? approvalModeChipLabel(displayedMode)
-        : notApplied && appliedMode
-          ? approvalModeChipLabel(appliedMode)
+        : notApplied
+          ? // #3290: visibly not the Default-after-takeover chip.
+            appliedMode
+            ? `${approvalModeChipLabel(appliedMode)} · kept`
+            : 'Own settings'
           : agentDefaultShown
             ? `${approvalModeChipLabel(effective.mode)} (agent default)`
             : 'Default';
@@ -215,8 +218,10 @@ export function ApprovalModeChip({
       ? selectedLabel
       : agentDefaultShown
         ? `${chipText} — ${approvalModeLabel(effective.mode)}`
-        : notApplied && appliedMode
-          ? selectedLabel
+        : notApplied
+          ? appliedMode
+            ? selectedLabel
+            : `${chipText} — ${selectedLabel}`
           : `Default — ${selectedLabel}`
   }${notAppliedNote}`;
 

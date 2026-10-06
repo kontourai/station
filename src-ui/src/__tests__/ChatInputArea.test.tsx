@@ -1656,10 +1656,12 @@ describe('ChatInputArea', () => {
         onApprovalModeChange: vi.fn(),
       });
       const chip = screen.getByRole('button', { name: /^Approval mode:/ });
-      expect(chip.textContent).toContain('Default');
+      // Visibly not the "Default" a takeover shows (finding 7).
+      expect(chip.textContent).toContain('Own settings');
+      expect(chip.textContent).not.toContain('Default');
       expect(chip.textContent).not.toContain('Ask');
       expect(chip.getAttribute('aria-label')).toMatch(
-        /Default — OpenCode's own settings — Ask first was not applied/,
+        /Own settings — OpenCode's own settings — Ask first was not applied/,
       );
     });
 

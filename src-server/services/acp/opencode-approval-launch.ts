@@ -50,49 +50,97 @@ type OpenCodePermissionRules = Record<
 >;
 
 /**
- * Every OpenCode action that is not a read asks first (permission keys as
- * OpenCode 1.18.18 names them in `tool/*.ts` and `session/*.ts`):
+ * The key Station writes a rule for `permission` under: the name with its
+ * last character replaced by `?`, which OpenCode's wildcard matches against
+ * that one name (`permission/index.ts` `evaluate`, `util/wildcard.ts`).
+ *
+ * Why not the plain name: OpenCode evaluates an agent's rules last-match-wins
+ * in object-key order, and merges `OPENCODE_CONFIG_CONTENT` over the user's
+ * files key by key, so a key the user already has keeps the user's position.
+ * With `{"edit": "allow", "*": "allow"}` in the user's `agent.build`,
+ * Station's `edit: ask` would land in the first slot and the user's later
+ * `*` would win (reproduced against OpenCode 1.18.18). A key the user does
+ * not have is appended after all of the user's keys, so it is evaluated last.
+ * `opencode-approval-verify.ts` still checks the resolved rules at launch,
+ * because a user can use the same spelling, and managed configuration
+ * outranks inline content.
+ */
+export function stationRuleKey(permission: string): string {
+  return permission === '*' ? '*?' : `${permission.slice(0, -1)}?`;
+}
+
+function rules(
+  entries: Record<
+    string,
+    OpenCodePermissionAction | Record<string, OpenCodePermissionAction>
+  >,
+): OpenCodePermissionRules {
+  return Object.fromEntries(
+    Object.entries(entries).map(([permission, action]) => [
+      stationRuleKey(permission),
+      action,
+    ]),
+  );
+}
+
+/**
+ * The permissions Station governs below full access, in OpenCode 1.18.18's
+ * names (`tool/*.ts`, `session/*.ts`). `opencode-approval-verify.ts` checks
+ * each of these in the resolved rules before Station claims to govern.
  *
  * - `bash`, `edit` (which covers write, edit and apply_patch), `webfetch`,
  *   `websearch`, `codesearch`, `external_directory` (any path outside the
- *   project, read or write);
+ *   project, read or write) ask before they run.
  * - `*_*`: an MCP tool is keyed `<server>_<tool>` (`mcp/catalog.ts`
  *   `toolName`), so this covers every MCP tool, Station's own included. It
  *   also covers `doom_loop`, `plan_enter`, `plan_exit` and
- *   `workflow_tool_approval`, which then ask as well.
- * - `task: deny`: a subagent runs in a child session. OpenCode's ACP server
- *   forwards permission requests only for sessions it created
+ *   `workflow_tool_approval`, which then ask as well. It is already a key a
+ *   user is unlikely to have, so it is written as is.
+ * - `task` is denied: a subagent runs in a child session. OpenCode's ACP
+ *   server forwards permission requests only for sessions it created
  *   (`acp/permission.ts` drops the rest without a reply, so the child would
  *   wait forever), and the child's rules are the subagent's own, not these.
- *   Below full access a subagent could not be governed, so none is started
- *   (full access allows the built-in ones, `FULL_ACCESS`). A `* deny` rule
- *   also hides the tool from the model (`Permission.disabled`).
+ *   Below full access a subagent could not be governed, so none is started.
+ *   A `* deny` rule also hides the tool from the model.
  *
  * Not listed, so left to OpenCode's defaults and the user's rules: `read`
  * (OpenCode asks for `.env` files), `glob`, `grep`, `list`, `lsp`, `skill`,
  * `todowrite`, `question`. A built-in tool a later OpenCode adds without an
  * underscore in its name is not covered until it is named here.
  */
+export const OPENCODE_ASK_PERMISSIONS = [
+  'bash',
+  'edit',
+  'webfetch',
+  'websearch',
+  'codesearch',
+  'external_directory',
+] as const;
+
 const ASK_BEFORE_ACTING: OpenCodePermissionRules = {
-  bash: 'ask',
-  edit: 'ask',
-  webfetch: 'ask',
-  websearch: 'ask',
-  codesearch: 'ask',
-  external_directory: 'ask',
+  ...rules(
+    Object.fromEntries(
+      OPENCODE_ASK_PERMISSIONS.map((permission) => [
+        permission,
+        'ask' as const,
+      ]),
+    ),
+  ),
   '*_*': 'ask',
-  task: 'deny',
+  ...rules({ task: 'deny' }),
 };
+
+/** The plan file OpenCode's experimental plan mode writes in the project. */
+export const OPENCODE_PLAN_FILE_PATTERN = '.opencode/plans/*.md';
 
 /**
  * Plan mode keeps its own meaning, "Disallows all edit tools", at every
  * approval mode: edits are denied (so no Station answer can allow one),
- * except the plan file OpenCode's experimental plan mode writes inside the
- * project. Everything else asks as in `build`.
+ * except the plan file. Everything else asks as in `build`.
  */
 const PLAN_ASK_BEFORE_ACTING: OpenCodePermissionRules = {
   ...ASK_BEFORE_ACTING,
-  edit: { '*': 'deny', '.opencode/plans/*.md': 'allow' },
+  ...rules({ edit: { '*': 'deny', [OPENCODE_PLAN_FILE_PATTERN]: 'allow' } }),
 };
 
 /**
@@ -102,66 +150,79 @@ const PLAN_ASK_BEFORE_ACTING: OpenCodePermissionRules = {
  * `explore`). A subagent's permission requests never reach ACP (see
  * `ASK_BEFORE_ACTING`), so its rules must not ask either:
  *
- * - `external_directory` is restated as `allow`, because a child session
- *   inherits its parent's `external_directory` rules after its own
- *   (`agent/subagent-permissions.ts`, applied last in `session/prompt.ts`),
- *   and OpenCode's default for it is `ask`.
- * - `general` gets `* allow`, overriding OpenCode's and the user's asks
- *   (`.env` reads, outside paths, `doom_loop`).
+ * - `external_directory` is restated as `allow` on the parent, because a
+ *   child session inherits its parent's `external_directory` rules after its
+ *   own (`agent/subagent-permissions.ts`, applied last in
+ *   `session/prompt.ts`), and OpenCode's default for it is `ask`.
+ * - `general` allows everything except `question` (a question asks a
+ *   person, so it would hang) and `task` beyond `explore` (another
+ *   subagent's rules are not these).
  * - `explore` keeps its read-only `* deny` and has each tool it is given
  *   restated as `allow`, so a user `ask` cannot reach it.
  *
  * Any other subagent (the user's own) is denied: its rules are unknown and
- * could ask.
+ * could ask. `opencode-approval-verify.ts` checks the resolved rules of all
+ * four agents before Station claims full access.
  */
-const FULL_ACCESS_TASK = {
-  '*': 'deny',
-  general: 'allow',
-  explore: 'allow',
-} as const;
-const FULL_ACCESS: OpenCodePermissionRules = {
+const FULL_ACCESS: OpenCodePermissionRules = rules({
   '*': 'allow',
   external_directory: 'allow',
-  task: { ...FULL_ACCESS_TASK },
-};
+  task: { '*': 'deny', general: 'allow', explore: 'allow' },
+});
 const PLAN_FULL_ACCESS: OpenCodePermissionRules = {
   ...FULL_ACCESS,
-  edit: { '*': 'deny', '.opencode/plans/*.md': 'allow' },
-  task: { '*': 'deny', explore: 'allow' },
+  ...rules({
+    edit: { '*': 'deny', [OPENCODE_PLAN_FILE_PATTERN]: 'allow' },
+    task: { '*': 'deny', explore: 'allow' },
+  }),
 };
-const EXPLORE_FULL_ACCESS: OpenCodePermissionRules = Object.fromEntries(
-  [
-    'grep',
-    'glob',
-    'list',
-    'bash',
-    'webfetch',
-    'websearch',
-    'codesearch',
-    'read',
-    'external_directory',
-    'doom_loop',
-  ].map((tool) => [tool, 'allow' as const]),
+const GENERAL_FULL_ACCESS: OpenCodePermissionRules = rules({
+  '*': 'allow',
+  question: 'deny',
+  task: { '*': 'deny', explore: 'allow' },
+});
+export const OPENCODE_EXPLORE_TOOLS = [
+  'grep',
+  'glob',
+  'list',
+  'bash',
+  'webfetch',
+  'websearch',
+  'codesearch',
+  'read',
+  'external_directory',
+  'doom_loop',
+] as const;
+const EXPLORE_FULL_ACCESS: OpenCodePermissionRules = rules(
+  Object.fromEntries(
+    OPENCODE_EXPLORE_TOOLS.map((tool) => [tool, 'allow' as const]),
+  ),
 );
 
 /** Which launch configuration an OpenCode session runs under (#3290). */
 export type OpenCodeApprovalFloor = 'confined' | 'full';
 
-/** The configuration Station adds to an OpenCode session it governs. */
+/**
+ * The configuration Station adds to an OpenCode session it governs.
+ * `default_agent` is pinned to `build`: a user or project `default_agent`
+ * would otherwise start the session in an agent Station sets no rules for.
+ */
 export function stationOpenCodeApprovalConfig(
   floor: OpenCodeApprovalFloor,
 ): Record<string, unknown> {
   if (floor === 'full') {
     return {
+      default_agent: 'build',
       agent: {
         build: { permission: { ...FULL_ACCESS } },
         plan: { permission: { ...PLAN_FULL_ACCESS } },
-        general: { permission: { '*': 'allow' } },
+        general: { permission: { ...GENERAL_FULL_ACCESS } },
         explore: { permission: { ...EXPLORE_FULL_ACCESS } },
       },
     };
   }
   return {
+    default_agent: 'build',
     agent: {
       build: { permission: { ...ASK_BEFORE_ACTING } },
       plan: { permission: { ...PLAN_ASK_BEFORE_ACTING } },
@@ -173,7 +234,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Objects merge key by key; anything else from `overlay` replaces. */
+/**
+ * Objects merge key by key; anything else from `overlay` replaces. A key
+ * `overlay` sets is moved after the base's keys, so where key order is
+ * evaluation order (OpenCode permission rules, last match wins) the overlay
+ * is evaluated last.
+ */
 function mergeConfig(
   base: Record<string, unknown>,
   overlay: Record<string, unknown>,
@@ -181,12 +247,24 @@ function mergeConfig(
   const merged: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(overlay)) {
     const existing = merged[key];
+    delete merged[key];
     merged[key] =
       isPlainObject(existing) && isPlainObject(value)
         ? mergeConfig(existing, value)
         : value;
   }
   return merged;
+}
+
+/**
+ * OpenCode substitutes `{env:NAME}` in its configuration text before parsing
+ * it (`config/variable.ts`), so inline content may hold an unquoted token
+ * that is not JSON until then. The same substitution is applied here before
+ * parsing, with the environment OpenCode will see. `{file:…}` tokens are not
+ * resolved: unquoted, they still refuse the launch.
+ */
+function substituteEnvTokens(text: string, env: NodeJS.ProcessEnv): string {
+  return text.replace(/\{env:([^}]+)\}/g, (_, name: string) => env[name] ?? '');
 }
 
 /**
@@ -208,7 +286,7 @@ export function withStationOpenCodeApprovalConfig(
   let base: Record<string, unknown> = {};
   if (inherited?.trim()) {
     const errors: ParseError[] = [];
-    const parsed: unknown = parse(inherited, errors, {
+    const parsed: unknown = parse(substituteEnvTokens(inherited, env), errors, {
       allowTrailingComma: true,
     });
     if (errors.length > 0 || !isPlainObject(parsed)) {

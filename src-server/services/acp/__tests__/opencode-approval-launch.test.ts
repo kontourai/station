@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   OPENCODE_CONFIG_CONTENT_ENV,
   stationOpenCodeApprovalConfig,
+  stationRuleKey,
   withStationOpenCodeApprovalConfig,
 } from '../opencode-approval-launch.js';
 
@@ -29,22 +30,26 @@ describe('withStationOpenCodeApprovalConfig', () => {
     const { agent } = stationOpenCodeApprovalConfig('confined') as {
       agent: Record<string, { permission: Record<string, unknown> }>;
     };
+    // Each key is the permission's name with its last character as `?`, so
+    // it is never a key the user's own rules already hold a position for.
     expect(agent.build?.permission).toEqual({
-      bash: 'ask',
-      edit: 'ask',
-      webfetch: 'ask',
-      websearch: 'ask',
-      codesearch: 'ask',
-      external_directory: 'ask',
+      'bas?': 'ask',
+      'edi?': 'ask',
+      'webfetc?': 'ask',
+      'websearc?': 'ask',
+      'codesearc?': 'ask',
+      'external_director?': 'ask',
       '*_*': 'ask',
-      task: 'deny',
+      'tas?': 'deny',
     });
     expect(agent.plan?.permission).toEqual({
       ...agent.build?.permission,
-      edit: { '*': 'deny', '.opencode/plans/*.md': 'allow' },
+      'edi?': { '*': 'deny', '.opencode/plans/*.md': 'allow' },
     });
     // Reads are left to OpenCode's defaults and the user's own rules.
-    expect(agent.build?.permission).not.toHaveProperty('read');
+    expect(Object.keys(agent.build?.permission ?? {})).not.toContain('rea?');
+    expect(stationRuleKey('bash')).toBe('bas?');
+    expect(stationRuleKey('*')).toBe('*?');
   });
 
   test("the user's inline configuration is kept: other keys, other agents and build's other settings", () => {
@@ -68,9 +73,11 @@ describe('withStationOpenCodeApprovalConfig', () => {
       prompt: 'Review.',
     });
     expect(content.agent.build.temperature).toBe(0.2);
-    // A rule Station sets replaces the user's for that action ...
-    expect(content.agent.build.permission.bash).toBe('ask');
-    // ... and one it does not set is left alone.
+    // The user's rules stay, and Station's come after every one of them, so
+    // OpenCode (last match wins) evaluates Station's last.
+    const keys = Object.keys(content.agent.build.permission);
+    expect(keys.slice(0, 2)).toEqual(['bash', 'lsp']);
+    expect(keys.indexOf('bas?')).toBeGreaterThan(keys.indexOf('lsp'));
     expect(content.agent.build.permission.lsp).toBe('deny');
   });
 
@@ -80,7 +87,35 @@ describe('withStationOpenCodeApprovalConfig', () => {
         '{\n  // mine\n  "model": "mine/model",\n}',
     });
     expect(content.model).toBe('mine/model');
-    expect(content.agent.build.permission.bash).toBe('ask');
+    expect(content.agent.build.permission['bas?']).toBe('ask');
+  });
+
+  test("a key the user's inline configuration already has moves after the user's other keys", () => {
+    const content = launched({
+      [OPENCODE_CONFIG_CONTENT_ENV]: JSON.stringify({
+        agent: { build: { permission: { 'edi?': 'allow', '*': 'allow' } } },
+      }),
+    });
+    const keys = Object.keys(content.agent.build.permission);
+    expect(keys.indexOf('edi?')).toBeGreaterThan(keys.indexOf('*'));
+    expect(content.agent.build.permission['edi?']).toBe('ask');
+  });
+
+  test('an unquoted {env:NAME} token is substituted as OpenCode does, instead of refusing the launch', () => {
+    const content = launched({
+      MY_MODEL_LIMIT: '4096',
+      [OPENCODE_CONFIG_CONTENT_ENV]: '{"limit": {env:MY_MODEL_LIMIT}}',
+    });
+    expect(content.limit).toBe(4096);
+  });
+
+  test('default_agent is pinned to build, over a user or project choice', () => {
+    const content = launched({
+      [OPENCODE_CONFIG_CONTENT_ENV]: JSON.stringify({
+        default_agent: 'helper',
+      }),
+    });
+    expect(content.default_agent).toBe('build');
   });
 
   test('an inherited value that is not a JSON object refuses the launch instead of being replaced', () => {
@@ -106,26 +141,32 @@ describe('withStationOpenCodeApprovalConfig', () => {
       agent: Record<string, { permission: Record<string, unknown> }>;
     };
     expect(agent.build?.permission).toEqual({
-      '*': 'allow',
+      '*?': 'allow',
       // A child session inherits its parent's external_directory rules.
-      external_directory: 'allow',
-      task: { '*': 'deny', general: 'allow', explore: 'allow' },
+      'external_director?': 'allow',
+      'tas?': { '*': 'deny', general: 'allow', explore: 'allow' },
     });
     // Plan still blocks edits and, as OpenCode's own plan does, `general`.
     expect(agent.plan?.permission).toMatchObject({
-      '*': 'allow',
-      external_directory: 'allow',
-      edit: { '*': 'deny', '.opencode/plans/*.md': 'allow' },
-      task: { '*': 'deny', explore: 'allow' },
+      '*?': 'allow',
+      'external_director?': 'allow',
+      'edi?': { '*': 'deny', '.opencode/plans/*.md': 'allow' },
+      'tas?': { '*': 'deny', explore: 'allow' },
     });
-    expect(agent.general?.permission).toEqual({ '*': 'allow' });
+    // general: no question (it would ask a person) and no further subagent
+    // but explore.
+    expect(agent.general?.permission).toEqual({
+      '*?': 'allow',
+      'questio?': 'deny',
+      'tas?': { '*': 'deny', explore: 'allow' },
+    });
     // explore stays read-only: no blanket allow, but no tool it has can ask.
-    expect(agent.explore?.permission).not.toHaveProperty('*');
+    expect(agent.explore?.permission).not.toHaveProperty('*?');
     expect(agent.explore?.permission).toMatchObject({
-      read: 'allow',
-      bash: 'allow',
-      external_directory: 'allow',
-      doom_loop: 'allow',
+      'rea?': 'allow',
+      'bas?': 'allow',
+      'external_director?': 'allow',
+      'doom_loo?': 'allow',
     });
     expect(Object.values(agent.explore?.permission ?? {})).not.toContain('ask');
   });
@@ -134,8 +175,8 @@ describe('withStationOpenCodeApprovalConfig', () => {
     const { agent } = stationOpenCodeApprovalConfig('confined') as {
       agent: Record<string, { permission: Record<string, unknown> }>;
     };
-    expect(agent.build?.permission.task).toBe('deny');
-    expect(agent.plan?.permission.task).toBe('deny');
+    expect(agent.build?.permission['tas?']).toBe('deny');
+    expect(agent.plan?.permission['tas?']).toBe('deny');
     expect(agent).not.toHaveProperty('general');
   });
 });

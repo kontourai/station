@@ -629,6 +629,75 @@ describe('server-ordered approval posture (#2436)', () => {
       expect(acp.lastTurnMode()).toBe('ask');
     });
 
+    test('a takeover survives the engine exiting: Default after it still means Ask (finding 4)', async () => {
+      await startOn('t-opencode-respawn', 'opencode');
+      await decide('t-opencode-respawn', 'ask');
+      await turn('t-opencode-respawn');
+      expect(acp.lastTurnMode()).toBe('ask');
+      // What the OpenCode adapter reports once it runs a Station mode.
+      const now = new Date().toISOString();
+      acp.events.push({
+        eventId: 't-opencode-respawn:turn-report',
+        provider: 'acp',
+        threadId: 't-opencode-respawn',
+        createdAt: now,
+        method: 'turn.started',
+        turnId: 'reported-turn',
+        prompt: 'go',
+        metadata: { approvalMode: 'ask' },
+      } as CanonicalRuntimeEvent);
+      // The engine exits (an idle park or a crash): Station's in-memory
+      // record of what it applied is cleared.
+      acp.events.push({
+        eventId: 't-opencode-respawn:exited',
+        provider: 'acp',
+        threadId: 't-opencode-respawn',
+        createdAt: now,
+        method: 'session.exited',
+        sessionId: 't-opencode-respawn',
+        reason: 'parked',
+      } as CanonicalRuntimeEvent);
+      const deadline = Date.now() + 2000;
+      while (
+        !store
+          .listEvents('t-opencode-respawn')
+          .some((row) => row.payload.method === 'session.exited')
+      ) {
+        if (Date.now() > deadline) throw new Error('session.exited not seen');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await decide('t-opencode-respawn', 'connection-default');
+      await turn('t-opencode-respawn');
+      expect(acp.lastTurnMode()).toBe('ask');
+    });
+
+    test('Claude keeps its existing Default after an exit: the engine configuration', async () => {
+      await start('t-claude-respawn', 'claude');
+      await decide('t-claude-respawn', 'auto');
+      await turn('t-claude-respawn');
+      claude.events.push({
+        eventId: 't-claude-respawn:exited',
+        provider: 'claude',
+        threadId: 't-claude-respawn',
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: 't-claude-respawn',
+        reason: 'parked',
+      } as CanonicalRuntimeEvent);
+      const deadline = Date.now() + 2000;
+      while (
+        !store
+          .listEvents('t-claude-respawn')
+          .some((row) => row.payload.method === 'session.exited')
+      ) {
+        if (Date.now() > deadline) throw new Error('session.exited not seen');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await decide('t-claude-respawn', 'connection-default');
+      await turn('t-claude-respawn');
+      expect(claude.lastTurnMode()).toBeUndefined();
+    });
+
     test('full access on a confined Station-governed engine applies Auto', async () => {
       await startOn('t-opencode-confined', 'opencode', {
         approvalMode: 'never',

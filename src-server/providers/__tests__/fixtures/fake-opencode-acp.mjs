@@ -29,7 +29,14 @@
 // resume but cannot resume this session would.
 import { appendFileSync } from 'node:fs';
 
-if (process.env.FAKE_OPENCODE_RECORD) {
+// `debug agent <name>` prints the agent's resolved rules (#3290), as
+// `opencode debug agent` does; it is not an engine launch.
+const debugAgent =
+  process.argv[2] === 'debug' && process.argv[3] === 'agent'
+    ? process.argv[4]
+    : undefined;
+
+if (process.env.FAKE_OPENCODE_RECORD && debugAgent === undefined) {
   appendFileSync(
     process.env.FAKE_OPENCODE_RECORD,
     `${JSON.stringify({ OPENCODE_CONFIG_CONTENT: process.env.OPENCODE_CONFIG_CONTENT ?? null })}\n${JSON.stringify({ pid: process.pid })}\n`,
@@ -81,14 +88,46 @@ function wildcard(input, pattern) {
 const AGENT_DEFAULTS = {
   build: { '*': 'allow' },
   plan: { '*': 'allow', edit: { '*': 'deny' } },
+  general: { '*': 'allow' },
+  explore: { '*': 'deny', grep: 'allow', glob: 'allow', read: 'allow' },
+};
+const AGENT_TOOLS = {
+  explore: { grep: true, glob: true, read: true, bash: true },
 };
 
-function evaluate(agent, permission, pattern) {
-  const rules = [
+function resolvedRules(agent) {
+  return [
     ...fromConfig(AGENT_DEFAULTS[agent]),
     ...fromConfig(config.permission),
     ...fromConfig(config.agent?.[agent]?.permission),
   ];
+}
+
+if (debugAgent !== undefined) {
+  if (!AGENT_DEFAULTS[debugAgent] && !config.agent?.[debugAgent]) {
+    process.stderr.write(`Agent ${debugAgent} not found\n`);
+    process.exit(1);
+  }
+  process.stdout.write(
+    `${JSON.stringify({
+      name: debugAgent,
+      permission: resolvedRules(debugAgent),
+      tools: AGENT_TOOLS[debugAgent] ?? {
+        bash: true,
+        edit: true,
+        write: true,
+        task: true,
+        question: true,
+        read: true,
+        webfetch: true,
+      },
+    })}\n`,
+  );
+  process.exit(0);
+}
+
+function evaluate(agent, permission, pattern) {
+  const rules = resolvedRules(agent);
   return (
     rules.findLast(
       (rule) =>
@@ -106,7 +145,12 @@ const MODEL_OPTION = {
   currentValue: 'opencode/big-pickle',
   options: [{ value: 'opencode/big-pickle', name: 'OpenCode Zen/Big Pickle' }],
 };
-let mode = 'build';
+// The session starts in `default_agent`, as OpenCode's does; a user's
+// primary agents are advertised as modes beside build and plan.
+let mode = config.default_agent ?? 'build';
+const userPrimaryModes = Object.entries(config.agent ?? {})
+  .filter(([, value]) => isObject(value) && value.mode === 'primary')
+  .map(([name]) => ({ value: name, name }));
 const configOptions = () => [
   MODEL_OPTION,
   {
@@ -127,6 +171,7 @@ const configOptions = () => [
         name: 'plan',
         description: 'Plan mode. Disallows all edit tools.',
       },
+      ...userPrimaryModes,
     ],
   },
 ];

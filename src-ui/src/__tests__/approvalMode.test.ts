@@ -6,6 +6,8 @@ import {
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
+  approvalPickUpdate,
+  foldApprovalPosture,
   resolveEffectiveApprovalMode,
   sessionApprovalOverride,
 } from '../utils/approvalMode';
@@ -348,6 +350,32 @@ describe('acpApprovalFor (#3290)', () => {
   test('no ACP connection is no ACP answer', () => {
     expect(acpApprovalFor(undefined)).toBeUndefined();
     expect(acpApprovalFor(null)).toBeUndefined();
+  });
+});
+
+describe('a new decision clears a stale takeover failure (#3290, finding 7)', () => {
+  test('a new pick, and a newly recorded decision, are not marked not-applied', () => {
+    expect(
+      approvalPickUpdate(
+        { approvalPosture: 'ask', approvalTakeoverFailed: true },
+        'auto',
+      ),
+    ).toEqual({
+      queuedApprovalMode: 'auto',
+      approvalTakeoverFailed: undefined,
+    });
+    const failed = {
+      approvalPosture: 'ask' as const,
+      approvalPostureSequence: 4,
+      approvalTakeoverFailed: true,
+    };
+    const folded = { ...failed, ...foldApprovalPosture(failed, 'auto', 5) };
+    expect(sessionApprovalOverride(folded)).toEqual({
+      mode: 'auto',
+      state: 'requested',
+    });
+    // The same decision folded again keeps the failure it already had.
+    expect(foldApprovalPosture(failed, 'ask', 4)).toEqual({});
   });
 });
 

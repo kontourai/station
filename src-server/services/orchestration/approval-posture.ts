@@ -78,6 +78,8 @@ export interface ApprovalPostureStore {
   conversationSessions(
     conversationId: string,
   ): readonly { sessionId: string }[];
+  /** #3290: an engine on these threads reported a Station-applied mode. */
+  engineReportedApprovalMode?(threadIds: readonly string[]): boolean;
 }
 
 export interface ApprovalPostureDecision {
@@ -377,7 +379,12 @@ export class ApprovalPosture {
     if (decision) {
       mode =
         decision.approvalMode === 'connection-default'
-          ? await this.resolveDefaultPick(input)
+          ? await this.resolveDefaultPick({
+              ...input,
+              durableTakeover:
+                input.provider === PROVIDER_ACP &&
+                input.acpControl === 'station',
+            })
           : decision.approvalMode;
     } else {
       mode =
@@ -465,10 +472,24 @@ export class ApprovalPosture {
     threadId: string;
     agentSlug?: string;
     capturedAgent?: { approvalMode?: ApprovalMode };
+    /**
+     * #3290: whether Station's takeover must outlive this process's memory.
+     * A Station-governed ACP engine (OpenCode) relaunches on its own
+     * settings when nothing is sent, so after a respawn a Default pick would
+     * silently hand it back while the chip still reads Ask. The engine's own
+     * durable report that it ran a Station mode decides instead.
+     */
+    durableTakeover?: boolean;
   }): Promise<ApprovalMode | undefined> {
     const configured = await this.defaultPosture(input);
     if (configured) return configured;
-    return this.stationApplied.has(input.threadId) ? 'ask' : undefined;
+    if (this.stationApplied.has(input.threadId)) return 'ask';
+    return input.durableTakeover &&
+      this.deps.store?.engineReportedApprovalMode?.(
+        this.conversationThreads(input.threadId),
+      )
+      ? 'ask'
+      : undefined;
   }
 
   /**

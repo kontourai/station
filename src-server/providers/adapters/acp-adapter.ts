@@ -78,6 +78,11 @@ import {
   type OpenCodeApprovalFloor,
   withStationOpenCodeApprovalConfig,
 } from '../../services/acp/opencode-approval-launch.js';
+import {
+  type OpenCodeAgentReader,
+  openCodeAgentReader,
+  verifyOpenCodeApprovalFloor,
+} from '../../services/acp/opencode-approval-verify.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
   acpPassthroughSessions,
@@ -98,7 +103,11 @@ import {
   type ProviderTurnStartResult,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
-import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
+import {
+  augmentedSpawnEnv,
+  buildCliRuntimePrerequisites,
+  findCliBinaryAsync,
+} from '../auth/cli-auth.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -130,6 +139,8 @@ import {
   acpAppliedApprovalMode,
   acpApprovalFloor,
   acpApprovalModeAllows,
+  governedModeRefusal,
+  isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import {
   type AcpToolServerSkip,
@@ -318,6 +329,15 @@ export interface AcpAdapterOptions {
    * bound an engine probe allows (`COLD_START_OPERATION_TIMEOUT_MS`).
    */
   approvalRelaunchTimeoutMs?: number;
+  /**
+   * #3290: reads OpenCode's resolved agent rules (`opencode debug agent`);
+   * tests replace it. Defaults to running the connection's command.
+   */
+  readOpenCodeAgents?: (input: {
+    command: string;
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+  }) => OpenCodeAgentReader;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -895,6 +915,25 @@ export class AcpAdapter implements ProviderAdapterShape {
         ? acpAppliedApprovalMode(requestedApprovalMode, input.confinement)
         : undefined;
     const startApprovalFloor = acpApprovalFloor(startApprovalMode);
+    if (startApprovalFloor) {
+      // #3290: Station governs only build and plan, and only once OpenCode
+      // itself resolves Station's rules for them. Otherwise the chat is not
+      // started under a mode nothing would apply.
+      const startMode = requestedAcpSessionMode(input.modelOptions);
+      if (startMode && !isOpenCodeGovernedMode(startMode)) {
+        throw new Error(governedModeRefusal(startMode));
+      }
+      const verified = await this.verifyApprovalFloor(
+        config.command,
+        cwd,
+        startApprovalFloor,
+      );
+      if (!verified.ok) {
+        throw new Error(
+          `Station can't apply its approval mode to OpenCode, so the chat was not started: ${verified.reason}. Change that configuration, or pick Default to use OpenCode's own settings.`,
+        );
+      }
+    }
     const preToolPolicy = await this.resolvePreToolPolicy(input);
     const createdAt = new Date().toISOString();
     const session: ProviderSession = {
@@ -1420,11 +1459,20 @@ export class AcpAdapter implements ProviderAdapterShape {
         // re-establishment always resumes with `session/load`. (Its
         // `recoveryStart` copy carries the start's confinement for the
         // approval mode only, #3290.)
-        const requestedMode = permittedAcpSessionMode(
-          modeCatalog,
-          requestedAcpSessionMode(input.modelOptions),
-          input.confinement,
-        );
+        const requestedMode =
+          permittedAcpSessionMode(
+            modeCatalog,
+            requestedAcpSessionMode(input.modelOptions),
+            input.confinement,
+          ) ??
+          // #3290: a governed session runs build unless it asked for plan;
+          // `default_agent` is pinned, but a managed configuration outranks
+          // that, and its agent would keep its own rules.
+          (startApprovalFloor &&
+          modeCatalog.currentModeId &&
+          !isOpenCodeGovernedMode(modeCatalog.currentModeId)
+            ? 'build'
+            : undefined);
         if (requestedMode) {
           if (modeCatalog.modes.length === 0) {
             throw new Error(
@@ -1666,10 +1714,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       // Station takes over from the engine's own configuration, or moves
       // between floors: relaunch on the floor and resume the same session.
       const floor = acpApprovalFloor(applied);
-      const switched =
-        floor === record.approvalFloor ||
-        (await this.relaunchOnApprovalFloor(record, floor));
-      if (switched) {
+      const switched: { ok: true } | { ok: false; reason: string } =
+        floor === record.approvalFloor
+          ? { ok: true }
+          : await this.relaunchOnApprovalFloor(record, floor);
+      if (switched.ok) {
         record.approvalMode = applied;
         // A credential re-establishment restarts from `recoveryStart`; it
         // must come back in the mode the session runs now.
@@ -1680,17 +1729,15 @@ export class AcpAdapter implements ProviderAdapterShape {
             approvalMode: turnApprovalMode,
           },
         };
-      } else if (record.approvalFloor === 'full') {
-        // A failed move OFF full access would run this turn looser than the
-        // pick. Refuse it; the next send retries the switch.
-        throw new SendTurnRefusedError(
-          "Couldn't switch OpenCode to Station's approval rules for this mode; it is still running with full access, so this message was not sent.",
-        );
       } else {
-        // The session keeps the process, floor and mode it had: OpenCode's
-        // own settings, or the stricter confined floor. Say so, and report
-        // nothing as applied that is not.
-        approvalTakeoverFailed = true;
+        // The session keeps the process, floor and mode it had. Say so,
+        // and report nothing as applied that is not.
+        const running = record.approvalFloor;
+        const message = running
+          ? running === 'full'
+            ? "Couldn't switch OpenCode to Station's approval rules; it is still running with full access"
+            : "Couldn't switch OpenCode to Station's full-access rules; it's still asking first as before"
+          : "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings";
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -1699,16 +1746,26 @@ export class AcpAdapter implements ProviderAdapterShape {
           method: 'runtime.warning',
           severity: 'warning',
           code: ACP_APPROVAL_TAKEOVER_FAILED_CODE,
-          message: record.approvalFloor
-            ? "Couldn't switch OpenCode to Station's full-access rules; it's still asking first as before."
-            : "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings.",
+          message: `${message}: ${switched.reason}.`,
           details: {
             requestedApprovalMode: applied,
+            reason: switched.reason,
             ...(record.approvalMode
               ? { appliedApprovalMode: record.approvalMode }
               : {}),
           },
         });
+        // A turn may run only under rules at least as strict as the pick.
+        // OpenCode's own settings are not known to be (its defaults allow
+        // shell commands and edits), and full access is looser than any
+        // other mode, so only a failed move from Ask or Auto to full access
+        // still runs, at the stricter mode it already had.
+        if (running !== 'confined') {
+          throw new SendTurnRefusedError(
+            `${message}, so this message was not sent: ${switched.reason}.`,
+          );
+        }
+        approvalTakeoverFailed = true;
       }
     }
     const turnCatalog = record.acpModeCatalog ?? { modes: [] };
@@ -1718,6 +1775,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       requestedAcpSessionMode(input.modelOptions),
       input.confinement,
     );
+    if (
+      requestedMode &&
+      record.approvalFloor &&
+      !isOpenCodeGovernedMode(requestedMode)
+    ) {
+      throw new SendTurnRefusedError(governedModeRefusal(requestedMode));
+    }
     if (requestedMode && requestedMode !== record.currentModeId) {
       const catalog = turnCatalog;
       if (catalog.modes.length === 0) {
@@ -2412,7 +2476,7 @@ export class AcpAdapter implements ProviderAdapterShape {
   private async relaunchOnApprovalFloor(
     record: AcpSessionRecord,
     floor: OpenCodeApprovalFloor | undefined,
-  ): Promise<boolean> {
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     const cursor = record.session.resumeCursor;
     const capabilities = record.process.initResult?.agentCapabilities as
       | { loadSession?: boolean; sessionCapabilities?: { resume?: unknown } }
@@ -2431,7 +2495,27 @@ export class AcpAdapter implements ProviderAdapterShape {
         },
         'ACP approval floor not switched: the engine cannot resume this session in a new process',
       );
-      return false;
+      return {
+        ok: false,
+        reason: 'the engine cannot resume this session in a new process',
+      };
+    }
+    // Station governs only build and plan: a user's own primary agent keeps
+    // its own rules, so Station does not take over while one is in use.
+    if (
+      floor &&
+      record.currentModeId &&
+      !isOpenCodeGovernedMode(record.currentModeId)
+    ) {
+      return { ok: false, reason: governedModeRefusal(record.currentModeId) };
+    }
+    if (floor) {
+      const verified = await this.verifyApprovalFloor(
+        record.command,
+        record.session.cwd ?? '',
+        floor,
+      );
+      if (!verified.ok) return verified;
     }
     const cwd = record.session.cwd ?? '';
     const previous = record.process;
@@ -2492,7 +2576,10 @@ export class AcpAdapter implements ProviderAdapterShape {
           destroyError,
         );
       });
-      return false;
+      return {
+        ok: false,
+        reason: `the new engine process did not resume the session (${errorMessage(error)})`,
+      };
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -2509,6 +2596,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (configOptions) {
       record.configOptions = configOptions;
       try {
+        // A resumed session reports the agent it last ran; while Station
+        // governs, it runs build unless the chat chose plan.
+        if (floor && !record.currentModeId) record.currentModeId = 'build';
         const catalog = advertisedAcpSessionModes({ configOptions });
         if (
           record.currentModeId &&
@@ -2548,7 +2638,35 @@ export class AcpAdapter implements ProviderAdapterShape {
         );
       }
     }
-    return true;
+    return { ok: true };
+  }
+
+  /**
+   * #3290: whether `floor`'s rules are what OpenCode resolves for this
+   * command in `cwd`, read from the engine itself before Station claims to
+   * govern (`opencode-approval-verify.ts`).
+   */
+  private async verifyApprovalFloor(
+    command: string,
+    cwd: string,
+    floor: OpenCodeApprovalFloor,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    let env: NodeJS.ProcessEnv;
+    try {
+      env = withStationOpenCodeApprovalConfig(await augmentedSpawnEnv(), floor);
+    } catch (error) {
+      return { ok: false, reason: errorMessage(error) };
+    }
+    const resolved = await findCliBinaryAsync(command);
+    if (!resolved) {
+      return { ok: false, reason: `${command} could not be found` };
+    }
+    const reader = (this.options.readOpenCodeAgents ?? openCodeAgentReader)({
+      command: resolved,
+      cwd,
+      env,
+    });
+    return verifyOpenCodeApprovalFloor(floor, reader);
   }
 
   private handleSessionUpdate(
