@@ -18,12 +18,12 @@ const MAX_NAME_CHARS = 128;
 const MAX_LABEL_CHARS = 512;
 const MAX_DESCRIPTION_CHARS = 2000;
 
-const FORMATS = new Set<McpElicitationStringFormat>([
+const FORMATS: readonly McpElicitationStringFormat[] = [
   'email',
   'uri',
   'date',
   'date-time',
-]);
+];
 
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -123,7 +123,7 @@ function readField(value: unknown): McpElicitationField | null {
     if (minLength === null || maxLength === null) return null;
     if (
       value.format !== undefined &&
-      !FORMATS.has(value.format as McpElicitationStringFormat)
+      !FORMATS.includes(value.format as McpElicitationStringFormat)
     )
       return null;
     const fallback = optionalText(
