@@ -16,12 +16,7 @@ import { useApiBase } from '../contexts/ApiBaseContext';
 import { loadSlashCommands } from '../slashCommands/load';
 import { getAllCommands, getCommand } from '../slashCommands/registry';
 import type { BindingStatus } from '../utils/execution';
-import {
-  assignSkillVariableArgs,
-  findMatchingSkillCommand,
-  parseShellWords,
-  substituteSkillVariables,
-} from '../utils/skill-commands';
+import { findMatchingSkillCommand } from '../utils/skill-command-catalog';
 
 export function useSlashCommandHandler() {
   const { apiBase } = useApiBase();
@@ -60,6 +55,33 @@ export function useSlashCommandHandler() {
       const chatState = activeChatsStore.getSnapshot()[sessionId];
       if (!chatState) return false;
 
+      const cleanup = () => {
+        updateChat(sessionId, { input: '' });
+        context.autocomplete.closeAll();
+      };
+      const agent = agents.find((a) => a.slug === chatState.agentSlug);
+      if (agent?.engineConnectionType === 'acp') {
+        cleanup();
+        return command;
+      }
+
+      let commandInput: typeof import('../utils/skill-commands');
+      try {
+        commandInput = await import('../utils/skill-commands');
+      } catch (error) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: `Could not load command input helpers, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
+        });
+        cleanup();
+        return true;
+      }
+      const {
+        parseShellWords,
+        assignSkillVariableArgs,
+        substituteSkillVariables,
+      } = commandInput;
+
       // ONE shell-style parse of the whole line (a whitespace
       // split broke quoted values). The command word is readable even when a
       // later quote never closes, so the ACP passthrough and the parse-error
@@ -72,20 +94,6 @@ export function useSlashCommandHandler() {
         ''
       ).toLowerCase();
       const args = words.slice(1);
-
-      const agent = agents.find((a) => a.slug === chatState.agentSlug);
-
-      // Default cleanup: clear input and close autocomplete
-      const cleanup = () => {
-        updateChat(sessionId, { input: '' });
-        context.autocomplete.closeAll();
-      };
-
-      // ACP agents: pass all slash commands through as prompt text to kiro-cli
-      if (agent?.engineConnectionType === 'acp') {
-        cleanup();
-        return command; // Return the command text to be sent as a message
-      }
 
       // A line the parser cannot read is never dispatched anywhere — not to
       // a skill, a builtin, or the model — the user reads why instead.
