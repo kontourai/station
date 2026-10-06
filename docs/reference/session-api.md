@@ -483,8 +483,11 @@ conversation to another folder.
   dot-folder directly under home (every one, not a list of credential
   stores), `~/Library` or `~/AppData`, not the system temporary folder or a
   folder containing it, and not overlapping the Station runtime home. The
-  recorded cwd must also equal its resolved form, so the folder the person
-  confirmed is the one the child runs in.
+  recorded cwd must not reach its folder through a symbolic link inside the
+  home folder, so the folder the person confirmed is the one the child runs
+  in. A different letter case or Unicode normalization of the same folder,
+  and links above the home folder (a linked or automounted home), are
+  accepted. Every refusal message names no path.
   `{ kind: 'project', projectSlug }` is refused, because the cwd is not part of
   any Project.
 

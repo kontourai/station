@@ -484,7 +484,8 @@ continue:
   folder directly in your home folder and everything in it (such as `.ssh`,
   `.aws` or `.config`), `Library` on macOS and `AppData` on Windows, the
   system temporary folder, and Station's own data folder. It also refuses
-  when the folder shown reaches another folder through a symbolic link. To
+  when the folder shown reaches another folder through a symbolic link
+  inside your home folder. To
   continue such a conversation, add a Project for that folder or its
   repository. Station does not move a conversation into another Project's folder,
   because its history refers to files in the folder it ran in.
