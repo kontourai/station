@@ -62,10 +62,12 @@ describe('tauri context', () => {
     () => {
       const directory = mkdtempSync(join(tmpdir(), 'station-tauri-npm-'));
       try {
-        const report = reportFor(root, {
-          ...process.env,
-          npm_execpath: join(directory, 'missing', 'npm-cli.js'),
-        });
+        const env = { ...process.env };
+        for (const key of Object.keys(env)) {
+          if (key.toLowerCase() === 'npm_execpath') delete env[key];
+        }
+        env.npm_execpath = join(directory, 'missing', 'npm-cli.js');
+        const report = reportFor(root, env);
         expect(report.checks.npm.status).toBe('failed');
         expect(report.checks.npm.reason).toContain('cannot resolve npm CLI');
         expect(report.checks.npm.value).toBeUndefined();
