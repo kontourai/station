@@ -239,9 +239,11 @@ export async function verifyOpenCodeApprovalFloor(
     floor === 'full'
       ? ['build', 'plan', 'general', 'explore']
       : ['build', 'plan'];
-  let resolved: OpenCodeResolvedAgent[];
+  // One at a time: concurrent first starts of OpenCode in a new project
+  // contend for its local database, and one of them can fail.
+  const resolved: OpenCodeResolvedAgent[] = [];
   try {
-    resolved = await Promise.all(agents.map((agent) => read(agent)));
+    for (const agent of agents) resolved.push(await read(agent));
   } catch (error) {
     return {
       ok: false,
@@ -291,6 +293,7 @@ export function openCodeAgentReader(input: {
         windowsHide: true,
       });
       let stdout = '';
+      let stderr = '';
       let settled = false;
       const finish = (error?: Error, value?: OpenCodeResolvedAgent) => {
         if (settled) return;
@@ -310,10 +313,18 @@ export function openCodeAgentReader(input: {
           finish(new Error(`debug agent ${agent} printed too much`));
         }
       });
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (stderr.length < 4096) stderr += chunk.toString();
+      });
       child.on('error', (error) => finish(error));
       child.on('close', (code) => {
         if (code !== 0) {
-          finish(new Error(`debug agent ${agent} exited with code ${code}`));
+          const detail = stderr.trim().split('\n').at(-1)?.slice(0, 300);
+          finish(
+            new Error(
+              `debug agent ${agent} exited with code ${code}${detail ? `: ${detail}` : ''}`,
+            ),
+          );
           return;
         }
         try {
