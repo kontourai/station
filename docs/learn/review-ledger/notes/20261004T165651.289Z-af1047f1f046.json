@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"No impact: the inventory makes no Inbox or attention claim; the only change in its recorded dependency docs/guides/agents.md is the peer-hosted Inbox sentence.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]}
+  ]
+}

@@ -31,6 +31,19 @@ export function createAttentionRoutes(
      * closed: no proposal items.
      */
     viewerIsOperator?: (c: Context) => boolean;
+    /**
+     * Whether THIS request's caller passes the HTTP boundary and the
+     * station-control dispatch scope (`approve`) for
+     * `POST /api/orchestration/delegations/:taskId/respond` on a
+     * paired-Station task. A model of those two gates only: the handler can
+     * still refuse. Absent fails closed: no item claims the caller can
+     * respond.
+     */
+    viewerMayRespondToPeerTask?: (
+      c: Context,
+      taskId: string,
+      requestType: string | undefined,
+    ) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -41,6 +54,16 @@ export function createAttentionRoutes(
         mayDecidePairingRequests:
           options.viewerMayDecidePairingRequests?.(c.req.raw) ?? false,
         isOperator: options.viewerIsOperator?.(c) ?? false,
+        ...(options.viewerMayRespondToPeerTask
+          ? {
+              mayRespondToPeerTask: (
+                taskId: string,
+                requestType: string | undefined,
+              ) =>
+                options.viewerMayRespondToPeerTask?.(c, taskId, requestType) ??
+                false,
+            }
+          : {}),
       }),
     }),
   );

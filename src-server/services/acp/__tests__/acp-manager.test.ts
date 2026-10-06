@@ -86,3 +86,36 @@ describe('ACPManager.removeConnection', () => {
     await expect(manager.removeConnection('disabled')).resolves.toBeUndefined();
   });
 });
+
+describe('ACPManager.startAll repeated calls (#3421)', () => {
+  beforeEach(() => {
+    probeInstances.length = 0;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  test('a second startAll replaces the sweep timer instead of stacking one', async () => {
+    const manager = new ACPManager(
+      {} as any,
+      { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+      '/tmp',
+    );
+    const config = {
+      id: 'opencode',
+      name: 'OpenCode',
+      command: 'opencode',
+      enabled: true,
+    };
+
+    await manager.startAll([config]);
+    await manager.startAll([config]);
+    expect(vi.getTimerCount()).toBe(1);
+
+    await manager.shutdown();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

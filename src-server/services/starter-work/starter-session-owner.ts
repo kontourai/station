@@ -33,6 +33,7 @@ export function createStarterSessionOwner(
     continue: async ({
       sourceSessionId,
       operationId,
+      target,
       fullAccessGrant,
       owner,
       clientOrigin,
@@ -42,6 +43,7 @@ export function createStarterSessionOwner(
           type: 'adoptSession' as const,
           sourceThreadId: sourceSessionId,
           idempotencyKey: operationId,
+          ...(target ? { target } : {}),
         };
         // The caller's principal authorizes the source and owns the child.
         const outcome = await orchestration.dispatchWithReceipt(command, {
@@ -69,18 +71,24 @@ export function createStarterSessionOwner(
       } catch (error) {
         const observed = error as {
           message?: string;
+          code?: string;
           receipt?: { commandId?: string };
           receiptStatus?: 'persisted' | 'unavailable';
         };
+        // #3386: a folder Station will not continue in is refused again on
+        // every retry, so the launch says retrying is not safe to offer.
+        const permanent = observed.code === 'continuation_place_refused';
         return {
+          // A folder refusal happens before anything is created or recorded,
+          // so its outcome is certain: it failed.
           state:
-            observed.receiptStatus === 'persisted'
+            permanent || observed.receiptStatus === 'persisted'
               ? ('failed' as const)
               : ('indeterminate' as const),
           reason:
             observed.message ??
             'The Session continuation outcome is unavailable.',
-          retrySafe: true,
+          retrySafe: !permanent,
           ...(observed.receipt?.commandId
             ? { receiptId: observed.receipt.commandId }
             : {}),

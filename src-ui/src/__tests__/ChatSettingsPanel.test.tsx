@@ -185,9 +185,9 @@ describe('ChatSettingsPanel accessibility', () => {
     ).toBeNull();
   });
 
-  // #3310: "Summarize session" demoted out of the transcript — this panel is
+  // #3310: "Summarize chat" demoted out of the transcript — this panel is
   // the entry point, present only when a conversation is active.
-  test('offers Summarize session for an active conversation and closes after triggering', () => {
+  test('offers Summarize chat for an active conversation and closes after triggering', () => {
     const panelProps = props();
     const onGenerate = vi.fn();
     render(
@@ -202,7 +202,7 @@ describe('ChatSettingsPanel accessibility', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Summarize session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Summarize chat' }));
     expect(onGenerate).toHaveBeenCalledOnce();
     expect(panelProps.onClose).toHaveBeenCalledOnce();
   });
@@ -258,9 +258,7 @@ describe('ChatSettingsPanel accessibility', () => {
 
   test('renders no session section when no conversation is active', () => {
     render(<ChatSettingsPanel {...props()} />);
-    expect(
-      screen.queryByRole('button', { name: 'Summarize session' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Summarize chat' })).toBeNull();
   });
 
   test('keeps each full visible toggle label clickable and described', () => {

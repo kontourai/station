@@ -96,6 +96,8 @@ const session = {
   threadId: 'external:claude:thread',
   provider: 'claude',
   controlMode: 'read-only-attached',
+  // A project's conversation: #3386 labels one outside every project differently.
+  projectSlug: 'station',
   createdAt: '2026-08-18T00:00:00.000Z',
   updatedAt: '2026-08-18T00:00:00.000Z',
 } as any;
@@ -183,7 +185,10 @@ describe('session detail scroll structure (station#3305)', () => {
     // and when — never the raw device UUID. The exact detail string (UUID and
     // build included) survives as the tile's tooltip.
     const summaryTile = screen.getByText(/Paired device · Mobile app/);
-    expect(summaryTile.textContent).toMatch(/· (just now|.+ ago)$/);
+    // The one time format: compact, never "ago" (now, 2m, 1h, 2d, Sep 12).
+    expect(summaryTile.textContent).toMatch(
+      /· (now|\d+[mhd]|[A-Z][a-z]{2} \d{1,2}(, \d{4})?)$/,
+    );
     expect(summaryTile.textContent).not.toContain('device-7');
     expect(summaryTile.getAttribute('title')).toBe(
       'device device-7 · mobile · 1.2.3',

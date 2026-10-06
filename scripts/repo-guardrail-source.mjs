@@ -83,9 +83,16 @@ export function collectPaneHostCompositionFindings({
   projectLayoutRenderer,
   builtinWorkspacePaneRegistry,
 }) {
-  const sources = { projectLayoutRenderer, builtinWorkspacePaneRegistry };
+  // Markers are code, not layout: compare with whitespace runs collapsed so a
+  // re-indent (#3229 moved the Pane resolution out of a nested callback) does
+  // not read as the delegation being removed.
+  const collapse = (text) => (text ?? '').replace(/\s+/g, ' ');
+  const sources = {
+    projectLayoutRenderer: collapse(projectLayoutRenderer),
+    builtinWorkspacePaneRegistry: collapse(builtinWorkspacePaneRegistry),
+  };
   return PANE_HOST_COMPOSITION_REQUIREMENTS.flatMap((requirement) =>
-    sources[requirement.sourceKey]?.includes(requirement.marker)
+    sources[requirement.sourceKey].includes(collapse(requirement.marker))
       ? []
       : [`${requirement.sourceLabel} must ${requirement.expectation}.`],
   );

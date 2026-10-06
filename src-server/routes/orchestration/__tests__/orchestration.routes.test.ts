@@ -43,6 +43,7 @@ import {
   installServerLogSink,
   resetServerLogSinkForTests,
 } from '../../../services/infra/server-log-store.js';
+import { ContinuationPlaceRefusedError } from '../../../services/orchestration/attached-session-continuation-place.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   EventStore,
@@ -1429,9 +1430,10 @@ describe('Orchestration Routes', () => {
       parentAgentSlug: 'derived-parent',
       rootAgentSlug: 'derived-root',
     };
-    const resolveRequestDelegation = vi
-      .fn()
-      .mockResolvedValue(resolvedDelegation);
+    const resolveRequestDelegation = vi.fn().mockResolvedValue({
+      context: resolvedDelegation,
+      provenance: 'runtime-attested',
+    });
     const app = createOrchestrationRoutes({} as any, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
@@ -1483,6 +1485,7 @@ describe('Orchestration Routes', () => {
     );
     const forwarded = executeForegroundMessage.mock.lastCall![0];
     expect(forwarded.delegation).toEqual(resolvedDelegation);
+    expect(forwarded.delegationProvenance).toBe('runtime-attested');
     expect(forwarded).not.toHaveProperty('delegationAttestation');
 
     // Without a resolver, no claimed context is ever stamped.
@@ -3166,6 +3169,83 @@ describe('Orchestration Routes', () => {
     });
 
     expect(response.status).toBe(413);
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('POST /commands answers a folder refusal as final: its reason, its code, not retryable (#3386)', async () => {
+    const reason =
+      'Station will not continue this conversation as a No project chat in its folder, because it is outside your home folder.';
+    const dispatchWithReceipt = vi
+      .fn()
+      .mockRejectedValue(new ContinuationPlaceRefusedError(reason));
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const res = await app.request('/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'adoptSession',
+        sourceThreadId: 'external:claude:source',
+        target: { kind: 'own-folder' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(await readJson(res)).toMatchObject({
+      success: false,
+      error: reason,
+      code: 'continuation_place_refused',
+      retryable: false,
+    });
+  });
+
+  test('POST /commands passes a named continuation target through and refuses one that carries a path (#3386)', async () => {
+    const dispatchWithReceipt = vi.fn().mockResolvedValue({
+      receipt: {
+        commandId: 'cmd-adopt',
+        threadId: 'external:claude:source',
+        commandType: 'adoptSession',
+        status: 'accepted',
+        createdAt: '2026-10-05T00:00:00.000Z',
+      },
+      result: { provider: 'claude', threadId: 'station-child' },
+    });
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const post = (target: unknown) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'adoptSession',
+          sourceThreadId: 'external:claude:source',
+          target,
+        }),
+      });
+
+    expect((await post({ kind: 'own-folder' })).status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenLastCalledWith(
+      {
+        type: 'adoptSession',
+        sourceThreadId: 'external:claude:source',
+        target: { kind: 'own-folder' },
+      },
+      expect.anything(),
+    );
+    // The folder is always the conversation's own: a target naming one is
+    // refused before anything is dispatched.
+    dispatchWithReceipt.mockClear();
+    expect((await post({ kind: 'own-folder', cwd: '/' })).status).toBe(400);
+    expect(
+      (await post({ kind: 'project', projectSlug: 'station', cwd: '/' }))
+        .status,
+    ).toBe(400);
+    expect((await post({ kind: 'somewhere' })).status).toBe(400);
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
   });
 

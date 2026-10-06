@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Inbox claims unchanged by the fix round: bounds and the recorded-host check do not change what the inbox offers for a valid paired-Station request.","inputs":["docs/guides/agents.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/projects/attention-projection.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

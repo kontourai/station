@@ -1,0 +1,7 @@
+{
+  "revision": "81e342ea5765c6bad644dd5fd21de9e099c375fa",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Routes to the SDK reference; the reference gained the usage-tree hook and fetcher entries. The AGENTS routing, plugin import rule and cancellation/authority guidance are unchanged and still accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

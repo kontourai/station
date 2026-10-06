@@ -1087,6 +1087,8 @@ describe('native release workflow topology', () => {
           'scripts/reclaim-android-runner-disk.sh',
           'scripts/resolve-android-build-run.mjs',
           'scripts/write-android-build-manifest.mjs',
+          // #3175: desktop-build-manifest.mjs imports the bounded capture.
+          'scripts/lib/bounded-capture.mjs',
           'scripts/lib/android-build-manifest.mjs',
           'scripts/lib/desktop-build-manifest.mjs',
           'package.json',

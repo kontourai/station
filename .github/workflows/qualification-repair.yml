@@ -1,8 +1,8 @@
-name: Qualification repair
+name: "Main: Qualification repair"
 
 on:
   workflow_run:
-    workflows: [Main qualification]
+    workflows: ["Main: Qualification"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -53,6 +53,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN: ${{ inputs.run_id }}
           RETRY: ${{ inputs.retry }}
+          # Unset/empty: no automated agent (episode is needs-owner). `codex` opts in.
+          QUALIFICATION_REPAIR_AGENT: ${{ vars.QUALIFICATION_REPAIR_AGENT }}
         run: node scripts/qualification-repair.mjs prepare
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: steps.prepare.outputs.claim == 'true'
@@ -66,7 +68,7 @@ jobs:
 
   repair:
     needs: prepare
-    if: needs.prepare.outputs.claim == 'true'
+    if: needs.prepare.outputs.claim == 'true' && vars.QUALIFICATION_REPAIR_AGENT == 'codex'
     runs-on: ubuntu-22.04
     timeout-minutes: 55
     permissions:

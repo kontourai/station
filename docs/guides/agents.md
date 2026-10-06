@@ -42,6 +42,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
 
@@ -518,6 +519,15 @@ connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
 `source` discriminator. Execution requests name the Agent and let the server
 resolve that binding. User-facing copy names the engine.
 
+A bound Agent's `engineId` comes from its connection's static identity (the
+Adapter's engine, or `'acp'`), not from the live connection inspection, so a
+failing or slow inspection does not remove it; `engineDisplayName` and
+readiness still need the live read (#3355). When a row's Agent resolves, is
+bound to an engine connection, and still reports no `engineId`,
+`inboxRowIconAgent` draws the engine the row's own execution recorded
+(`HomeWorkItem.provider`), only when that engine has a bundled mark and never
+for an ACP-bound or unresolved Agent.
+
 ### Plugin Workflow
 
 Use the [plugin development workflow](plugins.md#development-workflow) for
@@ -532,7 +542,9 @@ ordinary notification history. An approval or `review_pending` item with an
 exact request reference opens the request's decision controls. An approval
 without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
-orchestration turn to the owning session. The header
+orchestration turn to the owning session. An item for a delegated task that
+runs on a paired Station offers no reply. It says to answer on that Station
+and opens the Activity detail. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;

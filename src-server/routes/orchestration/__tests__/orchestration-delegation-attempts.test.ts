@@ -45,6 +45,22 @@ const PORTABLE_TARGET = {
   },
 };
 
+const PREPARED_TARGET = {
+  environment: { kind: 'current' as const },
+  agent: 'planner',
+  workspace: {
+    kind: 'project-portable-prepared' as const,
+    portableProjectId: 'prj_shared',
+    resourceId: 'git.example/acme/repo',
+    preparation: {
+      protocol: 'station.execution-preparation/v1',
+      mode: 'existing-realization',
+      version: { scheme: 'git-commit', value: 'a'.repeat(40) },
+      guarantees: ['version-matched-when-checked'],
+    },
+  },
+};
+
 const NON_PORTABLE_TARGET = {
   environment: { kind: 'current' as const },
   agent: 'planner',
@@ -84,6 +100,54 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
     expect(body.code).toBe('delegation_attempt_unsupported');
     // The refused request never reached the tool: no claim, no effect.
     expect(delegateTask).not.toHaveBeenCalled();
+  });
+
+  test('#2875 a prepared intent without an attempt id refuses before the tool', async () => {
+    const delegateTask = vi.fn().mockResolvedValue(okHandle());
+    const app = createOrchestrationRoutes(
+      {} as never,
+      baseDeps({ delegateTask }),
+    );
+    const res = await app.request('/delegations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Ship it', target: PREPARED_TARGET }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.code).toBe('execution_preparation_attempt_required');
+    expect(delegateTask).not.toHaveBeenCalled();
+  });
+
+  test('#2875 an unknown mode reaches the tool for its typed refusal, not a schema 400', async () => {
+    const delegateTask = vi.fn().mockResolvedValue(okHandle());
+    const app = createOrchestrationRoutes(
+      {} as never,
+      baseDeps({
+        delegateTask,
+        resolveInboundDelegationDevice: () => ({ id: 'dev-verified-1' }),
+      }),
+    );
+    const target = structuredClone(PREPARED_TARGET);
+    target.workspace.preparation.mode = 'some-future-mode';
+    const res = await app.request('/delegations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Ship it', target, attemptId: 'a-1' }),
+    });
+    expect(res.status, await res.clone().text()).toBe(200);
+    const input = delegateTask.mock.calls[0]![0] as {
+      target: { workspace: Record<string, unknown> };
+    };
+    expect(input.target.workspace).toMatchObject({
+      kind: 'project-portable-prepared',
+      preparation: { mode: 'some-future-mode' },
+    });
+    // The portable admission factory rides a prepared intent too.
+    expect(
+      (delegateTask.mock.calls[0]![0] as Record<string, unknown>)
+        .isRequestAuthorityCurrent,
+    ).toBeTypeOf('function');
   });
 
   test('a portable attempt composes the verified caller grant + store into delegateTask', async () => {

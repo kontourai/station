@@ -4,11 +4,13 @@ import { join } from 'node:path';
 import {
   engineConnectionId,
   engineId,
+  parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
+  type AgentRegistry,
   loadOrCreateAgentRegistry,
   registerEngineConnection,
   unregisterEngineConnection,
@@ -16,6 +18,7 @@ import {
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { createChildDelegationContext } from '../../../runtime/agents/delegation.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
+import { createConnectionServiceForTest } from '../../../services/connections/__tests__/connection-service-test-helper.js';
 import { deriveConnectionReadinessEvidence } from '../../../services/connections/connection-readiness-evidence.js';
 import type { StoredConnectionSmokeResult } from '../../../services/connections/connection-smoke-evidence-store.js';
 import {
@@ -1579,5 +1582,196 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
     const response = await app.request('/station/binding');
     expect(response.status).toBe(200);
     expect((await json(response)).data).toEqual({});
+  });
+});
+
+/**
+ * #3355: engine attribution through a REAL `ConnectionService`, wired the way
+ * `runtime-routes.ts` wires it. A total live inspection used to be the only
+ * source of every Agent's `engineId`, so one Adapter failing (or one slow
+ * probe on the time-bounded detail read) erased every Agent's engine mark.
+ */
+describe('engine attribution survives a failed or slow live inspection (#3355)', () => {
+  function runtimeAdapter(
+    provider: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      provider,
+      metadata: {
+        displayName: provider,
+        description: 'runtime',
+        capabilities: ['agent-runtime'],
+        engineId: provider,
+        builtin: true,
+      },
+      getPrerequisites: vi.fn(async () => []),
+      ...overrides,
+    };
+  }
+
+  /** A plugin Adapter whose projection throws synchronously (no capabilities). */
+  function brokenPluginAdapter() {
+    return {
+      provider: 'muse',
+      metadata: {
+        displayName: 'Muse',
+        description: 'plugin runtime',
+        capabilities: undefined,
+        engineId: 'muse',
+      },
+    };
+  }
+
+  function wiredRoutes(adapters: unknown[], timeoutMs?: number) {
+    const registry: AgentRegistry = {
+      version: 2,
+      revision: 0,
+      // `pi` has an Adapter but is NOT registered: an Agent bound to it must
+      // not be attributed an engine the registry does not publish.
+      engineConnections: ['codex', 'claude', 'muse', 'kiro'].map((id) => ({
+        id: engineConnectionId(id),
+      })),
+      defaultAgents: [],
+    };
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      },
+      () => adapters,
+      async () => [
+        { id: 'kiro', name: 'Kiro', command: 'kiro', enabled: true },
+      ],
+      () => ({ connections: [{ id: 'kiro', status: 'available' }] }),
+      async () => ({}),
+      vi.fn(async (updates: unknown) => updates),
+      undefined,
+      undefined,
+      [],
+      undefined,
+      { load: async () => registry, register: vi.fn(), unregister: vi.fn() },
+    );
+    const bindings: Record<string, string> = {
+      'codex-dev': 'codex',
+      'claude-dev': 'claude',
+      'kiro-dev': 'kiro',
+      'pi-dev': 'pi',
+    };
+    const metadata = Object.entries(bindings).map(([slug, connection]) => ({
+      slug,
+      name: slug,
+      execution: { agentConnectionId: engineConnectionId(connection) },
+    }));
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    const app = createEnrichedAgentRoutes({
+      agentMetadataMap: new Map(metadata.map((agent) => [agent.slug, agent])),
+      activeAgents: new Map(),
+      loadAgent: async (slug: string) => ({
+        name: slug,
+        prompt: 'Work.',
+        execution: {
+          agentConnectionId: engineConnectionId(bindings[slug]),
+        },
+      }),
+      listAgents: async () => metadata,
+      getDefaultAgentIds: async () => new Set<string>(),
+      defaultModel: 'managed-default',
+      defaultTools: { mcpServers: [], autoApprove: [] },
+      // Exactly the production composition in `runtime-routes.ts`.
+      getRuntimeConnections: async () =>
+        (await service.listRuntimeConnections()).map((connection) =>
+          runtimeConnectionSummary({ ...connection, parseEngineId }),
+        ),
+      getEngineConnectionIdentities: () =>
+        service.listEngineConnectionIdentities(),
+      ...(timeoutMs !== undefined
+        ? { detailAttributionTimeoutMs: timeoutMs }
+        : {}),
+      logger: logger as any,
+    } as any);
+    return { app, service, logger };
+  }
+
+  function engineIds(rows: Array<{ slug: string; engineId?: string }>) {
+    return Object.fromEntries(rows.map((row) => [row.slug, row.engineId]));
+  }
+
+  test('one Adapter throwing leaves every other Agent its engine, and ACP keeps acp', async () => {
+    const { app, service } = wiredRoutes([
+      runtimeAdapter('codex'),
+      runtimeAdapter('claude'),
+      runtimeAdapter('pi'),
+      brokenPluginAdapter(),
+    ]);
+    // The seam is real: the live inspection itself is unavailable.
+    await expect(service.listRuntimeConnections()).rejects.toThrow(
+      'Runtime capability inspection unavailable',
+    );
+
+    const body = await json(await app.request('/'));
+
+    expect(body.success).toBe(true);
+    expect(engineIds(body.data)).toEqual({
+      'codex-dev': 'codex',
+      'claude-dev': 'claude',
+      'kiro-dev': 'acp',
+      // Unregistered connection: no engine is invented for it.
+      'pi-dev': undefined,
+    });
+    expect(
+      body.data.find((row: { slug: string }) => row.slug === 'kiro-dev'),
+    ).toMatchObject({ engineConnectionType: 'acp' });
+  });
+
+  test('the binding read answers with the engine while the live inspection fails', async () => {
+    const { app } = wiredRoutes([
+      runtimeAdapter('codex'),
+      brokenPluginAdapter(),
+    ]);
+
+    expect((await json(await app.request('/codex-dev/binding'))).data).toEqual({
+      agentConnectionId: 'codex',
+      engineId: 'codex',
+    });
+  });
+
+  test('a detail read whose live inspection times out keeps the engine', async () => {
+    const { app, logger } = wiredRoutes(
+      [
+        runtimeAdapter('codex'),
+        // A sibling whose probe never settles holds the whole inspection.
+        runtimeAdapter('claude', {
+          getPrerequisites: () => new Promise(() => undefined),
+        }),
+      ],
+      25,
+    );
+
+    const body = await json(await app.request('/codex-dev'));
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Runtime connection attribution timed out; continuing without it',
+      { timeoutMs: 25 },
+    );
+    expect(body.data).toMatchObject({
+      slug: 'codex-dev',
+      engineId: 'codex',
+      engineConnectionType: 'codex',
+    });
+  });
+
+  test('a healthy inspection still projects the live display name and readiness', async () => {
+    const { app } = wiredRoutes([
+      runtimeAdapter('codex'),
+      runtimeAdapter('claude'),
+    ]);
+
+    const body = await json(await app.request('/'));
+    expect(
+      body.data.find((row: { slug: string }) => row.slug === 'codex-dev'),
+    ).toMatchObject({ engineId: 'codex', engineDisplayName: 'codex' });
   });
 });

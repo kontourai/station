@@ -28,7 +28,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -891,6 +891,15 @@ Fetches app configuration.
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined.
+
+### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
+
+Fetches the conversation's usage with its children (`getConversationUsageTree`,
+[`GET /api/orchestration/conversations/:conversationId/usage-tree`](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)).
+Enabled by default; disabled for an empty id or `config.enabled: false`. It
+polls only when `config.refetchInterval` is set. A 404 (no conversation you
+can read) and a 422 (a tree past its bound) reject with `StationHttpError`,
+are not retried, and stop the poll.
 
 ### `useUsageQuery(config?)`
 
@@ -3988,6 +3997,9 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
+A refresh that observes a pull request merged also lets Station reconcile the
+Tasks a person opted in to closing on merge when the caller holds the operate tier;
+it changes nothing in what the read returns (see the [API reference](api.md#keep-a-declared-output)).
 
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
@@ -4006,6 +4018,15 @@ the orchestration owner checks the same open event again before adapter input.
 Opaque `attachmentRefs` use the existing current-host staging path; retries
 retain the same `clientTurnId` and payload after an uncertain response. Pass the
 captured host `requestScope` to each read, staging operation and send.
+
+For a delegated task's open input request, `continueDelegatedTask(apiBase,
+taskId, { message, environmentId, expectedInputRequest })` binds the answer to
+`{ threadId, requestId, requestEventId }` on the Station serving the task. The
+snapshot's `pendingRequest` carries `eventId`, and its `currentSessionId` is the
+`threadId`. The serving Station refuses a changed request with
+`input_request_changed`. A forwarding Station sends the binding only to a
+Station advertising `delegatedInputAnswers` (`hasCapability`). Text-only: no
+attachments travel this way.
 
 The [SDK parser](../../packages/sdk/src/client/input-reply.ts),
 [request route](../../src-server/routes/orchestration/orchestration.ts),

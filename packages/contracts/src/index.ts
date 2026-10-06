@@ -29,6 +29,7 @@ export * from './discord.js';
 export * from './distribution.js';
 export * from './enriched-agent.js';
 export * from './environment-security.js';
+export * from './execution-preparation.js';
 export * from './execution-target.js';
 export * from './fleet-contribution.js';
 export * from './fleet-inference.js';

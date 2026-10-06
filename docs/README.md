@@ -7,7 +7,7 @@ row that matches the job you are doing.
 | --- | --- | --- |
 | Product evaluators and end users | [../README.md](../README.md), [user/getting-started.md](user/getting-started.md), [user/concepts.md](user/concepts.md) | Public |
 | Company and project integrators | [guides/integrating-station.md](guides/integrating-station.md) | Public repository guide; hosted target distinguished from supported behavior |
-| Operators | [guides/deployment.md](guides/deployment.md), [guides/machine-relationships.md](guides/machine-relationships.md), [reference/config.md](reference/config.md) | Repository only unless explicitly listed in the public manifest |
+| Operators | [guides/deployment.md](guides/deployment.md), [guides/machine-relationships.md](guides/machine-relationships.md), [guides/operator-passkeys.md](guides/operator-passkeys.md), [reference/config.md](reference/config.md) | Repository only unless explicitly listed in the public manifest |
 | Release operators | [guides/releasing.md](guides/releasing.md), [guides/ecosystem-packaging.md](guides/ecosystem-packaging.md), [guides/store-entry.md](guides/store-entry.md), [guides/store-listing.md](guides/store-listing.md) | Owner-gated Homebrew, public installer plumbing, and store consoles |
 | Agent application authors | [guides/agent-development.md](guides/agent-development.md), [reference/sdk.md](reference/sdk.md#agent-development-entry) | Repository only |
 | Plugin authors | [guides/plugins.md](guides/plugins.md), [guides/build-your-first-plugin.md](guides/build-your-first-plugin.md), [reference/sdk.md](reference/sdk.md), [guides/authoring-skill-experiences.md](guides/authoring-skill-experiences.md) | Repository only |

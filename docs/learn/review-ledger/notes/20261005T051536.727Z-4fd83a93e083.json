@@ -1,0 +1,21 @@
+{
+  "revision": "c01108b31db1903966e3581353b828db2dfd070a",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"index.css changed only in two comments since this capture's record (\"Start a chat\" became the New chat action); no rule changed, so the captured pixels are unaffected. Not re-captured.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]}
+  ]
+}

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
@@ -8,12 +9,14 @@ import {
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AttentionInputReplyContext,
-  AttentionRequestInspection,
-  AttentionRequestReference,
+import {
+  ATTENTION_REQUEST_ID_MAX_CHARS,
+  type AttentionInputReplyContext,
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
+import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
 import type {
   ClientOrigin,
   ClientOriginActor,
@@ -38,6 +41,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -55,12 +59,14 @@ import {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   ApprovalMode,
+  DelegationProvenance,
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
@@ -334,6 +340,8 @@ import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  extractPeerPendingRequestObservation,
+  PEER_PENDING_REQUEST_METADATA_KEY,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
@@ -378,6 +386,7 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
   createManualSessionTransitionEvent,
+  interruptibleTurnIdForEvents,
   isDeferredRetriableTurnError,
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
@@ -401,7 +410,10 @@ import {
   MAX_ASSISTANT_TURN_EVENTS,
   type SessionQueryModule,
 } from './session-query-module.js';
-import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
+import {
+  SessionRecoveryCoordinator,
+  type UsageLimitRecoveryActionResult,
+} from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -413,6 +425,18 @@ import {
   type SkillExperienceSource,
   SkillExperienceUnavailableError,
 } from './skill-experience-runtime.js';
+import {
+  createStationControlPullRequestDeclarations,
+  type StationControlActiveTurn,
+  type StationControlPullRequestDeclarationOutcome,
+  type StationControlPullRequestDeclarations,
+  type StationControlPullRequestIdentity,
+  StationControlPullRequestUnavailableError,
+} from './station-control-pull-request-declarations.js';
+import {
+  readThreadUsageTree,
+  type ThreadUsageTreeReadOutcome,
+} from './thread-usage-tree-read.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -491,6 +515,8 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
+  delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
@@ -872,6 +898,18 @@ interface OrchestrationServiceOptions {
       DeclaredOutputDescriptor,
       { kind: 'pull-request' }
     > | null>;
+    /** #3161: the same read for a caller that has no provider-native id. */
+    readIdentity(input: {
+      provider: string;
+      host: string;
+      owner: string;
+      repository: string;
+      ref: string;
+      workingDirectory: string;
+    }): Promise<Extract<
+      DeclaredOutputDescriptor,
+      { kind: 'pull-request' }
+    > | null>;
   };
   /**
    * archive#1501: non-authoritative observer of `resolveStartSessionCwd`'s
@@ -1004,6 +1042,78 @@ interface PeerDelegationActivityDispatch {
   target: { kind: 'agent'; id: string };
   projectSlug?: string;
   parentTaskId?: string;
+  /**
+   * The calling conversation from the delegation context the route resolved
+   * for the request, so this Station can attribute the record to the
+   * conversation that launched it.
+   */
+  parentConversationId?: string;
+  /** #3323: how the route came by that context; stamped beside it. */
+  delegationProvenance?: DelegationProvenance;
+}
+
+/**
+ * Bounds on the paired Station's request fields this Station persists, in
+ * Unicode code points (`Array.from`), for the id and the title alike.
+ */
+export const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
+export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
+
+/**
+ * A display title past the bound is cut with a visible ellipsis, so a reader
+ * can tell it was shortened; the request id carries identity, not the title.
+ */
+function boundedPeerRequestTitle(title: string): string {
+  return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
+}
+
+function boundedPeerText(text: string, max: number): string {
+  const characters = Array.from(text);
+  return characters.length > max
+    ? `${characters.slice(0, max - 1).join('')}…`
+    : text;
+}
+
+/** Only the request types the canonical vocabulary names are stored. */
+function isPeerRequestType(
+  type: string | undefined,
+): type is NonNullable<OrchestrationPeerPendingRequest['type']> {
+  return (
+    type === 'approval' ||
+    type === 'permission' ||
+    type === 'confirmation' ||
+    type === 'input'
+  );
+}
+
+/** Bound on the paired Station's presented question text. */
+export const PEER_PENDING_REQUEST_BODY_MAX_CHARS = 4_000;
+
+/** Every reported field except the local observation time. */
+function samePeerPendingRequest(
+  a: OrchestrationPeerPendingRequest,
+  b: OrchestrationPeerPendingRequest,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.title === b.title &&
+    a.eventId === b.eventId &&
+    a.threadId === b.threadId &&
+    a.body === b.body &&
+    a.callerCanRespond === b.callerCanRespond
+  );
+}
+
+/** What the paired Station's status read reported about its open request. */
+export interface PeerReportedPendingRequest {
+  id: string;
+  type?: string;
+  title?: string;
+  eventId?: string;
+  threadId?: string;
+  body?: string;
+  callerCanRespond?: boolean;
 }
 
 function peerDelegationActivityThreadId(
@@ -1595,6 +1705,12 @@ export class OrchestrationService {
   private readonly nativeOutputDeclarations: ReturnType<
     typeof createNativeOutputDeclarationOperation
   >;
+  /**
+   * #3161: the second admission authority, for a pull request an external
+   * engine declares through Station Control. Its pending handles land in the
+   * same terminal savepoint as the native ones.
+   */
+  private readonly stationControlPullRequests?: StationControlPullRequestDeclarations;
   /** Exact active generation until the ordered durable terminal event commits. */
   private readonly nativeTurnGenerations = new Map<string, string>();
   private readonly consumedAdapterEventStreams =
@@ -1954,6 +2070,19 @@ export class OrchestrationService {
           }
         : {}),
     });
+    if (options.nativeDeclaredPullRequestResolver) {
+      const resolver = options.nativeDeclaredPullRequestResolver;
+      this.stationControlPullRequests =
+        createStationControlPullRequestDeclarations({
+          activeTurn: (threadId) => this.activeStationControlTurn(threadId),
+          workspaceRoot: (threadId) =>
+            this.sessionReadModel.get(threadId)?.cwd ??
+            this.options.eventStore?.readSessionByThread(threadId)?.cwd,
+          declaredPullRequests: (threadId) =>
+            this.declaredPullRequestsOfSession(threadId),
+          resolver,
+        });
+    }
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
@@ -2021,6 +2150,9 @@ export class OrchestrationService {
         this.sessionAuthz.canReadSession(threadId, authority),
       isEphemeralSession: (threadId) => this.isEphemeralSession(threadId),
       sessionAttributionFor: (threadId) => this.sessionAttributionFor(threadId),
+      conversationIdForThread: (threadId) =>
+        this.options.eventStore?.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
         (this.options.eventStore?.listEvents(threadId) ?? []).map(
           (event) => event.payload,
@@ -3412,6 +3544,7 @@ export class OrchestrationService {
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
+    this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
@@ -3678,9 +3811,145 @@ export class OrchestrationService {
         userId: input.userId,
         ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        ...(input.parentConversationId
+          ? { parentConversationId: input.parentConversationId }
+          : {}),
+        ...(input.parentConversationId && input.delegationProvenance
+          ? {
+              [DELEGATION_PROVENANCE_METADATA_KEY]: input.delegationProvenance,
+            }
+          : {}),
       },
     });
     return threadId;
+  }
+
+  /**
+   * Record the open request the PAIRED Station reported on its delegated-task
+   * status read (`pendingRequest`), or its absence (`null`). Appends one
+   * `session.configured` observation only when it differs from the last one,
+   * so a steady poll writes nothing. The request id names the paired
+   * Station's request; nothing here makes it answerable locally.
+   */
+  recordPeerDelegationPendingRequest(input: {
+    taskId: string;
+    environmentId: string;
+    pendingRequest: PeerReportedPendingRequest | null;
+    /**
+     * Set when the paired Station has just answered `respond` for this
+     * request id: clear the observation only if it still names that request,
+     * so a newer request observed meanwhile is never erased.
+     */
+    resolvedRequestId?: string;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const session = this.sessionReadModel.get(threadId) ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = extractPeerPendingRequestObservation(events);
+    if (
+      input.resolvedRequestId !== undefined &&
+      current?.id !== input.resolvedRequestId
+    )
+      return false;
+    const rawId = input.pendingRequest?.id.trim();
+    // An id past the bound is refused, never truncated: a cut id would name
+    // a different (or no) request on the paired Station. Nothing usable is
+    // stored, so the inbox shows the note instead of a decision.
+    const idRefused =
+      rawId !== undefined &&
+      Array.from(rawId).length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
+    if (idRefused)
+      this.options.logger.warn(
+        'Refused a paired Station request id over the stored bound',
+        { threadId, length: rawId.length },
+      );
+    const id = idRefused ? undefined : rawId;
+    const reported = input.pendingRequest;
+    const title = reported?.title?.trim();
+    const body = reported?.body?.trim();
+    // The binding pair is stored only whole and within bounds; a cut id
+    // would name another request, so an over-long one leaves no binding
+    // (the inbox then keeps the note rather than offering an answer).
+    const binding =
+      reported?.eventId &&
+      reported.threadId &&
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
+        ? { eventId: reported.eventId, threadId: reported.threadId }
+        : undefined;
+    const next = id
+      ? {
+          id,
+          ...(isPeerRequestType(reported?.type) ? { type: reported.type } : {}),
+          ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          ...(binding ?? {}),
+          ...(body
+            ? {
+                body: boundedPeerText(
+                  body,
+                  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+                ),
+              }
+            : {}),
+          ...(typeof reported?.callerCanRespond === 'boolean'
+            ? { callerCanRespond: reported.callerCanRespond }
+            : {}),
+          observedAt: new Date().toISOString(),
+        }
+      : null;
+    if (
+      next === null
+        ? current === null || current === undefined
+        : current !== null &&
+          current !== undefined &&
+          samePeerPendingRequest(current, next)
+    )
+      return false;
+    this.projectAndPublishEvent({
+      eventId: `peer-pending-request:${threadId}:${crypto.randomUUID()}`,
+      provider: session.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { [PEER_PENDING_REQUEST_METADATA_KEY]: next },
+    });
+    return true;
+  }
+
+  /**
+   * The paired Stations this Station recorded as hosting `taskId`
+   * (`recordPeerDelegationActivityDispatch` writes one record per
+   * environment and task) among the records `authority` may read. Empty
+   * when no such record names the task.
+   */
+  async peerDelegationHostingEnvironmentIds(
+    taskId: string,
+    authority: SessionReadScope,
+  ): Promise<string[]> {
+    // Read with the caller's own authority: a record the caller cannot read
+    // names no host for it.
+    const sessions = await this.listSessionReadModel(authority);
+    return [
+      ...new Set(
+        sessions.flatMap((session) =>
+          session.delegation?.environmentKind === 'peer' &&
+          session.delegation.taskId === taskId &&
+          session.delegation.environmentId
+            ? [session.delegation.environmentId]
+            : [],
+        ),
+      ),
+    ];
   }
 
   /** Advance a peer Activity record only from an observed peer lifecycle. */
@@ -4204,10 +4473,9 @@ export class OrchestrationService {
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
     // it run unattended now; the coordinator applies it only at the reset.
-    const recovery =
-      latestRecovery?.usageLimit && latestRecovery.outcome === 'armed'
-        ? await this.withUsageLimitAutoResume(latestRecovery)
-        : latestRecovery;
+    const recovery = latestRecovery
+      ? await this.projectRecovery(latestRecovery)
+      : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
@@ -4239,6 +4507,50 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  private async projectRecovery(
+    latest: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    return latest.usageLimit && latest.outcome === 'armed'
+      ? await this.withUsageLimitAutoResume(latest)
+      : latest;
+  }
+
+  /**
+   * #3157: the chat banner's own read of a Session's usage-limit recovery,
+   * without the Session's whole event list. `null` when the latest recovery
+   * for the Session is not a usage-limit stop. The caller authorizes the read.
+   */
+  async readUsageLimitRecovery(
+    threadId: string,
+  ): Promise<ConnectionRecoveryProjection | null> {
+    this.initialize();
+    const latest = this.recoveryCoordinator?.latestProjection(threadId);
+    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+  }
+
+  /**
+   * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
+   * authorizes the mutation. Each answers with what it did and the projection
+   * as it stands afterward, so a click on a banner that has since settled
+   * reads back the real state instead of acting.
+   */
+  async actOnUsageLimitRecovery(
+    threadId: string,
+    action: 'resume' | 'cancel',
+  ): Promise<{
+    result: UsageLimitRecoveryActionResult;
+    recovery: ConnectionRecoveryProjection | null;
+  }> {
+    this.initialize();
+    const coordinator = this.recoveryCoordinator;
+    const result: UsageLimitRecoveryActionResult = coordinator
+      ? action === 'resume'
+        ? await coordinator.resumeUsageLimitNow(threadId)
+        : await coordinator.cancelUsageLimitWaiting(threadId)
+      : { kind: 'not-waiting' };
+    return { result, recovery: await this.readUsageLimitRecovery(threadId) };
   }
 
   /**
@@ -4291,6 +4603,16 @@ export class OrchestrationService {
     return this.conversationLineage.currentConversationSessionId(
       conversationId,
     );
+  }
+
+  /** The conversation a successor execution Session continues, if it is one. */
+  successorConversationId(sessionId: string): string | undefined {
+    return this.conversationLineage.successorConversationId(sessionId);
+  }
+
+  /** Every execution Session of a durable conversation, in lineage order. */
+  conversationSessionIds(conversationId: string): string[] {
+    return this.conversationLineage.conversationSessionIds(conversationId);
   }
 
   /**
@@ -4939,6 +5261,18 @@ export class OrchestrationService {
     return this.transcriptReads.readSessionUsage(threadId, authority);
   }
 
+  /** #3112: a conversation's usage across every Session in its lineage. */
+  readConversationUsage(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    this.initialize();
+    return this.transcriptReads.readConversationUsage(
+      this.conversationLineage.conversationSessionIds(conversationId),
+      authority,
+    );
+  }
+
   /**
    * Every persisted session's usage, for lifetime analytics (archive#3245).
    *
@@ -4976,6 +5310,92 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+    );
+  }
+
+  /**
+   * One conversation's usage as a tree: its own sessions' receipts, the
+   * subagents they reported, and the delegated tasks launched from it, with
+   * a roll-up total that says what it leaves out. Each conversation is
+   * authorized whole, by {@link canUserReadConversation}; bounded, and
+   * refused past its bound (`too-large`) rather than cut.
+   */
+  readThreadUsageTree(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ): ThreadUsageTreeReadOutcome {
+    this.initialize();
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return { status: 'not-found' };
+    const sessionFor = (threadId: string) =>
+      this.sessionReadModel.get(threadId) ??
+      eventStore.readSessionByThread(threadId);
+    return readThreadUsageTree(
+      {
+        // Receipts carry a Station id for the cross-Station rollup; the tree
+        // reads only this Station's sessions and never returns the id.
+        stationId: 'local',
+        canReadConversation: (id, scope) =>
+          this.canUserReadConversation(id, scope),
+        conversationThreadIds: (id) =>
+          eventStore.conversationSessions(id).map((entry) => entry.sessionId),
+        listUsageReceiptEventsForThreads: (threadIds, limit) =>
+          eventStore.listUsageReceiptEventsForThreads(threadIds, limit),
+        listChildWorkHistoryForThreads: (threadIds) =>
+          eventStore.listChildWorkHistoryForThreads(threadIds),
+        listSessionsNamingParents: (parentIds, limit) =>
+          eventStore.listSessionsNamingParents(parentIds, limit),
+        conversationForThread: (threadId) =>
+          eventStore.conversationForSession(threadId)?.conversationId ??
+          threadId,
+        describeDelegate: (threadId) => {
+          const persisted = eventStore.readSessionByThread(threadId);
+          const loaded = this.sessionReadModel.get(threadId);
+          if (!persisted && !loaded) return undefined;
+          const provider = (loaded ?? persisted)?.provider;
+          const summary = buildOrchestrationSessionSummary({
+            persisted,
+            loaded,
+            events: eventStore
+              .listSessionProjectionEvents(threadId)
+              .map((event) => event.payload),
+            // Built only to read the delegate's own child-work projection;
+            // nothing here is emitted to a client.
+            answerability: this.observeAnswerability(
+              threadId,
+              provider,
+              new Date().toISOString(),
+            ),
+          });
+          // A session launched with a delegation context but no task record
+          // (an agent messaging another agent) is still a child: project it
+          // through the same one mapping, under its own thread as the task.
+          const item =
+            summary.childWork?.asChild ??
+            projectDelegateChildWork({
+              ...summary,
+              delegation: { taskId: threadId },
+            });
+          if (!item) return undefined;
+          return {
+            item,
+            ...(provider ? { provider } : {}),
+            ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
+            pairedStation: summary.delegation?.environmentKind === 'peer',
+          };
+        },
+        describeConversation: (threadIds) => {
+          const latest = threadIds.at(-1);
+          const provider = latest ? sessionFor(latest)?.provider : undefined;
+          const title = eventStore.conversationTitle(threadIds);
+          return {
+            ...(provider ? { provider } : {}),
+            ...(title ? { title } : {}),
+          };
+        },
+      },
+      conversationId,
+      authority,
     );
   }
 
@@ -5585,6 +6005,27 @@ export class OrchestrationService {
                 ...startInput.metadata,
                 conversationId: internal.conversationIdentity.conversationId,
                 environmentId: internal.conversationIdentity.environmentId,
+              },
+            };
+          }
+          // #3323: how the dispatch route came by this start's delegation
+          // context, re-stamped after the reserved-key strip removed any
+          // caller-supplied value, and only when the start carries exactly
+          // the context the route resolved: the stamp travels with that
+          // context, so a start with any other context is never stamped.
+          if (
+            internal?.delegationProvenance &&
+            isDeepStrictEqual(
+              startInput.metadata?.delegation,
+              internal.delegationProvenance.context,
+            )
+          ) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DELEGATION_PROVENANCE_METADATA_KEY]:
+                  internal.delegationProvenance.provenance,
               },
             };
           }
@@ -6222,6 +6663,8 @@ export class OrchestrationService {
             // request's grant, like every other start, and (#1796) who
             // granted it. A grant naming no grantor is refused.
             adoptionConfinement(context?.fullAccessGrant),
+            // #3386: where a conversation no project claims continues.
+            command.target,
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -7350,6 +7793,7 @@ export class OrchestrationService {
                 nativeTurnId,
               );
             }
+            this.stationControlPullRequests?.retireSession(command.threadId);
           }
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
@@ -9184,6 +9628,7 @@ export class OrchestrationService {
       this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
+    this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
@@ -9723,6 +10168,111 @@ export class OrchestrationService {
         total: unattributedHostStartCount,
       },
     };
+  }
+
+  /**
+   * #3161: an external engine's `declare_pull_request` call. The session is
+   * the verified caller's own and the turn is whichever turn it is running
+   * now; the declaration lands when that turn completes.
+   */
+  declareStationControlPullRequest(input: {
+    sessionId: string;
+    pullRequest: StationControlPullRequestIdentity;
+    label?: string;
+  }): Promise<StationControlPullRequestDeclarationOutcome> {
+    if (!this.stationControlPullRequests)
+      throw new StationControlPullRequestUnavailableError('unconfigured');
+    return this.stationControlPullRequests.declare(input);
+  }
+
+  /** The turn the session is running, as the lease for what it declares. */
+  private activeStationControlTurn(
+    threadId: string,
+  ): StationControlActiveTurn | undefined {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.quarantinedThreads.has(threadId)) return undefined;
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (!turnId) return undefined;
+    return {
+      turnId,
+      adapterId: adapter.provider,
+      isCurrent: () =>
+        this.sessionAdapters.get(threadId) === adapter &&
+        this.isAdapterCurrent(adapter) &&
+        !this.quarantinedThreads.has(threadId) &&
+        this.activeTurnIdOfThread(threadId) === turnId,
+    };
+  }
+
+  private activeTurnIdOfThread(threadId: string): string | undefined {
+    // The fold that keeps a turn live through Codex's deferred-retriable error
+    // (`willRetry`): the engine is still working that turn and will complete
+    // it, so a declaration made in it must not be dropped. A real terminal (a
+    // non-retriable error, an abort, a completion, an exit) still ends it.
+    return interruptibleTurnIdForEvents(
+      (
+        this.options.eventStore?.listEventsByMethods(
+          threadId,
+          ACTIVE_TURN_FOLD_METHODS,
+        ) ?? []
+      ).map((stored) => stored.payload),
+    );
+  }
+
+  /**
+   * Every pull request the session has declared, durable. `null` past the
+   * bound (never a truncated list): the caller refuses rather than repeat a
+   * declaration it could not see.
+   */
+  private declaredPullRequestsOfSession(
+    threadId: string,
+  ): Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] | null {
+    const store = this.options.eventStore;
+    if (!store) return [];
+    const bound = 500;
+    const found: Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] =
+      [];
+    let seen = 0;
+    let after: { sequence: number; declarationId: string } | undefined;
+    let highWater: number | undefined;
+    for (;;) {
+      const page = store.listDeclaredOutputDescriptors({
+        threadId,
+        limit: 50,
+        ...(after ? { after } : {}),
+        ...(highWater === undefined ? {} : { highWater }),
+      });
+      highWater = page.highWater;
+      for (const row of page.rows) {
+        seen += 1;
+        if (seen > bound) return null;
+        const descriptor = row.descriptor as
+          | Record<string, unknown>
+          | undefined;
+        const repository = descriptor?.repository as
+          | Record<string, unknown>
+          | undefined;
+        if (
+          descriptor?.kind === 'pull-request' &&
+          typeof descriptor.provider === 'string' &&
+          typeof descriptor.host === 'string' &&
+          typeof descriptor.ref === 'string' &&
+          typeof descriptor.nativeId === 'string' &&
+          typeof repository?.owner === 'string' &&
+          typeof repository.name === 'string'
+        )
+          found.push({
+            kind: 'pull-request',
+            provider: descriptor.provider,
+            host: descriptor.host,
+            repository: { owner: repository.owner, name: repository.name },
+            ref: descriptor.ref,
+            nativeId: descriptor.nativeId,
+          });
+        after = { sequence: row.sequence, declarationId: row.declarationId };
+      }
+      if (!page.hasMore) return found;
+    }
   }
 
   /**
@@ -10280,26 +10830,34 @@ export class OrchestrationService {
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' && projectedEvent.turnId
-        ? this.nativeOutputDeclarations.takeTerminalAdmissions(
-            projectedEvent.threadId,
-            projectedEvent.turnId,
-            projectedEvent.eventId,
-          )
+        ? [
+            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ),
+            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ) ?? []),
+          ]
         : [];
     this.recordProviderTurnBoundary(projectedEvent);
     try {
       this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
       if (declaredOutputs.length > 0) {
-        this.nativeOutputDeclarations.commit(
-          declaredOutputs.map((admission) => admission.handle),
-        );
+        const handles = declaredOutputs.map((admission) => admission.handle);
+        // A handle belongs to exactly one operation; the other ignores it.
+        this.nativeOutputDeclarations.commit(handles);
+        this.stationControlPullRequests?.commit(handles);
       }
     } catch (error) {
       // Same-call retry is possible only when SQLite rolled back.  Do not
       // consume a memory handle before its unique durable use index commits.
-      this.nativeOutputDeclarations.rollback(
-        declaredOutputs.map((admission) => admission.handle),
-      );
+      const handles = declaredOutputs.map((admission) => admission.handle);
+      this.nativeOutputDeclarations.rollback(handles);
+      this.stationControlPullRequests?.rollback(handles);
       throw error;
     }
     // The event-store append is the retirement boundary. Do not use an
@@ -10316,6 +10874,10 @@ export class OrchestrationService {
         projectedEvent.threadId,
         projectedEvent.turnId,
       );
+      this.stationControlPullRequests?.retireTerminal(
+        projectedEvent.threadId,
+        projectedEvent.turnId,
+      );
       if (
         this.nativeTurnGenerations.get(projectedEvent.threadId) ===
         projectedEvent.turnId
@@ -10323,6 +10885,10 @@ export class OrchestrationService {
         this.nativeTurnGenerations.delete(projectedEvent.threadId);
       }
     }
+    // An engine that exits mid-turn ends with `session.exited` and no turn
+    // terminal: nothing else would release the session's declaration grants.
+    if (projectedEvent.method === 'session.exited')
+      this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
     if (!isCoalescableDelta(event))

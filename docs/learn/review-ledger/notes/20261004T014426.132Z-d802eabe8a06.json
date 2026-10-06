@@ -1,0 +1,7 @@
+{
+  "revision": "52c2e6372f58e0e3c9870fb32f09fc0d871a0e54",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"The git-commit adapter is now module-private; its tests go through verifyPreparedCheckout. No claim in the record changes.","inputs":["docs/design/remote-execution-preparation.md"]}
+  ]
+}

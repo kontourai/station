@@ -1,0 +1,7 @@
+{
+  "revision": "1e29ba6ca985181adf2c097e84a4abc3fbb57258",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"No prose change: it makes no claim about the paired-Station host lookup or request bounds; orchestration-service only scopes the recorded-host lookup to the caller read authority and counts the id bound in code points; station-control-delegation only passes the caller read authority to the host lookup and moves two message constants.","inputs":["examples/self-configuring-agent/README.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

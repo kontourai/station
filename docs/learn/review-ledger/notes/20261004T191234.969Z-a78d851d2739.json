@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"No prose change: reviewed its attention/session.configured mentions, none concern paired-Station requests, the delegated respond route or request-route access; the orchestration contract only adds the optional delegation.peerPendingRequest.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts"]}
+  ]
+}

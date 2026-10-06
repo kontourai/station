@@ -349,6 +349,15 @@ export interface DelegatedTaskPendingRequest {
   id: string;
   title?: string;
   type?: string;
+  /** `delegatedInputAnswers`: the request's `request.opened` event id. */
+  eventId?: string;
+  /** The question as the serving Station presents it. */
+  body?: string;
+  /**
+   * The serving Station's check of the reading caller on the route that
+   * answers the request; absent when it did not evaluate one.
+   */
+  callerCanRespond?: boolean;
 }
 
 /**
@@ -589,6 +598,17 @@ export async function observeDelegatedTaskEvents(
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Deliver `message` only as the answer to this exact open input request
+   * on the task's current Session. The serving Station refuses with
+   * `input_request_changed` when it is gone or replaced; forwarding to
+   * another Station requires its `delegatedInputAnswers` capability.
+   */
+  expectedInputRequest?: {
+    threadId: string;
+    requestId: string;
+    requestEventId: string;
+  };
   model?: string;
   /** station#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -794,6 +814,11 @@ export interface DelegationAttemptView {
   taskId?: string;
   /** Present only when `state === 'accepted'`: the real initial turn id. */
   turnId?: string;
+  /**
+   * Present only when `state === 'refused'` and the refusal carried a closed
+   * code, such as `execution_preparation_version_mismatch` (#2875).
+   */
+  refusalCode?: string;
 }
 
 /**

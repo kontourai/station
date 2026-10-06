@@ -2,6 +2,10 @@ import { CLEAN_ID_PATTERN } from '@kontourai/station-contracts/agent-identity';
 import { LAYOUT_CATALOG_ITEM_ID_PATTERN } from '@kontourai/station-contracts/distribution';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import {
+  PROJECT_ICON_PROBLEM_MESSAGES,
+  projectIconProblem,
+} from '@kontourai/station-contracts/project';
+import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
@@ -184,10 +188,32 @@ const projectEnvironmentRefSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('saved'), id: z.string().trim().min(1).max(512) }),
 ]);
 
+/**
+ * `icon` on create and update: the contracts rule (`projectIconProblem`), the
+ * same one the pickers and the renderer apply. `''` and `null` are not icons;
+ * both mean "no icon" and `ProjectService` drops the field for them, which is
+ * how the settings picker's None clears a stored one.
+ */
+const projectIconSchema = z
+  .string()
+  .superRefine((icon, ctx) => {
+    if (icon === '') return;
+    const problem = projectIconProblem(icon);
+    if (problem) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: PROJECT_ICON_PROBLEM_MESSAGES[problem],
+      });
+    }
+  })
+  .nullable()
+  .optional();
+
 export const projectCreateSchema = z
   .object({
     name: z.string().min(1),
     slug: z.string().optional(),
+    icon: projectIconSchema,
     workingDirectory: z.string().optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),

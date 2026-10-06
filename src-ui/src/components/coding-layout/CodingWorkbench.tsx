@@ -64,6 +64,7 @@ import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspac
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
+import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
@@ -1007,10 +1008,7 @@ export function CodingWorkbench({
   const [inboxNeedsYou, setInboxNeedsYou] = useState(0);
   const coarsePointer = useDockSlotDevice().coarsePointer;
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
-  const inboxEdgeName =
-    inboxNeedsYou > 0
-      ? `Show inbox, ${inboxNeedsYou} need${inboxNeedsYou === 1 ? 's' : ''} you`
-      : 'Show inbox';
+  const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
@@ -1272,7 +1270,13 @@ export function CodingWorkbench({
                   <button
                     type="button"
                     className={`coding-workbench__inbox-edge${inboxNeedsYou > 0 ? ' coding-workbench__inbox-edge--needs-you' : ''}`}
-                    aria-label={inboxEdgeName}
+                    data-testid="coding-inbox-edge"
+                    // Pointer-only: the bar's inbox toggle is the one
+                    // control a keyboard or screen reader meets, with the
+                    // same name ("Show inbox, 3 need you"). Two controls
+                    // with one name read the same thing twice.
+                    aria-hidden="true"
+                    tabIndex={-1}
                     // Not `writeInbox`: this is the reader's own move, and
                     // the session remembers it as such.
                     onClick={() => setDeviceSetting('inboxOpen', true)}

@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"Inspect-request walkthrough still accurate for local requests; paired requests never offer Inspect request.","inputs":["docs/learn/walkthroughs.md","src-server/routes/orchestration/attention.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

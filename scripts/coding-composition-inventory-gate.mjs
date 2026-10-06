@@ -198,6 +198,12 @@ const expectedDependencies = new Map(
     // accepted layout types AND retained-LayoutTab/parser adaptation checks;
     // a UI-only field would make contributed routing metadata unverifiable.
     'src-ui/src/views/ProjectPage.tsx': 'navigation',
+    // Home's Continue/work rows open a chat where it lives: the view model
+    // reads the project's layout list and, when one is a Coding layout and
+    // the device does not fold every region into one, navigates to it after
+    // focusing the chat so the Coding host centres it. It renders no Coding
+    // pane and grants no workspace authority: a route choice only.
+    'src-ui/src/views/home/useHomeViewModel.ts': 'navigation',
     // #2047: the surface → pane inventory joins the coding dock surfaces
     // (`coding:terminal`, `coding:diff`, `coding:file-browser`) to the
     // coding pane contracts' fixed per-project instances and canonical

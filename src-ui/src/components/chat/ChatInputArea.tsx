@@ -948,7 +948,7 @@ export function ChatInputArea({
               type="button"
               className="chat-input__model-reset"
               onClick={onModelReset}
-              title="Reset this session to its default model"
+              title="Reset this chat to its default model"
             >
               Use{' '}
               {defaultModelSource

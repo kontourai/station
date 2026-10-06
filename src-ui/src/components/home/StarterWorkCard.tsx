@@ -37,12 +37,10 @@ export function StarterWorkCard() {
   if (isLoading || projects.length === 0) return null;
   if (starter.isError)
     return <StarterWorkUnavailable onRetry={() => void starter.refetch()} />;
-  if (starter.isLoading || !status)
-    return (
-      <PageCallout calloutId={STARTER_CALLOUT_ID} ariaLabel="Starter work" busy>
-        <SkeletonBlock count={1} label="Checking starter work" />
-      </PageCallout>
-    );
+  // Q3/V5: nothing while the ledger is read. The offer appears when it is
+  // known; a 250px bordered box saying "Checking starter work" was the
+  // tallest thing on Home.
+  if (starter.isLoading || !status) return null;
   if (status.state === 'unavailable')
     return <StarterWorkUnavailable onRetry={() => void starter.refetch()} />;
   if (status?.state === 'bound' && status.binding.targetRef.kind === 'task') {

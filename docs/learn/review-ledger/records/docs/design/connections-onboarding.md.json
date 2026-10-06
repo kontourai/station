@@ -66,6 +66,12 @@
 
     "src-ui/src/components/modals/AutomaticEnginePreparation.tsx",
 
+    "src-server/services/connections/engine-proxy-routing.ts",
+
+    "src-ui/src/views/EngineProxySettings.tsx",
+
+    "src-ui/src/views/AgentConnectionView.tsx",
+
     "src-ui/src/components/chat-start/ChatSetupHelper.tsx"
   ],
 

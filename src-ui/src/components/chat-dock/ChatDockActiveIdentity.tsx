@@ -23,6 +23,7 @@ interface ChatDockActiveIdentityProps {
    * the header then names none rather than inventing one.
    */
   modelLabel?: string | null;
+  routeLabel?: string;
   inputOrigin?: OrchestrationInputOrigin;
   onClose: (id: string) => void;
 }
@@ -52,6 +53,7 @@ export function ChatDockActiveIdentity({
   session,
   agent,
   modelLabel,
+  routeLabel,
   originLabel,
   originProvider,
   inputOrigin,
@@ -84,7 +86,7 @@ export function ChatDockActiveIdentity({
   // disambiguates two identically-named connections. The redundancy being
   // removed is the name, so the narrower fix then is to blank
   // `engine.name` and keep the model, not to null the descriptor.
-  const agentName = agent?.name ?? session.agentName ?? 'Conversation';
+  const agentName = agent?.name ?? session.agentName ?? 'Chat';
   const engineChip =
     engine && agentName && engine.name.toLowerCase() === agentName.toLowerCase()
       ? null
@@ -107,7 +109,13 @@ export function ChatDockActiveIdentity({
   // known, so the row names nothing it cannot derive.
   const engineTrail =
     originLabel ??
-    [engineChipLabel(engineChip), modelLabel].filter(Boolean).join(' · ');
+    [
+      engineChipLabel(engineChip),
+      modelLabel,
+      routeLabel ? `via ${routeLabel}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   return (
     <div className="chat-dock__active-identity">
@@ -160,8 +168,8 @@ export function ChatDockActiveIdentity({
           type="button"
           className="chat-dock__active-identity-close"
           onClick={onDetails}
-          aria-label="Conversation details"
-          title="Conversation details"
+          aria-label="Chat details"
+          title="Chat details"
         >
           <span aria-hidden="true">⋯</span>
         </button>

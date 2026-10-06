@@ -131,7 +131,14 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   legacy unmanaged record with no captured fingerprint is still trusted by PID
   alone (the residual accepted in #3253).
 - **Loopback only.** `--watch` binds `127.0.0.1` and refuses another `--host`,
-  as for the root Vite server below.
+  as for the root Vite server below. `station open --print` links to the
+  address the instance bound (`127.0.0.1` here), not `localhost`; the two are
+  different origins, so a sign-in link only signs in the origin it names.
+- **Cold start.** The first load after `start --watch` waits on a cold Vite
+  server compiling and optimizing the UI dependency graph, which can take tens
+  of seconds before Home renders. The page is blank or loading until
+  then; later loads and hot updates are fast. Station does not warm the server
+  up, so open the instance's `station open --print` link once and wait.
 - **Distinct home.** A dev instance must use its own Station home
   (`--temp-home` or `--home`). The browser workspace refuses to load a page
   served by a listener of the *same* home as a Station listener, so a dev
@@ -383,12 +390,22 @@ App instead, whose installation tokens carry their own quota.
 `scripts/gh-app-token.mjs` mints one per call:
 
 ```bash
-# Read-only by default: every granted scope at read level.
+# Read-only by default; workflows is excluded because it permits only write.
 GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/<n>
 # Ask for exactly the write scope a call needs; the child gets GH_TOKEN, never your GITHUB_TOKEN.
-node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write -- \
+node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write,workflows:write -- \
   gh pr merge <n> --repo kontourai/station --auto
 ```
+
+Workflow-changing PRs require `workflows: write` on the installation and on
+the token used to arm them. Updating the App's requested permissions can leave
+an installation awaiting approval; inspect the installed permissions before
+using the grant. Read-only status tokens never request this write-only scope.
+The hosted landing caller requests it for workflow PR admission. After arming,
+it checks the current head once and reports either `queued` or
+`armed_waiting_for_queue`; an armed request is not evidence of enqueueing.
+A successful command that leaves the PR neither armed nor queued fails the
+landing job. Already queued PRs are left alone. No polling or bypass is added.
 
 Each token is scoped to the `station` repository and the requested
 permissions, lives about an hour, and is never cached or written anywhere.
@@ -411,7 +428,7 @@ REST endpoint, so confirm an armed PR with the single GraphQL query in
 1. Create a dedicated app, not the release app. The release app's
    permissions are broader than arming and reading need. This link pre-fills
    the minimal permissions and no webhook:
-   `https://github.com/organizations/kontourai/settings/apps/new?name=station-automation&url=https://github.com/kontourai/station&public=false&webhook_active=false&pull_requests=write&contents=write&issues=write&checks=read&statuses=read&actions=read&metadata=read`
+   `https://github.com/organizations/kontourai/settings/apps/new?name=station-automation&url=https://github.com/kontourai/station&public=false&webhook_active=false&pull_requests=write&contents=write&workflows=write&issues=write&checks=read&statuses=read&actions=read&metadata=read`
 2. Install it on `kontourai` with **Only select repositories**:
    `kontourai/station`.
 3. Keep the app **off every ruleset bypass list**. It arms auto-merge; the
@@ -490,12 +507,14 @@ to the hosted qualification authority.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source through every canonical phase and the Android viewport suite.
-Main qualification runs every six hours and starts a Nightly for the commit it
-qualified at most about once a day; the scheduled Nightly also runs daily. Nightly
+`Main: Qualification` runs every six hours and starts a Nightly for the commit it
+qualified at most about once a day. Nightly has no independent schedule; its
+manual dispatch remains available for recovery. The hourly qualification-health
+watchdog reports missed starts, stale success and failed delivery. Nightly
 and tagged Preview/Stable require that qualification, with bounded reuse of
 exact-source evidence. See [the release process](releasing.md) for receipt
 admission, failure repair and promotion.
-A manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
 

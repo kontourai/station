@@ -1,0 +1,15 @@
+{
+  "revision": "783657d7fd89f3790d3730fb1c31abcca49295fd",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"VoltAgent wrapper change: the model-only context composition now runs first in a per-call onPrepareMessages and chains the caller's or agent's own prepare hook after it; authored message arrays get ids before the call. Conduit hook projection and conformance claims are unaffected. No prose change.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/reference/config.md","note":"VoltAgent wrapper prepare-hook chaining and id assignment do not affect runtime selection, step caps or tool loading. No prose change.","inputs":["docs/reference/config.md","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added the lineage read bound (64 Sessions, 422 conversation_lineage_too_long for messages, export, fork, summary and stats). List paging now reads further file-store pages past skipped successor records; the list section's claims still hold. Checked against conversations.ts.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Routes readers to the API reference, which gained the lineage read bound; the routing table is unaffected. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Conversation list paging and the lineage read bound change no behavior the guide describes (picker window, continuation). No prose change.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts"]}
+  ]
+}

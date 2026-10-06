@@ -440,12 +440,14 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
       }),
     ),
     {
-      name: 'a full install, which W1 does not implement yet',
+      name: 'a full install with no signed public manifest',
       run: (f) =>
-        stage(f, signed(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12')), {
+        stage(f, '', {
           STATION_INSTALL_STAGE_ONLY: '0',
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: '',
         }),
-      message: 'install.ps1 supports only STATION_INSTALL_STAGE_ONLY=1 so far',
+      message:
+        'install.ps1 installs only from a signed public manifest; set STATION_INSTALL_PUBLIC_MANIFEST_URL',
     },
   ])('refuses $name', ({ run, message }) => {
     const f = fixture();

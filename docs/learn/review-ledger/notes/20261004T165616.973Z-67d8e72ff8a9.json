@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"No prose change: the Notifications/attention inbox entry and Activity entries remain accurate; peer-hosted items reuse the existing paired Station vocabulary.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

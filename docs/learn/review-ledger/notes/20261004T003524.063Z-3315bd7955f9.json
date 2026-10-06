@@ -1,9 +1,0 @@
-{
-  "revision": "1982668e3113527a56d3304a8538bae9f1179547",
-
-  "notes": [
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the #3163 fix-round-3 delta against this document: the Agents row throttles transcript re-reads to one per 2 s; the child transcript reader lstats the file before an O_NOFOLLOW|O_NONBLOCK open so a FIFO cannot block, and its link checks are documented as made immediately before the open, not atomic against a same-user swap. This document makes no claim about these; its existing claims are unchanged."},
-
-    {"path":"docs/reference/session-api.md","note":"Reworded the #3163 transcript section: link checks are made immediately before the open and are not atomic against a concurrent swap by a same-user process; an over-4-MiB record of any type is one too-large entry. Checked against claude-subagent-transcript.ts openTranscript and findClaudeSubagentTranscript."}
-  ]
-}

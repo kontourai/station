@@ -1,0 +1,7 @@
+{
+  "revision": "1e29ba6ca985181adf2c097e84a4abc3fbb57258",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Rechecked the host-check and bounds paragraph against orchestration-service and station-control-delegation: the host lookup uses the caller read authority, and both bounds count Unicode code points.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

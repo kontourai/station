@@ -87,31 +87,9 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
   // Receipt identity is stable across local replay and peer pagination. A
   // repeated id is replacement, not another billable event; later observed
   // data wins so delayed corrections cannot double-count.
-  const deduplicated = new Map<string, UsageReceipt>();
-  const observations = [...(input.aggregateReceipts ?? input.receipts)].sort(
-    (left, right) => {
-      const identity =
-        left.id.localeCompare(right.id) ||
-        left.stationId.localeCompare(right.stationId) ||
-        (left.threadId ?? '').localeCompare(right.threadId ?? '');
-      if (identity) return identity;
-      const hasSequence =
-        Number(left.sourceSequence !== undefined) -
-        Number(right.sourceSequence !== undefined);
-      if (hasSequence) return hasSequence;
-      return (
-        (left.sourceSequence ?? 0) - (right.sourceSequence ?? 0) ||
-        (left.observedAt ?? '').localeCompare(right.observedAt ?? '')
-      );
-    },
+  const deduplicated = reconcileUsageReceiptObservations(
+    input.aggregateReceipts ?? input.receipts,
   );
-  for (const receipt of observations) {
-    const current = deduplicated.get(receipt.id);
-    deduplicated.set(
-      receipt.id,
-      current ? mergeReceiptObservations(current, receipt) : receipt,
-    );
-  }
   // A rollup window is a Station observation window, never an untrusted
   // provider clock window. Legacy rows with no Station clock are deliberately
   // excluded here; a caller that elects to expose their lifetime total must
@@ -277,6 +255,42 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
     }),
     receipts,
   };
+}
+
+/**
+ * One receipt per receipt id. A repeated id is the same fact observed again,
+ * never another billable event: observations are ordered by durable source
+ * sequence (then observation time) and reconciled, a cumulative reporter's
+ * sparse restatement keeping the components it omitted. Shared by the
+ * windowed rollup and the conversation usage tree.
+ */
+export function reconcileUsageReceiptObservations(
+  receipts: readonly UsageReceipt[],
+): Map<string, UsageReceipt> {
+  const deduplicated = new Map<string, UsageReceipt>();
+  const observations = [...receipts].sort((left, right) => {
+    const identity =
+      left.id.localeCompare(right.id) ||
+      left.stationId.localeCompare(right.stationId) ||
+      (left.threadId ?? '').localeCompare(right.threadId ?? '');
+    if (identity) return identity;
+    const hasSequence =
+      Number(left.sourceSequence !== undefined) -
+      Number(right.sourceSequence !== undefined);
+    if (hasSequence) return hasSequence;
+    return (
+      (left.sourceSequence ?? 0) - (right.sourceSequence ?? 0) ||
+      (left.observedAt ?? '').localeCompare(right.observedAt ?? '')
+    );
+  });
+  for (const receipt of observations) {
+    const current = deduplicated.get(receipt.id);
+    deduplicated.set(
+      receipt.id,
+      current ? mergeReceiptObservations(current, receipt) : receipt,
+    );
+  }
+  return deduplicated;
 }
 
 function mergeReceiptObservations(

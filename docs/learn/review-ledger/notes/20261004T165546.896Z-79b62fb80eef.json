@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the needs_input/review_pending environmentKind peer and environmentName fields: derived in attention-projection.ts projectLifecycle from session.delegation.environmentKind, openHref switches to the Activity deep link, and the server refuses a local turn on a peer record (orchestration-service read-only guard). Compat stated: older servers omit the field and still refuse the turn.","inputs":["docs/reference/session-api.md","src-server/services/projects/attention-projection.ts","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

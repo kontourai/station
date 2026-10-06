@@ -1,0 +1,15 @@
+{
+  "revision": "f4d1b4f100ef91782dafacfb2dd7d624e9073f15",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the #3163 fix-round-2 delta against this document: the child transcript reader follows no symlink below the session's config home (lstat per directory, O_NOFOLLOW open, regular-file check), splits lines as bytes with a 4 MiB cap and a too-large entry, caches resolved paths in a bounded LRU, and the Agents row debounces progress-driven re-reads to 2 s; adapter tests pin the spawn config home through startSession. This document makes no claim about these; its existing claims are unchanged.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the #3163 fix-round-2 delta against this document: the child transcript reader follows no symlink below the session's config home (lstat per directory, O_NOFOLLOW open, regular-file check), splits lines as bytes with a 4 MiB cap and a too-large entry, caches resolved paths in a bounded LRU, and the Agents row debounces progress-driven re-reads to 2 s; adapter tests pin the spawn config home through startSession. This document makes no claim about these; its existing claims are unchanged.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the #3163 fix-round-2 delta against this document: the child transcript reader follows no symlink below the session's config home (lstat per directory, O_NOFOLLOW open, regular-file check), splits lines as bytes with a 4 MiB cap and a too-large entry, caches resolved paths in a bounded LRU, and the Agents row debounces progress-driven re-reads to 2 s; adapter tests pin the spawn config home through startSession. This document makes no claim about these; its existing claims are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Updated the #3163 transcript section: no symlink below the config home is followed; the file-order view can include abandoned branches and compaction summaries that Claude Code's own reader hides; a record over 4 MiB is one too-large entry. Checked against claude-subagent-transcript.ts.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"packages/contracts/README.md","note":"Reviewed the #3163 fix-round-2 delta against this document: the child transcript reader follows no symlink below the session's config home (lstat per directory, O_NOFOLLOW open, regular-file check), splits lines as bytes with a 4 MiB cap and a too-large entry, caches resolved paths in a bounded LRU, and the Agents row debounces progress-driven re-reads to 2 s; adapter tests pin the spawn config home through startSession. This document makes no claim about these; its existing claims are unchanged.","inputs":["packages/contracts/README.md"]}
+  ]
+}

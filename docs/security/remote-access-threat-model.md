@@ -22,8 +22,12 @@ a direct IPv4, IPv6, or IPv4-mapped loopback peer. A public tailnet Host is
 remote even when a Station-owned proxy's next hop is loopback. Every
 non-loopback peer is remote, and missing peer metadata fails closed.
 
-`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored. Station has no
-generic trusted-proxy mode. Raw Tailscale identity headers are also stripped.
+`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored as authority:
+they never make a request more local or more trusted. Their presence only
+marks a raw operator-credential use as off-host in the #2894 telemetry below,
+and Station's UI proxy reports when its own client sent one
+(`x-station-proxy-client-forwarded`). Station has no generic trusted-proxy
+mode. Raw Tailscale identity headers are also stripped.
 If `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` names the exact HTTPS origin, the
 loopback-only UI proxy accepts Tailscale Serve's sanitized, WhoIs-backed user
 headers for that authority when Funnel is absent, converts them into a bounded
@@ -59,6 +63,44 @@ startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
+Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
+`STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
+(an IP-only Station has no remote operator sign-in). A paired browser opens an
+enrollment request and sees a six-digit code; the host operator types that code
+into `station environment operator passkeys approve <code>`, and only then may
+the WebAuthn registration ceremony run. The host listing never prints the code,
+so confirming means comparing the two screens. Properties, each pinned by a test
+in `operator-passkey-enrollment.test.ts`:
+
+- The code is compared in constant time against every pending request, works
+  once, expires after five minutes, and five wrong codes in five minutes lock
+  confirmation (the right code included). At most five requests are live.
+- The request id is a bearer capability bound to the requesting browser's
+  credential; another browser gets the same answer as for an unknown id.
+- Each registration challenge is single-use (taken before verification, so a
+  failed attempt burns it), expires within two minutes, and belongs to one
+  confirmed request. One confirmation enrolls one passkey.
+- The expected origin and RP ID come from the configured origin, never from the
+  request. User verification is required, attestation is `none`, and a
+  cross-origin (framed) ceremony is refused. Every state-changing route also
+  needs the exact `Origin`, `Sec-Fetch-Site: same-origin`, a JSON content type
+  and a paired-device cookie.
+- Any paired device may open a request, so approval is informed: the host sees
+  the requesting device's id, pairing date and scopes (from the pairing
+  registry, not the device-chosen name), an interactive `approve` asks for
+  confirmation, a non-interactive one must name the device (`--device`), and a
+  device that borrows the operator-browser label is shown as a paired device.
+  `deny` can withdraw an approval until the passkey is created.
+- Only the public key is stored, in a private SQLite file created at the first
+  enrollment under the Station home. Logs and metrics carry no code, request id, challenge or credential id.
+- The enrollment state lives in process memory; a restart drops pending
+  requests, and the browser asks again.
+
+Nothing accepts an enrolled passkey yet: sign-in and step-up are later slices.
+Revoking a passkey is a host action (`... passkeys revoke <id>`) until remote
+revoke with a step-up from another passkey (D8) lands. See
+[Enroll an operator passkey](../guides/operator-passkeys.md).
+
 Origin and authentication are independent controls:
 
 - Origin limits which browser origins may call Station. It never identifies or
@@ -89,6 +131,7 @@ malformed identity never produce verified provenance.
 | `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
 | Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
 | HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
+| Pairing-scoped routes and the pairing request, access-request, and exchange, declaring (or, absent the header, read as) a client protocol below `minClientProtocol` | `426 client_protocol_unsupported`, before any credential check; a malformed `X-Station-Client-Protocol` is `400` ([admission](#client-api-protocol-admission-2962)) | Same | Same |
 | Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
 | Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
@@ -130,7 +173,7 @@ commit or executable identity. Its schema is:
     "serverVersion": "<station package version>",
     "protocolVersion": 1,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -138,6 +181,83 @@ commit or executable identity. Its schema is:
 
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
+
+### Client API protocol admission (#2962)
+
+A client states the client API protocol it was built against in
+`X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
+`packages/contracts/src/environment-security.ts`). Like the client-origin
+header, it is a compatibility signal and never authority. The host enforces
+the same `compatibility` block the handshake advertises, before any
+credential check:
+
+| Request | Answer |
+| --- | --- |
+| Header at or above `minClientProtocol`, including a protocol newer than the host's | Admitted; whether a newer client can use this host is the client's own check |
+| Header absent | Read as protocol 1, so admitted while `minClientProtocol` is 1 and refused once it rises |
+| Header below `minClientProtocol` | `426` with `error.code` `client_protocol_unsupported`, `minClientProtocol`, `serverVersion`, and a sentence telling the reader to update the app |
+| Header present but not one integer from 1 to 9999 (empty, signed, zero-padded, repeated, or larger) | `400` with `error.code` `client_protocol_invalid` |
+
+The check covers every paired-scope route and the public pairing request,
+access-request, and exchange routes, so an outdated client is refused before
+it pairs. It does not cover the public handshake and proof, which an outdated
+client must still reach to learn why; liveness and the direct-loopback
+owner-secret routes, whose callers are launchers governed by the launcher
+protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
+account-authentication routes, which have their own callers; or Station's own
+attested loopback consumer. The navigation-reached landing page, `/doc`, `/ui`,
+and integration icons are also exempt: browser navigation, iframe/link loads,
+and image elements cannot attach a custom request header. The exemption is
+these declared route IDs, not every route an element might load; attachment,
+MCP UI resource and preview reads through the SDK remain covered.
+
+Both protocol refusals emit `station.auth.failure` within a separate direct-peer
+protocol audit budget (default: 10 audits per 60-second window), with outcome
+`denied` and the refusal code as reason. An unsupported protocol records its
+parsed integer; a malformed value is never copied into the audit. The owner is
+[`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
+The audit limiter reuses `RuntimeAuthFailureLimiter` with its 1,024-peer cap,
+keyed by the direct socket address. The cap evicts live entries, so an
+attacker holding more than 1,024 distinct socket sources can reset a peer's
+count and exceed 10 audits per window; the bound is per peer only while fewer
+peers are tracked, and memory stays bounded. Exhaustion suppresses only audits: every
+refusal still receives 400/426. Protocol refusals neither consult nor consume
+the authentication budget, so clients sharing a proxy or NAT can correct their
+header and authenticate without being locked out by protocol refusals.
+
+Terminal and voice WebSockets are not covered yet, deliberately. Their
+upgrades never pass the HTTP boundary that runs this check (each socket
+server listens on its own port with its own `verifyClient`), and a browser
+`WebSocket` cannot set a request header, so carriage would need a query
+parameter or subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
+the browser fail the connection, so a newer client would lose every older
+host. A query parameter is harmless to older hosts and is the planned
+carriage, added together with the check on each socket's own upgrade path.
+
+Clients send the header from the SDK request seam (which the CLI uses), the
+pairing client, and the connection health probe. The CORS preflight allow-list
+includes it. Same-origin browser requests, Node callers, and host-owned native
+or encrypted relay transports can send it without preflight negotiation.
+Cross-origin browser requests send it only after the host's public handshake
+advertises `compatibility.capabilities.clientProtocolHeader >= 1`. The
+[shared policy](../../packages/shared/src/client-protocol.ts) remembers this
+per origin in process memory and removes the observation when the capability
+is no longer advertised. The UI clears the prior observation when a handshake
+starts. Across both UI
+callers, only the latest-started handshake per origin may restore acceptance;
+its non-OK response, invalid JSON or transport error leaves acceptance cleared.
+An older overlapping success cannot restore it. Older or unobserved hosts
+receive no header and read the request as protocol 1.
+
+The native pairing exchange, which Rust builds itself, remains undeclared.
+Direct `fetch` callers that bypass the SDK seam also remain undeclared, including
+the notification action and local UI identity requests in `src-ui` and the
+`station operate` event stream in the CLI. The ratchet in
+[`client-protocol-admission.test.ts`](../../src-server/runtime/__tests__/client-protocol-admission.test.ts)
+blocks raising `minClientProtocol` above 1 while these four known callers remain
+on its list. Removing an entry requires carriage evidence; the test is not an
+automatic discovery of every caller. Terminal and voice admission needs its
+separate implementation before a raised minimum covers those listeners.
 
 ## Separate native relay pilot
 
@@ -355,13 +475,18 @@ default to the historical four-token grant rather than Standard:
   pairing request.
 
 Beyond the presets, the operator adds elevated scopes to an already-paired
-device, never at pairing: in the desktop app (**Paired devices** → the device
-→ **Change access**) or on the Station host with `station environment access
-scope <device> --add|--remove|--set <scope>` (#1796). Both use
+device, never at pairing, on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). That uses
 `POST /api/pairing/devices/:id/scope`, which only the operator credential
 reaches; the CLI verbs additionally refuse any non-loopback target before
 reading a credential, so a paired remote CLI cannot run them, and there is no
-remote operator authentication. `access:manage` is not grantable this way.
+remote operator authentication. The **Paired devices** panel offers **Change
+access**, but the host desktop app presents its local-grant device credential,
+not the operator credential, so the route answers it 401. From the panel,
+only a browser that presents the operator credential itself, as its saved
+connection credential or pasted for the write, reaches it
+([operator device access](../design/operator-device-access.md), #2894).
+`access:manage` is not grantable this way.
 Each change is sent with the scope it replaces (`expectedScope`) and a
 concurrent change returns 409 `scope_changed` instead of being overwritten;
 the change drops the device's live terminal and voice leases. One such scope,
@@ -1147,6 +1272,22 @@ grepping for approvals does not return both. Neither carries device or network
 identity. That is the only signal distinguishing an ordinary first-run approval
 from the residue being exercised, which is why it is covered by tests rather
 than left to inspection.
+
+**Detection for off-host operator-credential use (#2894 S1).** The four
+device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
+record removal) record each raw operator-credential use with its host position.
+A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
+any forwarding header, including Station's UI proxy reporting that its client
+sent one) is still allowed. It is logged at warn with the message `Operator
+credential used off-host for device administration` and the record's `event`
+field `station.pairing.operator_credential_used`, carrying a per-process
+count, and every use is counted in
+`station.device_pairing.operator_credential_uses` by route and position, with
+no device or network identity. The position is telemetry, not proof: a
+same-host proxy or tunnel that strips forwarding headers makes a remote caller
+read as on-host. Refusing the raw credential is a later step of
+[operator device access](../design/operator-device-access.md) and must rest on
+proof of a host-only secret.
 
 **The rest of the family, assessed then.** These were reachable on the
 old floor, each because it was the operator's own panel doing its job before any
