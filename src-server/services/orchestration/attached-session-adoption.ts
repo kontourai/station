@@ -728,6 +728,10 @@ export class AttachedSessionAdoption {
         ...(place.project
           ? {
               projectSlug: place.project.slug,
+              // #3429: what a project chat records beside its slug. The
+              // child runs in its own folder, not a worktree Station made,
+              // so its isolation is `shared`.
+              workspaceIsolation: { mode: 'shared' },
               ...(place.project.id
                 ? { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: place.project.id }
                 : {}),

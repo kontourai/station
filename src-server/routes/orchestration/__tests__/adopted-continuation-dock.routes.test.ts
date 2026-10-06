@@ -10,6 +10,7 @@
  * engines record what Station handed them and publish `session.started` with
  * the start metadata, as the real adapters do.
  */
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -40,6 +41,51 @@ import { createGlobalConversationRoutes } from '../../chat/conversations.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const CURRENT_API = 'http://adopted-dock.test';
+
+function git(cwd: string, ...args: string[]): void {
+  execFileSync('git', args, {
+    cwd,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_AUTHOR_NAME: 'Test',
+      GIT_AUTHOR_EMAIL: 'test@example.invalid',
+      GIT_COMMITTER_NAME: 'Test',
+      GIT_COMMITTER_EMAIL: 'test@example.invalid',
+    },
+  });
+}
+
+function repository(path: string): string {
+  mkdirSync(path, { recursive: true });
+  git(path, 'init', '-q', '-b', 'main');
+  git(path, 'commit', '-q', '--allow-empty', '-m', 'init');
+  return path;
+}
+
+/**
+ * The follow-up the dock sends (`foregroundMessageDispatch.ts`): a tab with
+ * a project names only that project; one without names this Station.
+ */
+function dockFollowUp(
+  agent: string,
+  conversationId: string,
+  projectSlug: string | undefined,
+  message: string,
+) {
+  return {
+    target: {
+      ...(!projectSlug ? { environment: { kind: 'current' } } : {}),
+      agent,
+      ...(projectSlug ? { workspace: { kind: 'project', projectSlug } } : {}),
+    },
+    message,
+    conversationId,
+  };
+}
 process.env.STATION_API_BASE = CURRENT_API;
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -60,6 +106,7 @@ type Engine = 'claude' | 'codex';
 function installStationDiscovery(
   loader: ConfigLoader,
   security: EnvironmentSecurityService,
+  projects: () => Array<{ slug: string; workingDirectory: string }>,
 ): void {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
@@ -74,6 +121,15 @@ function installStationDiscovery(
         success: true,
         data: { ...spec, slug: agent, available: true },
       });
+    }
+    const project = url.match(/\/api\/projects\/([^/]+)$/)?.[1];
+    if (project) {
+      const found = projects().find(
+        (candidate) => candidate.slug === decodeURIComponent(project),
+      );
+      return found
+        ? json({ success: true, data: found })
+        : json({ success: false, error: 'Project not found' }, 404);
     }
     const connection = url.match(/\/api\/connections\/([^/]+)$/)?.[1];
     if (connection)
@@ -224,11 +280,21 @@ async function fixture(options: { engineAgent: boolean }) {
     await materializeEngineAgent(loader, 'claude', 'Claude Code');
     await materializeEngineAgent(loader, 'codex', 'Codex');
   }
-  installStationDiscovery(loader, security);
 
-  const project = join(root, 'station');
+  // The user's home folder is the test's own: a No project continuation is
+  // allowed only inside it (#3386). Station's data folder stays outside it.
+  const userHome = join(root, 'user');
+  vi.stubEnv('HOME', userHome);
+  vi.stubEnv('STATION_HOME', home);
+  const project = repository(join(userHome, 'dev', 'station'));
   const folder = join(project, 'packages', 'app');
   mkdirSync(folder, { recursive: true });
+  const worktree = join(userHome, 'dev', 'station-worktrees', 'lane');
+  git(project, 'worktree', 'add', '-q', '-b', 'lane', worktree);
+  const ownFolder = join(userHome, 'code', 'scratch');
+  mkdirSync(ownFolder, { recursive: true });
+  const projects = () => [{ slug: 'station', workingDirectory: project }];
+  installStationDiscovery(loader, security, projects);
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
@@ -246,7 +312,7 @@ async function fixture(options: { engineAgent: boolean }) {
     eventBus,
     eventStore: store,
     adoptionLedger: store.createAdoptionLedger(),
-    listProjects: () => [{ slug: 'station', workingDirectory: project }],
+    listProjects: projects,
     // The production composition (`runtime-initialize.ts`).
     resolveAdoptedChildExecutionBinding:
       createAdoptedChildExecutionBindingResolver({
@@ -382,10 +448,14 @@ async function fixture(options: { engineAgent: boolean }) {
   };
 
   /** Continue in Station through the real command route. */
-  const adopt = async (sourceThreadId: string) => {
+  const adopt = async (
+    sourceThreadId: string,
+    target?: { kind: 'own-folder' },
+  ) => {
     const response = await request('/api/orchestration/commands', {
       type: 'adoptSession',
       sourceThreadId,
+      ...(target ? { target } : {}),
     });
     expect(response.status, response.text).toBe(200);
     const childThreadId = response.body.data.threadId as string;
@@ -407,6 +477,8 @@ async function fixture(options: { engineAgent: boolean }) {
     engines,
     project,
     folder,
+    worktree,
+    ownFolder,
     attached,
     adopt,
     request,
@@ -414,29 +486,58 @@ async function fixture(options: { engineAgent: boolean }) {
 }
 
 describe('#3429: a continued attached conversation opens in the dock', () => {
-  test.each(['claude', 'codex'] as const)(
-    '%s: the dock opens the continuation and a /chat follow-up reaches its engine in its folder',
-    async (engine) => {
+  type Kind =
+    | 'project folder'
+    | 'folder inside the project'
+    | 'worktree'
+    | 'No project';
+  test.each([
+    ['claude', 'project folder'],
+    ['codex', 'project folder'],
+    ['claude', 'folder inside the project'],
+    ['codex', 'worktree'],
+    ['claude', 'No project'],
+  ] as Array<[Engine, Kind]>)(
+    '%s, %s: the dock opens the continuation and its follow-up reaches the engine in the conversation folder',
+    async (engine, kind) => {
       const f = await fixture({ engineAgent: true });
-      const child = await f.adopt(f.attached(engine));
+      const cwd = {
+        'project folder': f.project,
+        'folder inside the project': f.folder,
+        worktree: f.worktree,
+        'No project': f.ownFolder,
+      }[kind];
+      const projectSlug = kind === 'No project' ? undefined : 'station';
+      const child = await f.adopt(
+        f.attached(engine, cwd),
+        kind === 'No project' ? { kind: 'own-folder' } : undefined,
+      );
       const environmentId = (await f.security.readExistingRecord())
         .environmentId;
 
       // Adoption kept its own confinement (the operator in person may grant
-      // `host`, #2493) and folder, and added the binding a dock-started chat
-      // of the engine's own Agent records.
+      // `host`, #2493), folder and project, and added the binding a
+      // dock-started chat of the engine's own Agent records.
       const [adoption] = f.engines[engine].adoptions;
-      expect(adoption!.cwd).toBe(f.folder);
+      expect(adoption!.cwd).toBe(cwd);
       expect(adoption!.confinement).toBe('host');
       expect(adoption!.metadata).toMatchObject({
         stationConfinement: 'host',
+        dispatchCanonicalCwd: cwd,
         agentSlug: engine,
         targetKind: 'agent',
         targetId: engine,
         connectionId: engine,
         environmentId,
         conversationId: child,
+        ...(projectSlug
+          ? { projectSlug, workspaceIsolation: { mode: 'shared' } }
+          : {}),
       });
+      if (!projectSlug) {
+        expect(adoption!.metadata).not.toHaveProperty('projectSlug');
+        expect(adoption!.metadata).not.toHaveProperty('workspaceIsolation');
+      }
 
       // The dock's open read (`GET /api/conversations/:id/open`).
       const opened = await f.request(
@@ -455,31 +556,51 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
           engineConnectionId: engine,
         },
       });
+      // The tab takes its project from this read, and so does its follow-up.
+      expect(opened.body.data.conversation.projectSlug).toBe(projectSlug);
 
-      // The dock's follow-up: the payload `foregroundMessageDispatch.ts`
-      // builds for a tab with no project.
-      const followUp = await f.request('/api/orchestration/chat', {
-        target: { environment: { kind: 'current' }, agent: engine },
-        message: 'keep going',
-        conversationId: child,
-      });
+      const followUp = await f.request(
+        '/api/orchestration/chat',
+        dockFollowUp(
+          engine,
+          child,
+          opened.body.data.conversation.projectSlug,
+          'keep going',
+        ),
+      );
       expect(followUp.status, followUp.text).toBe(200);
       expect(followUp.body.data).toMatchObject({
         conversationId: child,
         sessionId: child,
       });
-      // It reached the continuation's engine session, which runs in the
-      // attached conversation's folder: no other session was started.
+      // It reached the continuation's own engine session, which runs in the
+      // conversation's folder: nothing was started anywhere else, and the
+      // project root never became its folder.
       expect(f.engines[engine].turns).toEqual([
         { threadId: child, input: 'keep going' },
       ]);
-      expect(f.engines[engine].starts).toEqual([
-        { threadId: child, cwd: f.folder },
-      ]);
+      expect(f.engines[engine].starts).toEqual([{ threadId: child, cwd }]);
       const other = engine === 'claude' ? 'codex' : 'claude';
       expect(f.engines[other].turns).toEqual([]);
+      expect(f.engines[other].starts).toEqual([]);
     },
   );
+
+  test('a follow-up that names another folder of the project is still refused', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.folder));
+    const followUp = await f.request('/api/orchestration/chat', {
+      target: {
+        agent: 'claude',
+        workspace: { kind: 'project', projectSlug: 'station', cwd: f.project },
+      },
+      message: 'move',
+      conversationId: child,
+    });
+    expect(followUp.status).not.toBe(200);
+    expect(followUp.text).toMatch(/different workspace directory/);
+    expect(f.engines.claude.turns).toEqual([]);
+  });
 
   test('a follow-up as a different Agent is refused by the binding', async () => {
     const f = await fixture({ engineAgent: true });
