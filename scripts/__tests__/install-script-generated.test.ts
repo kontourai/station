@@ -386,6 +386,8 @@ describe('install-script:check as a process', () => {
       'packages/shared/src/release-rings.generated.mjs',
       'packages/shared/src/channel-ports.generated.ts',
       'packages/shared/src/release-manifest-keys.generated.ts',
+      'packages/shared/src/windows-path-trust.ts',
+      'packages/shared/src/windows-system-utility.mjs',
       'packages/shared/src/installer',
       'install.sh',
     ])

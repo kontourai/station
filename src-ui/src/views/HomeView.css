@@ -332,24 +332,32 @@
   flex-wrap: wrap;
 }
 
-.home-view__goal {
+/* Continue: the shared work row under its label, the width of the grid. */
+.home-view__continue {
   grid-column: 1 / -1;
+  /* Room under the composer's Start before the work begins. */
+  margin-top: var(--k-space-5);
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-3);
-  width: 100%;
-}
-.home-view__goal textarea {
-  min-height: 96px;
-}
-.home-view__goal--compact textarea {
-  min-height: 44px;
-}
-.home-view__goal--compact .home-view__goal-actions {
   gap: var(--k-space-2);
 }
-.home-view__goal-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--k-space-3);
+.home-view__continue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.home-view__action-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.home-view__action-accent {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 999px;
+}
+/* The start composer's wrapper: the composer fills the column. */
+.home-view__start .start-composer {
+  grid-column: 1 / -1;
 }

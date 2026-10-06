@@ -1,0 +1,7 @@
+{
+  "revision": "2910576181ea3b322b6d9bb756736eb4c7a88f27",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"#3308 review round: contracts reference child-work row extended; this guide routes to the reference and makes no child-work usage claim. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

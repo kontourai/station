@@ -497,7 +497,7 @@ anti-abuse intent or claim that this review provisioned them.
 Follow [release-rings.md](./release-rings.md#publish-a-preview) to tag and
 push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
 
-1. Watch the `Stage Station release` run. The `android` and `ios-device` jobs
+1. Watch the `Release: Stage` run. The `android` and `ios-device` jobs
    use their declared environments: Android uses `native-release`; iOS uses
    the selected channel environment. Approval requirements depend on current
    GitHub environment protection; one approval is not a universal guarantee.

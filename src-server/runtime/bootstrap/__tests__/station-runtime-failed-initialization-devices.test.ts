@@ -83,6 +83,10 @@ function failingRuntime() {
   // supplied; nothing here constructs production storage or listeners.
   Object.assign(runtime, {
     logger,
+    // Route composition builds the operator-passkey service (#3319), which
+    // reads the home but opens its store only on first use.
+    configLoader: { getProjectHomeDir: () => '/station-home-never-opened' },
+    consentChannel: { trustedOrigin: null },
     port: 0,
     host: '127.0.0.1',
     virtualApplicationLifetime: new AbortController(),

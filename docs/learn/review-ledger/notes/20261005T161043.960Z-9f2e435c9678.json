@@ -1,0 +1,23 @@
+{
+  "revision": "ee4d3335f0b76e97b5ff32a089daccf52fb93eca",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read §3.1 against StartMenus.tsx StartModelPicker, NewChatModal.tsx SessionModelPicker (fork list) and useChatInput.ts handleModelSelect/Reset: added that choosing or resetting closes the picker in chat, start composer and fork list (effort keeps it open) and that the reset names the default's source, or source turn for a fork's preferred Agent. Covered by StartModelPicker.test.tsx, NewChatModalEngineChips.test.tsx and task-first-home e2e.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Agent chip passage re-read against HomeStartComposer/StartMenus: added that choosing a Model closes the picker, effort leaves it open, and the reset names its default (Use project default). Rest of the guide unaffected by this change (no other picker claims).","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal change is limited to the Model picker reset label and close-on-choice; the doc's connection layout, profile selection and New Chat setup-return claims do not describe either, so no prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"KnowledgeRecall.tsx change only adds <wbr> break opportunities in the canonical record title at identifier boundaries; the title text and the decision's listed fields (title, type, category, excerpt, status, freshness) are unchanged, so no prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/components/KnowledgeRecall.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Record title rendering keeps identical text with added line-break opportunities; the guide's title/category/excerpt claims remain accurate. No prose change.","inputs":["docs/guides/knowledge.md","packages/sdk/src/components/KnowledgeRecall.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The repository Knowledge Library narrow scene still describes captured revision 171fcbe0c; this change only alters where a long record title may wrap (identifier boundaries), so the caption remains accurate for that capture. No prose change.","inputs":["docs/learn/walkthroughs.md","packages/sdk/src/components/KnowledgeRecall.tsx"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Narrow-view claim re-read: record detail still shows the canonical title; only its wrap points changed (identifier boundaries via <wbr>). No prose change.","inputs":["examples/knowledge-library/README.md","packages/sdk/src/components/KnowledgeRecall.tsx"]},
+
+    {"path":"examples/meeting-notes/README.md","note":"Meeting notes uses KnowledgeRecall for search/graph detail; title text unchanged, only wrap opportunities added. No prose change.","inputs":["examples/meeting-notes/README.md","packages/sdk/src/components/KnowledgeRecall.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home still covers the Home draft flow; the changed test now asserts the draft Model picker closes on choice and reset with focus return and pins the reset label. Matrix row description remains accurate. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

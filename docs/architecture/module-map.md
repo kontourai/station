@@ -26,6 +26,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -108,6 +109,16 @@ admission. `account-response-guard.ts` rechecks delivery with zero prefetch. The
 application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
+
+Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+[enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
+owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
+[registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
+private SQLite file of public keys. The browser half is mounted on the consent
+listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
+the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
+behind `station environment operator passkeys`. Nothing authenticates with an
+enrolled passkey yet.
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
@@ -1135,7 +1146,12 @@ such as a worktree, is not substituted. The admitted canonical path is written
 to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
 value is removed first. Recovery and the credential-profile restart compare
 the re-resolved folder with that record before starting an engine, and a
-continuation child in the same folder inherits it. The refusal reaches the
+continuation child in the same folder inherits it. An adopted attached-session
+child (Continue in Station, #3386) records its resolved folder the same way,
+so its recovery gets the same comparison. The same record binds a
+conversation's follow-up: a `/chat` request whose workspace names only the
+conversation's Project continues it in the recorded folder rather than the
+Project folder ([continuation check](../../src-server/services/execution-target/execution-target-execution.ts), #3429). The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
@@ -1151,6 +1167,44 @@ covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
+
+## SessionMessageDelivery
+
+An agent that messages another Session must not deliver twice when it retries,
+and must not start a second turn on a Session that is already running one.
+[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
+is the one place that decides which of those a message becomes, for Station
+Control's `send_to_session` and later for delegation result delivery.
+
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
+decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+`no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
+pure rule: `auto` steers a running Session and starts an idle one, `start`
+refuses a running one, and `steer` refuses an idle one. The module performs
+nothing itself: the caller supplies the ports for the busy check, a turn start,
+and a receipted steer, each already authorized.
+
+**Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
+`clientInputId` of a steer, so the durable turn claim and the steer receipt
+deduplicate a re-driven delivery. `decided` pins the branch a first attempt took
+(recorded through `recordDecision` before its effect), so a re-drive never turns a
+steer into a start because the turn ended in between. An engine without mid-turn
+input answers the steer as `session_busy`, never as a start.
+
+**Composition and evidence.** The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) checks
+the caller's scope and keys each request in the durable
+[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+(owned by `EventStore`) before it reaches this module. `wait_session` observes
+the same lifecycle fold the steer path reads through
+[SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
+which never acts on the Session. Source tests are the
+[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
+Their presence is not an executed receipt against a real engine. See
+[agent configuration](../guides/self-configuring-agent.md#session-control) for the
+tool-level behavior.
 
 ## ConversationSessionLineage
 
@@ -1206,7 +1260,9 @@ A child reservation is not an engine start and carries no caller-controlled work
 owner, tenant, cursor, or transcript fact. Those remain composed by the
 foreground/orchestration seam from the immutable predecessor binding.
 Conversation closure and multi-session event/history aggregation remain outside
-this Module.
+this Module. Readers aggregate through the lineage order it records: the
+conversation event window and the conversation message read
+(`conversationSessionIds`) both cover every Session, oldest first.
 
 **Code and evidence.** `EventStore` composes the
 private SQLite persistence Adapter at startup and while it first persists a
@@ -1337,6 +1393,12 @@ Adapters, app/ACP configuration readers, public identity mapping, and clock, the
 `ConnectionInspector` private to its inventory publication path. A non-`inspected`
 outcome rejects publication with an explicit retry-before-publish error; routes receive
 the resulting projection rather than classify inspection facts themselves.
+Engine attribution does not depend on that publication: the inspection is total, so one
+failing Adapter or a timed-out read would erase every connection's engine.
+`listEngineConnectionIdentities` derives each registered connection's `engineId` from the
+Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
+readiness keeps the live read (#3355).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
@@ -1366,12 +1428,42 @@ Datum only; they never materialize. Resolution requires one current, non-revoked
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
 
+**Ownership (#3279).** A binding has an owner: `instance` (absent on records written
+before #3279, which keep their behavior), `principal`, or `principal-project`. The
+owner id is an existing human `PrincipalRef.id` from request resolution; a paired
+device without a person, a non-human principal, or a hosted request owns none
+([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
+`create` currently refuses any owner but `instance` (`owner: "self"` on
+`POST /api/secret-bindings` returns a typed 400, "Person-owned secret bindings are not
+available yet."), because no consumer can use one; the rules below govern person-owned
+records that already exist and the future single-principal consumer. List, get, replace, revoke, and integration bind/unbind (including the grant and
+ungrant inside them) take the request principal as viewer. One typed not-found refusal
+covers a missing binding and another person's, and `/api/secret-bindings` returns it as
+the same 404 body on get, replace, revoke, bind, and unbind; request validation that
+runs before the lookup still returns 400 for both. An instance-owned `create` with
+an id already in use is refused, so it reveals that the id exists, including one held
+by an existing person-owned record; that follows from the single global id namespace
+and is accepted for now. A person-owned `create` is refused before the id check, so it
+reveals nothing. A caller without a viewer, including
+stored-env migration, sees and grants only instance bindings. Resolution refuses a
+person-owned binding with `owner_mismatch` unless the invocation names that principal
+(and Project). Stdio MCP children and ACP providers are shared and name none, so
+`grant` refuses a person-owned binding for either consumer (a typed 400, checked after
+the not-found lookup) until a child can serve a single principal; integration bind
+always goes through `grant` for such a binding, even when a grant is already on
+record. New integration env
+references therefore name only instance bindings, and the integration binding
+projection lists every reference, unfiltered, for every caller.
+
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
 resolves fresh child-only environment values and records success only after
 connection/handshake succeeds; unsupported transports and the built-in station-control
-child refuse authored injection. Changing grants does not erase values already delivered
+child refuse authored injection. Attaching a binding to a command-launching
+server (bind, migrate-stored-env, or replacing a binding already bound to one) takes
+the operator or a device holding `coding:exec` at the route (`routes/secret-bindings.ts`),
+because the value becomes that command's environment. Changing grants does not erase values already delivered
 to a running child. The same store separately implements `resolveForAcpProvider()` for
 exact connection/provider/header grants, consumed by the ACP provider-configuration
 route; that is not generic MCP header injection. The Datum adapter is the contracts
@@ -1428,7 +1520,15 @@ same-turn error context for `acp.turn-error-cause`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional
-transcript no-ops, not visible UI implementations. Claude task registry/settled
+transcript no-ops, not visible UI implementations. `transcript.marker` entries
+are derived from the [marker table](../../packages/shared/src/extension-transcript-markers.ts)
+that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
+reads: an attached-session source's context compaction or rewind becomes a
+system row with a fixed label, drawn as a quiet line, and the UI handler
+leaves it to the projection. A marker never splits a turn: one that arrives
+during a turn is held until the turn closes and follows its single answer row,
+so the turn keeps its canonical id and answer eligibility. One table entry binds and renders a tuple; the
+label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
@@ -3062,6 +3162,8 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 **Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
+
+**Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
 The Task dispatcher additionally composes a server-owned room execution
 binding and the existing `SessionTurnBoundaryAuthority`. One durable

@@ -1,0 +1,7 @@
+{
+  "revision": "dd496a9f0a1122c370d84d908e822e702990ac7c",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#3386 fix round: config.md gained an attachedSessionsOutsideProjects row; the sentence here routes to config.md for current limits of unrelated fields and stays accurate. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]}
+  ]
+}

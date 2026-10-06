@@ -140,7 +140,14 @@ describe('gate-for report', () => {
     // Derived from the hook itself: every executed `npm run` or
     // `node scripts/...` line is either an every-push check or a scoped
     // gate. A check dropped from the report, or a hook step the report
-    // never mentions, fails here.
+    // never mentions, fails here. Setup steps that check nothing are named
+    // here with their reason, so a new one is still a deliberate decision.
+    const SETUP_STEPS = new Map([
+      [
+        'node scripts/lib/liveness-scale-resolve.mjs',
+        'resolves the liveness factor the checks inherit (#3302); refuses only a malformed override',
+      ],
+    ]);
     const hookCommands = PRE_PUSH.split('\n')
       .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
       .flatMap((line) => {
@@ -148,9 +155,13 @@ describe('gate-for report', () => {
           /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
         return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
       });
+    for (const step of SETUP_STEPS.keys())
+      expect(hookCommands, `setup step ${step} left the hook`).toContain(step);
     const plan = gatePlan({ changedPaths: [], baseSha });
     expect(hookCommands.length).toBeGreaterThan(0);
-    expect(new Set(hookCommands)).toEqual(
+    expect(
+      new Set(hookCommands.filter((command) => !SETUP_STEPS.has(command))),
+    ).toEqual(
       new Set([
         ...plan.everyPush.map((check) => check.command),
         ...plan.scoped.map((scope) => scope.command),

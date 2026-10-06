@@ -1,3 +1,4 @@
+import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { memo, useCallback } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
@@ -6,6 +7,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -22,10 +24,12 @@ import { MessageContent } from './message-bubble/MessageContent';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
+  resolveTurnEngineId,
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
+import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -91,6 +95,17 @@ export interface MessageBubbleSession {
   /** The host's status pill presents activity and approvals; see
    * `ChatMessageList.statusShownElsewhere`. */
   activityShownElsewhere?: boolean;
+  /**
+   * The phone transcript folds a SETTLED assistant row's tool work into one
+   * row (`MessageContent`'s `foldWork`). Only a caller that knows which row
+   * is still the open turn sets this; without it no row folds.
+   */
+  foldSettledWork?: boolean;
+  /** The open turn's id while a turn is live (`isTurnStreamLive`). */
+  liveTurnId?: string;
+  /** The live turn renders as the transcript's last row rather than in the
+   * streaming shell (`ChatMessageList`'s `suppressStreamingRow`). */
+  liveTailRow?: boolean;
 }
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -112,6 +127,9 @@ interface MessageBubbleProps {
   showToolDetails: boolean;
   onCopy: (text: string) => void;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  /** The previous row belongs to the same turn (a steer, or the rest of a
+   * steered answer): no exchange starts here. */
+  continuesTurn?: boolean;
   /** #2216: nearest preceding completed assistant turn, if any. */
   userForkSource?: ForkTurnSource | null;
   onNewChatFromMessage?: (text: string) => void;
@@ -145,6 +163,7 @@ function MessageBubbleComponent({
   showToolDetails,
   onCopy,
   onForkFromTurn,
+  continuesTurn = false,
   userForkSource,
   onNewChatFromMessage,
   onToolApproval,
@@ -218,11 +237,34 @@ function MessageBubbleComponent({
   if (contextBoundary) {
     return <ConversationContextBoundary boundary={contextBoundary} />;
   }
+  const transcriptMarker = transcriptMarkerLabel(msg.contentParts);
+  if (transcriptMarker) {
+    return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
+  }
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
 
   const isAssistant = msg.role === 'assistant';
+  // A row is the open turn when it carries the live turn's id, or when the
+  // live turn renders as the last row instead of the streaming shell.
+  const rowIsLiveTurn =
+    (activeSession.liveTurnId !== undefined &&
+      msg.turnId === activeSession.liveTurnId) ||
+    (activeSession.liveTailRow === true && isLastMessage);
+  const foldWork =
+    isMobile &&
+    isAssistant &&
+    activeSession.foldSettledWork === true &&
+    !rowIsLiveTurn;
+  // The meta row's time is the turn's own terminal event time, read from the
+  // turn's envelope: `msg.timestamp` can be a client-clock fill-in on some
+  // load paths, and a historical row must never state one as its time.
+  const envelope =
+    isAssistant && isSupportedTurnProvenanceEnvelope(msg.provenance)
+      ? msg.provenance
+      : undefined;
+  const settledAt = envelope ? Date.parse(envelope.observedAt) : Number.NaN;
   const hasTurnFooter =
     msg.role === 'assistant' &&
     (msg.provenance !== undefined || msg.turnId !== undefined);
@@ -259,7 +301,7 @@ function MessageBubbleComponent({
   const registeredRowAgent = rowAgentSlug
     ? agents.find((candidate) => candidate.slug === rowAgentSlug)
     : undefined;
-  const rowAgent =
+  const resolvedRowAgent =
     (msg.agentDisplayName
       ? { slug: rowAgentSlug, name: msg.agentDisplayName, icon: msg.agentIcon }
       : registeredRowAgent) ??
@@ -277,6 +319,16 @@ function MessageBubbleComponent({
               : `Deleted Agent “${rowAgentSlug}”`,
         }
       : undefined);
+  // #3355: the avatar's engine mark is the engine that ran THIS turn, read
+  // from the turn's own envelope (`resolveTurnEngineId`), in every branch
+  // above — so a Codex turn draws the Codex mark rather than initials, and a
+  // rebound agent cannot relabel history (archive#1424). A row without an
+  // envelope keeps whatever the branch already carried.
+  const turnEngineId = isAssistant ? resolveTurnEngineId(msg) : undefined;
+  const rowAgent =
+    resolvedRowAgent && turnEngineId
+      ? { ...resolvedRowAgent, engineId: turnEngineId }
+      : resolvedRowAgent;
   const avatarContent = isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
   ) : (
@@ -696,9 +748,50 @@ function MessageBubbleComponent({
     </>
   );
 
+  const details = isMobile ? (
+    <MessageDetails
+      label={
+        msg.role === 'user'
+          ? 'Your message actions'
+          : 'Answer details and actions'
+      }
+    >
+      {metadataBefore}
+      {metadataAfter}
+    </MessageDetails>
+  ) : null;
+  const time =
+    isMobile && Number.isFinite(settledAt)
+      ? messageTime(settledAt, Date.now())
+      : '';
+  // An answer's ⋯ shares one quiet row with the turn's settle time; the
+  // user's bubble keeps its trigger beside it.
+  const mobileDetails = isAssistant ? (
+    <div className="message-meta">
+      {time && envelope && (
+        <time
+          className="message-meta__time"
+          dateTime={envelope.observedAt}
+          title={absoluteTime(settledAt)}
+        >
+          {time}
+        </time>
+      )}
+      {details}
+    </div>
+  ) : (
+    details
+  );
+
   return (
     <div
-      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}`}
+      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}${
+        // Phone: a thin rule opens every exchange after the first. A steer is
+        // more input on the same turn, not a new exchange.
+        isMobile && msg.role === 'user' && idx > 0 && !continuesTurn
+          ? ' message-row--exchange-start'
+          : ''
+      }`}
       data-chat-message-key={anchorKey}
     >
       {!isMobile && <div className="message-row__avatar">{avatarContent}</div>}
@@ -734,6 +827,7 @@ function MessageBubbleComponent({
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
             isStreamingMessage={isStreamingMessage}
+            foldWork={foldWork}
             onToolApproval={
               onToolApproval ? handleContentToolApproval : undefined
             }
@@ -778,18 +872,7 @@ function MessageBubbleComponent({
           </>
         )}
       </div>
-      {isMobile && (
-        <MessageDetails
-          label={
-            msg.role === 'user'
-              ? 'Your message actions'
-              : 'Answer details and actions'
-          }
-        >
-          {metadataBefore}
-          {metadataAfter}
-        </MessageDetails>
-      )}
+      {isMobile && mobileDetails}
     </div>
   );
 }

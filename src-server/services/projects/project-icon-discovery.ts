@@ -1,10 +1,15 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
-import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
+import {
+  PROJECT_ICON_MAX_IMAGE_BYTES,
+  type ProjectIconCandidate,
+  projectIconProblem,
+} from '@kontourai/station-contracts/project';
 import { expandTilde } from '../../utils/paths.js';
 
 const MAX_CANDIDATES = 8;
-const MAX_IMAGE_BYTES = 128 * 1024;
+// The stored-icon bound: every candidate offered is one the routes accept.
+const MAX_IMAGE_BYTES = PROJECT_ICON_MAX_IMAGE_BYTES;
 const MANIFEST_PATHS = [
   'manifest.json',
   'site.webmanifest',
@@ -37,31 +42,6 @@ const MEDIA_TYPES: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-function hasImageSignature(bytes: Buffer, mediaType: string): boolean {
-  if (mediaType === 'image/png') {
-    return bytes
-      .subarray(0, 8)
-      .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-  }
-  if (mediaType === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8;
-  if (mediaType === 'image/x-icon') {
-    return (
-      bytes.length >= 4 &&
-      bytes[0] === 0 &&
-      bytes[1] === 0 &&
-      bytes[2] === 1 &&
-      bytes[3] === 0
-    );
-  }
-  if (mediaType === 'image/webp') {
-    return (
-      bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
-      bytes.subarray(8, 12).toString('ascii') === 'WEBP'
-    );
-  }
-  return false;
-}
-
 function safeRelativePath(root: string, candidate: string): string | null {
   const rel = relative(root, candidate);
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return null;
@@ -83,13 +63,12 @@ async function readCandidate(
     if (!info.isFile() || info.size < 1 || info.size > MAX_IMAGE_BYTES)
       return null;
     const bytes = await readFile(canonicalPath);
-    if (!hasImageSignature(bytes, mediaType)) return null;
-    return {
-      relativePath,
-      dataUrl: `data:${mediaType};base64,${bytes.toString('base64')}`,
-      mediaType,
-      source,
-    };
+    const dataUrl = `data:${mediaType};base64,${bytes.toString('base64')}`;
+    // The stored-icon rule, not a second copy of it: it checks the signature
+    // and re-checks the size against the bytes actually read (the file can
+    // grow between the stat and the read).
+    if (projectIconProblem(dataUrl)) return null;
+    return { relativePath, dataUrl, mediaType, source };
   } catch {
     return null;
   }

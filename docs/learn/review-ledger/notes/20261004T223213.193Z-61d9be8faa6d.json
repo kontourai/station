@@ -1,0 +1,13 @@
+{
+  "revision": "d18e9d36197d7f585e5c771640498ab4cbc2e016",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Doc-only delta: session-api.md and monitoring.md now state that in hosted mode a delegate launched by a caller-less internal request is operator-owned, so another reader's usage tree ignores it without marking the total partial. This document makes no claim about usage-tree readability; no prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Doc-only delta: session-api.md and monitoring.md now state that in hosted mode a delegate launched by a caller-less internal request is operator-owned, so another reader's usage tree ignores it without marking the total partial. This document makes no claim about usage-tree readability; no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Added the same hosted-mode disclosure beside the delegate-linking paragraph. Checked against the same owners and the reader's ignore-unreadable rule.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Added the hosted-mode exception to the unreadable-sessions rule: caller-less internal launches (Station's own agent, Strands-runtime agents) are owned by the Station operator, so another reader's tree doesn't count them and isn't marked partial. Checked against session-owner-attribution.ts (sessionOwnerStampFor), orchestration-request-principal.ts and thread-usage-tree-read.ts.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

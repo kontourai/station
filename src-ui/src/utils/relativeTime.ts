@@ -60,6 +60,41 @@ export function absoluteTime(at: number): string {
 }
 
 /**
+ * A future instant as a wall-clock time, for a sentence that says when
+ * something will happen ("Resets 11:00 PM"): the local time, with the short
+ * weekday when it is not on `now`'s day ("Mon 11:00 PM"). Not a row time:
+ * rows say how long ago with `relativeTime`.
+ */
+export function clockTime(at: number, now: number): string {
+  const date = new Date(at);
+  const time = date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return date.toDateString() === new Date(now).toDateString()
+    ? time
+    : `${date.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
+}
+
+/**
+ * A transcript row's own clock time, for the phone answer's meta row: the
+ * local time ("7:36 AM") on `now`'s day, and with the short date otherwise
+ * ("Oct 3, 7:36 AM"; the year too once it differs). Unlike the work
+ * surfaces' relative `relativeTime`, a transcript reads as a log, so the row
+ * states when it happened. Empty for a stamp that is not a real time.
+ */
+export function messageTime(at: number, now: number): string {
+  if (!Number.isFinite(at) || at <= 0) return '';
+  const date = new Date(at);
+  const time = date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  if (date.toDateString() === new Date(now).toDateString()) return time;
+  return `${shortDate(at, now)}, ${time}`;
+}
+
+/**
  * "2m ago" / "just now": the sentence form, for prose that needs a clause
  * ("checked just now"). Never on a row, a card or a status line — those use
  * `relativeTime`; the vocabulary test pins that none of them says "ago".

@@ -47,6 +47,7 @@
         "SessionLifecycleModule",
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",
+        "SessionMessageDelivery",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",

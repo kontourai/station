@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connection-service.ts change in this round only rewords a warning; no e2e spec, lane or manifest membership changed. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","src-server/services/connections/connection-service.ts"]}
+  ]
+}

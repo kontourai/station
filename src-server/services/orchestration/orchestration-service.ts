@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
@@ -8,12 +9,14 @@ import {
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AttentionInputReplyContext,
-  AttentionRequestInspection,
-  AttentionRequestReference,
+import {
+  ATTENTION_REQUEST_ID_MAX_CHARS,
+  type AttentionInputReplyContext,
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
+import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
 import type {
   ClientOrigin,
   ClientOriginActor,
@@ -38,6 +41,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -55,12 +59,14 @@ import {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   ApprovalMode,
+  DelegationProvenance,
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
@@ -201,6 +207,7 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -239,6 +246,7 @@ import {
 } from '../projects/project-resource-shadow.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
+import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import {
   ApprovalPosture,
@@ -249,6 +257,7 @@ import {
   type AdoptionConfinement,
   AttachedSessionAdoption,
 } from './attached-session-adoption.js';
+import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
@@ -380,6 +389,7 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
   createManualSessionTransitionEvent,
+  interruptibleTurnIdForEvents,
   isDeferredRetriableTurnError,
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
@@ -418,6 +428,18 @@ import {
   type SkillExperienceSource,
   SkillExperienceUnavailableError,
 } from './skill-experience-runtime.js';
+import {
+  createStationControlPullRequestDeclarations,
+  type StationControlActiveTurn,
+  type StationControlPullRequestDeclarationOutcome,
+  type StationControlPullRequestDeclarations,
+  type StationControlPullRequestIdentity,
+  StationControlPullRequestUnavailableError,
+} from './station-control-pull-request-declarations.js';
+import {
+  readThreadUsageTree,
+  type ThreadUsageTreeReadOutcome,
+} from './thread-usage-tree-read.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -496,6 +518,8 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
+  delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
@@ -717,7 +741,10 @@ class DraftDiscardedError extends Error {
   }
 }
 
-export { AdoptionContinuationInProgressError } from './attached-session-adoption.js';
+export {
+  AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
+} from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
 /**
@@ -808,6 +835,12 @@ interface OrchestrationServiceOptions {
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment a continued attached conversation runs
+   * as (`adopted-child-execution-binding.ts`). Absent, a continuation has no
+   * Agent and the dock cannot open it.
+   */
+  resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
@@ -872,6 +905,18 @@ interface OrchestrationServiceOptions {
       repository: string;
       ref: string;
       nativeId: string;
+      workingDirectory: string;
+    }): Promise<Extract<
+      DeclaredOutputDescriptor,
+      { kind: 'pull-request' }
+    > | null>;
+    /** #3161: the same read for a caller that has no provider-native id. */
+    readIdentity(input: {
+      provider: string;
+      host: string;
+      owner: string;
+      repository: string;
+      ref: string;
       workingDirectory: string;
     }): Promise<Extract<
       DeclaredOutputDescriptor,
@@ -1009,6 +1054,14 @@ interface PeerDelegationActivityDispatch {
   target: { kind: 'agent'; id: string };
   projectSlug?: string;
   parentTaskId?: string;
+  /**
+   * The calling conversation from the delegation context the route resolved
+   * for the request, so this Station can attribute the record to the
+   * conversation that launched it.
+   */
+  parentConversationId?: string;
+  /** #3323: how the route came by that context; stamped beside it. */
+  delegationProvenance?: DelegationProvenance;
 }
 
 /**
@@ -1023,10 +1076,56 @@ export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
  * can tell it was shortened; the request id carries identity, not the title.
  */
 function boundedPeerRequestTitle(title: string): string {
-  const characters = Array.from(title);
-  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
-    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
-    : title;
+  return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
+}
+
+function boundedPeerText(text: string, max: number): string {
+  const characters = Array.from(text);
+  return characters.length > max
+    ? `${characters.slice(0, max - 1).join('')}…`
+    : text;
+}
+
+/** Only the request types the canonical vocabulary names are stored. */
+function isPeerRequestType(
+  type: string | undefined,
+): type is NonNullable<OrchestrationPeerPendingRequest['type']> {
+  return (
+    type === 'approval' ||
+    type === 'permission' ||
+    type === 'confirmation' ||
+    type === 'input'
+  );
+}
+
+/** Bound on the paired Station's presented question text. */
+export const PEER_PENDING_REQUEST_BODY_MAX_CHARS = 4_000;
+
+/** Every reported field except the local observation time. */
+function samePeerPendingRequest(
+  a: OrchestrationPeerPendingRequest,
+  b: OrchestrationPeerPendingRequest,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.title === b.title &&
+    a.eventId === b.eventId &&
+    a.threadId === b.threadId &&
+    a.body === b.body &&
+    a.callerCanRespond === b.callerCanRespond
+  );
+}
+
+/** What the paired Station's status read reported about its open request. */
+export interface PeerReportedPendingRequest {
+  id: string;
+  type?: string;
+  title?: string;
+  eventId?: string;
+  threadId?: string;
+  body?: string;
+  callerCanRespond?: boolean;
 }
 
 function peerDelegationActivityThreadId(
@@ -1618,6 +1717,12 @@ export class OrchestrationService {
   private readonly nativeOutputDeclarations: ReturnType<
     typeof createNativeOutputDeclarationOperation
   >;
+  /**
+   * #3161: the second admission authority, for a pull request an external
+   * engine declares through Station Control. Its pending handles land in the
+   * same terminal savepoint as the native ones.
+   */
+  private readonly stationControlPullRequests?: StationControlPullRequestDeclarations;
   /** Exact active generation until the ordered durable terminal event commits. */
   private readonly nativeTurnGenerations = new Map<string, string>();
   private readonly consumedAdapterEventStreams =
@@ -1977,6 +2082,19 @@ export class OrchestrationService {
           }
         : {}),
     });
+    if (options.nativeDeclaredPullRequestResolver) {
+      const resolver = options.nativeDeclaredPullRequestResolver;
+      this.stationControlPullRequests =
+        createStationControlPullRequestDeclarations({
+          activeTurn: (threadId) => this.activeStationControlTurn(threadId),
+          workspaceRoot: (threadId) =>
+            this.sessionReadModel.get(threadId)?.cwd ??
+            this.options.eventStore?.readSessionByThread(threadId)?.cwd,
+          declaredPullRequests: (threadId) =>
+            this.declaredPullRequestsOfSession(threadId),
+          resolver,
+        });
+    }
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
@@ -2044,6 +2162,9 @@ export class OrchestrationService {
         this.sessionAuthz.canReadSession(threadId, authority),
       isEphemeralSession: (threadId) => this.isEphemeralSession(threadId),
       sessionAttributionFor: (threadId) => this.sessionAttributionFor(threadId),
+      conversationIdForThread: (threadId) =>
+        this.options.eventStore?.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
         (this.options.eventStore?.listEvents(threadId) ?? []).map(
           (event) => event.payload,
@@ -2143,6 +2264,12 @@ export class OrchestrationService {
         ? { flowRunService: options.flowRunService }
         : {}),
       ...(options.listProjects ? { listProjects: options.listProjects } : {}),
+      ...(options.resolveAdoptedChildExecutionBinding
+        ? {
+            resolveExecutionBinding:
+              options.resolveAdoptedChildExecutionBinding,
+          }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -3435,6 +3562,7 @@ export class OrchestrationService {
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
+    this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
@@ -3701,6 +3829,14 @@ export class OrchestrationService {
         userId: input.userId,
         ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        ...(input.parentConversationId
+          ? { parentConversationId: input.parentConversationId }
+          : {}),
+        ...(input.parentConversationId && input.delegationProvenance
+          ? {
+              [DELEGATION_PROVENANCE_METADATA_KEY]: input.delegationProvenance,
+            }
+          : {}),
       },
     });
     return threadId;
@@ -3716,7 +3852,7 @@ export class OrchestrationService {
   recordPeerDelegationPendingRequest(input: {
     taskId: string;
     environmentId: string;
-    pendingRequest: { id: string; type?: string; title?: string } | null;
+    pendingRequest: PeerReportedPendingRequest | null;
     /**
      * Set when the paired Station has just answered `respond` for this
      * request id: clear the observation only if it still names that request,
@@ -3755,23 +3891,45 @@ export class OrchestrationService {
         { threadId, length: rawId.length },
       );
     const id = idRefused ? undefined : rawId;
-    const title = input.pendingRequest?.title?.trim();
+    const reported = input.pendingRequest;
+    const title = reported?.title?.trim();
+    const body = reported?.body?.trim();
+    // The binding pair is stored only whole and within bounds; a cut id
+    // would name another request, so an over-long one leaves no binding
+    // (the inbox then keeps the note rather than offering an answer).
+    const binding =
+      reported?.eventId &&
+      reported.threadId &&
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
+        ? { eventId: reported.eventId, threadId: reported.threadId }
+        : undefined;
     const next = id
       ? {
           id,
-          ...(input.pendingRequest?.type
-            ? { type: input.pendingRequest.type }
-            : {}),
+          ...(isPeerRequestType(reported?.type) ? { type: reported.type } : {}),
           ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          ...(binding ?? {}),
+          ...(body
+            ? {
+                body: boundedPeerText(
+                  body,
+                  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+                ),
+              }
+            : {}),
+          ...(typeof reported?.callerCanRespond === 'boolean'
+            ? { callerCanRespond: reported.callerCanRespond }
+            : {}),
           observedAt: new Date().toISOString(),
         }
       : null;
     if (
       next === null
         ? current === null || current === undefined
-        : current?.id === next.id &&
-          current.type === next.type &&
-          current.title === next.title
+        : current !== null &&
+          current !== undefined &&
+          samePeerPendingRequest(current, next)
     )
       return false;
     this.projectAndPublishEvent({
@@ -4258,6 +4416,42 @@ export class OrchestrationService {
   }
 
   /**
+   * #3412: the Project and directory one Session is bound to, for a reader
+   * allowed to read it, without materializing its transcript: the Project
+   * its start stamped (`firstStartedMetadataOfThread`, which later sparse
+   * reconfiguration cannot shadow) and the loaded or persisted row's `cwd`.
+   * `null` when the authority may not read the Session or Station has no
+   * record of it. A read-only attached Session names no Project here: its
+   * attribution is a correctable later statement, which only the full read
+   * model folds.
+   */
+  readSessionWorkspaceBinding(
+    threadId: string,
+    authority: SessionReadScope,
+  ): { projectSlug?: string; cwd?: string } | null {
+    this.initialize();
+    if (
+      this.isEphemeralSession(threadId) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const session =
+      this.sessionReadModel.get(threadId) ??
+      this.options.eventStore?.readSessionByThread(threadId);
+    if (!session) return null;
+    const projectSlug =
+      session.controlMode === 'read-only-attached'
+        ? undefined
+        : this.firstStartedMetadataOfThread(threadId)?.projectSlug;
+    return {
+      ...(typeof projectSlug === 'string' && projectSlug.length > 0
+        ? { projectSlug }
+        : {}),
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+    };
+  }
+
+  /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
    */
@@ -4463,6 +4657,16 @@ export class OrchestrationService {
     return this.conversationLineage.currentConversationSessionId(
       conversationId,
     );
+  }
+
+  /** The conversation a successor execution Session continues, if it is one. */
+  successorConversationId(sessionId: string): string | undefined {
+    return this.conversationLineage.successorConversationId(sessionId);
+  }
+
+  /** Every execution Session of a durable conversation, in lineage order. */
+  conversationSessionIds(conversationId: string): string[] {
+    return this.conversationLineage.conversationSessionIds(conversationId);
   }
 
   /**
@@ -5111,6 +5315,18 @@ export class OrchestrationService {
     return this.transcriptReads.readSessionUsage(threadId, authority);
   }
 
+  /** #3112: a conversation's usage across every Session in its lineage. */
+  readConversationUsage(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    this.initialize();
+    return this.transcriptReads.readConversationUsage(
+      this.conversationLineage.conversationSessionIds(conversationId),
+      authority,
+    );
+  }
+
   /**
    * Every persisted session's usage, for lifetime analytics (archive#3245).
    *
@@ -5148,6 +5364,92 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+    );
+  }
+
+  /**
+   * One conversation's usage as a tree: its own sessions' receipts, the
+   * subagents they reported, and the delegated tasks launched from it, with
+   * a roll-up total that says what it leaves out. Each conversation is
+   * authorized whole, by {@link canUserReadConversation}; bounded, and
+   * refused past its bound (`too-large`) rather than cut.
+   */
+  readThreadUsageTree(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ): ThreadUsageTreeReadOutcome {
+    this.initialize();
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return { status: 'not-found' };
+    const sessionFor = (threadId: string) =>
+      this.sessionReadModel.get(threadId) ??
+      eventStore.readSessionByThread(threadId);
+    return readThreadUsageTree(
+      {
+        // Receipts carry a Station id for the cross-Station rollup; the tree
+        // reads only this Station's sessions and never returns the id.
+        stationId: 'local',
+        canReadConversation: (id, scope) =>
+          this.canUserReadConversation(id, scope),
+        conversationThreadIds: (id) =>
+          eventStore.conversationSessions(id).map((entry) => entry.sessionId),
+        listUsageReceiptEventsForThreads: (threadIds, limit) =>
+          eventStore.listUsageReceiptEventsForThreads(threadIds, limit),
+        listChildWorkHistoryForThreads: (threadIds) =>
+          eventStore.listChildWorkHistoryForThreads(threadIds),
+        listSessionsNamingParents: (parentIds, limit) =>
+          eventStore.listSessionsNamingParents(parentIds, limit),
+        conversationForThread: (threadId) =>
+          eventStore.conversationForSession(threadId)?.conversationId ??
+          threadId,
+        describeDelegate: (threadId) => {
+          const persisted = eventStore.readSessionByThread(threadId);
+          const loaded = this.sessionReadModel.get(threadId);
+          if (!persisted && !loaded) return undefined;
+          const provider = (loaded ?? persisted)?.provider;
+          const summary = buildOrchestrationSessionSummary({
+            persisted,
+            loaded,
+            events: eventStore
+              .listSessionProjectionEvents(threadId)
+              .map((event) => event.payload),
+            // Built only to read the delegate's own child-work projection;
+            // nothing here is emitted to a client.
+            answerability: this.observeAnswerability(
+              threadId,
+              provider,
+              new Date().toISOString(),
+            ),
+          });
+          // A session launched with a delegation context but no task record
+          // (an agent messaging another agent) is still a child: project it
+          // through the same one mapping, under its own thread as the task.
+          const item =
+            summary.childWork?.asChild ??
+            projectDelegateChildWork({
+              ...summary,
+              delegation: { taskId: threadId },
+            });
+          if (!item) return undefined;
+          return {
+            item,
+            ...(provider ? { provider } : {}),
+            ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
+            pairedStation: summary.delegation?.environmentKind === 'peer',
+          };
+        },
+        describeConversation: (threadIds) => {
+          const latest = threadIds.at(-1);
+          const provider = latest ? sessionFor(latest)?.provider : undefined;
+          const title = eventStore.conversationTitle(threadIds);
+          return {
+            ...(provider ? { provider } : {}),
+            ...(title ? { title } : {}),
+          };
+        },
+      },
+      conversationId,
+      authority,
     );
   }
 
@@ -5641,6 +5943,11 @@ export class OrchestrationService {
             confinement: _untrustedConfinement,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
+          const admittedStartWorkspace =
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+            readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+            internal?.receiverExecutionAdmission?.admitted ??
+            (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
               withoutDispatchCanonicalCwd(
@@ -5655,10 +5962,11 @@ export class OrchestrationService {
             // bound resource path (outside the compat project default) is
             // admitted rather than re-derived, and never forged: the
             // coordinate arrives only via internal options, and the effect
-            // closure below verifies the prepared input against it.
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            // closure below verifies the prepared input against it. #3429:
+            // an adopted child's successor is admitted to the folder its
+            // conversation recorded, re-verified now (see
+            // `adoptedChildAdmittedWorkspace`).
+            admittedStartWorkspace,
             this.options.resolveProjectSessionDirectory,
           );
           // Station #90 lane D (D5): record the Project's local id beside its
@@ -5666,9 +5974,7 @@ export class OrchestrationService {
           startInput = withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            admittedStartWorkspace,
           );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start
@@ -5757,6 +6063,27 @@ export class OrchestrationService {
                 ...startInput.metadata,
                 conversationId: internal.conversationIdentity.conversationId,
                 environmentId: internal.conversationIdentity.environmentId,
+              },
+            };
+          }
+          // #3323: how the dispatch route came by this start's delegation
+          // context, re-stamped after the reserved-key strip removed any
+          // caller-supplied value, and only when the start carries exactly
+          // the context the route resolved: the stamp travels with that
+          // context, so a start with any other context is never stamped.
+          if (
+            internal?.delegationProvenance &&
+            isDeepStrictEqual(
+              startInput.metadata?.delegation,
+              internal.delegationProvenance.context,
+            )
+          ) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DELEGATION_PROVENANCE_METADATA_KEY]:
+                  internal.delegationProvenance.provenance,
               },
             };
           }
@@ -6394,6 +6721,8 @@ export class OrchestrationService {
             // request's grant, like every other start, and (#1796) who
             // granted it. A grant naming no grantor is refused.
             adoptionConfinement(context?.fullAccessGrant),
+            // #3386: where a conversation no project claims continues.
+            command.target,
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -7522,6 +7851,7 @@ export class OrchestrationService {
                 nativeTurnId,
               );
             }
+            this.stationControlPullRequests?.retireSession(command.threadId);
           }
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
@@ -8596,6 +8926,49 @@ export class OrchestrationService {
   }
 
   /**
+   * #3429: a later session of a conversation Continue in Station created
+   * (its root Session records `continuationSourceThreadId`, written only by
+   * adoption) may start in the folder that conversation was admitted into,
+   * even when that folder is a worktree outside the Project folder. Only
+   * when the start names that exact folder and Project, the conversation
+   * recorded it as `dispatchCanonicalCwd` (server-written), the folder still
+   * resolves to that record, and it still passes adoption's own check (the
+   * Project folder or a genuine worktree of its repository) right now.
+   * Anything else gets no coordinate and meets the ordinary rule.
+   */
+  private async adoptedChildAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const store = this.options.eventStore;
+    const projectSlug = input.metadata?.projectSlug;
+    if (!store || !input.cwd || typeof projectSlug !== 'string' || !projectSlug)
+      return undefined;
+    const cwd = resolve(expandTilde(input.cwd));
+    const conversationId =
+      store.conversationForSession(input.threadId)?.conversationId ??
+      input.threadId;
+    if (!store.readSessionByThread(conversationId)?.continuationSourceThreadId)
+      return undefined;
+    const recorded = this.inheritedDispatchCanonicalCwd({ ...input, cwd });
+    if (recorded === undefined) return undefined;
+    try {
+      if (canonicalPath(cwd) !== recorded) return undefined;
+      const place = await resolveContinuationPlace({
+        cwd: recorded,
+        projects: this.options.listProjects?.() ?? [],
+        hosted: this.options.requireTenantExecutionContext?.() === true,
+      });
+      if (place.cwd !== recorded || place.project?.slug !== projectSlug)
+        return undefined;
+    } catch {
+      return undefined;
+    }
+    return { threadId: input.threadId, projectSlug, cwd };
+  }
+
+  /**
    * #2873: the canonical folder the conversation's previous session
    * recorded, for a session that starts in that same folder (a continuation
    * child, or the same thread started again). The newest session with a
@@ -9356,6 +9729,7 @@ export class OrchestrationService {
       this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
+    this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
@@ -9895,6 +10269,111 @@ export class OrchestrationService {
         total: unattributedHostStartCount,
       },
     };
+  }
+
+  /**
+   * #3161: an external engine's `declare_pull_request` call. The session is
+   * the verified caller's own and the turn is whichever turn it is running
+   * now; the declaration lands when that turn completes.
+   */
+  declareStationControlPullRequest(input: {
+    sessionId: string;
+    pullRequest: StationControlPullRequestIdentity;
+    label?: string;
+  }): Promise<StationControlPullRequestDeclarationOutcome> {
+    if (!this.stationControlPullRequests)
+      throw new StationControlPullRequestUnavailableError('unconfigured');
+    return this.stationControlPullRequests.declare(input);
+  }
+
+  /** The turn the session is running, as the lease for what it declares. */
+  private activeStationControlTurn(
+    threadId: string,
+  ): StationControlActiveTurn | undefined {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.quarantinedThreads.has(threadId)) return undefined;
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (!turnId) return undefined;
+    return {
+      turnId,
+      adapterId: adapter.provider,
+      isCurrent: () =>
+        this.sessionAdapters.get(threadId) === adapter &&
+        this.isAdapterCurrent(adapter) &&
+        !this.quarantinedThreads.has(threadId) &&
+        this.activeTurnIdOfThread(threadId) === turnId,
+    };
+  }
+
+  private activeTurnIdOfThread(threadId: string): string | undefined {
+    // The fold that keeps a turn live through Codex's deferred-retriable error
+    // (`willRetry`): the engine is still working that turn and will complete
+    // it, so a declaration made in it must not be dropped. A real terminal (a
+    // non-retriable error, an abort, a completion, an exit) still ends it.
+    return interruptibleTurnIdForEvents(
+      (
+        this.options.eventStore?.listEventsByMethods(
+          threadId,
+          ACTIVE_TURN_FOLD_METHODS,
+        ) ?? []
+      ).map((stored) => stored.payload),
+    );
+  }
+
+  /**
+   * Every pull request the session has declared, durable. `null` past the
+   * bound (never a truncated list): the caller refuses rather than repeat a
+   * declaration it could not see.
+   */
+  private declaredPullRequestsOfSession(
+    threadId: string,
+  ): Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] | null {
+    const store = this.options.eventStore;
+    if (!store) return [];
+    const bound = 500;
+    const found: Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] =
+      [];
+    let seen = 0;
+    let after: { sequence: number; declarationId: string } | undefined;
+    let highWater: number | undefined;
+    for (;;) {
+      const page = store.listDeclaredOutputDescriptors({
+        threadId,
+        limit: 50,
+        ...(after ? { after } : {}),
+        ...(highWater === undefined ? {} : { highWater }),
+      });
+      highWater = page.highWater;
+      for (const row of page.rows) {
+        seen += 1;
+        if (seen > bound) return null;
+        const descriptor = row.descriptor as
+          | Record<string, unknown>
+          | undefined;
+        const repository = descriptor?.repository as
+          | Record<string, unknown>
+          | undefined;
+        if (
+          descriptor?.kind === 'pull-request' &&
+          typeof descriptor.provider === 'string' &&
+          typeof descriptor.host === 'string' &&
+          typeof descriptor.ref === 'string' &&
+          typeof descriptor.nativeId === 'string' &&
+          typeof repository?.owner === 'string' &&
+          typeof repository.name === 'string'
+        )
+          found.push({
+            kind: 'pull-request',
+            provider: descriptor.provider,
+            host: descriptor.host,
+            repository: { owner: repository.owner, name: repository.name },
+            ref: descriptor.ref,
+            nativeId: descriptor.nativeId,
+          });
+        after = { sequence: row.sequence, declarationId: row.declarationId };
+      }
+      if (!page.hasMore) return found;
+    }
   }
 
   /**
@@ -10452,26 +10931,34 @@ export class OrchestrationService {
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' && projectedEvent.turnId
-        ? this.nativeOutputDeclarations.takeTerminalAdmissions(
-            projectedEvent.threadId,
-            projectedEvent.turnId,
-            projectedEvent.eventId,
-          )
+        ? [
+            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ),
+            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ) ?? []),
+          ]
         : [];
     this.recordProviderTurnBoundary(projectedEvent);
     try {
       this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
       if (declaredOutputs.length > 0) {
-        this.nativeOutputDeclarations.commit(
-          declaredOutputs.map((admission) => admission.handle),
-        );
+        const handles = declaredOutputs.map((admission) => admission.handle);
+        // A handle belongs to exactly one operation; the other ignores it.
+        this.nativeOutputDeclarations.commit(handles);
+        this.stationControlPullRequests?.commit(handles);
       }
     } catch (error) {
       // Same-call retry is possible only when SQLite rolled back.  Do not
       // consume a memory handle before its unique durable use index commits.
-      this.nativeOutputDeclarations.rollback(
-        declaredOutputs.map((admission) => admission.handle),
-      );
+      const handles = declaredOutputs.map((admission) => admission.handle);
+      this.nativeOutputDeclarations.rollback(handles);
+      this.stationControlPullRequests?.rollback(handles);
       throw error;
     }
     // The event-store append is the retirement boundary. Do not use an
@@ -10488,6 +10975,10 @@ export class OrchestrationService {
         projectedEvent.threadId,
         projectedEvent.turnId,
       );
+      this.stationControlPullRequests?.retireTerminal(
+        projectedEvent.threadId,
+        projectedEvent.turnId,
+      );
       if (
         this.nativeTurnGenerations.get(projectedEvent.threadId) ===
         projectedEvent.turnId
@@ -10495,6 +10986,10 @@ export class OrchestrationService {
         this.nativeTurnGenerations.delete(projectedEvent.threadId);
       }
     }
+    // An engine that exits mid-turn ends with `session.exited` and no turn
+    // terminal: nothing else would release the session's declaration grants.
+    if (projectedEvent.method === 'session.exited')
+      this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
     if (!isCoalescableDelta(event))

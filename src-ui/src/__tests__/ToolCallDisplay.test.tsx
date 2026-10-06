@@ -5,6 +5,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
+import {
+  DiscardGlyph,
+  DocumentGlyph,
+  PlugGlyph,
+} from '../components/icons/Glyph';
 
 // archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
 // here is exactly the flat `tool-invocation` shape the LIVE orchestration
@@ -254,6 +259,60 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(screen.queryByText('Failed')).toBe(null);
   });
 
+  // A plain failure: the command ran and exited non-zero. The row takes the
+  // completed tense beside its Failed badge — the same rule the batch summary
+  // applies ("ran 2 commands · 1 failed") — so a sheet never lists "Run X"
+  // under a title that says it ran. Shape: the projection's `tool.completed`
+  // with `status: 'error'` (state, output and error all set).
+  test('a failed command reads "Ran", with the Failed badge as the disclosure', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't-failed',
+          toolName: 'bash',
+          args: { command: 'npm run typecheck:ui' },
+          state: 'error',
+          output: 'error TS2339: Property missing',
+          error: 'exit 2',
+        }}
+      />,
+    );
+
+    expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+      'Ran npm run typecheck:ui',
+    );
+    expect(screen.getByText('Failed')).toBeTruthy();
+  });
+
+  // A failed write or delete may have landed nothing: the completed verb
+  // would claim the change happened. Only non-mutating kinds keep it.
+  test.each([
+    ['write_file', { path: '/repo/a.ts', content: 'x' }, 'Edit a.ts'],
+    ['delete_file', { path: '/repo/a.ts' }, 'Delete a.ts'],
+  ])(
+    'a failed %s keeps the bare verb beside its Failed badge',
+    (toolName, args, label) => {
+      render(
+        <ToolCallDisplay
+          toolCall={{
+            type: 'tool-invocation',
+            toolCallId: `t-${toolName}`,
+            toolName,
+            args,
+            state: 'error',
+            output: 'EACCES',
+            error: 'EACCES',
+          }}
+        />,
+      );
+      expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+        label,
+      );
+      expect(screen.getByText('Failed')).toBeTruthy();
+    },
+  );
+
   // The two claims the old `done` fallback made, each using `write_file` so
   // past tense and infinitive differ — a denial must never borrow the
   // completed verb.
@@ -433,6 +492,8 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
 
     // Bare infinitive — past tense would claim work that has not happened.
     expect(screen.getByText('Edit approved.txt')).toBeTruthy();
+    // The marker says what the status pill says (#3312).
+    expect(screen.getByRole('img', { name: 'Needs approval' })).toBeTruthy();
     expect(screen.queryByText('Edited approved.txt')).toBe(null);
     fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
@@ -481,5 +542,90 @@ describe('ToolCallDisplay — image notes on object-shaped output', () => {
     expect(document.body.textContent).toContain(
       '[image not shown: image-1.png could not be stored]',
     );
+  });
+});
+
+// #3364: the rendered row for the live `tool.started` shape of a delete.
+describe('ToolCallDisplay — a delete is never worded as a read (#3364)', () => {
+  test('a running delete_file reads "Deleting secret.txt"', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't1',
+          toolName: 'delete_file',
+          args: { path: 'secret.txt' },
+          state: 'running',
+        }}
+      />,
+    );
+    const row = document.querySelector('.tool-call__line')!;
+    expect(row.textContent).toContain('Deleting secret.txt');
+    expect(row.textContent).not.toMatch(/Reading/);
+  });
+
+  // The row's icon is the glyph's own path, rendered independently here so
+  // the expectation is not read from the component's own map.
+  function glyphPath(Glyph: React.ComponentType): string {
+    const { container, unmount } = render(<Glyph />);
+    const d = container.querySelector('path')!.getAttribute('d')!;
+    unmount();
+    return d;
+  }
+
+  function rowGlyphPath(toolName: string, args: unknown): string {
+    const { container, unmount } = render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't1',
+          toolName,
+          args,
+          state: 'completed',
+          result: 'ok',
+        }}
+      />,
+    );
+    const d = container
+      .querySelector('.tool-call__glyph path')!
+      .getAttribute('d')!;
+    unmount();
+    return d;
+  }
+
+  test('a delete row shows the trash glyph; a path-less delete_agent the tool glyph', () => {
+    const trash = glyphPath(DiscardGlyph);
+    expect(rowGlyphPath('delete_file', { path: 'secret.txt' })).toBe(trash);
+    expect(rowGlyphPath('delete_file', { path: 'secret.txt' })).not.toBe(
+      glyphPath(DocumentGlyph),
+    );
+    expect(rowGlyphPath('delete_agent', { slug: 'a' })).toBe(
+      glyphPath(PlugGlyph),
+    );
+  });
+});
+
+// #3364 review: the approval label is sanitised; the details keep the raw
+// arguments the user is being asked to allow.
+describe('ToolCallDisplay — an approval label strips bidi controls (#3364)', () => {
+  test('the label drops the RLO and the details still show it', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't1',
+          toolName: 'Bash',
+          args: { command: 'echo \u202Etxt.exe' },
+          state: 'call',
+          needsApproval: true,
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    const label = document.querySelector('.tool-call__label')!;
+    expect(label.textContent).toBe('Run echo txt.exe');
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    const details = document.querySelector('.tool-call')!.textContent!;
+    expect(details).toContain('echo \u202Etxt.exe');
   });
 });

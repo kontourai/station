@@ -1,0 +1,7 @@
+{
+  "revision": "09c85b03ddb2c50e48c18d6617e000a59a0bec58",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"#3386: Continue section now says continuation refuses with a reason when the Session's folder is inside no Project folder, since Activity files worktree Sessions by repository but adoption resolves by folder only (attached-session-adoption.ts resolveAdoptionProject uses resolveAttachedProjectRoot; refusal text names the folder). Pinned by orchestration-service.test.ts 'refuses to adopt an attached source in a folder inside no project', fault-injected.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/attached-session-adoption.ts"]}
+  ]
+}

@@ -79,6 +79,7 @@ export type {
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   TurnProgressSilence,
 } from '@kontourai/station-contracts/orchestration';
 export type {
@@ -821,6 +822,7 @@ export {
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCoreUpdateStatusQuery,
   useCreateACPConnectionMutation,
   useCreateAgentDetailedMutation,

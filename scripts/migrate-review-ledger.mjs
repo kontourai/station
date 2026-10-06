@@ -27,6 +27,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import { bindingDigest, bindingFile } from './lib/review-binding.mjs';
 import {
   captureReviewFile,
+  isNoteArchiveFile,
   LEARNING_MEDIA_MANIFEST,
   LEGACY_REVIEW_LEDGER,
   listReviewLedgerFiles,
@@ -622,7 +623,11 @@ function migratePathOnly(root) {
   const [mergeHead] = readGitObjects(root, ['MERGE_HEAD^{commit}']);
   if (index.version === 3 && mergeHead !== undefined) {
     const base = git(root, ['merge-base', 'HEAD', 'MERGE_HEAD']).trim();
-    for (const file of files.filter((file) => file.includes('/notes/'))) {
+    // Archives (#3394) hold only notes older than any merge base; they are
+    // never rewritten, so only loose notes can need covered inputs.
+    for (const file of files.filter(
+      (file) => file.includes('/notes/') && !isNoteArchiveFile(file),
+    )) {
       const run = JSON.parse(readFileSync(path.join(root, file), 'utf8'));
       if (
         run.notes.every((note) => note.inputs !== undefined) ||

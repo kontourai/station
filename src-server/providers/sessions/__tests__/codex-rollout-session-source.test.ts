@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AttachedSessionCursor } from '../attached-session-source.js';
@@ -322,6 +323,72 @@ describe('CodexRolloutSessionSource', () => {
       totalTokens: 35,
       cacheReadTokens: 7,
     });
+  });
+
+  test('a compaction the rollout records shows in the projected transcript as a marker (station#3415)', async () => {
+    const root = fixtureRoot();
+    writeFileSync(
+      rolloutPath(root),
+      [
+        meta(),
+        envelope('event_msg', { type: 'task_started', turn_id: 't1' }),
+        envelope('event_msg', { type: 'user_message', message: 'question' }),
+        envelope('response_item', {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'before' }],
+        }),
+        envelope('event_msg', { type: 'context_compacted' }),
+        envelope('response_item', {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'after' }],
+        }),
+        envelope('event_msg', { type: 'task_complete', turn_id: 't1' }),
+        envelope('compacted', { message: 'summary of the earlier turns' }),
+      ]
+        .map(line)
+        .join(''),
+    );
+    const source = new CodexRolloutSessionSource({ homeDir: root });
+    const { events } = await drain(source, await discoverOne(source));
+
+    const messages = projectRuntimeEventsToMessages(events, {
+      stableIds: true,
+    });
+    expect(
+      messages.map((message) => [
+        message.id,
+        message.role,
+        message.parts.map((part) => `${part.type}:${part.text}`).join('|'),
+        message.metadata?.answerEligible === true,
+      ]),
+    ).toEqual([
+      [expect.any(String), 'user', 'text:question', false],
+      // One canonical answer row for the turn: the compaction does not split it.
+      [
+        `${events[0]!.eventId}:assistant`,
+        'assistant',
+        'text:before\n\nafter',
+        true,
+      ],
+      // The mid-turn compaction follows its turn once the turn closed...
+      [
+        expect.any(String),
+        'system',
+        'transcript-marker:Context compacted during this turn',
+        false,
+      ],
+      // ...and the `compacted` record after it is a between-turns marker.
+      [
+        expect.any(String),
+        'system',
+        'transcript-marker:Context compacted',
+        false,
+      ],
+    ]);
+    // Never the engine's own summary text: the marker label is Station's.
+    expect(JSON.stringify(messages)).not.toContain('summary of the earlier');
   });
 
   test('retains tool names across pages and does not invent a verdict when rollout output omits one', async () => {

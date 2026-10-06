@@ -14,7 +14,13 @@ import {
  * tool call is waiting" from "the agent asked a question" — rather than the
  * coarser lifecycle flag or the notification's own (pre-scrubbed) copy.
  */
-export function presentOpenRequest(request: RequestOpenedEvent): {
+/** The fields of a `request.opened` event the presentation reads. */
+export type PresentableOpenRequest = Pick<
+  RequestOpenedEvent,
+  'requestType' | 'title' | 'description' | 'payload'
+>;
+
+export function presentOpenRequest(request: PresentableOpenRequest): {
   title: string;
   body?: string;
 } {

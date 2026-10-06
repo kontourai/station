@@ -16,10 +16,17 @@ export function globalAgentsOnly<T extends { project?: string }>(
 export function buildProjectSavePayload(
   form: ProjectForm,
   workingDirectory?: string,
+  savedForm?: ProjectForm | null,
 ) {
-  const { defaultEnvironment, defaultWorkspaceIsolation, ...rest } = form;
+  const { defaultEnvironment, defaultWorkspaceIsolation, icon, ...rest } = form;
   return {
     ...rest,
+    // Sent only when it changed. An unchanged icon is left to the stored
+    // record, so a rename never re-submits (and is never refused for) a
+    // legacy value the icon rule now refuses. `''` is sent as is: it is the
+    // route's "clear the icon", which `JSON.stringify` would drop as
+    // `undefined`.
+    ...(savedForm && icon === savedForm.icon ? {} : { icon }),
     // `'inherit'` is the form's spelling of "this project makes no choice";
     // `null` is the route's, which drops the override rather than storing it
     // (#2144 slice 2). Sent explicitly rather than omitted: `JSON.stringify`

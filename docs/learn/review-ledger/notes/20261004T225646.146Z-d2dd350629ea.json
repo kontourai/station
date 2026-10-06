@@ -1,0 +1,7 @@
+{
+  "revision": "55de54e7ac08e24abf8067ab729804ff9f720207",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the doc for any claim about transcript history loading, the Earlier messages control or scroll auto-load: it has none; the ChatMessageList.tsx delta in this lane only changes when a scroll-driven older-history request may start (suppressed until the press's own row restoration settles, and a press on an uncommitted view is coalesced), which the design's bridge/block claims do not depend on. The rest of the ChatMessageList.tsx delta since the last review is other lanes' work and was not reviewed here.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

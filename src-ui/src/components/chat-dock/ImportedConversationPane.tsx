@@ -1,3 +1,5 @@
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
@@ -9,6 +11,10 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { SessionDetail } from '../session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../state';
 import './ImportedConversationPane.css';
+
+function engineName(provider: EngineId): string {
+  return engineDisplayLabel(provider) ?? provider;
+}
 
 /** A conversation reader in the dock, not a separate inspector or dialog. */
 export default function ImportedConversationPane({
@@ -47,7 +53,10 @@ export default function ImportedConversationPane({
     retry: false,
     cancelWhenInactive: true,
   });
+  const refetchContinued = continued.refetch;
   const [openFailed, setOpenFailed] = useState(false);
+  /** #3429: the engine of a continuation that has no Agent, when known. */
+  const [unboundEngine, setUnboundEngine] = useState<EngineId | null>(null);
   const attempted = useRef<string | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -90,8 +99,30 @@ export default function ImportedConversationPane({
         }
       }
     }
-    if (mounted.current && !opened) setOpenFailed(true);
-  }, [continued.data, onContinueInDock, sendMessage, updateChat]);
+    if (!opened && mounted.current) {
+      // #3429: a chat tab runs as an Agent. A continuation Station could not
+      // give one (its engine had no Agent here) can never open as a tab, so
+      // say that instead of offering a retry that cannot succeed. Read
+      // fresh: the child's Agent arrives with its start event, which can
+      // land after the first read of the child.
+      let fresh: Awaited<ReturnType<typeof refetchContinued>> | undefined;
+      try {
+        fresh = await refetchContinued();
+      } catch {
+        /* Unknown is not unbound: the ordinary retry stays available. */
+      }
+      if (!mounted.current) return;
+      if (fresh?.data?.session && !fresh.data.session.assignedAgentSlug)
+        setUnboundEngine(fresh.data.session.provider);
+      else setOpenFailed(true);
+    }
+  }, [
+    continued.data,
+    refetchContinued,
+    onContinueInDock,
+    sendMessage,
+    updateChat,
+  ]);
   useEffect(() => {
     if (!continued.data || attempted.current === continuedThreadId) return;
     attempted.current = continuedThreadId;
@@ -146,6 +177,14 @@ export default function ImportedConversationPane({
           }
         />
       )}
+      {unboundEngine && (
+        <ErrorState
+          className="imported-conversation-pane__error"
+          variant="compact"
+          title="This continuation can't open as a chat"
+          description={`Station has no ${engineName(unboundEngine)} agent, so the continuation was created without one. Open it from Activity to keep going, or set up ${engineName(unboundEngine)} in New Chat before continuing another conversation.`}
+        />
+      )}
       {(continued.isError || openFailed) && (
         <ErrorState
           className="imported-conversation-pane__error"
@@ -173,7 +212,10 @@ export default function ImportedConversationPane({
           session={source.data.session}
           continuationCreated={Boolean(continuedThreadId)}
           openingContinuation={
-            Boolean(continuedThreadId) && !openFailed && !continued.isError
+            Boolean(continuedThreadId) &&
+            !openFailed &&
+            !unboundEngine &&
+            !continued.isError
           }
           onTaskChanged={() => void source.refetch()}
           getSelectionIntent={() => 0}
