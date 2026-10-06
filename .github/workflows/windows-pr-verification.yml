@@ -90,7 +90,7 @@ jobs:
         run: npm run test:windows:portable
 
       - name: Verify desktop resource staging
-        run: npm run test:focused -- scripts/__tests__/windows-resource-staging.test.ts
+        run: npm run test:focused -- scripts/__tests__/windows-resource-staging.test.ts scripts/__tests__/tauri-context.test.ts
 
       - name: Upload Windows portable verification evidence
         if: always()
