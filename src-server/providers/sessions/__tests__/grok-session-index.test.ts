@@ -167,6 +167,45 @@ describe('GrokSessionIndex', () => {
     expect([...found].sort()).toEqual(['real-new', 'real-old']);
   }, 120_000);
 
+  test.each(['forward', 'reverse'])(
+    'directory order does not decide what is found (%s)',
+    async (order) => {
+      // Linux lists folders in hash order, macOS in name order: replay each
+      // directory's entries forwards and backwards.
+      const root = tree();
+      const stamp = new Date(Date.now() - 60_000);
+      for (const user of ['a-user', 'z-user']) {
+        folder(root, user, `real-${user}`);
+      }
+      for (let item = 0; item < 200; item += 1)
+        folder(root, 'm-probe', `probe-${item}`);
+      for (const group of ['a-user', 'z-user', 'm-probe']) {
+        utimesSync(join(root, group), stamp, stamp);
+      }
+      const openDirectory = (path: string) => {
+        const real = opendirSync(path);
+        const entries: import('node:fs').Dirent[] = [];
+        for (let entry = real.readSync(); entry; entry = real.readSync()) {
+          entries.push(entry);
+        }
+        real.closeSync();
+        if (order === 'reverse') entries.reverse();
+        return {
+          readSync: () => entries.shift() ?? null,
+          closeSync: () => {},
+        } as unknown as import('node:fs').Dir;
+      };
+      const target = index({ maxStats: 64, maxInspections: 16, openDirectory });
+      const found = new Set<string>();
+      for (let round = 0; round < 20 && found.size < 2; round += 1) {
+        for (const session of (await poll(target, root)).sessions) {
+          found.add(session.inspection.session!.sessionId);
+        }
+      }
+      expect([...found].sort()).toEqual(['real-a-user', 'real-z-user']);
+    },
+  );
+
   test('the newest group is read first, ahead of older ones past the budget', async () => {
     const root = tree();
     for (let item = 0; item < 15; item += 1)

@@ -601,10 +601,21 @@ describe('GrokSessionSource', () => {
       encodeURIComponent('/station/runtime/acp-workspaces/probe/abc'),
     );
     mkdirSync(probeGroup, { recursive: true });
+    // Every folder carries one fixed mtime, as Linux stamps a burst of new
+    // folders, and the clock stays inside that mtime's 2 s settle window for
+    // the whole test, so no probe ever settles.
+    const t0 = Date.now();
+    const stamp = new Date(t0);
     for (let index = 0; index < 16_500; index += 1) {
-      mkdirSync(join(probeGroup, `ffffffff-${String(index).padStart(8, '0')}`));
+      const probe = join(
+        probeGroup,
+        `ffffffff-${String(index).padStart(8, '0')}`,
+      );
+      mkdirSync(probe);
+      utimesSync(probe, stamp, stamp);
     }
-    const late = new Date(Date.now() + 60_000);
+    const late = new Date(t0 + 60_000);
+    const groups = [probeGroup];
     for (const id of ['00000000-real-a', '00000000-real-b']) {
       const { dir } = grokSession(home, {
         sessionId: id,
@@ -612,8 +623,15 @@ describe('GrokSessionSource', () => {
         lines: new Writer(id).user('Real question', 0),
       });
       utimesSync(dir, late, late);
+      groups.push(join(dir, '..'));
     }
-    const source = new GrokSessionSource({ homeDir: home });
+    // Linux CI stamps folders made in one burst with the same mtime, so the
+    // group order cannot tell the real sessions apart: pin that tie here.
+    for (const group of groups) utimesSync(group, stamp, stamp);
+    const source = new GrokSessionSource({
+      homeDir: home,
+      now: () => t0 + 1000,
+    });
     const found = new Set<string>();
     for (let poll = 0; poll < 4 && found.size < 2; poll += 1) {
       for (const session of (await source.discover()).sessions) {
