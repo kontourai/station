@@ -1,15 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { publicDocsHygieneFindings } from '../public-docs-hygiene.mjs';
 import { evaluate, findingsFor, trackedDocs } from '../repo-docs-hygiene.mjs';
@@ -265,8 +258,27 @@ describe('repo docs hygiene', () => {
     `${first.toUpperCase()} ${second.toUpperCase()}`,
     `${title(first)}  ${second}`,
     `${title(first)}\t${title(second)}`,
+    // Identifier, env-var and URL-encoded spellings of the same two words.
+    `${first}_${second}`,
+    `${first.toUpperCase()}_${second.toUpperCase()}`,
+    `${first}${second}`,
+    `${first}${title(second)}`,
+    `${title(first)}${title(second)}`,
+    `${first}.${second}`,
+    `${first}%20${second}`,
+    `${first}%2D${second}`,
+    `${title(first)}\u2013${title(second)}`,
+    `${title(first)} - ${title(second)}`,
+    `STATION_${first.toUpperCase()}_${second.toUpperCase()}_URL`,
+    `use${title(first)}${title(second)}Host`,
   ];
-  const renamedForms = ['home-media', 'Home media', 'HOME MEDIA'];
+  const renamedForms = [
+    'home-media',
+    'Home media',
+    'HOME MEDIA',
+    'home_media',
+    'HomeMedia',
+  ];
 
   it.each(hostnameForms)(
     'rejects the private media-server name in the form %j',
@@ -308,6 +320,7 @@ describe('repo docs hygiene', () => {
       'scripts/lib/bounded-capture.mjs',
       'scripts/lib/module-entry.mjs',
     ];
+    const makeTempDir = trackTempDirs({ lifetime: 'file' });
     let root = '';
     const git = (...args: string[]) =>
       execFileSync('git', args, { cwd: root, windowsHide: true });
@@ -329,16 +342,13 @@ describe('repo docs hygiene', () => {
     };
 
     beforeAll(() => {
-      root = mkdtempSync(join(tmpdir(), 'station-docs-hygiene-'));
+      root = makeTempDir('station-docs-hygiene-');
       for (const file of GATE_FILES) {
         mkdirSync(join(root, dirname(file)), { recursive: true });
         copyFileSync(file, join(root, file));
       }
       mkdirSync(join(root, 'docs'));
       git('init', '-q');
-    });
-    afterAll(() => {
-      if (root) rmSync(root, { recursive: true, force: true });
     });
 
     it.each(hostnameForms)('exits non-zero for a doc naming %j', (form) => {
