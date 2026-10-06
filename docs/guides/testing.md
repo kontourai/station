@@ -664,6 +664,13 @@ classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
 
+The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
+executes the workflow's PowerShell staging body in a temporary directory and
+checks the configured resource-source directories at the Cargo boundary,
+including bundled examples. This proves directory staging, not Rust compilation
+or bundled file contents. A repair to this base-controlled workflow must land
+on `main` before a dependent PR's head can use it.
+
 The hosted Windows floor always uploads its existing redacted verification
 receipts and output, including failed runs. A cleanup record with one surviving
 owned child is a boolean failure to prove settlement, not an enumerated live PID.
