@@ -114,23 +114,13 @@ function epochMs(value: string | undefined): number | undefined {
 
 type Rung = Omit<WorkStatus, 'line'>;
 
-const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
-  approval: SESSION_STATUS_WORDS.approval,
-  answer: SESSION_STATUS_WORDS.answer,
-  // The generic rung, for an owed decision whose kind nothing recorded.
-  waiting: SESSION_STATUS_WORDS.waiting,
-  queued: SESSION_STATUS_WORDS.queued,
-  blocked: SESSION_STATUS_WORDS.blocked,
-  interrupted: SESSION_STATUS_WORDS.interrupted,
-};
-
 /**
  * The ladder's word for one kind of owed decision, for a surface that marks
  * that decision without a whole row to classify: the transcript's approval
  * marker says the pill's "Needs approval" from here, not from a copy.
  */
 export function attentionWord(kind: WorkAttentionKind): string {
-  return ATTENTION_WORDS[kind];
+  return SESSION_STATUS_WORDS[kind];
 }
 
 function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
@@ -154,7 +144,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: kind,
         lane: 'needsYou',
         tone: 'attention',
-        word: ATTENTION_WORDS[kind],
+        word: SESSION_STATUS_WORDS[kind],
       };
     }
     case 'Failed':
