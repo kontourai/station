@@ -44,8 +44,10 @@ New chat opens the start composer, the same component Home renders inline: a
 text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
 readiness, repair and Model picker), a project chip (the project's icon, else
 its accent, then name, folder, No project; the folder is the server's
-`runsAt`, so a project bound through its manifest names that checkout's
-execution root; a project with no folder can be chosen and runs where the
+`runsAt` from `GET /api/projects/run-locations`, read only while the composer
+is shown and never by the Project list, so a project bound through its
+manifest names that checkout's execution root, and the stored folder shows
+until that read answers; a project with no folder can be chosen and runs where the
 server puts it: the home folder, or for an ACP engine its connection folder or
 a private Station-managed workspace, which the chip and list say; a project a
 start would refuse names no folder, only the reason; a folder the server did
