@@ -44,7 +44,23 @@ calls no longer have the same contract.
 
 The registry advisory scan may continue to report patched `sprintf-js` 1.0.3
 by version. Patch application and bounded behavior evidence do not imply a
-green advisory floor. No advisory exception, residual, baseline, or trust
+green advisory floor. At reviewed revision `2285053942`, controlled dependency
+probes on Node 24.19.0 checked source and minified formatter code through CJS,
+browser globals, and AMD. All 66 supported-output comparisons matched the
+unpatched baseline. Numeric boundary and 400-digit precision probes confirmed
+bounded rounding, including the explicit `g0` tradeoff; Angular wrapper
+delegation and legacy YAML library/CLI controls passed. These are dependency
+behavior observations, not production reachability or full browser/native
+qualification.
+
+The actual advisory scan at that revision remained red for high-severity
+`source-map-js` and the version-reported, untracked production `sprintf-js`
+1.0.3 advisory. The `proxy-addr` and `fast-copy` findings were absent. Production
+closure means the package is in the installed dependency graph; it does not
+prove an attacker can supply a format string to a Station request path. A
+locally patched version still needs an explicit maintainer disposition before
+the version-based floor can be considered resolved. No disposition is granted
+by these probes or this guide. No advisory exception, residual, baseline, or trust
 policy is changed by these repairs. The separate
 [source-map advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) is not
 addressed here. Remove the local formatter patch only after a compatible
