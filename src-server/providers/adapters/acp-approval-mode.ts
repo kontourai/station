@@ -83,5 +83,5 @@ export function isOpenCodeGovernedMode(modeId: string): boolean {
 }
 
 export function governedModeRefusal(modeId: string): string {
-  return `Station's approval modes cover OpenCode's build and plan agents only; the ${modeId} agent keeps its own permission rules. Switch Mode to build or plan, or pick Default to use OpenCode's own settings.`;
+  return `Station's approval modes cover OpenCode's build and plan agents only; the ${modeId} agent keeps its own permission rules.`;
 }

@@ -635,7 +635,12 @@ describe.skipIf(process.platform === 'win32')(
       expect(native.asked).toBeUndefined();
       await expect(
         turn(h, 'helper-native', 'run: echo pick', { approvalMode: 'ask' }),
-      ).rejects.toThrow(/the helper agent keeps its own permission rules/);
+      ).rejects.toMatchObject({
+        code: 'acp_approval_governance_refused',
+        message: expect.stringMatching(
+          /the helper agent keeps its own permission rules/,
+        ),
+      });
       expect(launches(h)).toHaveLength(1);
     });
 
@@ -661,6 +666,10 @@ describe.skipIf(process.platform === 'win32')(
       await expect(start(h, 'overridden', 'ask')).rejects.toThrow(
         /overrides Station's approval rules for bash in the build agent \(it would run without asking\)/,
       );
+      // A structured, non-retryable refusal: clients name the next step.
+      await expect(start(h, 'overridden-coded', 'ask')).rejects.toMatchObject({
+        code: 'acp_approval_governance_refused',
+      });
       expect(launches(h)).toHaveLength(0);
       // Default (OpenCode's own settings) still starts.
       await start(h, 'overridden-native');

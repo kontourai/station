@@ -20,6 +20,7 @@ import type {
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -62,6 +63,21 @@ export class SendTurnRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SendTurnRefusedError';
+  }
+}
+
+/**
+ * #3290: Station cannot apply its approval mode to this ACP engine (see
+ * `ACP_APPROVAL_GOVERNANCE_REFUSED_CODE`). Thrown before the start or turn
+ * has any effect, so it is a `SendTurnRefusedError`, carrying a structured
+ * code so clients withhold a blind retry.
+ */
+export class ApprovalGovernanceRefusedError extends SendTurnRefusedError {
+  readonly code = ACP_APPROVAL_GOVERNANCE_REFUSED_CODE;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApprovalGovernanceRefusedError';
   }
 }
 

@@ -474,6 +474,15 @@ export function ChatInputArea({
     input.trim() || hasQuotedContext || attachments.length,
   );
   const hideMobileSubmit = isMobile && !hasSendableDraft;
+  // #3290: while Station governs OpenCode (it reports running a Station
+  // mode), only build and plan are offered: the server refuses the user's own
+  // agents then. On OpenCode's own settings the full list stays.
+  const modeChoices =
+    acpApproval?.control === 'station' &&
+    lastAppliedApprovalMode &&
+    lastAppliedApprovalMode !== 'connection-default'
+      ? acpSessionModes.filter((mode) => /^(build|plan)$/.test(mode.id))
+      : acpSessionModes;
   // #3290: an ACP session's approval identity comes from its connection's
   // command, never the connection id.
   const approvalEngineId = acpApproval
@@ -977,11 +986,11 @@ export function ChatInputArea({
                 : 'default'}
             </button>
           )}
-          {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+          {modeChoices.length > 0 && onAcpSessionModeChange ? (
             <React.Suspense fallback={null}>
               <AcpSessionModeChip
                 key={sessionId}
-                modes={acpSessionModes}
+                modes={modeChoices}
                 currentModeId={
                   typeof modelRuntimeOptions?.mode === 'string'
                     ? modelRuntimeOptions.mode

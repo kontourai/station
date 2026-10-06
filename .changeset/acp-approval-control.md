@@ -17,3 +17,8 @@ server admits it only for an ACP connection whose control is `station`.
 code an ACP adapter publishes when it could not move the engine onto the
 launch rules a picked approval mode needs and the session kept what it ran
 before.
+
+`provider` also adds `ACP_APPROVAL_GOVERNANCE_REFUSED_CODE`, the code on a
+start or send refused because Station cannot apply its approval mode to the
+ACP engine (its resolved rules override Station's, or the chat runs an agent
+Station does not govern). It is not retryable until that changes.

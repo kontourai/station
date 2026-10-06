@@ -207,7 +207,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
   offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
-  is a separate picker beside it, never a replacement for it.
+  is a separate picker beside it, never a replacement for it. While Station
+  governs OpenCode it offers only build and plan; on OpenCode's own settings
+  it lists every agent. A refusal because Station's approval mode cannot
+  apply names the OpenCode setting and the next step, and offers no Retry.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the

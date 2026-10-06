@@ -847,6 +847,17 @@ export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 export const ATTACHMENT_INPUT_UNSUPPORTED_CODE = 'attachment_input_unsupported';
 
 /**
+ * #3290: a start or send refused because Station cannot apply its approval
+ * mode to the ACP engine: the engine's resolved rules (the user's or an
+ * organisation's configuration, or the binary itself) override Station's, or
+ * the chat runs an agent Station does not govern. Deterministic, NOT
+ * retryable: the same send is refused until that configuration or the
+ * chat's mode changes, so clients name that next step instead of a retry.
+ */
+export const ACP_APPROVAL_GOVERNANCE_REFUSED_CODE =
+  'acp_approval_governance_refused';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned

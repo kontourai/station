@@ -1665,6 +1665,43 @@ describe('ChatInputArea', () => {
       );
     });
 
+    test('the Mode picker offers only build and plan once Station governs OpenCode, and every agent before', async () => {
+      const modes = [
+        { id: 'build', name: 'build' },
+        { id: 'plan', name: 'plan' },
+        { id: 'helper', name: 'helper' },
+      ];
+      const props = {
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station' as const,
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: modes,
+        acpCurrentModeId: 'build',
+        onAcpSessionModeChange: vi.fn(),
+        onApprovalModeChange: vi.fn(),
+      };
+      const optionsFor = async () => {
+        fireEvent.click(
+          await screen.findByRole('button', { name: /^Session mode:/ }),
+        );
+        await screen.findByRole('radiogroup', { name: 'Session mode' });
+        return screen
+          .getAllByRole('radio')
+          .map((radio) => radio.getAttribute('value'));
+      };
+      // On OpenCode's own settings: the user's agents are offered.
+      renderChatInputArea(props);
+      expect(await optionsFor()).toEqual(['build', 'plan', 'helper']);
+      cleanup();
+      // Station runs a mode on it: only what it governs.
+      renderChatInputArea({ ...props, lastAppliedApprovalMode: 'ask' });
+      expect(await optionsFor()).toEqual(['build', 'plan']);
+    });
+
     test('an engine that decides for itself says so, and its explanation opens', async () => {
       renderChatInputArea({
         executionMode: 'external',

@@ -3,6 +3,7 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -1051,7 +1052,10 @@ export function useSendMessage(
               : terminalSession ||
                   foregroundIndeterminate ||
                   dispatchClaim ||
-                  err.code === SESSION_START_INDETERMINATE_CODE
+                  err.code === SESSION_START_INDETERMINATE_CODE ||
+                  // #3290: refused again until the configuration or mode
+                  // changes; the hint names that step.
+                  err.code === ACP_APPROVAL_GOVERNANCE_REFUSED_CODE
                 ? undefined
                 : {
                     label: 'Retry',

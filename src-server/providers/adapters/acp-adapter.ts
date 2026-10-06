@@ -93,6 +93,7 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
+  ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
   type CanonicalRuntimeEvent,
   type ProviderAdapterShape,
@@ -921,7 +922,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       // started under a mode nothing would apply.
       const startMode = requestedAcpSessionMode(input.modelOptions);
       if (startMode && !isOpenCodeGovernedMode(startMode)) {
-        throw new Error(governedModeRefusal(startMode));
+        throw new ApprovalGovernanceRefusedError(
+          governedModeRefusal(startMode),
+        );
       }
       const verified = await this.verifyApprovalFloor(
         config.command,
@@ -929,8 +932,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         startApprovalFloor,
       );
       if (!verified.ok) {
-        throw new Error(
-          `Station can't apply its approval mode to OpenCode, so the chat was not started: ${verified.reason}. Change that configuration, or pick Default to use OpenCode's own settings.`,
+        throw new ApprovalGovernanceRefusedError(
+          `Station can't apply its approval mode to OpenCode, so the chat was not started: ${verified.reason}.`,
         );
       }
     }
@@ -1761,7 +1764,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // other mode, so only a failed move from Ask or Auto to full access
         // still runs, at the stricter mode it already had.
         if (running !== 'confined') {
-          throw new SendTurnRefusedError(
+          throw new ApprovalGovernanceRefusedError(
             `${message}, so this message was not sent: ${switched.reason}.`,
           );
         }
@@ -1780,7 +1783,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       record.approvalFloor &&
       !isOpenCodeGovernedMode(requestedMode)
     ) {
-      throw new SendTurnRefusedError(governedModeRefusal(requestedMode));
+      throw new ApprovalGovernanceRefusedError(
+        governedModeRefusal(requestedMode),
+      );
     }
     if (requestedMode && requestedMode !== record.currentModeId) {
       const catalog = turnCatalog;
