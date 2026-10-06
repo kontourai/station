@@ -2119,9 +2119,33 @@
   align-self: stretch;
   max-width: none;
 }
-.message-row--compact:not(.message-row--user) > .message-details__trigger {
-  align-self: flex-end;
+.message-row--compact:not(.message-row--user) > .message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
   margin-top: -10px;
+}
+.message-meta__time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* Phone density: the transcript's own 16px gap separates rows; the base 16px
+   margin on top of it doubled every step. A virtualized transcript positions
+   rows absolutely, where the container gap does not apply, so the margin
+   stays its only spacing there. */
+.message-row--compact {
+  margin-bottom: 0;
+}
+[data-transcript-row] .message-row--compact {
+  margin-bottom: var(--k-space-4);
+}
+/* A thin rule opens each exchange after the first (MessageBubble sets the
+   class on every phone user row but the transcript's first). */
+.message-row--compact.message-row--exchange-start {
+  border-top: var(--k-border-thin) solid var(--k-line);
+  padding-top: var(--k-space-4);
 }
 .message-row--compact .message {
   padding: 10px 14px;

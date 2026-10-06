@@ -104,6 +104,9 @@ interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   inProgress: boolean;
   /** The call reached a failure terminal (error text or an error state). */
   failed: boolean;
+  /** A failed call that a LATER call in the same list retried successfully
+   * with the same tool and identical arguments ({@link recoveredFailures}). */
+  recovered: boolean;
   /** The session ended with the call still open, so whether it ran is
    * unknown (station#1558's `unresolved` terminal). Neither in progress nor
    * done — the batch header's verb has to account for it separately from
@@ -133,9 +136,13 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
    */
   aggregateSummary: string;
   inProgress: boolean;
-  /** How many of this run's calls failed — a collapsed batch must disclose
-   * failure without being opened (archive#2652 redesign). */
+  /** How many of this run's calls failed and were NOT recovered by a later
+   * identical call — a collapsed batch must disclose failure without being
+   * opened (archive#2652 redesign). */
   failedCount: number;
+  /** Failed calls a later identical call recovered. Disclosed neutrally: the
+   * failure still happened, but it is not the run's outcome. */
+  recoveredCount: number;
   /** How many of this run's calls ended `unresolved`. Disclosed for the same
    * reason `failedCount` is: the summary's verb alone cannot say that some of
    * these calls may never have run, and a reader who does not open the batch
@@ -150,12 +157,63 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   /** Latest running call's `progressMessage`, if any — the collapsed line
    * is the only live surface once the run is batched. */
   progressMessage?: string;
+  /** Narration folded between the calls (`foldTurnWork`), in original order. */
+  interludes: { part: P; index: number }[];
+}
+
+/** What {@link recoveredFailures} needs to know about one call. */
+export interface RetryEvidence {
+  toolName: string;
+  args: unknown;
+  failed: boolean;
+  /** Observed successful completion (`toolCallPhase(...) === 'done'`). */
+  succeeded: boolean;
+}
+
+/** Structural equality for JSON-shaped tool arguments. */
+function sameArgs(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.hasOwn(b, key) &&
+      sameArgs(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+      ),
+  );
+}
+
+/**
+ * Which failed calls were recovered: a failure counts as recovered only when
+ * a LATER call in the same list ran the same tool with deep-equal arguments
+ * and completed successfully. A retry with different arguments, a later
+ * identical call that also failed (or never finished), or an earlier success
+ * does not recover it. Returns one flag per input call, in order.
+ */
+export function recoveredFailures(calls: readonly RetryEvidence[]): boolean[] {
+  return calls.map(
+    (call, position) =>
+      call.failed &&
+      calls
+        .slice(position + 1)
+        .some(
+          (later) =>
+            later.succeeded &&
+            later.toolName === call.toolName &&
+            sameArgs(later.args, call.args),
+        ),
+  );
 }
 
 function classifyCall<P extends ToolCallLike>(
   part: P,
   index: number,
-): ClassifiedToolCall<P> {
+): Omit<ClassifiedToolCall<P>, 'recovered'> {
   const toolName = toolNameOf(part);
   const args = toolDisplayView(part).args;
   const kind = classifyToolCall({ toolName, toolKind: part.toolKind, args });
@@ -242,7 +300,24 @@ function summarizeCalls(
 export function classifyToolCallRun<P extends ToolCallLike>(
   run: ToolCallRun<P>,
 ): ToolCallGroup<P> {
-  const calls = run.calls.map(({ part, index }) => classifyCall(part, index));
+  const classified = run.calls.map(({ part, index }) =>
+    classifyCall(part, index),
+  );
+  const recovered = recoveredFailures(
+    classified.map((call) => {
+      const view = toolDisplayView(call.part);
+      return {
+        toolName: view.toolName,
+        args: view.args,
+        failed: call.failed,
+        succeeded: call.phase === 'done',
+      };
+    }),
+  );
+  const calls: ClassifiedToolCall<P>[] = classified.map((call, position) => ({
+    ...call,
+    recovered: recovered[position]!,
+  }));
   const inProgress = calls.some((c) => c.inProgress);
   const unresolvedCount = calls.filter((c) => c.unresolved).length;
   const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
@@ -264,7 +339,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
       ? latestRunningCall(calls)
       : undefined;
   const summary = liveCall ? `${liveCall.label}…` : aggregateSummary;
-  const failedCount = calls.filter((c) => c.failed).length;
+  const failedCount = calls.filter((c) => c.failed && !c.recovered).length;
+  const recoveredCount = calls.filter((c) => c.recovered).length;
   const deniedCount = calls.filter((c) => c.denied).length;
   const cancelledCount = calls.filter((c) => c.cancelled).length;
   const progressSource = liveCall;
@@ -281,10 +357,12 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     aggregateSummary,
     inProgress,
     failedCount,
+    recoveredCount,
     unresolvedCount,
     awaitingApprovalCount,
     deniedCount,
     cancelledCount,
     progressMessage,
+    interludes: run.interludes ?? [],
   };
 }

@@ -4986,6 +4986,12 @@ button.tool-call__line:hover {
   font-weight: 600;
 }
 
+/* A failure a later identical call recovered: history, not a verdict. */
+.tool-call-batch__retried {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
 .tool-call-batch__awaiting {
   flex-shrink: 0;
   color: var(--text-secondary);
@@ -5099,6 +5105,19 @@ button.tool-call__line:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Narration a folded turn moved into its sheet, between the calls it was
+   written between: the transcript's own prose, quieter than the answer. */
+.tool-call-batch-sheet__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.tool-call-batch-sheet__note > :first-child {
+  margin-top: 0;
+}
+.tool-call-batch-sheet__note > :last-child {
+  margin-bottom: 0;
 }
 
 .chat-input-container {
@@ -9347,6 +9366,25 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .chat-dock__mobile-project {
   flex: 1 1 0;
   min-width: 44px;
+  container: chat-dock-mobile-project / inline-size;
+}
+
+/* Below ~one short word of room the two lines only ever read "New ch… /
+   No…", so the control collapses to its folder glyph; the button's
+   aria-label carries the project name either way. */
+.chat-dock__mobile-project-glyph {
+  display: none;
+  color: var(--text-secondary);
+}
+/* Parent-qualified: the base `.chat-dock__mobile-project-lines` rule comes
+   later in this file and would win a same-specificity tie. */
+@container chat-dock-mobile-project (max-width: 88px) {
+  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+    display: inline-flex;
+  }
+  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
+    display: none;
+  }
 }
 
 .chat-dock__mobile-identity {

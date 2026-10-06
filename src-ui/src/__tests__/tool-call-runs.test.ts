@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  foldTurnWork,
   isToolCallPart,
   splitToolCallRuns,
   type ToolCallLike,
@@ -95,5 +96,64 @@ describe('splitToolCallRuns', () => {
     const blocks = splitToolCallRuns(parts);
     expect(blocks[0].type).toBe('tool-call-run');
     expect((blocks[0] as any).key).toBe('tool-call-run:0-1');
+  });
+});
+
+describe('foldTurnWork', () => {
+  const text = (content: string, extra: Partial<ToolCallLike> = {}) =>
+    ({ type: 'text', content, ...extra }) as ToolCallLike;
+
+  test('one run or none returns exactly the split blocks', () => {
+    const parts = [text('intent'), toolCall({ toolCallId: 'a' }), text('end')];
+    expect(foldTurnWork(parts)).toEqual(splitToolCallRuns(parts));
+    expect(foldTurnWork([text('only prose')])).toEqual(
+      splitToolCallRuns([text('only prose')]),
+    );
+  });
+
+  test('every call and the narration between them become one run where the first call was', () => {
+    const parts = [
+      text('intent'),
+      toolCall({ toolCallId: 'a' }),
+      text('between'),
+      toolCall({ toolCallId: 'b' }),
+      toolCall({ toolCallId: 'c' }),
+      text('outcome'),
+    ];
+    const blocks = foldTurnWork(parts);
+    expect(blocks.map((b) => b.type)).toEqual([
+      'content-part',
+      'tool-call-run',
+      'content-part',
+    ]);
+    const run = blocks[1]!;
+    if (run.type !== 'tool-call-run') throw new Error('expected a run');
+    expect(run.key).toBe('tool-call-run:a');
+    expect(run.calls.map((c) => c.index)).toEqual([1, 3, 4]);
+    expect(run.interludes?.map((n) => n.index)).toEqual([2]);
+    expect(blocks[2]).toMatchObject({ part: { content: 'outcome' } });
+  });
+
+  test('a runtime error, a file and blank text inside the span stay visible after the run, in order', () => {
+    const parts = [
+      toolCall({ toolCallId: 'a' }),
+      text('Engine crashed', { runtimeError: true }),
+      { type: 'file', name: 'shot.png' } as ToolCallLike,
+      text('  '),
+      toolCall({ toolCallId: 'b' }),
+    ];
+    const blocks = foldTurnWork(parts);
+    expect(blocks.map((b) => b.type)).toEqual([
+      'tool-call-run',
+      'content-part',
+      'content-part',
+      'content-part',
+    ]);
+    expect(
+      blocks.slice(1).map((b) => (b.type === 'content-part' ? b.index : -1)),
+    ).toEqual([1, 2, 3]);
+    const run = blocks[0]!;
+    if (run.type !== 'tool-call-run') throw new Error('expected a run');
+    expect(run.interludes).toEqual([]);
   });
 });

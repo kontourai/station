@@ -98,6 +98,20 @@ tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
 and makes pill size changes immediate.
 
+On a phone, a settled answer shows its tool work as one row. Every call from
+the first to the last, and the narration between them, folds into a single
+summary where the first call was. The intent before it and the outcome after it
+stay visible. Opening the row lists the calls with that narration in its
+original order. Files, UI blocks, runtime errors and calls still waiting on a
+grant stay outside the fold. While the turn is live it keeps the shape it streamed
+with. In the summary, a failure is counted as **retried** rather than
+**failed** when a later call in the same summary ran the same tool with
+identical arguments and succeeded. A failed call's row keeps the completed
+verb ("Ran …") beside its Failed badge. Under each settled answer, a muted
+time beside the ⋯ button gives the turn's completion time from its provenance
+envelope. An answer without an envelope shows no time. Exchanges are divided
+by a thin rule.
+
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather
 than creating global toasts. Turn attention and approval notifications keep their
@@ -396,7 +410,9 @@ chat and its original project. Opening an existing conversation also preserves
 this default. Choosing a different project in the chat bar
 overrides that default until the next explicit workspace selection. Both bars
 caption this value **New chats**; desktop also names the current chat's project
-when it differs. This revises the earlier independent-sidebar/default behavior.
+when it differs. On a phone, when a long chat title leaves the control too
+narrow for words, it shows only a folder glyph; its accessible name still
+names the project. This revises the earlier independent-sidebar/default behavior.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**

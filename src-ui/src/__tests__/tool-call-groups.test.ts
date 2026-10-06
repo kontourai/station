@@ -2,6 +2,8 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { describe, expect, test } from 'vitest';
 import {
   classifyToolCallRun,
+  type RetryEvidence,
+  recoveredFailures,
   type ToolCallGroup,
   type ToolCallLike,
 } from '../components/chat/tool-call-groups';
@@ -1278,5 +1280,119 @@ describe('displayed labels are sanitised and cut safely (#3364 review round 4)',
     const label = callLabel('exec', 'Bash', { command }, 'done');
     expect(label).toBe(`Ran ${'a'.repeat(58)}\u{1F600}…`);
     expect(label).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+  });
+});
+
+describe('recoveredFailures', () => {
+  const attempt = (
+    overrides: Partial<RetryEvidence> & Pick<RetryEvidence, 'failed'>,
+  ): RetryEvidence => ({
+    toolName: 'Bash',
+    args: { command: 'npm run typecheck:ui' },
+    succeeded: !overrides.failed,
+    ...overrides,
+  });
+
+  test('a failure a later identical call completed is recovered', () => {
+    expect(
+      recoveredFailures([
+        attempt({ failed: true }),
+        attempt({ failed: false }),
+      ]),
+    ).toEqual([true, false]);
+  });
+
+  test('a retry with different arguments does not recover it', () => {
+    expect(
+      recoveredFailures([
+        attempt({ failed: true }),
+        attempt({ failed: false, args: { command: 'npm run typecheck' } }),
+      ]),
+    ).toEqual([false, false]);
+  });
+
+  test('a later identical call that also failed does not recover it', () => {
+    expect(
+      recoveredFailures([attempt({ failed: true }), attempt({ failed: true })]),
+    ).toEqual([false, false]);
+  });
+
+  test('a later identical call with no observed success (still open) does not recover it', () => {
+    expect(
+      recoveredFailures([
+        attempt({ failed: true }),
+        attempt({ failed: false, succeeded: false }),
+      ]),
+    ).toEqual([false, false]);
+  });
+
+  test('an EARLIER success does not recover a later failure', () => {
+    expect(
+      recoveredFailures([
+        attempt({ failed: false }),
+        attempt({ failed: true }),
+      ]),
+    ).toEqual([false, false]);
+  });
+
+  test('the same arguments under another tool name do not recover it', () => {
+    expect(
+      recoveredFailures([
+        attempt({ failed: true }),
+        attempt({ failed: false, toolName: 'shell_exec' }),
+      ]),
+    ).toEqual([false, false]);
+  });
+
+  test('argument equality is structural: key order and nesting do not matter, values do', () => {
+    const args = { command: 'x', env: { A: '1', B: ['p', 'q'] } };
+    const reordered = { env: { B: ['p', 'q'], A: '1' }, command: 'x' };
+    expect(
+      recoveredFailures([
+        attempt({ failed: true, args }),
+        attempt({ failed: false, args: reordered }),
+      ]),
+    ).toEqual([true, false]);
+    expect(
+      recoveredFailures([
+        attempt({ failed: true, args }),
+        attempt({
+          failed: false,
+          args: { command: 'x', env: { A: '1', B: ['q', 'p'] } },
+        }),
+      ]),
+    ).toEqual([false, false]);
+  });
+});
+
+describe('classifyToolCallRun — recovered failures in the summary', () => {
+  const bash = (id: string, command: string, failed: boolean) =>
+    toolCall({
+      toolCallId: id,
+      toolName: 'Bash',
+      args: { command },
+      ...(failed
+        ? { state: 'error', error: 'exit 2', output: 'error TS2339' }
+        : { state: 'result', output: 'ok' }),
+    });
+
+  test('a retried failure is counted as retried, not failed', () => {
+    const group = classifyFirstRun([
+      bash('a', 'npm run typecheck:ui', true),
+      bash('b', 'npm run typecheck:ui', false),
+    ]);
+    expect(group.failedCount).toBe(0);
+    expect(group.recoveredCount).toBe(1);
+    expect(group.calls.map((call) => call.recovered)).toEqual([true, false]);
+  });
+
+  test('an unrecovered failure stays failed beside a recovered one', () => {
+    const group = classifyFirstRun([
+      bash('a', 'npm run typecheck:ui', true),
+      bash('b', 'npm test', true),
+      bash('c', 'npm run typecheck:ui', false),
+    ]);
+    expect(group.failedCount).toBe(1);
+    expect(group.recoveredCount).toBe(1);
   });
 });

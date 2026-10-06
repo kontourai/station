@@ -61,15 +61,26 @@ const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
 /**
  * How far the call has actually got — decides the verb tense.
  *
- * `'done'` is the only phase that claims the work happened, so it is derived
- * from an OBSERVED successful completion, never used as a fallback. Anything
- * that did not complete successfully — denied by the user, blocked by Station,
- * cancelled, failed, or started and never resolved (a replayed `state: 'call'`
- * after a reconnect) — is `'unresolved'` and takes the bare infinitive. The
- * row's status badge says WHICH of those it was; the verb's only job is not to
- * claim an edit that never landed.
+ * `'done'` is the only phase that claims the work SUCCEEDED, so it is derived
+ * from an OBSERVED successful completion, never used as a fallback.
+ *
+ * `'failed'` is a plain failure: the tool was invoked and reported an error.
+ * It keeps the completed tense ("Ran npm test") beside its Failed badge — the
+ * same rule the batch summary applies ("ran 2 commands · 1 failed"), so the
+ * collapsed line and the rows it opens never disagree about tense. The badge
+ * is the disclosure.
+ *
+ * Anything else that did not complete — denied by the user, blocked by
+ * Station, cancelled, or started and never resolved (a replayed
+ * `state: 'call'` after a reconnect) — is `'unresolved'` and takes the bare
+ * infinitive: nothing observed the tool run at all.
  */
-export type ToolCallPhase = 'done' | 'running' | 'proposed' | 'unresolved';
+export type ToolCallPhase =
+  | 'done'
+  | 'running'
+  | 'proposed'
+  | 'failed'
+  | 'unresolved';
 
 export interface ToolCallPhaseInput {
   needsApproval?: boolean;
@@ -125,7 +136,10 @@ export function toolCallPhase(part: ToolCallPhaseInput): ToolCallPhase {
     (part.state === 'completed' ||
       part.state === 'result' ||
       result !== undefined);
-  return completed ? 'done' : 'unresolved';
+  if (completed) return 'done';
+  return failed && !cancelled && !denied && !sessionUnresolved
+    ? 'failed'
+    : 'unresolved';
 }
 
 /**
