@@ -784,6 +784,24 @@ describe('station-control authority table: declare_pull_request and Task close-o
     ).toBe('station_control_caller_required');
   });
 
+  // #3391: agents need no Project run locations. `/api/projects/:slug`
+  // would capture the leaf, so it is excluded by name and answered, for
+  // every caller, with the unmapped refusal; the slug read itself stays.
+  test('no tool reaches the run-locations read, though the Project detail read stays mapped', () => {
+    const route = '/api/projects/run-locations';
+    expect(matchStationControlRoute('GET', route)).toBeUndefined();
+    expect(matchStationControlRoute('HEAD', route)).toBeUndefined();
+    expect(matchStationControlRoute('GET', '/api/projects/acme')).toBeDefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('GET', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
+  });
+
   // The opt-in is a person's. No tool names the route, so the guard answers
   // every internal request to it, whoever sent it, with the unmapped refusal.
   test('no tool reaches the route a person opts a Task in with', () => {

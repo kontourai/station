@@ -85,6 +85,10 @@ export function useScopedProjectRunLocationsQuery(
   const { namespace } = useAuthorityPersistence();
   return useProjectRunLocationsQuery({
     staleTime: PROJECT_RUN_LOCATIONS_STALE_MS,
+    // Station's client default is `refetchOnMount: false`, which would keep
+    // the first answer for the life of the tab: a mount refetches once the
+    // answer is older than the stale time.
+    refetchOnMount: true,
     ...config,
     requestScope,
     requireRequestScope: true,

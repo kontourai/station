@@ -1245,6 +1245,13 @@ export function matchStationControlRoute(
   routeIndex ??= buildRouteIndex();
   const normalized = method.toUpperCase() === 'HEAD' ? 'GET' : method;
   const segments = segmentsOf(path);
+  if (
+    UNMAPPED_LITERAL_ROUTES.some(
+      (route) =>
+        route.method === normalized && route.path === `/${segments.join('/')}`,
+    )
+  )
+    return undefined;
   let best: IndexedRoute | undefined;
   for (const route of routeIndex) {
     if (route.method !== normalized || !matches(route, segments)) continue;
@@ -1254,6 +1261,20 @@ export function matchStationControlRoute(
     ? { owners: best.owners, policies: best.policies, rules: best.rules }
     : undefined;
 }
+
+/**
+ * Literal leaves that a parameterized route in the table would otherwise
+ * capture, but that no tool needs, so they stay unmapped (refused with
+ * `station_control_route_unmapped`) like any leaf the table never names.
+ *
+ * - `GET /api/projects/run-locations` (#3391) matches `/api/projects/:slug`,
+ *   which dispatch tools read. It names the directory every Project resolves
+ *   to on this Station, including a manifest-bound execution root no other
+ *   read returns; the start composer is its only consumer.
+ */
+const UNMAPPED_LITERAL_ROUTES: readonly { method: string; path: string }[] = [
+  { method: 'GET', path: '/api/projects/run-locations' },
+];
 
 /**
  * Authorize one internal request against the table. Allowed when ANY tool

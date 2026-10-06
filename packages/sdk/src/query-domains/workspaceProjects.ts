@@ -213,6 +213,14 @@ export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
 }
 
 /**
+ * The run-locations read's cache-key prefix. Deliberately NOT under
+ * `'projects'`: a host persisting `'projects'` reads (Station's IndexedDB
+ * cache) must not replay a folder answer across reloads — it is live state,
+ * not last-loaded shell data.
+ */
+export const PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX = 'project-run-locations';
+
+/**
  * `GET /api/projects/run-locations` (#3391), scoped like {@link
  * useProjectsQuery}. A separate read from the Project list so the list never
  * waits on project folders; callers mount it only where a run location is
@@ -226,18 +234,17 @@ export function useProjectRunLocationsQuery(
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
   const queryKey = unavailable
-    ? ['projects', 'run-locations', 'unavailable']
+    ? [PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX, 'unavailable']
     : scoped
       ? [
-          'projects',
-          'run-locations',
+          PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
           requestScope.apiBase,
           stableAuthoritySegment(
             requestScope.authorityKey,
             config?.durableAuthorityId,
           ),
         ]
-      : ['projects', 'run-locations'];
+      : [PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX];
   return useApiQuery(
     queryKey,
     async (signal) => {
