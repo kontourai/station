@@ -26,21 +26,36 @@ export type AcpAppliedApprovalMode = 'ask' | 'auto' | 'never';
 /**
  * The mode a Station-governed ACP session applies for a requested one.
  *
- * Nothing requested, or a Default the server could not resolve to a concrete
- * mode, applies `ask`: the engine already asks for everything, so `ask` is
- * what runs, and it is reported as such. Full access outside a `host`
- * session applies `auto` (#2493): an ACP engine has no process sandbox to
- * confine it with. The server already sends `auto` there
- * (`approval-posture.ts`); this keeps the adapter from widening a request
- * that reaches it some other way.
+ * Nothing requested applies nothing (owner decision, 2026-10-05): as on
+ * Claude and Codex, the server sends no mode while a chat is at Default with
+ * no Agent or Station default and Station has set no posture on it
+ * (`resolveDefaultPick`), and the engine's own configuration decides. A
+ * literal `connection-default` is not sent by the server; if one arrives it
+ * applies `ask`, the strictest mode. Full access outside a `host` session
+ * applies `auto` (#2493): an ACP engine has no process sandbox to confine it
+ * with. The server already sends `auto` there (`approval-posture.ts`); this
+ * keeps the adapter from widening a request that reaches it some other way.
  */
 export function acpAppliedApprovalMode(
   requested: ApprovalMode | undefined,
   confinement: StationConfinement | undefined,
-): AcpAppliedApprovalMode {
+): AcpAppliedApprovalMode | undefined {
+  if (requested === undefined) return undefined;
   if (requested === 'never') return confinement === 'host' ? 'never' : 'auto';
   if (requested === 'auto') return 'auto';
   return 'ask';
+}
+
+/**
+ * The launch configuration an applied mode needs (`opencode-approval-launch.ts`):
+ * none while the engine's own configuration decides, `full` for full access,
+ * `confined` otherwise. A session whose floor differs is relaunched.
+ */
+export function acpApprovalFloor(
+  mode: AcpAppliedApprovalMode | undefined,
+): 'confined' | 'full' | undefined {
+  if (mode === undefined) return undefined;
+  return mode === 'never' ? 'full' : 'confined';
 }
 
 /** Whether `mode` answers a request of this ACP tool kind without a person. */

@@ -18,9 +18,11 @@
 // with `OPENCODE_CONFIG_CONTENT` as OpenCode merges inline content over its
 // configuration files.
 //
-// A prompt names one action: `run: <command>`, `edit: <path>` or
-// `fetch: <url>`. Each process appends the `OPENCODE_CONFIG_CONTENT` it was
-// launched with to `FAKE_OPENCODE_RECORD`, one JSON line per launch.
+// A prompt names one action: `run: <command>`, `edit: <path>`,
+// `fetch: <url>` or `task: <subagent>` (OpenCode keys the task permission on
+// the subagent's name). Each process appends the `OPENCODE_CONFIG_CONTENT` it
+// was launched with to `FAKE_OPENCODE_RECORD`, one JSON line per launch, and
+// a `{ "resumed": <sessionId> }` line when it resumes a session (#3290).
 import { appendFileSync } from 'node:fs';
 
 if (process.env.FAKE_OPENCODE_RECORD) {
@@ -151,11 +153,17 @@ const ACTIONS = {
     title: 'webfetch',
     key: 'url',
   },
+  task: {
+    permission: 'task',
+    kind: 'think',
+    title: 'task',
+    key: 'subagent_type',
+  },
 };
 
 let callCounter = 0;
 async function prompt(sessionId, text) {
-  const match = /^(run|edit|fetch):\s*(.+)$/s.exec(text.trim());
+  const match = /^(run|edit|fetch|task):\s*(.+)$/s.exec(text.trim());
   if (!match) return { stopReason: 'end_turn' };
   const action = ACTIONS[match[1]];
   const target = match[2].trim();
@@ -265,6 +273,15 @@ async function handle(message) {
       });
       return;
     case 'session/load':
+      write({ id, result: { configOptions: configOptions() } });
+      return;
+    case 'session/resume':
+      if (process.env.FAKE_OPENCODE_RECORD) {
+        appendFileSync(
+          process.env.FAKE_OPENCODE_RECORD,
+          `${JSON.stringify({ resumed: params.sessionId })}\n`,
+        );
+      }
       write({ id, result: { configOptions: configOptions() } });
       return;
     case 'session/set_config_option':

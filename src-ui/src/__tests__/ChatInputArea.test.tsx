@@ -3,6 +3,7 @@
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -1605,6 +1606,40 @@ describe('ChatInputArea', () => {
       ).toBeTruthy();
       fireEvent.click(screen.getByRole('radio', { name: /^Auto/ }));
       expect(onApprovalModeChange).toHaveBeenCalledWith('auto');
+    });
+
+    test('OpenCode at Default says its own settings decide until Station takes over, then Ask first', async () => {
+      const props = {
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station' as const,
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: [],
+        onApprovalModeChange: vi.fn(),
+      };
+      renderChatInputArea(props);
+      const chip = screen.getByRole('button', { name: /^Approval mode:/ });
+      expect(chip.getAttribute('aria-label')).toMatch(
+        /Default — OpenCode's own settings/,
+      );
+      fireEvent.click(chip);
+      await screen.findByRole('radiogroup', { name: 'Approval mode' });
+      expect(
+        screen.getByText(
+          /Uses OpenCode's own permission settings until you pick/,
+        ),
+      ).toBeTruthy();
+      cleanup();
+
+      renderChatInputArea({ ...props, lastAppliedApprovalMode: 'ask' });
+      expect(
+        screen
+          .getByRole('button', { name: /^Approval mode:/ })
+          .getAttribute('aria-label'),
+      ).toMatch(/Default — Ask first/);
     });
 
     test('an engine that decides for itself says so, and its explanation opens', async () => {

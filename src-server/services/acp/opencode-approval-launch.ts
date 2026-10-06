@@ -8,11 +8,20 @@
  * at launch, merged over the user's own configuration files (global, the
  * `OPENCODE_CONFIG` file, the project's, its `.opencode` directories) and
  * below an organisation's managed configuration (checked against OpenCode
- * 1.18.18, `config/config.ts`). Station uses that channel to set ONE floor:
- * the `build` and `plan` agents ask before every action that is not a read.
- * Station then answers each request by the chat's approval mode
- * (`acp-adapter.ts`), so a mode change takes effect on the next request, with
- * no engine round trip and no restart.
+ * 1.18.18, `config/config.ts`). Station uses that channel for one of two
+ * floors, chosen by the chat's approval mode (`acpApprovalFloor`):
+ *
+ * - `confined` (Ask, Auto, and full access confined to Auto): the `build`
+ *   and `plan` agents ask before every action that is not a read, and Station
+ *   answers each request by the mode (`acp-adapter.ts`). Moving between Ask
+ *   and Auto takes effect on the next request, with no restart.
+ * - `full` (full access in a `host` session): nothing asks, and subagents
+ *   may run, with rules that cannot ask either (see `FULL_ACCESS`).
+ *
+ * A chat at Default with no configured default gets neither: OpenCode is
+ * launched with the user's own configuration, as Station leaves Claude and
+ * Codex. Moving onto a floor, or between the two, relaunches OpenCode and
+ * resumes the same ACP session (`acp-adapter.ts`).
  *
  * Why the agents are overridden in place rather than given approval
  * variants selected through `session/set_config_option`: OpenCode keys plan
@@ -55,7 +64,8 @@ type OpenCodePermissionRules = Record<
  *   forwards permission requests only for sessions it created
  *   (`acp/permission.ts` drops the rest without a reply, so the child would
  *   wait forever), and the child's rules are the subagent's own, not these.
- *   Station cannot govern a subagent, so none is started. A `* deny` rule
+ *   Below full access a subagent could not be governed, so none is started
+ *   (full access allows the built-in ones, `FULL_ACCESS`). A `* deny` rule
  *   also hides the tool from the model (`Permission.disabled`).
  *
  * Not listed, so left to OpenCode's defaults and the user's rules: `read`
@@ -85,8 +95,72 @@ const PLAN_ASK_BEFORE_ACTING: OpenCodePermissionRules = {
   edit: { '*': 'deny', '.opencode/plans/*.md': 'allow' },
 };
 
-/** The configuration Station adds to every OpenCode session it launches. */
-export function stationOpenCodeApprovalConfig(): Record<string, unknown> {
+/**
+ * Full access: every action is allowed, so nothing reaches
+ * `session/request_permission`, and the `task` tool may start the built-in
+ * `general` and `explore` subagents (`plan`, as OpenCode itself does, only
+ * `explore`). A subagent's permission requests never reach ACP (see
+ * `ASK_BEFORE_ACTING`), so its rules must not ask either:
+ *
+ * - `external_directory` is restated as `allow`, because a child session
+ *   inherits its parent's `external_directory` rules after its own
+ *   (`agent/subagent-permissions.ts`, applied last in `session/prompt.ts`),
+ *   and OpenCode's default for it is `ask`.
+ * - `general` gets `* allow`, overriding OpenCode's and the user's asks
+ *   (`.env` reads, outside paths, `doom_loop`).
+ * - `explore` keeps its read-only `* deny` and has each tool it is given
+ *   restated as `allow`, so a user `ask` cannot reach it.
+ *
+ * Any other subagent (the user's own) is denied: its rules are unknown and
+ * could ask.
+ */
+const FULL_ACCESS_TASK = {
+  '*': 'deny',
+  general: 'allow',
+  explore: 'allow',
+} as const;
+const FULL_ACCESS: OpenCodePermissionRules = {
+  '*': 'allow',
+  external_directory: 'allow',
+  task: { ...FULL_ACCESS_TASK },
+};
+const PLAN_FULL_ACCESS: OpenCodePermissionRules = {
+  ...FULL_ACCESS,
+  edit: { '*': 'deny', '.opencode/plans/*.md': 'allow' },
+  task: { '*': 'deny', explore: 'allow' },
+};
+const EXPLORE_FULL_ACCESS: OpenCodePermissionRules = Object.fromEntries(
+  [
+    'grep',
+    'glob',
+    'list',
+    'bash',
+    'webfetch',
+    'websearch',
+    'codesearch',
+    'read',
+    'external_directory',
+    'doom_loop',
+  ].map((tool) => [tool, 'allow' as const]),
+);
+
+/** Which launch configuration an OpenCode session runs under (#3290). */
+export type OpenCodeApprovalFloor = 'confined' | 'full';
+
+/** The configuration Station adds to an OpenCode session it governs. */
+export function stationOpenCodeApprovalConfig(
+  floor: OpenCodeApprovalFloor,
+): Record<string, unknown> {
+  if (floor === 'full') {
+    return {
+      agent: {
+        build: { permission: { ...FULL_ACCESS } },
+        plan: { permission: { ...PLAN_FULL_ACCESS } },
+        general: { permission: { '*': 'allow' } },
+        explore: { permission: { ...EXPLORE_FULL_ACCESS } },
+      },
+    };
+  }
   return {
     agent: {
       build: { permission: { ...ASK_BEFORE_ACTING } },
@@ -128,6 +202,7 @@ function mergeConfig(
  */
 export function withStationOpenCodeApprovalConfig(
   env: NodeJS.ProcessEnv,
+  floor: OpenCodeApprovalFloor,
 ): NodeJS.ProcessEnv {
   const inherited = env[OPENCODE_CONFIG_CONTENT_ENV];
   let base: Record<string, unknown> = {};
@@ -146,7 +221,7 @@ export function withStationOpenCodeApprovalConfig(
   return {
     ...env,
     [OPENCODE_CONFIG_CONTENT_ENV]: JSON.stringify(
-      mergeConfig(base, stationOpenCodeApprovalConfig()),
+      mergeConfig(base, stationOpenCodeApprovalConfig(floor)),
     ),
   };
 }

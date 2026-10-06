@@ -129,9 +129,16 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
       'File edits run on their own; shell commands, web access and MCP tools still ask.',
   },
   never: {
-    // #3290: Station allows every request; plan mode's own edit block stays.
+    // #3290: nothing asks; the built-in subagents may run (their rules cannot
+    // ask either); plan mode's own edit block stays.
     opencode:
-      'Every action runs without asking, with no sandbox. Plan mode still blocks edits.',
+      'Every action runs without asking, with no sandbox, and subagents may run. Plan mode still blocks edits.',
+  },
+  'connection-default': {
+    // #3290 (owner decision): Station sends OpenCode no mode until it takes
+    // over, as with Claude and Codex (`resolveDefaultPick`).
+    opencode:
+      "Uses OpenCode's own permission settings until you pick a mode here. After that, Default means Ask first.",
   },
   ask: {
     // #1545: Station imposes no approval floor over Claude's own permission

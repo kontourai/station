@@ -186,7 +186,11 @@ export function ApprovalModeChip({
       ? `${effective.label} — ${pendingNote}`
       : !isOverride && appliedMode
         ? approvalModeLabel(appliedMode)
-        : effective.label;
+        : // #3290: before Station takes over, OpenCode's own rules decide.
+          effective.mode === 'connection-default' &&
+            engineConnectionId === 'opencode'
+          ? "OpenCode's own settings"
+          : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
     : isPendingRestrict || isRefused

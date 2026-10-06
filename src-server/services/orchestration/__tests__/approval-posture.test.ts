@@ -613,6 +613,22 @@ describe('server-ordered approval posture (#2436)', () => {
       ).toEqual(['ask', 'auto']);
     });
 
+    test("Default follows the engine's own configuration until Station takes over, then means Ask", async () => {
+      await startOn('t-opencode-native', 'opencode');
+      // Nothing configured: no mode, so OpenCode runs on its own rules.
+      expect(acp.starts.at(-1)?.modelOptions).toBeUndefined();
+      await turn('t-opencode-native');
+      expect(acp.lastTurnMode()).toBeUndefined();
+
+      await decide('t-opencode-native', 'auto');
+      await turn('t-opencode-native');
+      expect(acp.lastTurnMode()).toBe('auto');
+
+      await decide('t-opencode-native', 'connection-default');
+      await turn('t-opencode-native');
+      expect(acp.lastTurnMode()).toBe('ask');
+    });
+
     test('full access on a confined Station-governed engine applies Auto', async () => {
       await startOn('t-opencode-confined', 'opencode', {
         approvalMode: 'never',

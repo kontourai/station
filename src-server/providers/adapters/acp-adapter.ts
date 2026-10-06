@@ -22,6 +22,7 @@ import { resolve } from 'node:path';
 import type {
   Client,
   ContentBlock,
+  McpServer,
   PermissionOption,
   PromptResponse,
   RequestPermissionRequest,
@@ -71,7 +72,10 @@ import {
   type ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
-import { withStationOpenCodeApprovalConfig } from '../../services/acp/opencode-approval-launch.js';
+import {
+  type OpenCodeApprovalFloor,
+  withStationOpenCodeApprovalConfig,
+} from '../../services/acp/opencode-approval-launch.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
   acpPassthroughSessions,
@@ -122,6 +126,7 @@ import {
   ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
   type AcpAppliedApprovalMode,
   acpAppliedApprovalMode,
+  acpApprovalFloor,
   acpApprovalModeAllows,
 } from './acp-approval-mode.js';
 import {
@@ -501,6 +506,17 @@ export interface AcpSessionRecord {
    * `engine`-controlled session, which applies none.
    */
   approvalMode?: AcpAppliedApprovalMode;
+  /**
+   * #3290: the launch configuration the current engine process runs under;
+   * absent when it runs on the engine's own configuration.
+   */
+  approvalFloor?: OpenCodeApprovalFloor;
+  /** #3290: launches a replacement process for this session on a floor. */
+  relaunch?: (floor: OpenCodeApprovalFloor | undefined) => ACPProcess;
+  /** The MCP servers the session was established with, for a relaunch. */
+  mcpServers?: McpServer[];
+  /** Drops `session/update` while a relaunch replays history (`session/load`). */
+  suppressSessionUpdates?: boolean;
   configOptions?: unknown[];
   /** Last advertised ACP session-mode catalog (station#1945). */
   acpModeCatalog?: AdvertisedAcpModeCatalog;
@@ -859,6 +875,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
     }
 
+    // #3290: nothing requested leaves OpenCode on its own configuration; a
+    // mode puts it on Station's floor for that mode.
+    const startApprovalMode =
+      approvalControl === 'station'
+        ? acpAppliedApprovalMode(requestedApprovalMode, input.confinement)
+        : undefined;
+    const startApprovalFloor = acpApprovalFloor(startApprovalMode);
     const preToolPolicy = await this.resolvePreToolPolicy(input);
     const createdAt = new Date().toISOString();
     const session: ProviderSession = {
@@ -881,14 +904,8 @@ export class AcpAdapter implements ProviderAdapterShape {
       promptEpoch: 0,
       generation: options?.generation ?? this.sessionGeneration(input.threadId),
       approvalControl,
-      ...(approvalControl === 'station'
-        ? {
-            approvalMode: acpAppliedApprovalMode(
-              requestedApprovalMode,
-              input.confinement,
-            ),
-          }
-        : {}),
+      ...(startApprovalMode ? { approvalMode: startApprovalMode } : {}),
+      ...(startApprovalFloor ? { approvalFloor: startApprovalFloor } : {}),
       recoveryStart: {
         provider: input.provider,
         cwd: input.cwd,
@@ -931,25 +948,32 @@ export class AcpAdapter implements ProviderAdapterShape {
 
     const processFactory =
       this.options.processFactory ?? ((opts) => new ACPProcess(opts));
-    const acpProcess = processFactory({
-      command: config.command,
-      args: config.args,
-      cwd,
-      // #3290: OpenCode is launched asking before every action that is not a
-      // read, merged into whatever inline configuration it already had.
-      ...(approvalControl === 'station'
-        ? { spawnEnv: withStationOpenCodeApprovalConfig }
-        : {}),
-      createClient: () =>
-        this.buildClient(record, {
-          cwd,
-          terminals,
-          nextTerminalId: () => `acp-term-${++terminalCounter}`,
-          logger,
-        }),
-      logger,
-    });
+    // #3290: a governed OpenCode is launched on Station's floor for its mode,
+    // merged into whatever inline configuration it already had; the same
+    // launch is reused to move the session onto another floor.
+    const launch = (floor: OpenCodeApprovalFloor | undefined) =>
+      processFactory({
+        command: config.command,
+        args: config.args,
+        cwd,
+        ...(floor
+          ? {
+              spawnEnv: (env: NodeJS.ProcessEnv) =>
+                withStationOpenCodeApprovalConfig(env, floor),
+            }
+          : {}),
+        createClient: () =>
+          this.buildClient(record, {
+            cwd,
+            terminals,
+            nextTerminalId: () => `acp-term-${++terminalCounter}`,
+            logger,
+          }),
+        logger,
+      });
+    const acpProcess = launch(startApprovalFloor);
     record.process = acpProcess;
+    record.relaunch = launch;
     this.sessions.set(input.threadId, record);
 
     try {
@@ -1328,6 +1352,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // degradation. Failing start reproduces today's observable outcome
       // for recovery (session closed) with a truthful reason.
       this.requireCurrentGeneration(input.threadId, record.generation);
+      record.mcpServers = passthroughMcpServers;
       if (isAcpResumeCursor(input.resumeCursor)) {
         if (acpProcess.initResult?.agentCapabilities?.loadSession !== true) {
           acpResumeSessions.add(1, {
@@ -1620,10 +1645,17 @@ export class AcpAdapter implements ProviderAdapterShape {
       if (record.approvalControl !== 'station') {
         throw new SendTurnRefusedError(ACP_ENGINE_DECIDES_APPROVAL_MESSAGE);
       }
-      record.approvalMode = acpAppliedApprovalMode(
+      const applied = acpAppliedApprovalMode(
         turnApprovalMode,
         input.confinement,
       );
+      // Station takes over from the engine's own configuration, or moves
+      // between floors: relaunch on the floor and resume the same session.
+      const floor = acpApprovalFloor(applied);
+      if (floor !== record.approvalFloor) {
+        await this.relaunchOnApprovalFloor(record, floor);
+      }
+      record.approvalMode = applied;
       // A credential re-establishment restarts from `recoveryStart`; it
       // must come back in the mode the session runs now.
       record.recoveryStart = {
@@ -2310,10 +2342,112 @@ export class AcpAdapter implements ProviderAdapterShape {
     return client;
   }
 
+  /**
+   * #3290: move a live session onto another launch configuration. OpenCode
+   * reads its permission rules only at launch, so Station replaces the engine
+   * process and resumes the same ACP session in the new one: `session/resume`
+   * when advertised (no history replay), else `session/load` with its replay
+   * dropped. The session's mode and model are re-applied if the resumed
+   * session reports others. Runs between turns only (`sendTurn` refuses a
+   * send while one is active). A failure leaves the session unusable, and
+   * says so, rather than running on a floor it did not ask for.
+   */
+  private async relaunchOnApprovalFloor(
+    record: AcpSessionRecord,
+    floor: OpenCodeApprovalFloor | undefined,
+  ): Promise<void> {
+    const cursor = record.session.resumeCursor;
+    const capabilities = record.process.initResult?.agentCapabilities as
+      | { loadSession?: boolean; sessionCapabilities?: { resume?: unknown } }
+      | undefined;
+    const canResume = !!capabilities?.sessionCapabilities?.resume;
+    if (
+      !record.relaunch ||
+      !isAcpResumeCursor(cursor) ||
+      (!canResume && capabilities?.loadSession !== true)
+    ) {
+      throw new SendTurnRefusedError(
+        'Station cannot apply this approval mode: the engine cannot resume this session in a new process.',
+      );
+    }
+    const cwd = record.session.cwd ?? '';
+    const previous = record.process;
+    await previous.destroy();
+    const next = record.relaunch(floor);
+    record.process = next;
+    record.approvalFloor = floor;
+    try {
+      await next.start();
+      let configOptions: unknown[] | undefined;
+      if (canResume) {
+        const resumed = await next.resumeSession(
+          cursor.acpSessionId,
+          cwd,
+          record.mcpServers ?? [],
+        );
+        configOptions = resumed.configOptions ?? undefined;
+      } else {
+        record.suppressSessionUpdates = true;
+        try {
+          await next.loadSession(
+            cursor.acpSessionId,
+            cwd,
+            record.mcpServers ?? [],
+          );
+        } finally {
+          record.suppressSessionUpdates = false;
+        }
+      }
+      if (configOptions) {
+        record.configOptions = configOptions;
+        const catalog = advertisedAcpSessionModes({ configOptions });
+        if (
+          record.currentModeId &&
+          catalog.currentModeId !== record.currentModeId &&
+          catalog.modes.some((mode) => mode.id === record.currentModeId)
+        ) {
+          const applied = await applyAdvertisedAcpSessionMode(
+            next,
+            catalog,
+            record.currentModeId,
+            record.connectionId,
+          );
+          if (applied.configOptions)
+            record.configOptions = applied.configOptions;
+        }
+        const requestedModel = record.recoveryStart.modelId?.trim();
+        const modelOption = findAcpModelConfigOption(record.configOptions);
+        if (
+          requestedModel &&
+          modelOption &&
+          modelOption.currentValue !== requestedModel &&
+          modelOption.options.some((option) => option.value === requestedModel)
+        ) {
+          const response = await next.setConfigOption(
+            modelOption.id,
+            requestedModel,
+          );
+          const options = (response as { configOptions?: unknown[] } | null)
+            ?.configOptions;
+          if (options) record.configOptions = options;
+        }
+      }
+    } catch (error) {
+      record.session.status = 'error';
+      record.session.updatedAt = new Date().toISOString();
+      throw new Error(
+        `Station could not restart the engine to apply this approval mode: ${errorMessage(error)}`,
+      );
+    }
+  }
+
   private handleSessionUpdate(
     record: AcpSessionRecord,
     update: SessionNotification['update'],
   ): void {
+    // #3290: a relaunch that had to `session/load` replays the conversation
+    // the transcript already holds.
+    if (record.suppressSessionUpdates) return;
     // Session-state mutation (row 11 of the Lifecycle Mapping Table) lives
     // entirely in the mapper's AcpMapperState branches now — `state: record`
     // makes AcpSessionRecord the live backing store the mapper mutates

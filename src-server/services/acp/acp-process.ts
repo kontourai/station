@@ -527,6 +527,26 @@ export class ACPProcess extends EventEmitter {
     this._sessionId = sessionId;
   }
 
+  /**
+   * #3290: resume an existing session without replaying its history (ACP
+   * `session/resume`, offered when the agent advertises
+   * `sessionCapabilities.resume`). Returns the agent's config options.
+   */
+  async resumeSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers: McpServer[] = [],
+  ): Promise<{ configOptions?: unknown[] | null }> {
+    if (!this.connection) throw new Error('ACPProcess not started');
+    const result = await this.connection.resumeSession({
+      sessionId,
+      cwd,
+      mcpServers,
+    });
+    this._sessionId = sessionId;
+    return result as { configOptions?: unknown[] | null };
+  }
+
   /** Set the active mode for the current session. */
   async setMode(modeId: string): Promise<void> {
     if (!this.connection || !this._sessionId)
