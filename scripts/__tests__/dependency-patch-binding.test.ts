@@ -1,0 +1,354 @@
+import { createHash } from 'node:crypto';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  evaluateAuditPolicy,
+  runPolicyCli,
+} from '../dependency-advisory-policy.mjs';
+
+const roots: string[] = [];
+const nodeVersion = process.versions.node;
+const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+const source = 'reviewed source formatter';
+const minified = 'reviewed minified formatter';
+const patch = 'reviewed package patch\n';
+
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'station-patch-binding-'));
+  roots.push(root);
+  const write = (path: string, text: string) => {
+    mkdirSync(join(root, path, '..'), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  const patchHash = hash(patch);
+  const pkg = `sprintf-js@1.0.3(patch_hash=${patchHash})`;
+  const lock = {
+    lockfileVersion: '9.0',
+    patchedDependencies: { 'sprintf-js@1.0.3': patchHash },
+    importers: {
+      '.': {
+        dependencies: { argparse: { specifier: '1.0.10', version: '1.0.10' } },
+      },
+    },
+    packages: { 'argparse@1.0.10': {}, 'sprintf-js@1.0.3': {} },
+    snapshots: {
+      'argparse@1.0.10': {
+        dependencies: { 'sprintf-js': `1.0.3(patch_hash=${patchHash})` },
+      },
+      [pkg]: {},
+    },
+  };
+  write('pnpm-lock.yaml', JSON.stringify(lock));
+  write(
+    'pnpm-workspace.yaml',
+    JSON.stringify({
+      nodeLinker: 'hoisted',
+      patchedDependencies: { 'sprintf-js@1.0.3': 'patches/sprintf.patch' },
+    }),
+  );
+  write('patches/sprintf.patch', patch);
+  write(
+    'node_modules/argparse/package.json',
+    JSON.stringify({ name: 'argparse', version: '1.0.10' }),
+  );
+  write(
+    'node_modules/sprintf-js/package.json',
+    JSON.stringify({
+      name: 'sprintf-js',
+      version: '1.0.3',
+      main: 'src/sprintf.js',
+    }),
+  );
+  write('node_modules/sprintf-js/src/sprintf.js', source);
+  write('node_modules/sprintf-js/dist/sprintf.min.js', minified);
+  const residual = {
+    scope: 'root',
+    package: 'sprintf-js',
+    version: '1.0.3',
+    advisory: 'GHSA-hp3w-g68c-fv3c',
+    severity: 'moderate',
+    reachability: 'production',
+    owner: 'station-maintainers',
+    disposition: 'Reviewed local patch',
+    controls: 'Exact machine binding',
+    trackingUrl: 'https://github.com/kontourai/station/pull/3445',
+    expires: '2026-10-13',
+    recheckTrigger: 'No automatic renewal',
+    patchBinding: {
+      schemaVersion: 1,
+      package: 'sprintf-js',
+      version: '1.0.3',
+      patchPath: 'patches/sprintf.patch',
+      patchSha256: patchHash,
+      nodeMajor: 24,
+      installedEntrypoints: [
+        {
+          path: 'node_modules/sprintf-js/src/sprintf.js',
+          sha256: hash(source),
+        },
+        {
+          path: 'node_modules/sprintf-js/dist/sprintf.min.js',
+          sha256: hash(minified),
+        },
+      ],
+    },
+  };
+  const config = { version: 2, exceptions: [], residuals: [residual] };
+  write('scripts/dependency-advisory-exceptions.json', JSON.stringify(config));
+  const audit = {
+    scope: 'root',
+    reachability: 'production',
+    resolvedVersions: { [pkg]: '1.0.3' },
+    audit: {
+      auditReportVersion: 2,
+      vulnerabilities: {
+        'sprintf-js': {
+          name: 'sprintf-js',
+          severity: 'moderate',
+          nodes: [pkg],
+          via: [
+            {
+              name: 'sprintf-js',
+              severity: 'moderate',
+              url: 'https://github.com/advisories/GHSA-hp3w-g68c-fv3c',
+            },
+          ],
+        },
+      },
+      metadata: {
+        vulnerabilities: {
+          info: 0,
+          low: 0,
+          moderate: 1,
+          high: 0,
+          critical: 0,
+          total: 1,
+        },
+      },
+    },
+  };
+  const evaluate = () =>
+    evaluateAuditPolicy([audit], config, {
+      root,
+      now: new Date('2026-10-06T00:00:00Z'),
+    });
+  return { root, write, lock, residual, config, audit, evaluate };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  Object.defineProperty(process.versions, 'node', { value: nodeVersion });
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
+});
+
+describe('machine-bound production residual acceptance', () => {
+  it('reaches real file verification through the audit CLI and refuses changed bytes on the next decision', async () => {
+    const f = fixture();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const run = () =>
+      runPolicyCli({
+        root: f.root,
+        decide: () => ({
+          required: true,
+          scopes: ['root'],
+          reason: 'fixture',
+          range: null,
+        }),
+        runAudits: async () => [f.audit],
+      });
+    expect(await run()).toBe(0);
+    f.write(
+      'node_modules/sprintf-js/dist/sprintf.min.js',
+      'pristine vulnerable formatter',
+    );
+    expect(await run()).toBe(1);
+    f.write('node_modules/sprintf-js/dist/sprintf.min.js', minified);
+    expect(await run()).toBe(0);
+  });
+
+  it.each([
+    [
+      'patch bytes',
+      (f: ReturnType<typeof fixture>) =>
+        f.write('patches/sprintf.patch', 'changed patch'),
+    ],
+    [
+      'workspace binding',
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          'pnpm-workspace.yaml',
+          JSON.stringify({ nodeLinker: 'hoisted', patchedDependencies: {} }),
+        ),
+    ],
+    [
+      'lock hash',
+      (f: ReturnType<typeof fixture>) => {
+        f.lock.patchedDependencies['sprintf-js@1.0.3'] = '0'.repeat(64);
+        f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
+      },
+    ],
+    [
+      'snapshot edge',
+      (f: ReturnType<typeof fixture>) => {
+        f.lock.snapshots['argparse@1.0.10'].dependencies['sprintf-js'] =
+          '1.0.3';
+        f.write('pnpm-lock.yaml', JSON.stringify(f.lock));
+      },
+    ],
+    [
+      'source bytes',
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          'node_modules/sprintf-js/src/sprintf.js',
+          'pristine vulnerable formatter',
+        ),
+    ],
+    [
+      'minified bytes',
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          'node_modules/sprintf-js/dist/sprintf.min.js',
+          'pristine vulnerable formatter',
+        ),
+    ],
+    [
+      'missing evidence file',
+      (f: ReturnType<typeof fixture>) =>
+        rmSync(join(f.root, 'node_modules/sprintf-js/dist/sprintf.min.js')),
+    ],
+    [
+      'unaccounted copy',
+      (f: ReturnType<typeof fixture>) => {
+        f.write(
+          'node_modules/argparse/node_modules/sprintf-js/package.json',
+          JSON.stringify({
+            name: 'sprintf-js',
+            version: '1.0.3',
+            main: 'src/sprintf.js',
+          }),
+        );
+        f.write(
+          'node_modules/argparse/node_modules/sprintf-js/src/sprintf.js',
+          source,
+        );
+        f.write(
+          'node_modules/argparse/node_modules/sprintf-js/dist/sprintf.min.js',
+          minified,
+        );
+      },
+    ],
+    [
+      'package identity',
+      (f: ReturnType<typeof fixture>) =>
+        f.write(
+          'node_modules/sprintf-js/package.json',
+          JSON.stringify({
+            name: 'unbound-package',
+            version: '1.0.3',
+            main: 'src/sprintf.js',
+          }),
+        ),
+    ],
+  ])(
+    'keeps the exact production finding red after %s drift, then passes after restoration',
+    (_name, mutate) => {
+      const f = fixture();
+      expect(f.evaluate().ok).toBe(true);
+      const originals = new Map<string, Buffer>();
+      for (const file of [
+        'pnpm-workspace.yaml',
+        'pnpm-lock.yaml',
+        'patches/sprintf.patch',
+        'node_modules/sprintf-js/package.json',
+        'node_modules/sprintf-js/src/sprintf.js',
+        'node_modules/sprintf-js/dist/sprintf.min.js',
+      ])
+        originals.set(file, readFileSync(join(f.root, file)));
+      mutate(f);
+      const result = f.evaluate();
+      expect(result.ok).toBe(false);
+      expect(result.trackedResiduals).toHaveLength(0);
+      expect(result.untrackedResiduals).toHaveLength(1);
+      expect(result.exceptionErrors.join(' ')).toMatch(
+        /patch binding|ENOENT|Unresolved dependency/,
+      );
+      rmSync(join(f.root, 'node_modules/argparse/node_modules'), {
+        recursive: true,
+        force: true,
+      });
+      for (const [path, data] of originals) f.write(path, data.toString());
+      expect(f.evaluate().ok).toBe(true);
+    },
+  );
+
+  it('does not accept another advisory on the same installed package', () => {
+    const f = fixture();
+    f.audit.audit.vulnerabilities['sprintf-js'].via.push({
+      name: 'sprintf-js',
+      severity: 'moderate',
+      url: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc',
+    });
+    const result = f.evaluate();
+    expect(result.ok).toBe(false);
+    expect(result.trackedResiduals).toHaveLength(1);
+    expect(
+      result.untrackedResiduals.map((finding) => finding.advisory),
+    ).toEqual(['GHSA-aaaa-bbbb-cccc']);
+  });
+
+  it('cannot fall back to identity-only acceptance when the binding is deleted', () => {
+    const f = fixture();
+    Reflect.deleteProperty(f.residual, 'patchBinding');
+    expect(f.evaluate().ok).toBe(false);
+    expect(f.evaluate().untrackedResiduals).toHaveLength(1);
+  });
+
+  it('refuses missing binding evidence, changed runtime and expired acceptance', () => {
+    const f = fixture();
+    f.residual.patchBinding.installedEntrypoints = [];
+    expect(f.evaluate().ok).toBe(false);
+    f.residual.patchBinding.installedEntrypoints = [
+      { path: 'node_modules/sprintf-js/src/sprintf.js', sha256: hash(source) },
+      {
+        path: 'node_modules/sprintf-js/dist/sprintf.min.js',
+        sha256: hash(minified),
+      },
+    ];
+    Object.defineProperty(process.versions, 'node', { value: '25.0.0' });
+    expect(f.evaluate().ok).toBe(false);
+    Object.defineProperty(process.versions, 'node', { value: nodeVersion });
+    f.residual.expires = '2026-10-06';
+    expect(f.evaluate().ok).toBe(false);
+  });
+
+  it('accounts for every installed copy when all source and minified hashes are explicitly bound', () => {
+    const f = fixture();
+    const nested = 'node_modules/argparse/node_modules/sprintf-js';
+    f.write(
+      nested + '/package.json',
+      JSON.stringify({
+        name: 'sprintf-js',
+        version: '1.0.3',
+        main: 'src/sprintf.js',
+      }),
+    );
+    f.write(nested + '/src/sprintf.js', source);
+    f.write(nested + '/dist/sprintf.min.js', minified);
+    f.residual.patchBinding.installedEntrypoints.push(
+      { path: nested + '/src/sprintf.js', sha256: hash(source) },
+      { path: nested + '/dist/sprintf.min.js', sha256: hash(minified) },
+    );
+    expect(f.evaluate().ok).toBe(true);
+    f.write(nested + '/dist/sprintf.min.js', 'unpatched duplicate');
+    expect(f.evaluate().ok).toBe(false);
+  });
+});
