@@ -159,7 +159,7 @@ function isProbeRequest(value: unknown): value is ProbeRequest {
 }
 
 /** The lexically absolute form of a folder: the answer when it cannot be read. */
-export function lexicalPath(path: string): string {
+function lexicalPath(path: string): string {
   return resolve(expandTilde(path));
 }
 
