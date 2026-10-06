@@ -1,7 +1,8 @@
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
-import type {
-  AutomationAction,
-  AutomationGrant,
+import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  AUTOMATION_EXECUTION_LIMITS,
+  type AutomationAction,
+  type AutomationGrant,
 } from '@kontourai/station-contracts/automation';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -149,78 +150,164 @@ describe('AutomationStore', () => {
       expect(readFileSync(store.path, 'utf8')).toBe('not json');
     });
 
+    const MAX_ID = 'i'.repeat(128);
+    const withRule = (c: any, change: (rule: any) => any) => ({
+      ...c,
+      rules: [change(c.rules[0])],
+    });
+    const withSource = (c: any, change: (source: any) => any) => ({
+      ...c,
+      sources: [change(c.sources[0]), ...c.sources.slice(1)],
+    });
+    const withWhere = (c: any, where: unknown) =>
+      withRule(c, (rule) => ({ ...rule, match: { ...rule.match, where } }));
     test.each([
-      ['an unknown top-level field', (c: any) => ({ ...c, extra: true })],
+      [
+        'an unknown top-level field',
+        (c: any) => ({ ...c, extra: true }),
+        /configuration: unknown field extra/,
+      ],
       [
         'an unknown source field',
-        (c: any) => ({
-          ...c,
-          sources: [{ ...c.sources[0], allowFork: true }],
-        }),
+        (c: any) => withSource(c, (s) => ({ ...s, allowFork: true })),
+        /sources\[0\]: unknown field allowFork/,
       ],
       [
         'an unknown source kind',
-        (c: any) => ({
-          ...c,
-          sources: [{ ...c.sources[0], kind: 'gitlab-poll' }],
-        }),
+        (c: any) => withSource(c, (s) => ({ ...s, kind: 'gitlab-poll' })),
+        /sources\[0\]: unknown source kind/,
       ],
       [
         'a regex-shaped matcher value',
-        (c: any) => ({
-          ...c,
-          rules: [
-            {
-              ...c.rules[0],
-              match: {
-                ...c.rules[0].match,
-                where: { 'run.head_branch': { regex: '^main$' } },
-              },
-            },
-          ],
-        }),
+        (c: any) => withWhere(c, { 'run.head_branch': { regex: '^main$' } }),
+        /where\.run\.head_branch: must be an exact string or list/,
+      ],
+      [
+        'a numeric matcher value',
+        (c: any) => withWhere(c, { 'run.id': 1 }),
+        /where\.run\.id: must be an exact string or list/,
+      ],
+      [
+        'an empty where',
+        (c: any) => withWhere(c, {}),
+        /where: must name at least one field/,
       ],
       [
         'a matcher on a field the event never carries',
-        (c: any) => ({
-          ...c,
-          rules: [
-            {
-              ...c.rules[0],
-              match: {
-                ...c.rules[0].match,
-                where: { 'head_commit.message': 'fix' },
-              },
-            },
-          ],
-        }),
+        (c: any) => withWhere(c, { 'head_commit.message': 'fix' }),
+        /where: unknown field head_commit\.message/,
+      ],
+      [
+        'a matcher value one past the length bound',
+        (c: any) => withWhere(c, { 'run.head_branch': 'b'.repeat(257) }),
+        /where\.run\.head_branch: must be an exact string or list/,
       ],
       [
         'a source without the rule grant',
-        (c: any) => ({
-          ...c,
-          sources: [{ ...c.sources[0], grants: undefined }],
-        }),
+        (c: any) => withSource(c, (s) => ({ ...s, grants: undefined })),
+        /rules\[0\]: action is not granted by source/,
+      ],
+      [
+        'a source id one past the length bound',
+        (c: any) => withSource(c, (s) => ({ ...s, id: `${MAX_ID}x` })),
+        /sources\[0\]: id invalid/,
+      ],
+      [
+        'a grant agent id one past the length bound',
+        (c: any) =>
+          withSource(c, (s) => ({
+            ...s,
+            grants: [{ ...s.grants[0], agentId: `${MAX_ID}x` }],
+          })),
+        /grants\[0\]: agentId invalid/,
+      ],
+      [
+        'a credential binding one past the length bound',
+        (c: any) =>
+          withSource(c, (s) => ({
+            ...s,
+            credentialSecretBinding: `${MAX_ID}x`,
+          })),
+        /credentialSecretBinding invalid/,
       ],
       [
         'a webhook secret under the floor',
         (c: any) => ({
           ...c,
-          sources: [
-            {
-              ...c.sources[0],
-              kind: 'github-webhook',
-              secret: 'short',
-            },
-          ],
+          sources: [c.sources[0], { ...c.sources[1], secret: 'short' }],
         }),
+        /sources\[1\]: secret must be 32 to 256 characters/,
       ],
-    ])('an invalid file with %s is refused on read', async (_name, edit) => {
+      [
+        'a webhook secret one past the ceiling',
+        (c: any) => ({
+          ...c,
+          sources: [c.sources[0], { ...c.sources[1], secret: 's'.repeat(257) }],
+        }),
+        /sources\[1\]: secret must be 32 to 256 characters/,
+      ],
+    ])(
+      'an invalid file with %s is refused on read',
+      async (_name, edit, problem) => {
+        const { source } = await grantedSource();
+        await store.createRule(ruleInput(source.id));
+        await store.createSource({
+          kind: 'github-webhook',
+          name: 'push',
+          repository: 'kontourai/station',
+        });
+        const valid = JSON.parse(readFileSync(store.path, 'utf8'));
+        writeFileSync(store.path, JSON.stringify(edit(valid)), 'utf8');
+        expect(() => store.read()).toThrow(
+          expect.objectContaining({
+            code: 'policy_unavailable',
+            detail: expect.stringMatching(problem),
+          }),
+        );
+      },
+    );
+
+    test('values at their bounds are accepted', async () => {
       const { source } = await grantedSource();
       await store.createRule(ruleInput(source.id));
       const valid = JSON.parse(readFileSync(store.path, 'utf8'));
-      writeFileSync(store.path, JSON.stringify(edit(valid)), 'utf8');
-      expect(() => store.read()).toThrow(AutomationPolicyUnavailableError);
+      const atBounds = withWhere(
+        withSource(valid, (s) => ({
+          ...s,
+          credentialSecretBinding: MAX_ID,
+          grants: [{ ...s.grants[0], agentId: MAX_ID }],
+        })),
+        { 'run.head_branch': 'b'.repeat(256) },
+      );
+      atBounds.rules[0].action.agentId = MAX_ID;
+      writeFileSync(store.path, JSON.stringify(atBounds), 'utf8');
+      expect(store.read().rules).toHaveLength(1);
+    });
+
+    test.skipIf(process.platform === 'win32')(
+      'a file readable by group or others is refused as insecure',
+      async () => {
+        await grantedSource();
+        chmodSync(store.path, 0o644);
+        expect(() => store.read()).toThrow(
+          expect.objectContaining({ detail: 'insecure permissions' }),
+        );
+        chmodSync(store.path, 0o600);
+        expect(store.read().sources).toHaveLength(1);
+      },
+    );
+
+    test('a file one byte past the size ceiling is refused, never truncated', async () => {
+      await grantedSource();
+      const valid = readFileSync(store.path, 'utf8');
+      const ceiling = AUTOMATION_EXECUTION_LIMITS.maxConfigurationBytes;
+      // JSON whitespace keeps the content valid at exactly the ceiling.
+      writeFileSync(store.path, valid.padEnd(ceiling, ' '), 'utf8');
+      expect(store.read().sources).toHaveLength(1);
+      writeFileSync(store.path, valid.padEnd(ceiling + 1, ' '), 'utf8');
+      expect(() => store.read()).toThrow(
+        expect.objectContaining({ detail: 'file too large' }),
+      );
     });
   });
 
@@ -276,6 +363,35 @@ describe('AutomationStore', () => {
           }),
         ),
       ).rejects.toThrow(/not granted/);
+    });
+
+    test('a revoked or disabled source grants nothing at run time', async () => {
+      const { source } = await grantedSource();
+      const rule = await store.createRule(ruleInput(source.id));
+      const config = JSON.parse(readFileSync(store.path, 'utf8'));
+      const write = (sourceChange: object) =>
+        writeFileSync(
+          store.path,
+          JSON.stringify({
+            ...config,
+            sources: [{ ...config.sources[0], ...sourceChange }],
+            rules: [{ ...config.rules[0], enabled: true }],
+          }),
+          'utf8',
+        );
+      write({ enabled: true });
+      expect(store.actionableRules(source.id).map(({ id }) => id)).toEqual([
+        rule.id,
+      ]);
+      write({ enabled: false });
+      expect(store.actionableRules(source.id)).toEqual([]);
+      write({ enabled: true, revokedAt: '2026-10-05T00:00:00.000Z' });
+      // Revocation keeps the file valid but stops the rule acting.
+      expect(store.read().rules).toHaveLength(1);
+      expect(store.actionableRules(source.id)).toEqual([]);
+      await expect(store.createRule(ruleInput(source.id))).rejects.toThrow(
+        /is revoked/,
+      );
     });
 
     test('a rule naming an unknown source is refused', async () => {

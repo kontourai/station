@@ -75,6 +75,17 @@ function boundedName(value: unknown): value is string {
   return nonBlank(value) && value.length <= LIMITS.maxNameLength;
 }
 
+/** Ids are bounded and refused at `maxIdLength + 1`, never truncated. */
+function boundedId(value: unknown): value is string {
+  return nonBlank(value) && value.length <= LIMITS.maxIdLength;
+}
+
+function boundedMatcherValue(value: unknown): value is string {
+  return (
+    typeof value === 'string' && value.length <= LIMITS.maxMatcherValueLength
+  );
+}
+
 function boundedInteger(value: unknown, min: number, max: number): boolean {
   return (
     typeof value === 'number' &&
@@ -115,8 +126,8 @@ function validateGrant(
     return;
   }
   unknownKeys(value, GRANT_KEYS, where, problems);
-  if (!nonBlank(value.projectId)) problems.push(`${where}: projectId required`);
-  if (!nonBlank(value.agentId)) problems.push(`${where}: agentId required`);
+  if (!boundedId(value.projectId)) problems.push(`${where}: projectId invalid`);
+  if (!boundedId(value.agentId)) problems.push(`${where}: agentId invalid`);
   if (!Array.isArray(value.actions)) {
     problems.push(`${where}: actions must be a list`);
     return;
@@ -151,10 +162,11 @@ function validateSource(
     where,
     problems,
   );
-  if (!nonBlank(value.id)) problems.push(`${where}: id required`);
+  if (!boundedId(value.id)) problems.push(`${where}: id invalid`);
   if (!boundedName(value.name)) problems.push(`${where}: name invalid`);
   if (
     typeof value.repository !== 'string' ||
+    value.repository.length > LIMITS.maxRepositoryLength ||
     !REPOSITORY_PATTERN.test(value.repository)
   ) {
     problems.push(`${where}: repository must be owner/repo`);
@@ -162,7 +174,7 @@ function validateSource(
   if (typeof value.enabled !== 'boolean') {
     problems.push(`${where}: enabled must be a boolean`);
   }
-  if (value.revokedAt !== undefined && !nonBlank(value.revokedAt)) {
+  if (value.revokedAt !== undefined && !boundedId(value.revokedAt)) {
     problems.push(`${where}: revokedAt invalid`);
   }
   if (value.grants !== undefined) {
@@ -179,16 +191,17 @@ function validateSource(
   if (kind === 'github-webhook') {
     if (
       typeof value.secret !== 'string' ||
-      value.secret.length < LIMITS.minWebhookSecretLength
+      value.secret.length < LIMITS.minWebhookSecretLength ||
+      value.secret.length > LIMITS.maxWebhookSecretLength
     ) {
       problems.push(
-        `${where}: secret must be at least ${LIMITS.minWebhookSecretLength} characters`,
+        `${where}: secret must be ${LIMITS.minWebhookSecretLength} to ${LIMITS.maxWebhookSecretLength} characters`,
       );
     }
   } else {
     if (
       value.credentialSecretBinding !== undefined &&
-      !nonBlank(value.credentialSecretBinding)
+      !boundedId(value.credentialSecretBinding)
     ) {
       problems.push(`${where}: credentialSecretBinding invalid`);
     }
@@ -225,18 +238,25 @@ function validateMatcher(
     problems.push(`${where}.where: must be an object`);
     return value.type;
   }
+  // An empty `where` would match every event of its type; refuse it so a
+  // rule always states what it is for.
+  if (Object.keys(value.where).length === 0) {
+    problems.push(`${where}.where: must name at least one field`);
+  }
   for (const [field, expected] of Object.entries(value.where)) {
     if (!fields.includes(field)) {
       problems.push(`${where}.where: unknown field ${field}`);
       continue;
     }
-    // Exact equality only: a string, or a non-empty list of strings.
-    if (typeof expected === 'string') continue;
+    // Exact equality only: a bounded string, or a non-empty list of them.
+    // Event fields are strings (numbers arrive canonicalized), so a number
+    // here is refused rather than compared loosely.
+    if (boundedMatcherValue(expected)) continue;
     if (
       Array.isArray(expected) &&
       expected.length > 0 &&
       expected.length <= LIMITS.maxMatcherValues &&
-      expected.every((member) => typeof member === 'string')
+      expected.every(boundedMatcherValue)
     ) {
       continue;
     }
@@ -309,8 +329,8 @@ function validateAction(
     return;
   }
   unknownKeys(value, DISPATCH_KEYS, where, problems);
-  if (!nonBlank(value.projectId)) problems.push(`${where}: projectId required`);
-  if (!nonBlank(value.agentId)) problems.push(`${where}: agentId required`);
+  if (!boundedId(value.projectId)) problems.push(`${where}: projectId invalid`);
+  if (!boundedId(value.agentId)) problems.push(`${where}: agentId invalid`);
   if (
     !nonBlank(value.instructions) ||
     value.instructions.length > LIMITS.maxInstructionsLength
@@ -340,7 +360,9 @@ function validateAction(
 /**
  * The two-keys rule: the rule's own action must also be granted by its
  * source. `dispatch-task` needs a grant naming the same Project and Agent;
- * `notify` needs the source to grant `notify` at all.
+ * `notify` needs the source to grant `notify` at all. This structural check
+ * ignores revocation so that revoking a source never invalidates the stored
+ * file; {@link sourceGrantsRuleAction} is the run-time answer.
  */
 function grantsAction(source: AutomationSource, rule: AutomationRule): boolean {
   const grants = source.grants ?? [];
@@ -356,6 +378,19 @@ function grantsAction(source: AutomationSource, rule: AutomationRule): boolean {
   );
 }
 
+/**
+ * Whether a source authorizes a rule's action right now. A disabled or
+ * revoked source grants nothing. Every dispatch path must ask this, never
+ * the stored grant list directly.
+ */
+export function sourceGrantsRuleAction(
+  source: AutomationSource,
+  rule: AutomationRule,
+): boolean {
+  if (!source.enabled || source.revokedAt !== undefined) return false;
+  return grantsAction(source, rule);
+}
+
 function validateRule(
   value: unknown,
   where: string,
@@ -368,7 +403,7 @@ function validateRule(
   }
   const before = problems.length;
   unknownKeys(value, RULE_KEYS, where, problems);
-  if (!nonBlank(value.id)) problems.push(`${where}: id required`);
+  if (!boundedId(value.id)) problems.push(`${where}: id invalid`);
   if (!boundedName(value.name)) problems.push(`${where}: name invalid`);
   if (typeof value.enabled !== 'boolean') {
     problems.push(`${where}: enabled must be a boolean`);

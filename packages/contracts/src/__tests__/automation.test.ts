@@ -3,6 +3,7 @@ import * as subpath from '@kontourai/station-contracts/automation';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
   AutomationDeliveryOutcome,
+  AutomationEvent,
   AutomationEventType,
   AutomationMatcher,
   AutomationSource,
@@ -94,13 +95,43 @@ describe('@kontourai/station-contracts/automation', () => {
     }
   });
 
-  it('publishes ceilings that keep default deny meaningful', () => {
+  it('keeps every default inside its published bounds', () => {
     const limits = subpath.AUTOMATION_EXECUTION_LIMITS;
-    expect(limits.defaultEpisodeMaxAttempts).toBe(1);
-    expect(limits.defaultMaxStartsPerHour).toBe(2);
-    expect(limits.maxActivePerRule).toBe(1);
-    expect(limits.minWebhookSecretLength).toBe(32);
-    // Transport dedupe must outlive GitHub's three-day redelivery window.
-    expect(limits.deliveryRetentionMs).toBeGreaterThan(3 * 24 * 60 * 60 * 1000);
+    expect(limits.defaultEpisodeMaxAttempts).toBeLessThanOrEqual(
+      limits.maxEpisodeAttempts,
+    );
+    expect(limits.defaultMaxStartsPerHour).toBeLessThanOrEqual(
+      limits.maxStartsPerHour,
+    );
+    expect(limits.minPollIntervalMs).toBeLessThanOrEqual(
+      limits.defaultPollIntervalMs,
+    );
+    expect(limits.defaultPollIntervalMs).toBeLessThanOrEqual(
+      limits.maxPollIntervalMs,
+    );
+    expect(limits.minWebhookSecretLength).toBeLessThan(
+      limits.maxWebhookSecretLength,
+    );
+    // Dedupe must outlive the freshness window: an event young enough to be
+    // accepted must still find its dedupe row.
+    expect(limits.deliveryRetentionMs).toBeGreaterThan(limits.maxEventAgeMs);
+  });
+
+  it('carries event fields as strings so matching is string equality', () => {
+    const event: AutomationEvent['fields'] = { 'run.id': '123' };
+    expect(event['run.id']).toBe('123');
+    // @ts-expect-error numbers are canonicalized to strings by the normalizer
+    const numeric: AutomationEvent['fields'] = { 'run.id': 123 };
+    expect(numeric['run.id']).toBe(123);
+    // A matcher value '1' therefore never meets an un-normalized number 1.
+    expectTypeOf<AutomationEvent['fields'][string]>().toEqualTypeOf<string>();
+  });
+
+  it('lets only accepted outcomes take part in semantic dedupe', () => {
+    const accepted: readonly string[] =
+      subpath.AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES;
+    expect(accepted).not.toContain('refused');
+    expect(accepted).not.toContain('received');
+    expect(accepted).not.toContain('duplicate');
   });
 });

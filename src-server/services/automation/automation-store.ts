@@ -20,6 +20,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
+  AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_SCHEMA_VERSION,
   type AutomationAction,
   type AutomationConfiguration,
@@ -33,7 +34,10 @@ import {
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { resolveHomeDir } from '../../utils/paths.js';
-import { automationConfigurationProblems } from './automation-config-validation.js';
+import {
+  automationConfigurationProblems,
+  sourceGrantsRuleAction,
+} from './automation-config-validation.js';
 
 const AUTOMATION_CONFIG_FILE = 'automations.json';
 
@@ -138,8 +142,19 @@ export class AutomationStore {
     try {
       // lstat first: a symlink (dangling or not) is not this store's file,
       // and `readFileSync` would follow it or report a misleading ENOENT.
-      if (lstatSync(this.path).isSymbolicLink()) {
+      const stat = lstatSync(this.path);
+      if (stat.isSymbolicLink()) {
         throw new AutomationPolicyUnavailableError('store path is a symlink');
+      }
+      // The file holds webhook secrets. A mode looser than 0600 means
+      // someone else may have read or written it, so refuse rather than
+      // silently tighten. (The inbound-webhook store does not check; POSIX
+      // modes carry no such meaning on Windows.)
+      if (process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
+        throw new AutomationPolicyUnavailableError('insecure permissions');
+      }
+      if (stat.size > AUTOMATION_EXECUTION_LIMITS.maxConfigurationBytes) {
+        throw new AutomationPolicyUnavailableError('file too large');
       }
       raw = readFileSync(this.path, 'utf8');
     } catch (error) {
@@ -170,8 +185,23 @@ export class AutomationStore {
     return this.read().sources.map(projectAutomationSource);
   }
 
-  listRules(): AutomationRule[] {
-    return structuredClone([...this.read().rules]);
+  /**
+   * Rules that may act now for one source: the rule and its source are
+   * enabled, the source is not revoked, and the source still grants the
+   * rule's action.
+   */
+  actionableRules(sourceId: string): AutomationRule[] {
+    const configuration = this.read();
+    const source = configuration.sources.find(({ id }) => id === sourceId);
+    if (!source) return [];
+    return structuredClone(
+      configuration.rules.filter(
+        (rule) =>
+          rule.sourceId === sourceId &&
+          rule.enabled &&
+          sourceGrantsRuleAction(source, rule),
+      ),
+    );
   }
 
   /** Creates a disabled source with a server-issued id. */
@@ -234,10 +264,15 @@ export class AutomationStore {
       action: input.action,
       rateLimit: input.rateLimit,
     };
-    await this.mutate((current) => ({
-      ...current,
-      rules: [...current.rules, rule],
-    }));
+    await this.mutate((current) => {
+      const source = current.sources.find(({ id }) => id === rule.sourceId);
+      if (source?.revokedAt !== undefined) {
+        throw new AutomationValidationError([
+          `source ${rule.sourceId} is revoked`,
+        ]);
+      }
+      return { ...current, rules: [...current.rules, rule] };
+    });
     return structuredClone(rule);
   }
 

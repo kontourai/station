@@ -8,10 +8,13 @@
  * (`src-server/services/automation/`).
  *
  * Authority follows the inbound-webhook rule: an omitted grant list is an
- * empty grant, never a wildcard. A rule is valid only when its own
- * `(projectId, agentId, action)` also appears in its source's grants (the
- * "two keys" rule), so neither a source nor a rule alone can start work.
- * Sources and rules are created disabled.
+ * empty grant, never a wildcard. A rule is valid only when its source also
+ * grants its action (the "two keys" rule), so neither a source nor a rule
+ * alone can start work: a `dispatch-task` rule needs a source grant naming
+ * the same `projectId` and `agentId` with `dispatch-task`, and a `notify`
+ * rule (which names no Project or Agent) needs some source grant listing
+ * `notify`. A revoked or disabled source grants nothing at run time, though
+ * its rules stay stored. Sources and rules are created disabled.
  */
 
 /** Current version of every persisted Automation record in this module. */
@@ -146,13 +149,22 @@ export type AutomationEvent = Readonly<{
   semanticKey: string;
   occurredAt: string;
   receivedAt: string;
-  fields: Readonly<Record<string, string | number>>;
+  /**
+   * Allow-listed fields, all strings. The normalizer writes a numeric value
+   * (a run id, a run attempt) as its canonical decimal string, `String(n)`,
+   * so a matcher compares `'123'` with `'123'` and never a number with a
+   * string.
+   */
+  fields: Readonly<Record<string, string>>;
 }>;
 
 /**
  * Exact-equality matcher. Every `where` entry must hold; an array value
- * matches when the field equals any member. There is no regex, glob,
- * negation or expression form.
+ * matches when the field equals any member. Values are strings because
+ * event fields are (numbers arrive as canonical decimal strings). There is
+ * no regex, glob, negation or expression form. `where` must name at least
+ * one field: an empty `where` is refused rather than matching every event
+ * of its type.
  */
 export type AutomationMatcher = Readonly<{
   type: AutomationEventType;
@@ -230,6 +242,22 @@ export const AUTOMATION_DELIVERY_OUTCOMES = [
 export type AutomationDeliveryOutcome =
   (typeof AUTOMATION_DELIVERY_OUTCOMES)[number];
 
+/**
+ * Outcomes of a delivery that was authenticated and accepted for
+ * evaluation. Only these take part in semantic dedupe, so a refused (for
+ * example forged, with a guessable run id) or transiently refused delivery
+ * can never turn the genuine delivery that follows it into a duplicate.
+ */
+export const AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES = [
+  'ignored',
+  'no-match',
+  'matched',
+  'suppressed',
+  'started',
+  'failed',
+  'indeterminate',
+] as const satisfies readonly AutomationDeliveryOutcome[];
+
 /** Why a delivery was `refused`. */
 export const AUTOMATION_REFUSAL_REASONS = [
   'disabled',
@@ -297,6 +325,18 @@ export const AUTOMATION_EXECUTION_LIMITS = {
   deliveryRetentionMs: 7 * 24 * 60 * 60 * 1000,
   /** Signed events older than this are refused as `stale_event`. */
   maxEventAgeMs: 72 * 60 * 60 * 1000,
+  /** Retained delivery rows; the oldest beyond this are pruned. */
+  maxRetainedDeliveries: 50_000,
+  /** Closed episodes older than this are pruned. */
+  closedEpisodeRetentionMs: 31 * 24 * 60 * 60 * 1000,
+  /** Byte ceiling for the stored configuration file. */
+  maxConfigurationBytes: 1_048_576,
+  /** Ids, Project/Agent ids and secret-binding ids. */
+  maxIdLength: 128,
+  maxRepositoryLength: 200,
+  maxWebhookSecretLength: 256,
+  /** Each matcher value and each episode key field value. */
+  maxMatcherValueLength: 256,
   maxBudget: {
     maxTurns: 20,
     maxTokens: 2_000_000,

@@ -26,11 +26,20 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
   AUTOMATION_EXECUTION_LIMITS,
+  AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES,
   type AutomationDeliveryOutcome,
   type AutomationEpisodeState,
   type AutomationRefusalReason,
@@ -91,12 +100,15 @@ CREATE TABLE IF NOT EXISTS automation_episodes (
     CHECK (state IN ('open', 'exhausted', 'indeterminate', 'closed')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   max_attempts INTEGER NOT NULL,
+  closes_on_settle INTEGER NOT NULL DEFAULT 0,
   opened_ms INTEGER NOT NULL,
   updated_ms INTEGER NOT NULL,
   PRIMARY KEY (rule_id, episode_id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS automation_episodes_one_unclosed
   ON automation_episodes(episode_key) WHERE state <> 'closed';
+CREATE INDEX IF NOT EXISTS automation_episodes_closed_age
+  ON automation_episodes(updated_ms) WHERE state = 'closed';
 CREATE TABLE IF NOT EXISTS automation_action_claims (
   claim_id TEXT PRIMARY KEY,
   episode_key TEXT NOT NULL UNIQUE,
@@ -210,28 +222,59 @@ export interface AutomationLedger {
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome;
   updateDelivery(deliveryKey: string, update: DeliveryUpdate): boolean;
   listDeliveries(limit?: number): AutomationDeliveryRecord[];
-  openEpisode(input: {
-    ruleId: string;
-    episodeKey: string;
-    episodeId: string;
-    maxAttempts: number;
-    now: number;
-  }): OpenEpisodeOutcome;
+  openEpisode(input: OpenEpisodeInput): OpenEpisodeOutcome;
   closeEpisode(input: {
     episodeKey: string;
     now: number;
   }): AutomationEpisodeRecord | undefined;
   /** The current unclosed episode for a key. */
   episode(episodeKey: string): AutomationEpisodeRecord | undefined;
-  listEpisodes(): AutomationEpisodeRecord[];
+  /** Newest first, at most `limit` (default 100, ceiling 1,000). */
+  listEpisodes(limit?: number): AutomationEpisodeRecord[];
   claimAction(input: {
     episodeKey: string;
     deliveryKey: string;
     now: number;
   }): ClaimActionOutcome;
-  /** Drops deliveries older than the retention window; returns the count. */
-  pruneDeliveries(now: number): number;
   close(): void;
+}
+
+export type OpenEpisodeInput = Readonly<{
+  ruleId: string;
+  episodeKey: string;
+  episodeId: string;
+  maxAttempts: number;
+  now: number;
+  /**
+   * For a rule without an episode policy: the episode exists only to fence
+   * one delivery's action, so it closes as soon as that action settles.
+   * A keyed episode stays open or exhausted until its `closeOn` event, so a
+   * recurring failure keeps suppressing new starts (design section 5).
+   */
+  perDelivery?: boolean;
+}>;
+
+/** Rows each retention pass may delete, so one write never does unbounded work. */
+const PRUNE_BATCH = 64;
+
+const SEMANTIC_OUTCOMES_SQL = AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES.map(
+  (outcome) => `'${outcome}'`,
+).join(', ');
+
+/** Creates the file 0600 before SQLite does, so it is never briefly wider. */
+function createPrivateFile(path: string): void {
+  if (existsSync(path)) return;
+  closeSync(
+    openSync(
+      path,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+      0o600,
+    ),
+  );
+}
+
+function tightenIfPresent(path: string): void {
+  if (existsSync(path)) chmodSync(path, 0o600);
 }
 
 type ProcessIdentity = {
@@ -250,6 +293,8 @@ export interface AutomationLedgerOptions {
   busyTimeoutMs?: number;
   /** Test seam for foreign-process liveness. */
   processIdentity?: ProcessIdentity;
+  /** Test seam; production uses `AUTOMATION_EXECUTION_LIMITS`. */
+  maxRetainedDeliveries?: number;
 }
 
 interface ClaimRow {
@@ -359,6 +404,7 @@ class SqliteAutomationLedger implements AutomationLedger {
   private readonly db: InstanceType<typeof DatabaseSync>;
   private readonly owner: { id: string; pid: number; birth?: string };
   private readonly identity: ProcessIdentity;
+  private readonly maxRetainedDeliveries: number;
 
   constructor(options: AutomationLedgerOptions) {
     const directory = options.directory ?? join(resolveHomeDir(), 'automation');
@@ -366,6 +412,9 @@ class SqliteAutomationLedger implements AutomationLedger {
       exact: exactProcessIdentity,
       probe: probeExactProcessIdentity,
     };
+    this.maxRetainedDeliveries =
+      options.maxRetainedDeliveries ??
+      AUTOMATION_EXECUTION_LIMITS.maxRetainedDeliveries;
     const exact = this.identity.exact(process.pid);
     this.owner = {
       id: randomUUID(),
@@ -387,6 +436,8 @@ class SqliteAutomationLedger implements AutomationLedger {
       ) {
         throw new Error('automation ledger database must not be a symlink');
       }
+      createPrivateFile(databasePath);
+      tightenIfPresent(databasePath);
     } catch (error) {
       throw new AutomationPolicyUnavailableError('ledger path unsafe', {
         cause: error,
@@ -415,6 +466,10 @@ class SqliteAutomationLedger implements AutomationLedger {
         onUnavailable: 'throw',
       });
       db.exec(SCHEMA);
+      // SQLite creates -wal/-shm with the database's mode; tighten anyway in
+      // case they predate it.
+      tightenIfPresent(`${databasePath}-wal`);
+      tightenIfPresent(`${databasePath}-shm`);
     } catch (error) {
       try {
         db.close();
@@ -434,11 +489,18 @@ class SqliteAutomationLedger implements AutomationLedger {
   }
 
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome {
-    const deliveryKey = automationDeliveryKey(
-      input.sourceId,
-      input.transportId,
-    );
+    // A refusal is unauthenticated or untrusted: it must not occupy the
+    // transport key a genuine delivery will use, so it gets a key of its own.
+    const deliveryKey =
+      input.outcome === 'refused'
+        ? `${automationDeliveryKey(input.sourceId, input.transportId)}:refused:${randomUUID()}`
+        : automationDeliveryKey(input.sourceId, input.transportId);
     return this.transaction(() => {
+      this.pruneBounded(input.receivedAt);
+      if (input.outcome === 'refused') {
+        this.insertDelivery(deliveryKey, input, input.outcome, input.reason);
+        return { kind: 'recorded', deliveryKey };
+      }
       if (
         this.db
           .prepare('SELECT 1 FROM automation_deliveries WHERE dedupe_key = ?')
@@ -446,35 +508,85 @@ class SqliteAutomationLedger implements AutomationLedger {
       ) {
         return { kind: 'duplicate', layer: 'transport', deliveryKey };
       }
+      // Only authenticated, accepted deliveries count: a refused or merely
+      // received row never makes a later genuine delivery a duplicate.
       const semanticSeen = Boolean(
         this.db
           .prepare(
-            'SELECT 1 FROM automation_deliveries WHERE source_id = ? AND semantic_key = ? LIMIT 1',
+            `SELECT 1 FROM automation_deliveries
+              WHERE source_id = ? AND semantic_key = ?
+                AND outcome IN (${SEMANTIC_OUTCOMES_SQL})
+              LIMIT 1`,
           )
           .get(input.sourceId, input.semanticKey),
       );
-      this.db
-        .prepare(
-          `INSERT INTO automation_deliveries
-             (dedupe_key, source_id, semantic_key, event_type, received_ms,
-              updated_ms, outcome, reason, rule_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          deliveryKey,
-          input.sourceId,
-          input.semanticKey,
-          input.eventType,
-          input.receivedAt,
-          input.receivedAt,
-          semanticSeen ? 'duplicate' : input.outcome,
-          semanticSeen ? null : (input.reason ?? null),
-          input.ruleId ?? null,
-        );
+      if (semanticSeen) {
+        this.insertDelivery(deliveryKey, input, 'duplicate', undefined);
+      } else {
+        this.insertDelivery(deliveryKey, input, input.outcome, input.reason);
+      }
       return semanticSeen
         ? { kind: 'duplicate', layer: 'semantic', deliveryKey }
         : { kind: 'recorded', deliveryKey };
     });
+  }
+
+  private insertDelivery(
+    deliveryKey: string,
+    input: RecordDeliveryInput,
+    outcome: AutomationDeliveryOutcome,
+    reason: RecordDeliveryInput['reason'],
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO automation_deliveries
+           (dedupe_key, source_id, semantic_key, event_type, received_ms,
+            updated_ms, outcome, reason, rule_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        deliveryKey,
+        input.sourceId,
+        input.semanticKey,
+        input.eventType,
+        input.receivedAt,
+        input.receivedAt,
+        outcome,
+        reason ?? null,
+        input.ruleId ?? null,
+      );
+  }
+
+  /**
+   * Retention, run inside each delivery write and bounded to
+   * {@link PRUNE_BATCH} rows per table: deliveries past the retention
+   * window, deliveries beyond the row ceiling (oldest first), and closed
+   * episodes past their retention. Open, exhausted and indeterminate
+   * episodes are kept: they still decide whether work may start.
+   */
+  private pruneBounded(now: number): void {
+    const limits = AUTOMATION_EXECUTION_LIMITS;
+    this.db
+      .prepare(
+        `DELETE FROM automation_deliveries WHERE rowid IN (
+           SELECT rowid FROM automation_deliveries
+            WHERE received_ms < ? ORDER BY received_ms LIMIT ?)`,
+      )
+      .run(now - limits.deliveryRetentionMs, PRUNE_BATCH);
+    this.db
+      .prepare(
+        `DELETE FROM automation_deliveries WHERE rowid IN (
+           SELECT rowid FROM automation_deliveries
+            ORDER BY received_ms DESC, rowid DESC LIMIT ? OFFSET ?)`,
+      )
+      .run(PRUNE_BATCH, this.maxRetainedDeliveries - 1);
+    this.db
+      .prepare(
+        `DELETE FROM automation_episodes WHERE rowid IN (
+           SELECT rowid FROM automation_episodes
+            WHERE state = 'closed' AND updated_ms < ? LIMIT ?)`,
+      )
+      .run(now - limits.closedEpisodeRetentionMs, PRUNE_BATCH);
   }
 
   updateDelivery(deliveryKey: string, update: DeliveryUpdate): boolean {
@@ -516,13 +628,7 @@ class SqliteAutomationLedger implements AutomationLedger {
     );
   }
 
-  openEpisode(input: {
-    ruleId: string;
-    episodeKey: string;
-    episodeId: string;
-    maxAttempts: number;
-    now: number;
-  }): OpenEpisodeOutcome {
+  openEpisode(input: OpenEpisodeInput): OpenEpisodeOutcome {
     if (
       !Number.isInteger(input.maxAttempts) ||
       input.maxAttempts < 1 ||
@@ -538,14 +644,15 @@ class SqliteAutomationLedger implements AutomationLedger {
         .prepare(
           `INSERT INTO automation_episodes
              (rule_id, episode_id, episode_key, state, attempt_count,
-              max_attempts, opened_ms, updated_ms)
-           VALUES (?, ?, ?, 'open', 0, ?, ?, ?)`,
+              max_attempts, closes_on_settle, opened_ms, updated_ms)
+           VALUES (?, ?, ?, 'open', 0, ?, ?, ?, ?)`,
         )
         .run(
           input.ruleId,
           input.episodeId,
           input.episodeKey,
           input.maxAttempts,
+          input.perDelivery ? 1 : 0,
           input.now,
           input.now,
         );
@@ -579,12 +686,14 @@ class SqliteAutomationLedger implements AutomationLedger {
     });
   }
 
-  listEpisodes(): AutomationEpisodeRecord[] {
+  listEpisodes(limit = 100): AutomationEpisodeRecord[] {
     return this.read(() =>
       (
         this.db
-          .prepare('SELECT * FROM automation_episodes ORDER BY opened_ms DESC')
-          .all() as EpisodeRow[]
+          .prepare(
+            'SELECT * FROM automation_episodes ORDER BY opened_ms DESC, rowid DESC LIMIT ?',
+          )
+          .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as EpisodeRow[]
       ).map(episodeFromRow),
     );
   }
@@ -646,15 +755,6 @@ class SqliteAutomationLedger implements AutomationLedger {
           attempt,
         }),
       };
-    });
-  }
-
-  pruneDeliveries(now: number): number {
-    return this.transaction(() => {
-      const result = this.db
-        .prepare('DELETE FROM automation_deliveries WHERE received_ms < ?')
-        .run(now - AUTOMATION_EXECUTION_LIMITS.deliveryRetentionMs);
-      return Number(result.changes ?? 0);
     });
   }
 
@@ -737,13 +837,15 @@ class SqliteAutomationLedger implements AutomationLedger {
     this.db
       .prepare('DELETE FROM automation_action_claims WHERE claim_id = ?')
       .run(claim.claim_id);
-    // A closed episode stays closed; otherwise an unknown result fences the
-    // episode and a known one leaves it open until attempts run out.
+    // A closed or per-delivery episode ends here; otherwise an unknown
+    // result fences the episode and a known one leaves it open until
+    // attempts run out.
     this.db
       .prepare(
         `UPDATE automation_episodes
             SET state = CASE
                   WHEN state = 'closed' THEN 'closed'
+                  WHEN closes_on_settle = 1 THEN 'closed'
                   WHEN ? = 'indeterminate' THEN 'indeterminate'
                   WHEN state = 'indeterminate' THEN 'indeterminate'
                   WHEN attempt_count >= max_attempts THEN 'exhausted'

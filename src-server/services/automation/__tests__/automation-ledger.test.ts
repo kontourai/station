@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -22,8 +22,12 @@ const EPISODE_KEY = JSON.stringify([
 describe('AutomationLedger', () => {
   let directory: string;
   const open: AutomationLedger[] = [];
-  const ledger = () => {
-    const created = createAutomationLedger({ directory, busyTimeoutMs: 200 });
+  const ledger = (maxRetainedDeliveries?: number) => {
+    const created = createAutomationLedger({
+      directory,
+      busyTimeoutMs: 200,
+      ...(maxRetainedDeliveries ? { maxRetainedDeliveries } : {}),
+    });
     open.push(created);
     return created;
   };
@@ -46,6 +50,7 @@ describe('AutomationLedger', () => {
     target: AutomationLedger,
     transportId: string,
     semanticKey = 'workflow_run:100:1:completed',
+    extra: Partial<Parameters<AutomationLedger['recordDelivery']>[0]> = {},
   ) {
     return target.recordDelivery({
       sourceId: 'source-1',
@@ -55,6 +60,7 @@ describe('AutomationLedger', () => {
       receivedAt: T0,
       outcome: 'matched',
       ruleId: 'rule-1',
+      ...extra,
     });
   }
 
@@ -111,8 +117,60 @@ describe('AutomationLedger', () => {
       first.close();
       const second = ledger();
       expect(delivery(second, 'guid-a')).toMatchObject({ kind: 'duplicate' });
-      expect(second.pruneDeliveries(T0 + 8 * 24 * 60 * 60 * 1000)).toBe(1);
-      expect(delivery(second, 'guid-a')).toMatchObject({ kind: 'recorded' });
+      // The next write past the window prunes the expired row first.
+      const later = T0 + 8 * 24 * 60 * 60 * 1000;
+      expect(
+        delivery(second, 'guid-a', undefined, { receivedAt: later }),
+      ).toMatchObject({ kind: 'recorded' });
+      expect(second.listDeliveries()).toHaveLength(1);
+    });
+
+    test.each([
+      ['a forged delivery', 'invalid_signature'],
+      ['a transient refusal', 'policy_unavailable'],
+      ['a rate-limited delivery', 'rate_limited'],
+    ] as const)(
+      '%s never makes the genuine delivery a duplicate',
+      (_name, reason) => {
+        const store = ledger();
+        // Same run id, and even the same transport id a forger could replay.
+        delivery(store, 'guid-a', undefined, { outcome: 'refused', reason });
+        expect(delivery(store, 'guid-a')).toMatchObject({ kind: 'recorded' });
+        expect(delivery(store, 'guid-b')).toMatchObject({
+          kind: 'duplicate',
+          layer: 'semantic',
+        });
+        const fresh = ledger();
+        delivery(fresh, 'guid-x', 'workflow_run:200:1:completed', {
+          outcome: 'refused',
+          reason,
+        });
+        expect(
+          delivery(fresh, 'guid-y', 'workflow_run:200:1:completed'),
+        ).toMatchObject({ kind: 'recorded' });
+      },
+    );
+
+    test('a merely received row does not take part in semantic dedupe', () => {
+      const store = ledger();
+      delivery(store, 'guid-a', undefined, { outcome: 'received' });
+      expect(delivery(store, 'guid-b')).toMatchObject({ kind: 'recorded' });
+    });
+
+    test('the row ceiling drops the oldest deliveries on the write path', () => {
+      const store = ledger(3);
+      for (let index = 0; index < 5; index += 1) {
+        delivery(store, `guid-${index}`, `workflow_run:${index}:1:completed`, {
+          receivedAt: T0 + index,
+        });
+      }
+      expect(
+        store.listDeliveries().map(({ semanticKey }) => semanticKey),
+      ).toEqual([
+        'workflow_run:4:1:completed',
+        'workflow_run:3:1:completed',
+        'workflow_run:2:1:completed',
+      ]);
     });
   });
 
@@ -131,6 +189,84 @@ describe('AutomationLedger', () => {
         kind: 'existing',
         episode: { episodeId: '100', state: 'open', attemptCount: 0 },
       });
+    });
+
+    test('a per-delivery episode closes when its action settles', () => {
+      const store = ledger();
+      const recorded = delivery(store, 'guid-a');
+      const key = 'rule-2|workflow_run:100:1:completed';
+      store.openEpisode({
+        ruleId: 'rule-2',
+        episodeKey: key,
+        episodeId: recorded.deliveryKey,
+        maxAttempts: 1,
+        now: T0,
+        perDelivery: true,
+      });
+      const claim = store.claimAction({
+        episodeKey: key,
+        deliveryKey: recorded.deliveryKey,
+        now: T0,
+      });
+      if (claim.kind !== 'claimed') throw new Error(claim.kind);
+      claim.receipt.beginInvocation(T0);
+      claim.receipt.settle({ state: 'completed', now: T0 + 1 });
+      expect(store.episode(key)).toBeUndefined();
+      expect(store.listEpisodes()[0]).toMatchObject({ state: 'closed' });
+    });
+
+    test('a keyed episode stays exhausted, suppressing starts, until closed', () => {
+      const store = ledger();
+      const recorded = delivery(store, 'guid-a');
+      openEpisode(store);
+      const claim = store.claimAction({
+        episodeKey: EPISODE_KEY,
+        deliveryKey: recorded.deliveryKey,
+        now: T0,
+      });
+      if (claim.kind !== 'claimed') throw new Error(claim.kind);
+      claim.receipt.beginInvocation(T0);
+      claim.receipt.settle({ state: 'failed', now: T0 + 1 });
+      expect(openEpisode(store)).toMatchObject({
+        kind: 'existing',
+        episode: { state: 'exhausted' },
+      });
+    });
+
+    test('closed episodes are pruned after retention; unclosed ones are kept', () => {
+      const store = ledger();
+      openEpisode(store);
+      store.closeEpisode({ episodeKey: EPISODE_KEY, now: T0 });
+      store.openEpisode({
+        ruleId: 'rule-9',
+        episodeKey: 'still-open',
+        episodeId: '1',
+        maxAttempts: 1,
+        now: T0,
+      });
+      delivery(store, 'guid-late', 'workflow_run:900:1:completed', {
+        receivedAt: T0 + 32 * 24 * 60 * 60 * 1000,
+      });
+      expect(store.listEpisodes().map(({ episodeKey }) => episodeKey)).toEqual([
+        'still-open',
+      ]);
+    });
+
+    test('listEpisodes is bounded by its limit', () => {
+      const store = ledger();
+      for (let index = 0; index < 3; index += 1) {
+        store.openEpisode({
+          ruleId: 'rule-1',
+          episodeKey: `key-${index}`,
+          episodeId: String(index),
+          maxAttempts: 1,
+          now: T0 + index,
+        });
+      }
+      expect(store.listEpisodes(2).map(({ episodeId }) => episodeId)).toEqual([
+        '2',
+        '1',
+      ]);
     });
 
     test('closing an episode lets the next red run open a new one', () => {
@@ -332,6 +468,21 @@ describe('AutomationLedger', () => {
       ).toEqual({ kind: 'busy' });
     });
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'creates the database and its WAL sidecars 0600',
+    () => {
+      const store = ledger();
+      delivery(store, 'guid-a');
+      for (const name of [
+        'automation.sqlite',
+        'automation.sqlite-wal',
+        'automation.sqlite-shm',
+      ]) {
+        expect(statSync(join(directory, name)).mode & 0o777, name).toBe(0o600);
+      }
+    },
+  );
 
   test('a corrupt ledger fails closed with policy_unavailable', () => {
     const first = ledger();
