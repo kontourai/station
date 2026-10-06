@@ -92,4 +92,6 @@ export interface AttachedSessionSource {
     session: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,
   ): Promise<AttachedSessionReadResult>;
+  /** Release held resources (open store handles); called when following stops. */
+  close?(): void;
 }

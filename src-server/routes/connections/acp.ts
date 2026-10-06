@@ -14,6 +14,8 @@ import {
   unregisterEngineConnection,
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { nativeRuntimeConnectionIds } from '../../providers/adapter-identity.js';
+import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
@@ -47,6 +49,23 @@ function getProviderConnections(): ACPConnectionConfig[] {
       source: 'plugin' as const,
     })),
   );
+}
+
+/**
+ * #3355: an ACP connection may not take an id a native runtime Adapter
+ * answers to (its engine id or public connection id). Both would resolve to
+ * one public engine connection, and engine attribution — keyed by that id —
+ * would then label the native engine's Agents `acp`. Every registered
+ * `providerAdapter` entry counts, builtin or plugin, so an override cannot
+ * reopen the id. Returns the refusal message, or `null` when the id is free.
+ */
+function nativeEngineIdCollision(id: string): string | null {
+  const adapters = listProviders('providerAdapter').map(
+    (entry) => entry.provider as ProviderAdapterShape,
+  );
+  const owner = nativeRuntimeConnectionIds(adapters).get(id);
+  if (owner === undefined) return null;
+  return `Connection id '${id}' is already used by the '${owner}' engine. Choose a different id for the ACP connection.`;
 }
 
 function mergeACPConnections(
@@ -309,6 +328,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
         ctx.applyAgentConfigurationMutation,
         async (beginMutation) => {
           const id = param(c, 'id');
+          const collision = nativeEngineIdCollision(id);
+          if (collision) {
+            return c.json({ success: false, error: collision }, 400);
+          }
           const config = await ctx.configLoader.loadACPConfig();
           const providerConns = getProviderConnections();
           if (providerConns.some((conn) => conn.id === id)) {
@@ -404,6 +427,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
               { success: false, error: 'id and command are required' },
               400,
             );
+          }
+          const collision = nativeEngineIdCollision(body.id);
+          if (collision) {
+            return c.json({ success: false, error: collision }, 400);
           }
           const config = await ctx.configLoader.loadACPConfig();
           const newConn = normalizeACPConnection({

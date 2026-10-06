@@ -419,7 +419,7 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. |
+| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. It may not be an id a native runtime engine already answers to (such as `codex` or `claude`): `POST /acp/connections` and `POST /acp/registry/:id/install` refuse one with a 400 that names the engine already using it, because engine attribution keys on the connection id and would label the native engine's Agents `acp`. A connection stored with such an id before this check still loads; attribution keeps the native engine for that id and the server logs a warning naming it, so delete that connection and add it again under a different id (an update cannot change a connection's id). |
 | `name` | ✓ | Display name shown in the UI. |
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |
