@@ -78,6 +78,17 @@ override refuses before execution. A separately verified remote workspace keeps
 its remote-path admission; the controlling Station does not resolve that path
 against its own filesystem.
 
+A plain-folder workspace (`{ "kind": "directory", "cwd": "..." }`) starts the
+engine in a folder that is not confined to a Project, so a paired device needs
+the operator's `coding:exec` grant to name one; without it the route answers
+`403` with `code: "working-directory-not-granted"` and starts nothing. This
+applies to `/chat`, `/chat/delegated`, `/chat/background`,
+`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
+the other routes the rule covers are listed in the [API reference](api.md#choosing-a-working-folder).
+The operator credential is unaffected, and so is the roundtrip script at the end
+of this page when it runs with the operator credential (a paired device's
+credential needs the grant).
+
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
@@ -97,7 +108,11 @@ request returns the same typed `403` and no engine starts.
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
-`/api/orchestration/session-control` rather than the routes above.
+`/api/orchestration/session-control` rather than the routes above. Its
+read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-activity` (see
+[Station Control Project Activity](api.md#station-control-project-activity)) and
+read as the calling Session's owner within the caller's Project.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the

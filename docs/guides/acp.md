@@ -440,6 +440,13 @@ POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
 ```
 
+Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
+command for Station to run, so a paired device needs the operator's
+`coding:exec` grant (the operator in person never does); otherwise the route
+answers `403` with `code: 'command-not-granted'` and saves nothing. Renaming or
+toggling a connection, listing, removing and reconnecting keep their ordinary
+tier. Reconnect only re-probes the stored command and cannot change it.
+
 ### SSE Status Events
 
 The `/events` SSE stream replays ACP connection status on connect and emits updates as connections change:

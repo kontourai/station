@@ -1,0 +1,131 @@
+{
+  "revision": "0cf181ba52bdbc8b28fa3612f05e687bd7678417",
+
+  "notes": [
+    {"path":"README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["deploy/gcp-dev/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["deploy/public-ingress/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/architecture.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md","packages/cli/src/commands/core.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the cwd, dispatch-scope and start-time-repeat passages: the new check runs before scopeDispatch for paired devices and does not change station-control scope, DispatchCwdAdmission or the resolver; the new routes/working-directory-authority.ts file is a route-level check beside approval-authority.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/routes/projects/project-identity-routes.ts","src-server/routes/starter-work.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"The coding:exec mention is about promotion-only scopes; coding-authority.ts gained a folder rule beside mayRunCommandsOnHost without touching mayGrantFullAccess; still accurate.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/coding-authority.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"The cwd rows describe an ACP connection's default directory; the change does not touch connection config. The operate-tier registration finding is recorded in the threat model, not changed here.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/agents.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/connections.md","src-server/routes/orchestration/orchestration.ts","src-server/security/coding-authority.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/home-transfer-controller.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/private-runner-partition.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/product-law-authoring.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The plain-folder and dispatch-authority passages describe station-control callers (scopeDispatch), which are unchanged; the new rule applies to paired-device callers.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the launch description against starter-work.ts: start-task now refuses a runtimeConfig.cwd other than the Task Project's folder from a device without coding:exec, before the Task is created; the Project page sends the Project's own folder, which is admitted, so the documented first-use flow is unchanged.","inputs":["docs/guides/starter-work.md","src-server/routes/starter-work.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/guides/work-board-security.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"workingDirectory there is a package-import target path, unrelated to session-start folder choice.","inputs":["docs/guides/workspace-packages.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Replaced the folder section with the exact route list and the Task Project folder exception; checked against the handlers in orchestration.ts, tasks.ts, starter-work.ts and project-identity-routes.ts, and the route tests. Makes no claim for other path-taking routes.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/routes/starter-work.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Added the paragraph on directory workspaces against core.ts (default directory sent only for the current Environment or an explicit --cwd) and delegate.ts (--project-path/--cwd still send a directory); the existing process.cwd() Project text still holds for --project.","inputs":["docs/reference/cli.md","packages/cli/src/commands/core.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/reference/config.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The workingDirectory mention is Project create, already gated by the same rule; no SDK surface changed.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/routes/orchestration/tasks.ts","src-server/routes/projects/project-identity-routes.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the plain-folder paragraph against the guarded routes and the roundtrip script (it uses whatever credential it is given: operator works, a paired device needs coding:exec); points to the api.md list instead of repeating it.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/reference/skill-experiences.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/reference/task-basis-mcp-app.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rewrote the folder-rule passage to list exactly the routes guarded (five session-start routes, task dispatch and starter launch with a non-Project runtimeConfig.cwd, Project attach and execution-root) and checked each against working-directory-authority.ts and its callers and the route tests; added the fail-closed statement, the SSH-pinned-delegation note and the ACP operate-tier limit (pairing-route-scopes.ts family rule for /acp, acp.ts handlers have no further gate).","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/coding-authority.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/user/concepts.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["docs/user/workspace-checkpoints.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["examples/self-configuring-agent/README.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Only quick-start station chat examples against the current Station, whose default directory behaviour is unchanged.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/commands/core.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Searched for runtime dispatch, starter launch, Project attach, execution-root, station chat default directory and folder-choice claims; none in this document. The changed routes, runtime wiring and CLI default do not alter anything it states.","inputs":["packages/sdk/README.md","src-server/routes/orchestration/tasks.ts"]}
+  ]
+}
