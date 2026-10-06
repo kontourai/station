@@ -61,6 +61,24 @@ describe('mcpElicitationFormFromRequest', () => {
     expect(readMcpElicitationForm(form())).toEqual(form());
   });
 
+  test.each([
+    { label: 'undefined', enumNames: [undefined, undefined] },
+    { label: 'null', enumNames: [null, null] },
+    { label: 'holes', enumNames: new Array(2) },
+  ])('refuses explicit enum labels containing $label', ({ enumNames }) => {
+    expect(
+      mcpElicitationFormFromRequest('fixture', {
+        message: 'Choose a color',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            color: { type: 'string', enum: ['red', 'blue'], enumNames },
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
   test('refuses what it cannot render faithfully', () => {
     const nested = structuredClone(REQUEST);
     (nested.requestedSchema.properties as Record<string, unknown>).address = {

@@ -9,6 +9,7 @@ import type {
 import {
   MCP_ELICITATION_MAX_FIELDS,
   MCP_ELICITATION_MAX_MESSAGE_CHARS,
+  MCP_ELICITATION_MAX_OPTIONS,
   MCP_ELICITATION_MAX_TEXT_CHARS,
   readMcpElicitationForm,
 } from './mcp-elicitation-form.js';
@@ -26,12 +27,19 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 function schemaOptions(values: unknown, labels?: unknown): unknown {
-  if (!Array.isArray(values)) return null;
+  if (
+    !Array.isArray(values) ||
+    values.length < 1 ||
+    values.length > MCP_ELICITATION_MAX_OPTIONS
+  )
+    return null;
   if (
     labels !== undefined &&
     (!Array.isArray(labels) || labels.length !== values.length)
   )
     return null;
+  if (Array.isArray(labels))
+    for (const label of labels) if (typeof label !== 'string') return null;
   return values.map((value, index) => ({
     value,
     label: Array.isArray(labels) ? labels[index] : value,
@@ -39,7 +47,12 @@ function schemaOptions(values: unknown, labels?: unknown): unknown {
 }
 
 function titledSchemaOptions(entries: unknown): unknown {
-  if (!Array.isArray(entries)) return null;
+  if (
+    !Array.isArray(entries) ||
+    entries.length < 1 ||
+    entries.length > MCP_ELICITATION_MAX_OPTIONS
+  )
+    return null;
   return entries.map((entry) =>
     record(entry)
       ? { value: entry.const, label: entry.title ?? entry.const }
