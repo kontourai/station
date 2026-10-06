@@ -1,0 +1,11 @@
+{
+  "revision": "5579769aa848c06f269d808624bb934abb6dc507",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"grok-session-source.ts changed only in the rewind_marker comment (the marker is now shown by the transcript projection); its import behavior, discovery and environment handling are unchanged, so this document's claims stay accurate.","inputs":["docs/reference/env-vars.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"grok-session-source.ts changed only in the rewind_marker comment (the marker is now shown by the transcript projection); its import behavior, discovery and environment handling are unchanged, so this document's claims stay accurate.","inputs":["docs/user/getting-started.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Grok source paragraph corrected: the rewind marker is no longer 'not shown'; it renders as a quiet 'Rewound to an earlier prompt' line (after its turn when it arrives during one), and compaction markers from the Codex and Grok sources render as 'Context compacted'. Checked against extension-transcript-markers.ts, runtime-event-projection.ts and the grok-session-source rewind/compaction emitters.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/grok-session-source.ts"]}
+  ]
+}

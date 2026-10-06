@@ -139,6 +139,8 @@ describe('buildStationResetPlan', () => {
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
+      // #3386: conversations outside projects in Activity.
+      'attachedSessionsOutsideProjects',
       'mobileDeviceHubUrl',
       // Sources
       'registryUrl',

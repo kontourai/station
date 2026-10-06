@@ -21,17 +21,27 @@ import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Tool } from '@voltagent/core';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { toolServerOAuthRedirectUrl } from '../../services/plugins/mcp-service.js';
 import {
   type AttestedProposalSubject,
   attestProposalSourceContext,
 } from '../../services/plugins/plugin-proposal-provenance.js';
+import {
+  principalCatalogToolInfos,
+  readPrincipalToolCatalog,
+  writePrincipalToolCatalog,
+} from '../../services/plugins/principal-tool-catalog.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
+  ConnectAccountRequiredError,
   captureToolServerOperationFailure,
   requireToolServerResult,
+  StationOwnedToolServerError,
   StationToolServerOAuthProvider,
+  toolServerCredentialCandidates,
+  toolServerCredentialStoreFor,
   toolServerOAuthResourceIdentity,
 } from '../../services/plugins/tool-server-oauth.js';
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
@@ -52,6 +62,7 @@ import {
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
+import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import {
   type MCPToolNameMappingEntry,
   matchesToolPattern as matchMCPToolPattern,
@@ -564,10 +575,16 @@ export async function loadAgentTools(
         const registered = native.tools;
         const normalized = normalizeLoadedMCPTools(
           agentSlug,
-          registered.map((tool) => ({
-            ...tool,
-            name: `${toolId}_${tool.name}`,
-          })),
+          // Plain Station tools typed as `Tool`, as `toStationMCPTool` does
+          // for every other MCP tool: `toVoltAgentTool` wraps them at the
+          // model seam, which is what marks their JSON Schema for the AI SDK.
+          registered.map(
+            (tool) =>
+              ({
+                ...tool,
+                name: `${toolId}_${tool.name}`,
+              }) as Tool<any>,
+          ),
           toolNameMapping,
           toolNameReverseMapping,
           provenanceGeneration,
@@ -604,7 +621,41 @@ export async function loadAgentTools(
         continue;
       }
 
-      if (toolDef.kind === 'mcp') {
+      if (toolDef.kind === 'mcp' && toolDef.credentialOwnership) {
+        // #3279: person-owned credentials. Nothing connects at load (load
+        // acts for no one); each call connects as its turn's principal.
+        const principalTools = createPrincipalScopedMCPTools(
+          agentSlug,
+          toolId,
+          toolDef,
+          spec,
+          mcpConnectionStatus,
+          integrationMetadata,
+          toolNameMapping,
+          toolNameReverseMapping,
+          provenanceGeneration,
+          logger,
+          configLoader,
+          serverPort,
+          custody,
+        );
+        tools.push(
+          ...wrapPlatformMutationGatedTools(
+            principalTools.filter(
+              (tool) =>
+                !mcpToolDisabled(
+                  toolId,
+                  originalMcpToolName(
+                    toolId,
+                    toolNameMapping.get(tool.name)?.original ?? tool.name,
+                  ),
+                  toolDef.disabledTools,
+                ),
+            ),
+            { agentSlug, toolId },
+          ),
+        );
+      } else if (toolDef.kind === 'mcp') {
         // From here on this iteration may talk to a tool server, and every
         // value it handles may be derived from that server's response.
         // Whatever throws below keeps the redacted connection vocabulary.
@@ -736,6 +787,213 @@ export async function loadAgentTools(
   return tools;
 }
 
+type PrincipalConnectionEntry = {
+  claim: MCPLocalClaim;
+  connection?: MCPConnection;
+  creation: Promise<MCPConnection>;
+};
+/**
+ * #3279: live connections of person-owned integrations, one per credential
+ * bucket (server × owner), qualified by the runtime custody owner like the
+ * native station-control pools. A bucket is never shared between owners, so
+ * a connection authenticated as one person cannot carry another's call.
+ */
+const principalConnectionPools = new Map<
+  MCPLocalConnectionCustody,
+  Map<string, PrincipalConnectionEntry>
+>();
+
+async function principalScopedConnection(
+  custody: MCPLocalConnectionCustody,
+  toolId: string,
+  toolDef: ToolDef,
+  provider: StationToolServerOAuthProvider,
+  onConnected: (connection: MCPConnection) => void,
+): Promise<MCPConnection> {
+  let pool = principalConnectionPools.get(custody);
+  if (!pool) {
+    pool = new Map();
+    principalConnectionPools.set(custody, pool);
+  }
+  const existing = pool.get(provider.bucket);
+  if (
+    existing?.claim.isCurrent() &&
+    existing.connection?.isUsable?.() !== false
+  )
+    return existing.connection ?? existing.creation;
+  if (existing) {
+    pool.delete(provider.bucket);
+    void custody.release(existing.claim).catch(() => undefined);
+  }
+  const claim = custody.acquire(toolId, 'managed');
+  const entry = { claim } as PrincipalConnectionEntry;
+  entry.creation = claim
+    .connect(withResolvedMCPEnvironment(toolId, toolDef), {
+      authProvider: provider,
+    })
+    .then(
+      (connection) => {
+        if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        entry.connection = connection;
+        onConnected(connection);
+        return connection;
+      },
+      async (error) => {
+        if (pool.get(provider.bucket) === entry) pool.delete(provider.bucket);
+        await custody.release(claim).catch(() => undefined);
+        throw error;
+      },
+    );
+  pool.set(provider.bucket, entry);
+  return entry.creation;
+}
+
+/**
+ * #3279: tools of an integration whose credentials belong to people. The
+ * catalog comes from a person's own earlier connection (see
+ * `principal-tool-catalog.ts`); each call selects the credential of the
+ * principal the authorized turn runs as, in `toolServerCredentialCandidates`
+ * order, and refuses with "connect your account" when that principal has
+ * none. It never uses another principal's credential, and uses the shared
+ * instance credential only when the integration explicitly allows it.
+ *
+ * The turn's principal is the session owner's `PrincipalRef.id` carried by
+ * the `AuthorizedTurnCorrelation` the authorized orchestration seam mints,
+ * never model input; `connected-account-owner.ts` decides whether it may own
+ * an account. A call outside an authorized turn, by a device-only or
+ * non-human principal, or in a hosted Station has no personal owner and can
+ * use only an explicitly allowed instance credential.
+ */
+function createPrincipalScopedMCPTools(
+  agentSlug: string,
+  toolId: string,
+  toolDef: ToolDef,
+  spec: AgentSpec,
+  mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>,
+  integrationMetadata: Map<
+    string,
+    { type: string; transport?: string; toolCount?: number }
+  >,
+  toolNameMapping: Map<string, MCPToolNameMappingEntry>,
+  toolNameReverseMapping: Map<string, string>,
+  provenanceGeneration: MCPToolProvenanceGeneration,
+  logger: any,
+  configLoader: ConfigLoader,
+  serverPort: number,
+  custody: MCPLocalConnectionCustody,
+): Tool<any>[] {
+  const resourceIdentity = toolServerOAuthResourceIdentity(toolDef);
+  if (!resourceIdentity)
+    throw new StationOwnedToolServerError(
+      'Connected-account integrations require an SSE or streamable HTTP endpoint',
+    );
+  const homeDir = configLoader.getProjectHomeDir();
+  const catalog = readPrincipalToolCatalog(homeDir, toolId, resourceIdentity);
+  if (!catalog) {
+    mcpConnectionStatus.set(toolId, {
+      connected: false,
+      error: `No account is connected for integration '${toolId}' yet. Each person connects their own account.`,
+    });
+    integrationMetadata.set(toolId, {
+      type: 'mcp',
+      transport: toolDef.transport,
+      toolCount: 0,
+    });
+    return [];
+  }
+  const redirectUrl = toolServerOAuthRedirectUrl(serverPort, toolId);
+  const selectProvider = async (): Promise<StationToolServerOAuthProvider> => {
+    // The session owner's `PrincipalRef.id`, only when it can own an account.
+    const principalId = connectedAccountOwnerIdForTurnAccount(
+      currentAuthorizedTurnCorrelation()?.accountId,
+    );
+    for (const owner of toolServerCredentialCandidates(
+      toolDef,
+      principalId,
+      spec.project,
+    )) {
+      const provider = new StationToolServerOAuthProvider(
+        toolServerCredentialStoreFor(homeDir, owner),
+        toolId,
+        resourceIdentity,
+        redirectUrl,
+        undefined,
+        owner,
+      );
+      if (await provider.tokens()) return provider;
+    }
+    throw new ConnectAccountRequiredError(toolId);
+  };
+  const tools = principalCatalogToolInfos(toolId, catalog).filter((tool) =>
+    isMCPAppsToolVisibleTo(tool, 'model'),
+  );
+  const loaded = tools.map((tool) =>
+    toStationMCPTool(
+      // No load-time connection: every call connects as its own turn.
+      undefined,
+      tool,
+      logger,
+      false,
+      async (args) => {
+        const provider = await selectProvider();
+        const connection = await principalScopedConnection(
+          custody,
+          toolId,
+          toolDef,
+          provider,
+          (connected) => {
+            void writePrincipalToolCatalog(
+              homeDir,
+              toolId,
+              resourceIdentity,
+              connected.tools,
+            ).catch(() => undefined);
+          },
+        );
+        return connection.client.callTool({
+          name: tool.originalName,
+          arguments: args ?? {},
+        });
+      },
+    ),
+  );
+  const identities = new Map(
+    loaded.map(
+      (station, index) =>
+        [
+          station,
+          {
+            serverId: toolId,
+            originalToolName: tools[index]!.originalName,
+          },
+        ] as const,
+    ),
+  );
+  const normalized = normalizeLoadedMCPTools(
+    agentSlug,
+    loaded,
+    toolNameMapping,
+    toolNameReverseMapping,
+    provenanceGeneration,
+    toolId,
+    (tool) => {
+      const identity = identities.get(tool);
+      if (!identity) throw new Error('Missing reviewed MCP loader identity.');
+      return identity;
+    },
+    logger,
+  );
+  // Tools are available; whether a given person can use them is decided per
+  // call. No shared "connected" claim is made for one person's account.
+  mcpConnectionStatus.set(toolId, { connected: false });
+  integrationMetadata.set(toolId, {
+    type: 'mcp',
+    transport: toolDef.transport,
+    toolCount: normalized.length,
+  });
+  return normalized;
+}
+
 function createRuntimeOAuthProvider(
   configLoader: ConfigLoader,
   def: ToolDef,
@@ -758,12 +1016,22 @@ function createRuntimeOAuthProvider(
 }
 
 function toStationMCPTool(
-  connection: MCPConnection,
+  connection: MCPConnection | undefined,
   tool: MCPToolInfo,
   logger: any,
   isNativeStationControl: boolean,
   execute?: (args: Record<string, unknown>) => Promise<unknown>,
 ): Tool<any> {
+  const call =
+    execute ??
+    (connection
+      ? (args: Record<string, unknown>) =>
+          connection.client.callTool({
+            name: tool.originalName,
+            arguments: args ?? {},
+          })
+      : undefined);
+  if (!call) throw new Error('An MCP tool needs a connection or an executor.');
   const stationTool = {
     id: tool.name,
     name: tool.name,
@@ -776,11 +1044,7 @@ function toStationMCPTool(
     ui: tool.ui,
     execute: async (args: Record<string, unknown>) => {
       try {
-        const result = await (execute?.(args) ??
-          connection.client.callTool({
-            name: tool.originalName,
-            arguments: args ?? {},
-          }));
+        const result = await call(args);
         return isNativeStationControl
           ? result
           : requireToolServerResult(result, 'tool-call', tool.serverId, logger);

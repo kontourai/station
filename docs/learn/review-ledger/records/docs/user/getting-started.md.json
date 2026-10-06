@@ -200,7 +200,19 @@
 
     "src-ui/src/components/chat-start/StartComposer.tsx",
 
-    "src-ui/src/hooks/useStartSelection.ts"
+    "src-ui/src/hooks/useStartSelection.ts",
+
+    "src-server/services/orchestration/attached-session-follow-service.ts",
+
+    "src-server/services/orchestration/attached-session-repository.ts",
+
+    "src-ui/src/views/activity/activity-list-model.ts",
+
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
+
+    "src-server/providers/sessions/codex-rollout-session-source.ts",
+
+    "src-server/providers/sessions/grok-session-source.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "984386d9dbab02b774c5808941e89755890a779f",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed after merging origin/main into the #3279 branch. This PR's runtime-routes.ts change adds one import, the connected-account principal resolver (resolveConnectedAccountPrincipalId) passed to the secret-binding route factory as resolveViewerPrincipalId and to the integration routes as resolveAccountPrincipalId; no pairing, operator, device-admin or passkey route, authority check or scope changes, so this design's claims are unaffected. The change shifts later runtime-routes.ts lines by +1 to +19. Spot checks show this document's line citations (e.g. :8627-8641 for GET /api/pairing/devices, :1345-1352) already did not point at the described code on origin/main 75238bcbca before this merge, so they are left for the document's owner; not rewritten here.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

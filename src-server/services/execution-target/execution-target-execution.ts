@@ -38,6 +38,7 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
@@ -285,6 +286,12 @@ export interface ExecutionSessionBinding {
   userId?: string;
   projectSlug?: string;
   cwd?: string;
+  /**
+   * #3429: the canonical folder the server admitted this conversation into
+   * (`dispatchCanonicalCwd`): an adopted attached conversation's own folder,
+   * or a scoped dispatch's. Never caller-supplied.
+   */
+  admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;
   worktree?: WorktreeSessionMetadata;
 }
@@ -562,7 +569,15 @@ export async function executeForegroundMessage(
     );
   }
   if (binding) {
-    validateContinuationWorkspace(binding, resolved.workspace);
+    validateContinuationWorkspace(
+      binding,
+      resolved.workspace,
+      // #3429: the request named its project and nothing more (the dock's
+      // follow-up), so it asks to continue the conversation where it is.
+      input.target.workspace?.kind === 'project' &&
+        input.target.workspace.cwd === undefined &&
+        input.target.workspace.workspaceIsolation === undefined,
+    );
   }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
@@ -1090,6 +1105,7 @@ const defaultWorktreeFinalizer =
 function validateContinuationWorkspace(
   binding: ExecutionSessionBinding,
   workspace: ResolvedWorkspaceTarget | undefined,
+  projectOnly = false,
 ): void {
   const requestedIsolation =
     workspace?.kind === 'project'
@@ -1122,6 +1138,36 @@ function validateContinuationWorkspace(
       'continuation_workspace_unbound',
       'This conversation was started without a workspace, so it cannot be continued inside one. Continue it as it is, or start a new chat in this workspace.',
     );
+  }
+  // #3429: a conversation the server admitted into a verified folder (an
+  // adopted attached conversation: the project folder, a folder inside it,
+  // or a worktree of its repository) is bound to that folder. A request that
+  // names only the conversation's project continues it there, in the folder
+  // and isolation it already has; it never moves it to the project root. A
+  // request naming a folder or an isolation still meets the exact checks
+  // below.
+  if (
+    workspace?.kind === 'project' &&
+    projectOnly &&
+    binding.admittedCwd !== undefined &&
+    !binding.worktree
+  ) {
+    if (binding.projectSlug !== workspace.projectSlug)
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_different_project',
+        'This conversation belongs to a different project.',
+      );
+    // `admittedCwd` is already canonical; the bound folder must still
+    // resolve to exactly it (a folder swapped for a link does not).
+    if (
+      binding.cwd === undefined ||
+      canonicalPathOrUndefined(binding.cwd) !== binding.admittedCwd
+    )
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_direct_mismatch',
+        'This conversation belongs to a different workspace directory.',
+      );
+    return;
   }
   if (workspace?.kind === 'project' && !originalIsolation) {
     throw new Error(
@@ -1211,6 +1257,14 @@ function validateContinuationWorkspace(
       'continuation_workspace_direct_mismatch',
       'This conversation belongs to a different workspace directory.',
     );
+  }
+}
+
+function canonicalPathOrUndefined(path: string): string | undefined {
+  try {
+    return canonicalPath(path);
+  } catch {
+    return undefined;
   }
 }
 

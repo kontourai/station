@@ -46,9 +46,12 @@ describe('proposedChanges query domain', () => {
       }),
     ).resolves.toEqual([{ id: 'change-1' }]);
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/proposed-changes?status=pending&status=rejected&sessionId=session-1&projectId=project-a',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('posts single and bulk decisions through the API contract', async () => {

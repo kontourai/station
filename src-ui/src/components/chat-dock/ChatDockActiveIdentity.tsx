@@ -23,6 +23,7 @@ interface ChatDockActiveIdentityProps {
    * the header then names none rather than inventing one.
    */
   modelLabel?: string | null;
+  routeLabel?: string;
   inputOrigin?: OrchestrationInputOrigin;
   onClose: (id: string) => void;
 }
@@ -52,6 +53,7 @@ export function ChatDockActiveIdentity({
   session,
   agent,
   modelLabel,
+  routeLabel,
   originLabel,
   originProvider,
   inputOrigin,
@@ -91,15 +93,22 @@ export function ChatDockActiveIdentity({
       : engine;
   // The avatar's identity comes from the SESSION's committed agent slug, which
   // is present whether or not the enriched catalog resolved this agent, so the
-  // header and the transcript's message avatars stay the same picture. Artwork
-  // (`icon`) is the only part that needs the catalog; without it `AgentIcon`
-  // falls back to its slug-seeded identicon (station#1424) — a deterministic
-  // rendering of the id we hold, not a claim that this agent has artwork.
+  // identicon seed does not depend on the catalog. Artwork (`icon`) needs the
+  // catalog; without it `AgentIcon` falls back to its slug-seeded identicon
+  // (station#1424) — a deterministic rendering of the id we hold, not a claim
+  // that this agent has artwork.
+  //
+  // The engine mark (#3355) comes from an imported session's recorded
+  // provider, else from the catalog's engine for this agent. A local chat has
+  // no `originProvider`, so without the catalog fallback a Codex agent drew
+  // "CO" initials here even with the catalog healthy. This is not guaranteed
+  // to match every transcript avatar: a message row that carries its own
+  // `agentDisplayName` draws from that attribution, which has no engine id.
   const iconSubject = {
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
-    engineId: parseEngineId(originProvider),
+    engineId: parseEngineId(originProvider) ?? agent?.engineId,
   };
   // One muted token, not a pill plus a span: `engineChipLabel` already joins an
   // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
@@ -107,7 +116,13 @@ export function ChatDockActiveIdentity({
   // known, so the row names nothing it cannot derive.
   const engineTrail =
     originLabel ??
-    [engineChipLabel(engineChip), modelLabel].filter(Boolean).join(' · ');
+    [
+      engineChipLabel(engineChip),
+      modelLabel,
+      routeLabel ? `via ${routeLabel}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   return (
     <div className="chat-dock__active-identity">

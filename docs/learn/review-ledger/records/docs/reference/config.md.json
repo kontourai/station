@@ -134,7 +134,9 @@
 
     "src-ui/src/components/chat-dock/retry-attachments.ts",
 
-    "src-ui/src/components/chat/FilePartPreview.tsx"
+    "src-ui/src/components/chat/FilePartPreview.tsx",
+
+    "src-server/services/agents/agent-audience.ts"
   ],
 
   "checks": [

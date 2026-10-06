@@ -80,9 +80,12 @@ describe('taskGraph SDK domain', () => {
     await expect(fetchTasks({ projectId: 'project-alpha' })).resolves.toEqual([
       { id: 'task-1' },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/tasks?projectId=project-alpha',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('keeps Task query keys isolated by task id', () => {
@@ -410,9 +413,12 @@ describe('taskGraph SDK domain', () => {
       task: { id: 'task-3' },
       links: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
       'http://example.test/api/tasks/task-3/graph',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
 
     mockJsonResponse({
       success: true,
@@ -422,8 +428,11 @@ describe('taskGraph SDK domain', () => {
       sessionId: 'session-1',
       links: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
       'http://example.test/api/tasks/sessions/session-1/relations',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 });

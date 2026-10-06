@@ -1,4 +1,4 @@
-name: Source availability
+name: "Main: Source availability"
 on:
   push:
     branches: [main]

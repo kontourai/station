@@ -1,0 +1,7 @@
+{
+  "revision": "070b8d80ee12845dd724b8f97d64a0873af5654c",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble fix round only gates the phone exchange divider on continuesTurn; the details sheet holding Restore workspace is unchanged.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

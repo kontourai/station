@@ -1,4 +1,4 @@
-name: Nightly native staging
+name: "Nightly: Native staging"
 
 # Phase one of the native cohort: the caller supplies an already source-gated
 # revision, and this workflow reserves the cohort identity, then builds, signs,

@@ -1,0 +1,7 @@
+{
+  "revision": "06d30166f637c8840e34d809d36a4babc773df28",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3386 merge of origin/main: main added the Model picker close/reset sentences (start composer section); this branch's Continue an Attached Session section is unchanged by the merge and was re-read against attached-session-continuation-place.ts. Both parts accurate together. No prose change.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -41,6 +41,45 @@ describe('adoptOrchestrationSession failure classification', () => {
     expect((error as Error).message).not.toMatch(/not responding/i);
   });
 
+  it('a refusal Station marks not retryable is final and keeps its reason (#3386)', async () => {
+    const reason =
+      'Station will not continue this conversation as a No project chat in /work: it is outside your home folder.';
+    const refuse = (body: Record<string, unknown>) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ success: false, ...body }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      );
+    refuse({
+      error: reason,
+      code: 'continuation_place_refused',
+      retryable: false,
+    });
+    const final = await adoptOrchestrationSession({
+      sourceThreadId: 'source-refused',
+      apiBase: 'https://station.test',
+    }).catch((caught: unknown) => caught);
+    expect(final).toMatchObject({
+      failureClass: 'certain-response',
+      retryable: false,
+      status: 400,
+      refusal: reason,
+    });
+
+    // A 400 that does not say so keeps the retryable default.
+    refuse({ error: 'Station could not continue this attached session.' });
+    const other = await adoptOrchestrationSession({
+      sourceThreadId: 'source-other',
+      apiBase: 'https://station.test',
+    }).catch((caught: unknown) => caught);
+    expect(other).toMatchObject({ retryable: true, status: 400 });
+    expect(other).not.toHaveProperty('refusal');
+  });
+
   it('classifies a provable connection refusal as certainly not sent and retryable', async () => {
     vi.stubGlobal(
       'fetch',

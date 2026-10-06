@@ -1139,6 +1139,15 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
           error:
             "An agent cannot set the Station's default approval mode to full access. The operator can, in Settings.",
         });
+      // The terminal shell is a program Station starts; an agent may not
+      // choose it (the route refuses an agent-originated change too).
+      if (updates.terminalShell !== undefined)
+        return jsonToolResult({
+          success: false,
+          code: 'command-not-granted',
+          error:
+            'An agent cannot change the terminal shell. The operator can, in Settings.',
+        });
       return jsonToolResult(
         await api('/config/app', {
           method: 'PUT',

@@ -41,6 +41,15 @@ function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   return BRAND_KEYS.find((brand) => brand === engineId);
 }
 
+/**
+ * Whether this build ships a mark for the engine. Lets a caller choose an
+ * engine as a stand-in only when the stand-in draws something more specific
+ * than initials (#3355); `'acp'` and plugin engines answer `false`.
+ */
+export function hasBundledEngineMark(engineId: EngineId): boolean {
+  return resolveBrandKey(engineId) !== undefined;
+}
+
 function explicitBrand(value: unknown): BrandKey | undefined {
   if (typeof value !== 'string' || !value.startsWith('brand:'))
     return undefined;

@@ -1,0 +1,9 @@
+{
+  "revision": "c44f0376c7faafac3f9042d43aac492adc286bcf",
+
+  "notes": [
+    {"path":".github/codex/qualification-repair.md","note":"Reviewed final App landing fixture correction after independent P2 review: semantic CLI parsing preserves pr merge, the intended PR/repository and explicit auto-merge intent without exact vector-order assertions; optional ExpectedHead matches real CLI behavior. Production landing/helper/workflow bytes are unchanged. At committed c44f0376, fresh baseline23/23 passed; removing the head fence created an unsafe arm marker and failed the race keeper; removing auto intent caused the intended CLI refusal. Both exact restorations passed9/9 and source hash matched. These are local boundary diagnostics; current full CI/hosted admission/merge and source qualification remain pending. Repair-agent limits and separate trusted publisher remain unchanged.","inputs":[".github/codex/qualification-repair.md","scripts/__tests__/qualification-repair.test.ts"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed final App landing fixture correction after independent P2 review: semantic CLI parsing preserves pr merge, the intended PR/repository and explicit auto-merge intent without exact vector-order assertions; optional ExpectedHead matches real CLI behavior. Production landing/helper/workflow bytes are unchanged. At committed c44f0376, fresh baseline23/23 passed; removing the head fence created an unsafe arm marker and failed the race keeper; removing auto intent caused the intended CLI refusal. Both exact restorations passed9/9 and source hash matched. These are local boundary diagnostics; current full CI/hosted admission/merge and source qualification remain pending. Repair-agent limits and separate trusted publisher remain unchanged.","inputs":["docs/guides/releasing.md","scripts/__tests__/qualification-repair.test.ts"]}
+  ]
+}

@@ -75,6 +75,21 @@ selected connection's credential/transport policy. A direct `fetch` copy can
 lose that authority, timeout and failure behavior. Plugins consume public SDK
 exports, never `src-ui` contexts or `src-server` services.
 
+The UI clears the origin's previous header acceptance when a handshake starts.
+Only the latest-started handshake at that origin may restore acceptance. Its
+non-OK response, invalid JSON or transport failure leaves acceptance cleared;
+an older overlapping success cannot restore cross-origin carriage.
+
+The SDK also owns the client API protocol declaration. Cross-origin browser
+requests carry `X-Station-Client-Protocol` only after a public handshake
+advertises `compatibility.capabilities.clientProtocolHeader >= 1`; same-origin
+and host-owned transports do not need that preflight negotiation. Use the
+[shared policy](../../packages/shared/src/client-protocol.ts) for a necessary
+non-SDK caller instead of unconditionally adding a custom header that older
+hosts cannot preflight. A host's `426 client_protocol_unsupported` is a
+compatibility refusal, not a missing credential. The
+[Connect reference](../reference/connect.md) records the remaining caller gaps.
+
 Do not run an effectful Agent/tool invocation merely because a query mounted
 or refetched. Use the owning mutation/action contract and explicit user intent.
 A successful HTTP acknowledgment, recorded run or cache invalidation does not

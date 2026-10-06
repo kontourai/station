@@ -36,6 +36,52 @@ apply to each tool operation.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Choosing a working folder
+
+Naming a folder takes the authority to run commands there: for a paired
+device, the operator's `coding:exec` grant (the same rule `POST /api/projects`
+applies to a Project's folder). A device without it, including a `delegation`
+or `standard` preset device, gets `403` with
+`code: 'working-directory-not-granted'` and nothing starts or saves. The rule
+covers exactly these routes:
+
+- `POST /api/orchestration/delegations`, `/chat`, `/chat/delegated`,
+  `/chat/background` and `/conversations/:conversationId/handoff`, when
+  `target.workspace` is `{ kind: 'directory', cwd }`;
+- `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
+  (`start-task`), when `runtimeConfig.cwd` is not the Task Project's own
+  folder;
+- `POST /api/projects/attach` with a `workingDirectory`, and
+  `PUT /api/projects/:slug/identity/execution-root` setting a path.
+
+A `{ kind: 'project' }` workspace is unchanged. The operator, and the desktop
+app on the Station's own computer, are not decided by the rule. Other routes
+that take a path are not covered by it.
+
+Choosing a command for Station to run takes the same authority, decided by the
+same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
+or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
+when `command`, `args` or `cwd` change; `POST /integrations`, and
+`PUT /integrations/:id`, when `command` or `args` are set or change; `POST
+/api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
+when `terminalShell` changes (an agent's station-control call may not change it
+at all). The same code covers a tool server's `env` or `secretEnv` on a
+command-launching server, a URL-transport record changed to launch a stored
+command, `POST /api/plugins/install`, `/:name/recover` and `/:name/update`,
+`POST /api/registry/plugins/install` and `POST /api/registry/integrations/install`;
+entering an API key for a command-launching tool server from a paired device now
+needs the grant. Binding a secret to a command-launching server
+(`POST /api/secret-bindings/:id/bind`, `migrate-stored-env`, and `PUT` on a binding
+already bound to one) and `POST /api/registry/agents/install` take it too. A bind is checked for a missing or hidden
+binding too, so a caller without the grant gets `command-not-granted` there and one
+with it gets the service's `404`; a person-owned binding still answers the
+service's `400`; no env name is
+exempt. A saved
+Environment's dispatch that names no Project
+is sent with the verified project folder; if that Station answers
+`working-directory-not-granted`, the caller gets a fixed message naming a Project
+or the grant.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
@@ -178,8 +224,10 @@ HTTP status alone does not prove useful-work completion.
   creates no Task. A ready request creates the Task idempotently, then binds and
   fences dispatch. `state: "started"` can still contain unverified correlation
   or failed/indeterminate dispatch; read those fields before claiming execution.
-- **Continue a Session:** the body names only the Starter ID, operation ID, and
-  exact source Session ID. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+- **Continue a Session:** the body names the Starter ID, operation ID, and
+  exact source Session ID, plus an optional `target` for a Session no Project
+  claims (`adoptSession`'s `target`, [Session API](session-api.md)); it never
+  names a folder. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
   validates and adopts the source through the existing idempotency ledger.
   Its child Session/command receipt proves admission, not useful completion.
 - **Inspect approval/receipt:** candidate reads return exact typed references.
@@ -316,7 +364,10 @@ GET /api/agents
 The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
 persisted definitions, registry defaults, and runtime observations. Rows can
 include execution binding, availability/validation findings, and activation
-failures; inclusion in the list is not proof that a chat can launch. The example
+failures; inclusion in the list is not proof that a chat can launch. A bound
+row's `engineId` and `engineConnectionType` come from the connection record and
+its Adapter, so they survive a failed or timed-out runtime inspection;
+`engineDisplayName` and availability still need that live read. The example
 below is a field excerpt, not a fixed response for every Agent.
 
 
@@ -350,6 +401,20 @@ below is a field excerpt, not a fixed response for every Agent.
 }
 ```
 
+A request acting for a deployment account (a Project member) never receives
+this shape. The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+answers `GET /agents`, `GET /api/agents` and `GET /api/agents/:slug` for it
+with `station.member-agent/v1` views of Agents whose
+[audience](config.md#audience) admits it; `/api/boot`'s `agents` section
+carries the same views. Any other or unknown Agent slug, in a path or as an
+orchestration `target.agent`, returns `404 Agent not found`. A turn on an
+admitted Agent returns `403 member_agent_turns_unavailable`. Creating or
+materializing an Agent, and updating, deleting or editing the tools or
+workflows of an admitted one, returns `403 member_agent_catalog_read_only`
+(a hidden slug stays `404`). All of these gate
+responses are `no-store`. See
+[Agent audience](../design/project-membership.md#agent-audience).
 
 ---
 
@@ -549,6 +614,31 @@ values; clients use the returned metadata when editing. A failed lookup returns
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
 service refuses changes that would create a shadow copy.
+
+### Connected accounts (#3279)
+
+An integration whose definition sets `credentialOwnership: {owner: "principal"}`
+uses each person's own account instead of the shared Station credential. A turn
+uses only the credential of the principal it runs as (a credential narrowed to the
+Agent's Project first, then the person's own). A person without one gets a
+"connect your account" refusal; the shared credential is used only when
+`allowInstanceFallback` is `true`. The owner is the request's resolved human
+`PrincipalRef.id`; a paired device without a person, a non-human principal, and a
+hosted request cannot own an account.
+
+`POST /integrations/:id/oauth/authorize` and `POST /integrations/:id/oauth/callback`
+accept optional `owner` (`"self"` or, when fallback is allowed, `"instance"`) and
+`projectSlug`. A person's consent flow is keyed by the principal who started it, so
+only that principal's callback can complete it, and it never changes the
+integration's shared `probe.authorization`. A successful first connection records
+the tool catalog Agents load that integration's tools from.
+
+`GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+owner and availability only, never a token. `DELETE /integrations/:id/account`
+removes the caller's own credential; the next call that needs it refuses.
+
+MCP Apps reads and calls are not available yet for these integrations.
 
 ### Delete Integration
 
@@ -995,6 +1085,11 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
+Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
+OpenAI-compatible Model connection; its current address/key are resolved at
+launch. `config.modelRoute` is a secret-free discovery projection, not an
+editable credential. Selecting a missing/disabled proxy refuses launch.
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.
@@ -1340,8 +1435,10 @@ adds bounded `aggregateReceipts` for leaf Station transfer, after logical
 replacement/deduplication. Context occupancy alone does not produce a token
 receipt or consumed-usage coverage.
 
-Cumulative token identities survive engine-process restarts; cumulative cost
-identities follow the declared cost-process epochs. `sourceSequence` orders
+Cumulative token identities survive engine-process restarts. A cumulative cost
+identity spans one running total: a resumed Claude process continues its
+predecessor's total, while a restart without resume or a lower figure starts
+another. `sourceSequence` orders
 same-Station/thread observations when ingestion timestamps tie. Sparse
 cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
@@ -2327,7 +2424,9 @@ provider's available catalog.
 
 `POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
-Otherwise it calls the Agent registry provider and returns its result. A
+Otherwise it calls the Agent registry provider (which copies a plugin tree into
+the plugins directory, so a paired device needs the `coding:exec` grant here
+too) and returns its result. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 
@@ -2797,9 +2896,15 @@ POST /tool-approval/:approvalId
 ```
 
 Resolve a pending tool call using the request-bound Session read authority and
-client origin. Knowing an approval ID alone is not sufficient. The
-[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
-cannot resolve an authorized pending request.
+client origin. The [approval handler](../../src-server/routes/agents/invoke.ts)
+returns 404 when it cannot resolve an authorized pending request. In hosted
+mode the entry must be bound to a session of the caller's tenant. Outside
+hosted mode the
+[registry](../../src-server/services/approvals/approval-registry.ts) lets any
+caller that reaches this route settle a pending entry by its ID. The exception
+is a request acting for a Project member: the
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+refuses it with `403 member_agent_turns_unavailable`.
 
 The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
 uses orchestration for parts carrying an approval thread ID, including the exact
@@ -3027,6 +3132,40 @@ credential does not by itself authorize every operation. See
 [endpoints](endpoints.md) for the route/auth authorities and
 [deployment authentication](../guides/deployment-authentication.md) for identity.
 
+### Client API protocol admission
+
+Clients using the SDK (including CLI requests through that seam), the pairing
+client, and the UI health probe declare `X-Station-Client-Protocol`. The
+[protocol contract](../../packages/contracts/src/environment-security.ts)
+accepts one decimal integer from 1 to 9999, without a sign or leading zero.
+Absence means legacy protocol 1; a malformed value returns
+`400 {error: {code: "client_protocol_invalid", message}}`.
+
+For paired-scope HTTP routes and the public pairing request, access-request,
+and exchange, a value below the advertised `minClientProtocol` returns
+`426 {error: {code: "client_protocol_unsupported", message, clientProtocol,
+minClientProtocol, protocolVersion, serverVersion}}` before credential checks.
+Both refusals emit `station.auth.failure` with the refusal code as reason;
+only the parsed protocol is recorded, never the raw header. This compatibility
+signal grants no authority, and passing it does not skip authentication.
+A separate direct-socket-peer audit limiter bounds emission to 10 audits per
+60-second window by default, using `RuntimeAuthFailureLimiter` and its
+1,024-peer cap. The cap evicts live entries, so refusals from more than 1,024
+distinct peers can reset a peer's count and let it emit more than 10 audits in
+one window; memory stays bounded either way. Exhaustion suppresses only audits; every refusal still receives
+400/426. Protocol refusals neither consult nor consume the authentication
+budget, so correcting the header permits account verification even after many
+refusals from the same proxy or NAT.
+
+The public handshake and proof remain reachable. The landing page, `/doc`,
+`/ui`, and integration icons are exempt because navigation and image requests
+cannot attach this header. Other capability families, attested internal
+loopback callers, and the separate terminal/voice WebSocket listeners are
+outside this HTTP check. Exemptions follow the capability table, not a blanket
+exception for every iframe, image, or link request. See the
+[admission owner](../../src-server/security/client-protocol-admission.ts) and
+[threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962).
+
 ### CORS
 
 The running Station uses the exact browser origins assembled by
@@ -3037,6 +3176,15 @@ are refused before route dispatch. This is not the permissive helper used when
 HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
+
+The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
+browser callers send it only after observing
+`compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
+handshake. The UI forgets the prior origin observation before re-handshaking;
+non-OK responses, invalid JSON and transport errors leave it cleared.
+Older or unobserved hosts receive an unlabelled request, interpreted
+as protocol 1. Same-origin requests, Node callers and host-owned transports
+can carry it without that preflight condition.
 
 ---
 

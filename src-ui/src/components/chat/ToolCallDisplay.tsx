@@ -172,9 +172,10 @@ function ToolCallDisplayComponent({
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
   const running = phase === 'running';
-  // Every other unresolved outcome already carries a badge below (Failed,
-  // Cancelled, User denied, Blocked by Station). This is the one that does
-  // not: dispatched, and no completion event ever arrived.
+  // Every other unresolved outcome already carries a badge below (Cancelled,
+  // User denied, Blocked by Station; a plain failure is its own `failed`
+  // phase with a Failed badge). This is the one that does not: dispatched,
+  // and no completion event ever arrived.
   const unresolvedWithoutOutcome =
     phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(

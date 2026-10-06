@@ -1,0 +1,7 @@
+{
+  "revision": "466b9559b124171c43def1c4688748a596be1f69",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-read after the follow-up: the active-work test also asserts the changes read names the opened file (src-ui/src/App.tsx) and the mocked patch carries a git index header. Matrix row remains accurate; no prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

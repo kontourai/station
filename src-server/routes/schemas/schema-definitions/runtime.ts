@@ -244,6 +244,14 @@ export const integrationSchema = z.object({
       intervalMs: z.number().optional(),
     })
     .optional(),
+  // #3279: each person connects their own account for this integration.
+  credentialOwnership: z
+    .object({
+      owner: z.literal('principal'),
+      allowInstanceFallback: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
 });
 export const integrationEnabledSchema = z.object({ enabled: z.boolean() });
 export const integrationToolsApplySchema = z.object({

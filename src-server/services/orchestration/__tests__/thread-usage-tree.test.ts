@@ -248,6 +248,45 @@ describe('conversation usage tree', () => {
     store.close();
   });
 
+  test('a Claude conversation whose engine resumed its transcript reports the resumed running cost once (station#3320)', () => {
+    const store = fixtureStore();
+    // The cost-bearing usage event the Claude adapter's result handler
+    // writes; figures from a live Agent SDK 0.3.278 probe, where the resumed
+    // query() reported 0.0324923 already including the first 0.030603.
+    const result = (reportedCostUsd: number) =>
+      store.appendEvent({
+        eventId: `${ROOT}:result:${++ordinal}`,
+        threadId: ROOT,
+        turnId: `${ROOT}:turn:${ordinal}`,
+        provider: 'claude',
+        method: 'token-usage.updated',
+        createdAt: '2026-09-23T00:00:03.000Z',
+        promptTokens: 10,
+        completionTokens: 3,
+        reportedCostUsd,
+      } as CanonicalRuntimeEvent);
+    start(store, ROOT, 'claude', { cwd: '/work' });
+    result(0.030603);
+    // The adapter's session.started for a query() built with `resume`.
+    start(store, ROOT, 'claude', { cwd: '/work', nativeSessionResumed: true });
+    result(0.030603);
+    result(0.0324923);
+    const outcome = service(store).readThreadUsageTree(ROOT, as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    // One receipt per engine process would report 0.0630953.
+    expect(outcome.tree.root.own?.reportedCost).toHaveLength(1);
+    expect(outcome.tree.root.own?.reportedCost?.[0]?.amount).toBeCloseTo(
+      0.0324923,
+      10,
+    );
+    expect(outcome.tree.total.cost.reportedCost).toHaveLength(1);
+    expect(outcome.tree.total.cost.reportedCost?.[0]?.amount).toBeCloseTo(
+      0.0324923,
+      10,
+    );
+    store.close();
+  });
+
   test('a subagent whose cost is included in its parent is not added and does not make the cost partial', () => {
     const store = fixtureStore();
     seedClaudeRoot(store);

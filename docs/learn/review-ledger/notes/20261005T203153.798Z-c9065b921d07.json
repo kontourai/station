@@ -1,0 +1,13 @@
+{
+  "revision": "c4a8601bbbca25b00a7910f790d15d452da3ff58",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 Grok delta round: rechecked against grok-session-index.ts and grok-session-source.ts af0393e048: groups re-read only when their mtime changed, at most 131,072 entries read and 16,384 folders statted and 1,024 inspected per poll, priority order and reserved sweep, index capped at 131,072 folders with eviction of inspected prompt-less folders, an over-cap single working directory only partly listed; user chunks without promptIndex after prompts carry one are not imported (upstream UserRunTurnTracker); rewind marker recorded as an extension notification but not displayed (no extensionNotificationBinding).","inputs":["docs/reference/session-api.md","src-server/providers/sessions/grok-session-source.ts","src-server/providers/sessions/grok-session-index.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 Grok delta round: discovery moved into grok-session-index.ts and synthetic mid-turn chunks are skipped; the guide's claims (GROK_HOME/~/.grok, listed once prompted, subagents and Station-started chats not listed, 128 most recently changed) still hold. No prose change.","inputs":["docs/user/getting-started.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#3386 Grok delta round: STATION_EXTERNAL_GROK_SOURCE_ROOT, then GROK_HOME, then ~/.grok resolution in grok-session-source.ts unchanged. No prose change.","inputs":["docs/reference/env-vars.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3386 Grok delta round: dependent session-api.md's Grok paragraph changed (discovery bounds, synthetic input, rewind marker not displayed); the ADR's orchestration decisions are unaffected. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}
