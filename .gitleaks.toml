@@ -166,4 +166,3 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^SSH/delegation$''']
 paths = ['''(^|/)docs/learn/review-ledger/notes/20261004T072744\.891Z-91c3555a3247\.json$''']
-
