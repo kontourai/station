@@ -3110,6 +3110,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // other-environment data. It was reachable but undeclared, which the
     // leaf-coverage gate had been failing on.
     { method: 'PUT', path: '/api/projects/order' },
+    // #3391: where each of this Station's own Projects runs, for the start
+    // composer. A read, and no more sensitive than `GET /api/projects`, which
+    // already returns each Project's working directory: it names the
+    // directories those records resolve to on this Station, mutates nothing,
+    // and carries no peer or other-environment data.
+    { method: 'GET', path: '/api/projects/run-locations' },
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },

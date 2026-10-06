@@ -623,6 +623,23 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     ]);
   });
 
+  test('run locations (#3391): a member-scoped caller learns no folder; the operator gets every Project’s', async () => {
+    const { base } = await setup();
+    const keys = (body: any) =>
+      Object.keys(
+        body?.success && body.data && typeof body.data === 'object'
+          ? body.data
+          : {},
+      ).sort();
+    for (const [label, caller] of Object.entries(B_CALLERS)) {
+      const body = await asTool(caller, '/api/projects/run-locations');
+      expect([label, keys(body)]).toEqual([label, []]);
+    }
+    expect(
+      keys(await asOperatorUi(base, '/api/projects/run-locations')),
+    ).toEqual(['a-project', 'b-project']);
+  });
+
   test('read_logs: redacted for every caller but a bound operator', async () => {
     const { base } = await setup();
     const apiKeys = (body: any) =>
