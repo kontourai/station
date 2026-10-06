@@ -7,8 +7,17 @@
  * `open` syscall on a FIFO for any folder holding a `.hang` FIFO: a call no
  * JavaScript timer can interrupt, as a hung NFS `realpath` would be.
  */
-import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import {
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -52,14 +61,38 @@ const OBSERVATION: SessionAnswerabilityObservation = {
 const tempDir = trackTempDirs();
 let dir: string;
 const probes: AttachedPathProbe[] = [];
+const helpers: number[] = [];
+const fifos: string[] = [];
 
 beforeEach(() => {
   dir = realpathSync.native(tempDir('station-attached-path-'));
 });
 
+// Registered after the temp-dir tracker, so it runs before the directories
+// are removed: a helper blocked on a FIFO is released, and every helper
+// started is gone, even when a test failed or timed out.
 afterEach(() => {
-  for (const probe of probes.splice(0)) probe.dispose();
+  for (const probe of probes.splice(0)) probe.close();
+  releaseFifos();
+  for (const pid of helpers.splice(0)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already gone.
+    }
+  }
 });
+
+/** Opens each `.hang` FIFO for writing, which lets a reader blocked on it go on. */
+function releaseFifos(): void {
+  for (const fifo of fifos.splice(0)) {
+    try {
+      closeSync(openSync(fifo, constants.O_WRONLY | constants.O_NONBLOCK));
+    } catch {
+      // No reader is blocked on it (ENXIO), or it was removed.
+    }
+  }
+}
 
 function probe(
   options: ConstructorParameters<typeof AttachedPathProbe>[0] = {},
@@ -68,6 +101,10 @@ function probe(
     childEntry: HANGING_CHILD,
     deadlineMs: DEADLINE_MS,
     ...options,
+    onSpawn: (child) => {
+      if (child.pid !== undefined) helpers.push(child.pid);
+      options.onSpawn?.(child);
+    },
   });
   probes.push(created);
   return created;
@@ -76,8 +113,64 @@ function probe(
 /** A folder whose reads block the fixture child, like one on a hung mount. */
 function hungFolder(path: string): string {
   mkdirSync(path, { recursive: true });
-  execFileSync('mkfifo', [join(path, '.hang')], { windowsHide: true });
+  const fifo = join(path, '.hang');
+  execFileSync('mkfifo', [fifo], { windowsHide: true });
+  fifos.push(fifo);
   return path;
+}
+
+async function exitOf(child: ChildProcess): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null)
+    await once(child, 'exit');
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Runs a module script that imports the probe; its `HELPER <pid>` lines are collected. */
+async function runScript(script: string): Promise<{
+  exit: number | null | 'timeout';
+  stdout: string;
+  stderr: string;
+  helperPids: number[];
+}> {
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', script],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+  );
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  const exit = await new Promise<number | null | 'timeout'>((settle) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      // Its helper may be blocked on a FIFO; let it go on and see the
+      // channel close.
+      releaseFifos();
+      settle('timeout');
+    }, 30_000);
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      settle(code);
+    });
+  });
+  const helperPids = [...stdout.matchAll(/^HELPER (\d+)$/gm)].map((match) =>
+    Number(match[1]),
+  );
+  helpers.push(...helperPids);
+  return { exit, stdout, stderr, helperPids };
 }
 
 describe.skipIf(process.platform === 'win32')(
@@ -118,9 +211,16 @@ describe.skipIf(process.platform === 'win32')(
 
     test('a hung folder is not asked about again until its back-off ends', async () => {
       let clock = 0;
-      const reader = probe({ backoffMs: 60_000, now: () => clock });
+      const spawned: ChildProcess[] = [];
+      const reader = probe({
+        backoffMs: 60_000,
+        now: () => clock,
+        onSpawn: (child) => spawned.push(child),
+      });
       const hung = hungFolder(join(dir, 'hung'));
       expect(await reader.canonical(hung)).toBeUndefined();
+      // The killed helper's exit is observed, so only the back-off holds.
+      await exitOf(spawned[0]!);
 
       const started = performance.now();
       expect(await reader.canonical(hung)).toBeUndefined();
@@ -151,34 +251,92 @@ describe.skipIf(process.platform === 'win32')(
       const answers = [await reader.canonical(${JSON.stringify(hung)}), await reader.canonical(${JSON.stringify(dir)})];
       console.log('ANSWERS ' + JSON.stringify(answers));
     `;
-      const child = spawn(
-        process.execPath,
-        ['--import', 'tsx', '--input-type=module', '-e', script],
-        { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
-      );
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk;
-      });
-      child.stderr.on('data', (chunk) => {
-        stderr += chunk;
-      });
-      const exit = await new Promise<number | null | 'timeout'>((settle) => {
-        const timer = setTimeout(() => {
-          child.kill('SIGKILL');
-          settle('timeout');
-        }, 30_000);
-        child.once('exit', (code) => {
-          clearTimeout(timer);
-          settle(code);
-        });
-      });
+      const { exit, stdout, stderr } = await runScript(script);
       expect(exit, stderr).toBe(0);
       // The probe's own log lines share stdout; the answers are tagged.
       const answers = /^ANSWERS (.*)$/m.exec(stdout)?.[1];
       expect(answers && JSON.parse(answers)).toEqual([null, dir]);
     }, 40_000);
+
+    test('a process that exits while its helper is stuck leaves no helper alive', async () => {
+      const hung = hungFolder(join(dir, 'hung'));
+      // The read is still pending, far inside its deadline, when the process
+      // calls process.exit(): the helper, blocked on the FIFO, never sees its
+      // channel close, so only the probe's exit hook can end it.
+      const script = `
+      const { AttachedPathProbe } = await import(${JSON.stringify(PROBE_MODULE)});
+      const reader = new AttachedPathProbe({
+        childEntry: new URL(${JSON.stringify(HANGING_CHILD.href)}),
+        deadlineMs: 60000,
+        onSpawn: (child) => console.log('HELPER ' + child.pid),
+      });
+      await reader.canonical(${JSON.stringify(dir)});
+      void reader.canonical(${JSON.stringify(hung)});
+      setTimeout(() => process.exit(0), 500);
+    `;
+      const { exit, stderr, helperPids } = await runScript(script);
+      expect(exit, stderr).toBe(0);
+      expect(helperPids).toHaveLength(1);
+      const [helper] = helperPids;
+      const deadline = Date.now() + 5_000;
+      while (alive(helper!) && Date.now() < deadline) {
+        await new Promise((settle) => setTimeout(settle, 50));
+      }
+      expect(alive(helper!)).toBe(false);
+    }, 40_000);
+
+    test('a main thread blocked past the deadline does not make a healthy folder look hung', async () => {
+      const spawned: ChildProcess[] = [];
+      const reader = probe({ onSpawn: (child) => spawned.push(child) });
+      expect(await reader.canonical(dir)).toBe(dir);
+      const answer = reader.canonical(dir);
+      // Let the request reach the helper (it is sent from a microtask), then
+      // hold this thread past the deadline while the helper answers.
+      for (let turn = 0; turn < 10; turn += 1) await null;
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        DEADLINE_MS * 2,
+      );
+      expect(await answer).toBe(dir);
+      // Not backed off, and the same helper still answers.
+      expect(await reader.canonical(dir)).toBe(dir);
+      expect(spawned).toHaveLength(1);
+    });
+
+    test('a helper that survives its kill is counted as stuck: its folder is not retried while it lives, and no helper starts past the limit', async () => {
+      const spawned: ChildProcess[] = [];
+      let clock = 0;
+      const reader = probe({
+        backoffMs: 1_000,
+        now: () => clock,
+        maxStuckChildren: 1,
+        // A process in an uninterruptible read on a hard NFS mount ignores
+        // SIGKILL; a FIFO reader cannot, so the kill itself is withheld.
+        killChild: () => {},
+        onSpawn: (child) => spawned.push(child),
+      });
+      const hung = hungFolder(join(dir, 'hung'));
+      expect(await reader.canonical(hung)).toBeUndefined();
+      clock = 10_000;
+      // Past its back-off, but the helper stuck on it is alive: not asked.
+      expect(await reader.canonical(hung)).toBeUndefined();
+      // And with one stuck helper at a limit of one, no new helper starts.
+      expect(await reader.canonical(dir)).toBeUndefined();
+      expect(spawned).toHaveLength(1);
+
+      // The stuck helper finally exits: a new one starts and the folder,
+      // which answers again, is read.
+      const [first] = spawned;
+      const exited = once(first!, 'exit');
+      first!.kill('SIGKILL');
+      await exited;
+      rmSync(join(hung, '.hang'));
+      expect(await reader.canonical(dir)).toBe(dir);
+      expect(await reader.canonical(hung)).toBe(hung);
+      expect(spawned).toHaveLength(2);
+    });
   },
 );
 
@@ -300,6 +458,40 @@ describe.skipIf(process.platform === 'win32')(
       await service.pollNow();
       expect(projectOf(stuck.threadId)).toBe('alpha');
       expect(projectOf(readable.threadId)).toBe('alpha');
+    }, 60_000);
+
+    test('an unread folder takes no part in matching: its Project is not matched and its session files under no Project by its path as written', async () => {
+      const alpha = join(dir, 'alpha');
+      mkdirSync(join(alpha, 'readable'), { recursive: true });
+      // A Project folder that hangs. The fixture hangs only on the folder
+      // holding the FIFO, so the session folder below it reads normally.
+      const beta = hungFolder(join(dir, 'beta'));
+      mkdirSync(join(beta, 'sub'));
+      const inAlpha = sessionIn('in-alpha', join(alpha, 'readable'));
+      const underUnreadRoot = sessionIn('under-beta', join(beta, 'sub'));
+      // A session folder that hangs, whose path as written is inside alpha.
+      const unreadInAlpha = sessionIn(
+        'unread-in-alpha',
+        hungFolder(join(alpha, 'unread')),
+      );
+      const service = new AttachedSessionFollowService({
+        sources: [sourceOf([inAlpha, underUnreadRoot, unreadInAlpha])],
+        eventStore: store,
+        eventBus: new EventBus(),
+        listProjects: () => [
+          { slug: 'alpha', workingDirectory: alpha },
+          { slug: 'beta', workingDirectory: beta },
+        ],
+        pathProbe: probe(),
+        followUnattributed: true,
+      });
+      await service.pollNow();
+
+      expect(projectOf(inAlpha.threadId)).toBe('alpha');
+      // Matching beta by the path as written would say 'beta' here.
+      expect(projectOf(underUnreadRoot.threadId)).toBeUndefined();
+      // Matching the session by its path as written would say 'alpha'.
+      expect(projectOf(unreadInAlpha.threadId)).toBeUndefined();
     }, 60_000);
   },
 );

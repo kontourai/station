@@ -1273,7 +1273,10 @@ function attributionFrom(
 /**
  * How a folder is made comparable: {@link canonicalPath} by default (a
  * synchronous `realpath`); the poll passes the answers its path probe read
- * off the main thread (#3406), with the same lexical fallback.
+ * off the main thread (#3406). Those keep the lexical fallback for a folder
+ * that does not exist, and answer `undefined` for one that could not be read
+ * this poll, so it matches nothing: an unread cwd is unattributed and an
+ * unread Project root is skipped.
  */
 type CanonicalizePath = (path: string) => string | undefined;
 
