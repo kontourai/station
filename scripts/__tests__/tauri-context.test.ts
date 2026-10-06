@@ -1,15 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   cargoDependencyVersion,
@@ -22,6 +16,7 @@ import {
 
 describe('tauri context', () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
+  const makeTempDir = trackTempDirs();
   function reportFor(contextRoot = root, env = process.env) {
     const result = spawnSyncBounded(
       process.execPath,
@@ -60,55 +55,45 @@ describe('tauri context', () => {
   test.skipIf(process.platform !== 'win32')(
     'reports a failed npm probe when its configured JS entry is missing',
     () => {
-      const directory = mkdtempSync(join(tmpdir(), 'station-tauri-npm-'));
-      try {
-        const env = { ...process.env };
-        for (const key of Object.keys(env)) {
-          if (key.toLowerCase() === 'npm_execpath') delete env[key];
-        }
-        env.npm_execpath = join(directory, 'missing', 'npm-cli.js');
-        const report = reportFor(root, env);
-        expect(report.checks.npm.status).toBe('failed');
-        expect(report.checks.npm.reason).toContain('cannot resolve npm CLI');
-        expect(report.checks.npm.value).toBeUndefined();
-        expect(report.findings).toContainEqual(
-          expect.objectContaining({ code: 'check-failed-npm' }),
-        );
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
+      const directory = makeTempDir('station-tauri-npm-');
+      const env = { ...process.env };
+      for (const key of Object.keys(env)) {
+        if (key.toLowerCase() === 'npm_execpath') delete env[key];
       }
+      env.npm_execpath = join(directory, 'missing', 'npm-cli.js');
+      const report = reportFor(root, env);
+      expect(report.checks.npm.status).toBe('failed');
+      expect(report.checks.npm.reason).toContain('cannot resolve npm CLI');
+      expect(report.checks.npm.value).toBeUndefined();
+      expect(report.findings).toContainEqual(
+        expect.objectContaining({ code: 'check-failed-npm' }),
+      );
     },
   );
 
   test.skipIf(process.platform !== 'win32')(
     'reports a missing local Tauri CLI even when Node is available',
     () => {
-      const directory = mkdtempSync(
-        join(tmpdir(), 'station-tauri-missing cli-'),
-      );
-      try {
-        for (const path of [
-          'package.json',
-          'pnpm-lock.yaml',
-          'src-desktop/Cargo.toml',
-          'src-desktop/tauri.conf.json',
-          'src-desktop/tauri.windows.conf.json',
-        ]) {
-          const destination = join(directory, path);
-          mkdirSync(dirname(destination), { recursive: true });
-          copyFileSync(join(root, path), destination);
-        }
-        mkdirSync(join(directory, 'src-desktop/capabilities'), {
-          recursive: true,
-        });
-        const report = reportFor(directory);
-        expect(report.checks.node.status).toBe('checked');
-        expect(report.checks.tauriCli.status).toBe('skipped');
-        expect(report.checks.tauriCli.reason).toBe('command-not-found');
-        expect(report.checks.tauriCli.value).toBeUndefined();
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
+      const directory = makeTempDir('station-tauri-missing cli-');
+      for (const path of [
+        'package.json',
+        'pnpm-lock.yaml',
+        'src-desktop/Cargo.toml',
+        'src-desktop/tauri.conf.json',
+        'src-desktop/tauri.windows.conf.json',
+      ]) {
+        const destination = join(directory, path);
+        mkdirSync(dirname(destination), { recursive: true });
+        copyFileSync(join(root, path), destination);
       }
+      mkdirSync(join(directory, 'src-desktop/capabilities'), {
+        recursive: true,
+      });
+      const report = reportFor(directory);
+      expect(report.checks.node.status).toBe('checked');
+      expect(report.checks.tauriCli.status).toBe('skipped');
+      expect(report.checks.tauriCli.reason).toBe('command-not-found');
+      expect(report.checks.tauriCli.value).toBeUndefined();
     },
   );
 
