@@ -1411,3 +1411,65 @@ describe('classifyToolCallRun — recovered failures in the summary', () => {
     expect(group.recoveredCount).toBe(1);
   });
 });
+
+describe('classifyToolCallRun — a mutating kind whose every call failed', () => {
+  const write = (id: string, path: string, failed: boolean) =>
+    toolCall({
+      toolCallId: id,
+      toolName: 'write_file',
+      args: { path, content: 'x' },
+      ...(failed
+        ? { state: 'error', error: 'EACCES', output: 'EACCES' }
+        : { state: 'result', output: 'ok' }),
+    });
+  const del = (id: string, path: string, failed: boolean) =>
+    toolCall({
+      toolCallId: id,
+      toolName: 'delete_file',
+      args: { path },
+      ...(failed
+        ? { state: 'error', error: 'EACCES', output: 'EACCES' }
+        : { state: 'result', output: 'ok' }),
+    });
+  const bash = (id: string, failed: boolean) =>
+    toolCall({
+      toolCallId: id,
+      toolName: 'Bash',
+      args: { command: `cmd-${id}` },
+      ...(failed
+        ? { state: 'error', error: 'exit 1', output: 'boom' }
+        : { state: 'result', output: 'ok' }),
+    });
+
+  test('all-failed edits do not claim an edit', () => {
+    const group = classifyFirstRun([
+      write('a', '/r/a.ts', true),
+      write('b', '/r/b.ts', true),
+    ]);
+    expect(group.summary).toBe('2 file edits');
+    expect(group.failedCount).toBe(2);
+  });
+
+  test('all-failed deletes beside a command keep the command past tense', () => {
+    const group = classifyFirstRun([
+      del('a', '/r/a.ts', true),
+      bash('b', true),
+      bash('c', false),
+    ]);
+    expect(group.summary).toBe('1 file deletion, ran 2 commands');
+  });
+
+  test('a kind with one success keeps the completed phrase and the badge', () => {
+    const group = classifyFirstRun([
+      write('a', '/r/a.ts', true),
+      write('b', '/r/b.ts', false),
+    ]);
+    expect(group.summary).toBe('Edited 2 files');
+    expect(group.failedCount).toBe(1);
+  });
+
+  test('all-failed commands keep the past tense (they ran)', () => {
+    const group = classifyFirstRun([bash('a', true), bash('b', true)]);
+    expect(group.summary).toBe('Ran 2 commands');
+  });
+});

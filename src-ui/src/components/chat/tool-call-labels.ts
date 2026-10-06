@@ -41,10 +41,12 @@ interface KindVerbs {
   pendingVerb: string;
 }
 
-/** Kinds whose failed call still ran and changed nothing, so the completed
- * verb is true of it. A failed write/delete/unknown call may have changed
- * nothing at all, and "Edited" would say it did. */
-const RAN_EVEN_WHEN_FAILED: ReadonlySet<ToolCallKind> = new Set([
+/** Kinds whose completed verb claims only that the call ran ("Ran npm
+ * test", "Read a.ts", "Searched x") — true of a call that ran and then
+ * reported an error. For a write, delete or unknown tool the completed verb
+ * claims the change itself ("Edited a.ts"), which a failed call may never
+ * have made. */
+export const RAN_EVEN_WHEN_FAILED: ReadonlySet<ToolCallKind> = new Set([
   'exec',
   'read',
   'search',
@@ -74,11 +76,12 @@ const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
  * from an OBSERVED successful completion, never used as a fallback.
  *
  * `'failed'` is a plain failure: the tool was invoked and reported an error.
- * For a call that changes nothing (a command, a read, a search) the row keeps
- * the completed tense ("Ran npm test") beside its Failed badge — the command
- * did run — matching the batch summary ("ran 2 commands · 1 failed"). A
- * failed write, delete or unknown tool takes the bare verb ("Edit a.ts"):
- * "Edited" would claim a change that may never have landed (`callLabel`).
+ * For a command, a read or a search the row keeps the completed tense ("Ran
+ * npm test") beside its Failed badge: that verb only claims the call ran,
+ * which it did. A failed write, delete or unknown tool takes the bare verb
+ * ("Edit a.ts"): "Edited" would claim a change that may never have landed
+ * (`callLabel`). The batch summary applies the same split per kind
+ * (`summarizeCalls` in `tool-call-groups.ts`).
  *
  * Anything else that did not complete — denied by the user, blocked by
  * Station, cancelled, or started and never resolved (a replayed

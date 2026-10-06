@@ -22,6 +22,7 @@ import {
   classifyToolCall,
   isToolCallAwaitingApproval,
   isToolCallBatchPending,
+  RAN_EVEN_WHEN_FAILED,
   type ToolCallKind,
   type ToolCallPhase,
   toolCallPhase,
@@ -270,8 +271,11 @@ function summarizeCalls(
   }
 
   const counts = new Map<ToolCallKind, number>();
+  const failures = new Map<ToolCallKind, number>();
   for (const call of calls) {
     counts.set(call.kind, (counts.get(call.kind) ?? 0) + 1);
+    if (call.failed)
+      failures.set(call.kind, (failures.get(call.kind) ?? 0) + 1);
   }
 
   const tense = pending ? 'pending' : inProgress ? 'running' : 'done';
@@ -283,9 +287,22 @@ function summarizeCalls(
     // call cannot take past or progressive tense — both claim work the
     // expanded rows refuse. It takes the noun inventory; the count badges
     // name which calls did not run.
-    const phrase = KIND_PHRASES[kind][tense](count);
+    //
+    // A write, delete or unknown kind whose every call failed claims no
+    // change: "Edited 2 files" would say an edit landed when none did, so it
+    // takes the same noun inventory, as its rows take the bare verb. One
+    // success keeps the completed phrase; the failed badge counts the rest.
+    // Commands, reads and searches keep the completed phrase: it only says
+    // they ran (`RAN_EVEN_WHEN_FAILED`).
+    const kindTense =
+      tense === 'done' &&
+      !RAN_EVEN_WHEN_FAILED.has(kind) &&
+      failures.get(kind) === count
+        ? 'pending'
+        : tense;
+    const phrase = KIND_PHRASES[kind][kindTense](count);
     segments.push(
-      segments.length === 0 || tense === 'pending'
+      segments.length === 0 || kindTense === 'pending'
         ? phrase
         : `${phrase[0]!.toLowerCase()}${phrase.slice(1)}`,
     );
@@ -328,7 +345,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   // durable projection's `state: 'call'`, e.g. the open turn's running call
   // when the transcript window renders it) cannot take the past tense
   // either: "Ran 2 commands" claimed a command that was still running. A
-  // plain failure keeps the past tense; its badge is the disclosure.
+  // plain failure does not make the batch pending: its badge is the
+  // disclosure, and `summarizeCalls` decides its own kind's tense.
   const pending = calls.some(
     (c) =>
       isToolCallBatchPending(c.part) || (c.phase === 'unresolved' && !c.failed),

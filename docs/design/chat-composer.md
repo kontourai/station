@@ -107,13 +107,20 @@ grant stay outside the fold, and so does the last narration when no text
 follows the last call. While the turn is live it keeps the shape it streamed
 with. In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
-identical, recorded arguments and succeeded. A failed command, read or search
-keeps the completed verb ("Ran …") beside its Failed badge; a failed edit,
-delete or other tool keeps the bare verb ("Edit …"), because the change may
-not have happened. A steer inside a turn does not start a new exchange. Under each settled answer, a muted
-time beside the ⋯ button gives the turn's completion time from its provenance
-envelope. An answer without an envelope shows no time. Exchanges are divided
+identical, recorded arguments and succeeded. A steer inside a turn does not
+start a new exchange. Under each settled answer, a muted time beside the ⋯
+button gives the turn's completion time from its provenance envelope. An
+answer without a readable envelope time shows no time. Exchanges are divided
 by a thin rule.
+
+On every screen size, a failed command, read or search row keeps the
+completed verb ("Ran …") beside its Failed badge, because that verb only says
+the call ran. A failed edit, delete or other tool keeps the bare verb
+("Edit …"), because the change may not have happened. Tool summaries follow
+the same split per kind: when every edit, delete or other call of a kind
+failed, the summary names them without a completed verb ("2 file edits");
+one success keeps the completed phrase, and the failed count discloses the
+rest.
 
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather

@@ -646,10 +646,17 @@ describe('phone transcript: meta time reads the envelope, not the row timestamp'
     expect(time?.textContent).not.toBe(messageTime(fabricated, Date.now()));
   });
 
-  test('an envelope without observedAt states no time, even with a row timestamp', () => {
+  test('an envelope that fails validation (no observedAt) states no time, even with a row timestamp', () => {
     const { provenance } = projectedAnswer();
     const { observedAt: _dropped, ...withoutTime } = provenance;
     const row = renderRow(withoutTime, Date.now());
+    expect(row.querySelector('.message-meta')).toBeTruthy();
+    expect(row.querySelector('.message-meta time')).toBeNull();
+  });
+
+  test('a valid envelope whose observedAt does not parse states no time, even with a row timestamp', () => {
+    const { provenance } = projectedAnswer();
+    const row = renderRow({ ...provenance, observedAt: 'garbage' }, Date.now());
     expect(row.querySelector('.message-meta')).toBeTruthy();
     expect(row.querySelector('.message-meta time')).toBeNull();
   });
