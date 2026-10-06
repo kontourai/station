@@ -170,8 +170,11 @@ const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
   'completion/complete',
 ]);
 
-/** The client helpers that send one of those methods. */
+/** The JSON-RPC method each client helper sends. */
 const CLIENT_HELPER_METHODS: Readonly<Record<string, string>> = {
+  callTool: 'tools/call',
+  getPrompt: 'prompts/get',
+  readResource: 'resources/read',
   listTools: 'tools/list',
   listPrompts: 'prompts/list',
   listResources: 'resources/list',
