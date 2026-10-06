@@ -147,8 +147,8 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 ### Authoring fixtures
 
 The E2E runner confines external-session observation to temporary history roots
-using `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`. The `smoke-live` server retains the host's
+using `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`. The `smoke-live` server retains the host's
 CLI authentication configuration so installed-CLI journeys can execute real
 turns. Other suites also isolate the CLI configuration directories. Fixture
 writers always receive temporary provider directories; never seed test history

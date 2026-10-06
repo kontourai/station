@@ -605,7 +605,9 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. See the
+the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+selects the folder holding OpenCode's session database for observation only;
+OpenCode sessions have no continuation. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
