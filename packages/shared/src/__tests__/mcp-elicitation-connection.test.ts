@@ -203,7 +203,7 @@ describe.each(['modern', 'legacy'] as const)(
 );
 
 /** A route that records each form it is shown and answers `content`. */
-function recordingRoute(content: Record<string, unknown>) {
+function recordingRoute(content: Record<string, string>) {
   const forms: string[] = [];
   const route: MCPElicitationRoute = async (request) => {
     forms.push((request.params as { message: string }).message);
@@ -228,19 +228,17 @@ describe.each(['modern', 'legacy'] as const)(
         firstFormOpen = resolve;
       });
       const formsA: string[] = [];
-      const a = askDetails(
-        connection,
-        async (request) => {
-          formsA.push((request.params as { message: string }).message);
-          if (formsA.length === 1) {
-            firstFormOpen();
-            await released;
-            return { action: 'accept', content: { name: 'A-first' } };
-          }
-          return { action: 'accept', content: { note: 'A-again' } };
-        },
-        'ask_twice',
-      );
+      const routeA: MCPElicitationRoute = async (request) => {
+        formsA.push((request.params as { message: string }).message);
+        let content: Record<string, string> = { note: 'A-again' };
+        if (formsA.length === 1) {
+          firstFormOpen();
+          await released;
+          content = { name: 'A-first' };
+        }
+        return { action: 'accept', content };
+      };
+      const a = askDetails(connection, routeA, 'ask_twice');
       await Promise.race([opened, a]);
       expect(formsA).toHaveLength(1);
       // Turn B: its own call elicits while A's is in flight.
