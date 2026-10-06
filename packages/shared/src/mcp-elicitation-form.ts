@@ -47,20 +47,18 @@ function optionalFinite(value: unknown): number | undefined | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function readOptions(
-  values: unknown,
-  labels?: unknown,
-): McpElicitationOption[] | null {
-  if (!Array.isArray(values) || values.length < 1) return null;
-  if (values.length > MCP_ELICITATION_MAX_OPTIONS) return null;
+function readOptions(entries: unknown): McpElicitationOption[] | null {
   if (
-    labels !== undefined &&
-    (!Array.isArray(labels) || labels.length !== values.length)
+    !Array.isArray(entries) ||
+    entries.length < 1 ||
+    entries.length > MCP_ELICITATION_MAX_OPTIONS
   )
     return null;
   const options: McpElicitationOption[] = [];
-  for (const [index, value] of values.entries()) {
-    const label = Array.isArray(labels) ? labels[index] : value;
+  for (const entry of entries) {
+    if (!record(entry)) return null;
+    const value = entry.value;
+    const label = entry.label ?? value;
     if (
       typeof value !== 'string' ||
       value.length > MAX_LABEL_CHARS ||
@@ -169,13 +167,7 @@ function readField(value: unknown): McpElicitationField | null {
     };
   }
   if (value.kind === 'choice' || value.kind === 'multi-choice') {
-    if (!Array.isArray(value.options)) return null;
-    const options = readOptions(
-      value.options.map((option) => (record(option) ? option.value : null)),
-      value.options.map((option) =>
-        record(option) ? (option.label ?? option.value) : null,
-      ),
-    );
+    const options = readOptions(value.options);
     if (!options) return null;
     if (value.kind === 'choice') {
       if (
