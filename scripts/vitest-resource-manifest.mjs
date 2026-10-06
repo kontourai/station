@@ -472,6 +472,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
+  'scripts/__tests__/dependency-patch-binding.test.ts',
   // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
   'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.

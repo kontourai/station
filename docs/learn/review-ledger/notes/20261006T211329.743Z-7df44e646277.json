@@ -1,0 +1,7 @@
+{
+  "revision": "62d70891214c3dad9553ca83fbedcad1a6ca2fa5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed work-status.ts at 62d708: attentionWord and awaiting rungs now read SESSION_STATUS_WORDS directly instead of an identical six-key reference table. Composer approval/working-state vocabulary and layout claims are unchanged; work-status and word-consistency suites passed 67 tests. No prose change or new browser/device proof.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/work-status.ts"]}
+  ]
+}
