@@ -2938,17 +2938,60 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
-`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
-conversation's transcript: `{conversationId, access, notice, messageCount,
-messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
-refused with `conversation_read_limit_out_of_range`, and a page's serialized
-messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
-only after the read is admitted. A station-control caller that is not a bound
+`GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
+page of a conversation's transcript: `{conversationId, access, notice,
+messageCount, messages, prevCursor, nextCursor}`. `limit` is 1 to 50 (default
+20); anything else is refused with `conversation_read_limit_out_of_range`, and a
+page's serialized messages never exceed 64 KB. Pass `nextCursor` back as
+`cursor` for newer messages or `prevCursor` for older ones (`null` at the
+ends); a cursor is checked only after the read is admitted. `aroundMessageId` (a
+`search_sessions` hit's `messageId`, at most 512 characters, not together with
+`cursor`) returns the page that contains that message: a message that is not in
+the conversation answers `conversation_read_anchor_not_found` (404), and nothing
+is read. User messages carry the stable id a search hit names
+(`<turn start event id>:user`). A station-control caller that is not a bound
 operator is further limited to its own conversation, its scope, or a
 conversation a person referenced in its conversation, and reads as the
 session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
+### Station Control Project Activity
+
+`GET /api/orchestration/session-activity?limit=&cursor=` and
+`GET /api/orchestration/session-activity/:sessionId/digest?turnLimit=&cursor=`
+are the routes behind the station-control `list_project_activity` and
+`get_session_digest` tools. Both answer only a station-control tool call with a
+verified caller (anything else gets `403` `station_control_caller_required`) and
+read as the calling Session's owner.
+
+The list returns `{sessions, nextCursor}`: the Sessions of the caller's own
+Project (or the global space), newest activity first, one per conversation, each
+`{sessionId, conversationId?, title?, projectSlug?, engine, agent?, status,
+turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
+the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
+`project_activity_limit_out_of_range`, and a `cursor` the list did not return is
+`project_activity_cursor_invalid`.
+
+The digest returns `{session, turns, page, nextCursor, delegatedChildrenIncomplete?}`,
+folded from recorded events only: `session` is `{sessionId, conversationId, title?,
+projectSlug?, engine, agent?, status, turnCount, worktree?}`, and each turn (newest
+first) has `turnId`, `startedAt`, `request?`, `outcome` (`completed`, `failed`,
+`interrupted` or `open`), `toolCalls`, and, when recorded, `files`,
+`pullRequests` and `delegatedChildren` (Sessions that started within the turn's
+window) with their totals. `filesReported: false` marks a turn that called tools
+none of which carried an engine tool kind: its absent `files` is unknown, not
+none. A page holds at most
+`turnLimit` turns (1 to 25, default 10; more is
+`session_digest_limit_out_of_range`) and at most 8 KiB of serialized turns. A
+lineage of more than 500 Sessions is `422` `session_digest_lineage_too_long`; a
+single turn over the page cap is `422` `session_digest_turn_too_large`. A
+caller reads the digest of its own conversation whatever its scope.
+
+A Session the caller may not see (another Project, another person, an unconfined
+Session for a caller that is not a bound operator, another Station) answers `404`
+`session_not_found`, identical to one that does not exist. See the
+[route](../../src-server/routes/orchestration/session-project-activity.ts).
 
 ### Agent Conversation Title
 
