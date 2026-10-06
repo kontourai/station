@@ -552,8 +552,9 @@ type ProjectRunsAt =
 
 `runsAt` is the directory the project resolves to on this Station, from the
 records the session start reads: the manifest, its binding, the working
-directory and the manifest's `executionRoot`. `GET /api/projects` returns it
-on the operator's own list; a shared member's view omits it. The identity is
+directory and the manifest's `executionRoot`. `GET /api/projects` and
+`/api/boot`'s `projects` section return it on the operator's own list; a
+shared member's view omits it. The identity is
 not verified: the start's git identity check is skipped, so a checkout of a
 different repository still reads as its directory here, and the start refuses
 it. It is not where every chat runs either: a chat in a worktree-isolated
