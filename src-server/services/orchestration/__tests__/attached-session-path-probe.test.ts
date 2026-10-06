@@ -351,14 +351,23 @@ describe.skipIf(process.platform === 'win32')(
       });
       const hung = hungFolder(join(dir, 'hung'));
       mkdirSync(join(hung, 'sub'));
+      // A sibling whose name merely starts with the stuck folder's.
+      const sibling = join(dir, 'hung-other');
+      mkdirSync(sibling);
       mkdirSync(join(dir, 'target'));
       const link = join(dir, 'link');
       symlinkSync(join(dir, 'target'), link);
       expect(await reader.canonical(hung)).toBeUndefined();
 
       const paths = reader.forPoll();
-      await paths.prepare([join(hung, 'sub'), link, join(dir, 'elsewhere')]);
+      await paths.prepare([
+        join(hung, 'sub'),
+        sibling,
+        link,
+        join(dir, 'elsewhere'),
+      ]);
       expect(paths.canonical(join(hung, 'sub'))).toBeUndefined();
+      expect(paths.canonical(sibling)).toBe(sibling);
       expect(paths.canonical(link)).toBe(link);
       expect(paths.canonical(join(dir, 'elsewhere'))).toBe(
         join(dir, 'elsewhere'),
