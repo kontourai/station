@@ -478,6 +478,12 @@ If Station cannot confirm the result, use the offered retry for that same
 operation. Engine and configuration problems appear with their setup reason.
 A continuation receipt confirms admission, not completion of the work.
 
+The continuation runs as the engine's own Agent on this Station, the one New
+Chat sets up for Claude Code or Codex. That is what lets it open as a chat in
+the dock and take your next messages there. If Station has no Agent for that
+engine, the continuation is still created and you continue it from
+**Activity**; the dock says why it cannot open it.
+
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
 
 ## Arrange Work You Already Own

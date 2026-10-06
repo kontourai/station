@@ -27,6 +27,10 @@ import {
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrantor } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  adoptedChildExecutionBindingMetadata,
+  type ResolveAdoptedChildExecutionBinding,
+} from './adopted-child-execution-binding.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -129,6 +133,12 @@ export interface AttachedSessionAdoptionDeps {
     discardRun(projectRoot: string, flowRunId: string): Promise<void>;
   };
   listProjects?: () => Array<{ slug: string; workingDirectory?: string }>;
+  /**
+   * #3429: the Agent and Environment the child runs as, so the dock can open
+   * it and `/chat` follow-ups find a verified execution binding. Absent (or
+   * answering undefined), the child is created without one, as before.
+   */
+  resolveExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   requireTenantExecutionContext?: () => boolean;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
@@ -651,6 +661,11 @@ export class AttachedSessionAdoption {
     userId?: string,
   ): Promise<ProviderSession> {
     const { adapter, project, reservation, source } = context;
+    // #3429: resolved before the engine is touched, so a failed read rolls
+    // back an adoption that never started a child.
+    const executionBinding = await this.deps.resolveExecutionBinding?.(
+      source.provider,
+    );
     // Adoption starts a fresh provider child from a persisted transcript, so
     // it follows the same retained-selector resume contract as recovery.
     // Do not replay `source.model` as a caller override: Station-backed
@@ -668,6 +683,14 @@ export class AttachedSessionAdoption {
       // can be forged by an adopting client.
       metadata: {
         adoptedFromThreadId: reservation.sourceThreadId,
+        // #3429: the same Agent identity and execution binding a chat
+        // started from the dock records, so the dock opens this child and a
+        // `/chat` follow-up passes `readSessionBinding`. Confinement and cwd
+        // below are adoption's own and are not derived from the Agent.
+        ...adoptedChildExecutionBindingMetadata(
+          executionBinding,
+          reservation.targetThreadId,
+        ),
         ...(userId !== undefined ? { userId } : {}),
         ...sessionOwnerAttributionMetadata(context.ownerAttribution),
         // #2493: server-built, so no strip is needed; absent is `workspace`.

@@ -245,6 +245,7 @@ import {
 } from '../projects/project-resource-shadow.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
+import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import {
   ApprovalPosture,
@@ -829,6 +830,12 @@ interface OrchestrationServiceOptions {
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment a continued attached conversation runs
+   * as (`adopted-child-execution-binding.ts`). Absent, a continuation has no
+   * Agent and the dock cannot open it.
+   */
+  resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
@@ -2252,6 +2259,12 @@ export class OrchestrationService {
         ? { flowRunService: options.flowRunService }
         : {}),
       ...(options.listProjects ? { listProjects: options.listProjects } : {}),
+      ...(options.resolveAdoptedChildExecutionBinding
+        ? {
+            resolveExecutionBinding:
+              options.resolveAdoptedChildExecutionBinding,
+          }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
