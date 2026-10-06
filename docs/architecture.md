@@ -436,9 +436,10 @@ package READMEs for supported entry points.
 
 #### Attached external session follow
 
-Station discovers supported Claude Code and Codex transcripts and OpenCode's
-session database through its Session sources. A `read-only-attached` record imports observed history without taking
-over the external process. Missing files or stale observations do not prove that
+Station discovers supported Claude Code and Codex transcripts, Grok Build
+sessions and OpenCode's session database through its Session sources. A
+`read-only-attached` record imports observed history without taking over the
+external process. Missing files or stale observations do not prove that
 the external engine is live or controllable.
 
 Command ownership checks refuse mutations of the original attached execution.
