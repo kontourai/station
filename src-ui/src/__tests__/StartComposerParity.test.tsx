@@ -47,6 +47,8 @@ const state = vi.hoisted(() => ({
   projectsLoading: false,
   projectsError: false,
   agentConnections: [] as unknown[],
+  /** `GET /api/projects/run-locations`; undefined until it answers. */
+  runLocations: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -69,6 +71,12 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: async () => ({}),
   }),
   // The error shape is the real one: no data, not loading, not success.
+  useProjectRunLocationsQuery: () => ({
+    data: state.runLocations,
+    isFetching: false,
+    error: null,
+    refetch: async () => ({}),
+  }),
   useProjectsQuery: () => ({
     data:
       state.projectsLoading || state.projectsError ? undefined : state.projects,
@@ -210,6 +218,7 @@ beforeEach(() => {
   state.projectsLoading = false;
   state.projectsError = false;
   state.agentConnections = [];
+  state.runLocations = undefined;
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -253,6 +262,7 @@ function renderBoth() {
           projectAccentBySlug={projectAccents(
             (state.projects as ProjectMetadata[]).map(({ slug }) => slug),
           )}
+          projectRunLocations={state.runLocations as any}
           projectIconBySlug={
             new Map(
               (state.projects as ProjectMetadata[]).flatMap(
@@ -1454,9 +1464,11 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
         id: 'p2',
         slug: 'mono',
         name: 'Mono',
-        runsAt: { kind: 'execution-root', path: '/work/mono/packages/app' },
       },
     ] as ProjectMetadata[];
+    state.runLocations = {
+      mono: { kind: 'execution-root', path: '/work/mono/packages/app' },
+    };
     deviceSettingsStore.set('chatDockProjectSlug', 'mono');
     const ui = renderBoth();
     for (const root of [screen.getByTestId('home'), ui.dock()]) {
@@ -1488,6 +1500,39 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     ui.cleanupListener();
   }, 30_000);
 
+  test('until the run-locations read answers, the composer names the stored folder; then the resolved one', async () => {
+    state.projects = [
+      {
+        id: 'p2',
+        slug: 'mono',
+        name: 'Mono',
+        workingDirectory: '/work/mono',
+      },
+    ] as ProjectMetadata[];
+    deviceSettingsStore.set('chatDockProjectSlug', 'mono');
+    const before = renderBoth();
+    for (const root of [screen.getByTestId('home'), before.dock()])
+      await waitFor(() =>
+        expect(projectChip(root).getAttribute('title')).toBe(
+          'Runs in /work/mono',
+        ),
+      );
+    before.cleanupListener();
+    cleanup();
+
+    state.runLocations = {
+      mono: { kind: 'execution-root', path: '/work/mono/packages/app' },
+    };
+    const after = renderBoth();
+    for (const root of [screen.getByTestId('home'), after.dock()])
+      await waitFor(() =>
+        expect(projectChip(root).getAttribute('title')).toBe(
+          'Runs in /work/mono/packages/app',
+        ),
+      );
+    after.cleanupListener();
+  }, 30_000);
+
   test('a project whose folder was not checked is not marked as refused', async () => {
     const reason =
       'Station is still waiting on other project folders, so it did not check this one yet. Try again shortly.';
@@ -1497,9 +1542,9 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
         slug: 'slow',
         name: 'Slow',
         workingDirectory: '/work/slow',
-        runsAt: { kind: 'unchecked', reason },
       },
     ] as ProjectMetadata[];
+    state.runLocations = { slow: { kind: 'unchecked', reason } };
     deviceSettingsStore.set('chatDockProjectSlug', 'slow');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
@@ -1537,9 +1582,9 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
         slug: 'gone',
         name: 'Gone',
         workingDirectory: '/work/gone',
-        runsAt: { kind: 'unavailable', reason },
       },
     ] as ProjectMetadata[];
+    state.runLocations = { gone: { kind: 'unavailable', reason } };
     deviceSettingsStore.set('chatDockProjectSlug', 'gone');
     const ui = renderBoth();
     const home = screen.getByTestId('home');

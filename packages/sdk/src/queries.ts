@@ -832,6 +832,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectsQuery,
   useProjectWorkspacePanesQuery,
   useReorderProjectsMutation,

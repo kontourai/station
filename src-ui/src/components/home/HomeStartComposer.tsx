@@ -1,11 +1,15 @@
 import React, {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
-import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
+import {
+  useScopedProjectRunLocationsQuery,
+  useScopedProjectsQuery,
+} from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
@@ -35,6 +39,7 @@ import {
   NO_PROJECT_LABEL,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
+  withProjectRunLocations,
   workspaceHintText,
 } from '../modals/new-chat-modal-utils';
 import { describeReadFailure, SkeletonList } from '../state';
@@ -185,9 +190,16 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   const context = startContext ?? GLOBAL_CONTEXT;
   const contextPending = !startContext;
   const [agentSearch, setAgentSearch] = useState('');
+  // Where each project's chats run, merged in once that read answers; the
+  // list itself never waits on project folders (#3391).
+  const runLocations = useScopedProjectRunLocationsQuery().data;
+  const projectsWithRunLocations = useMemo(
+    () => withProjectRunLocations(projects, runLocations),
+    [projects, runLocations],
+  );
   const selection = useNewChatSelectionModel({
     agents,
-    projects,
+    projects: projectsWithRunLocations,
     selectedContext: context,
     agentSearch,
     revalidateSelection: true,

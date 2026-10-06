@@ -1,6 +1,7 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type {
   MemberProjectView,
+  ProjectRunLocations,
   ProjectRunsAt,
 } from '@kontourai/station-contracts/project';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
@@ -16,6 +17,7 @@ import {
   type ProjectReadQueryConfig,
   useProjectIdentityQuery,
   useProjectQuery,
+  useProjectRunLocationsQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -69,6 +71,32 @@ export function useScopedProjectsQuery(
     durableAuthorityId: namespace ?? undefined,
   });
 }
+
+/**
+ * #3391: where each Project's chats run (`GET /api/projects/run-locations`),
+ * with the same scope contract as {@link useScopedProjectsQuery}. Mounted only
+ * where a run location is shown (the start composer); the Project list never
+ * waits on it, and a caller falls back to the stored folder until it answers.
+ */
+export function useScopedProjectRunLocationsQuery(
+  config?: AppProjectReadConfig<ProjectRunLocations>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  const { namespace } = useAuthorityPersistence();
+  return useProjectRunLocationsQuery({
+    staleTime: PROJECT_RUN_LOCATIONS_STALE_MS,
+    ...config,
+    requestScope,
+    requireRequestScope: true,
+    durableAuthorityId: namespace ?? undefined,
+  });
+}
+
+/**
+ * A folder can move or a mount can drop at any time, but the start resolves
+ * it for real; the composer's hint only needs to be recent.
+ */
+const PROJECT_RUN_LOCATIONS_STALE_MS = 30_000;
 
 /**
  * Canonical app-owner Project DETAIL read. Same scope contract as
@@ -455,7 +483,11 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
-  /** #3370: where a new chat in this project runs (`GET /api/projects`). */
+  /**
+   * #3370: where a new chat in this project runs. Never sent by the Project
+   * list: the start composer merges it in from the run-locations read
+   * (`withProjectRunLocations`), and it is absent until that read answers.
+   */
   runsAt?: ProjectRunsAt;
   actions?: readonly ProjectMemberAction[];
 }

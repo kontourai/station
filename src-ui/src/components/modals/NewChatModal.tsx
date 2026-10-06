@@ -1,3 +1,4 @@
+import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
 import {
@@ -10,6 +11,7 @@ import React, {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -90,6 +92,7 @@ import {
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
   scheduleSelectedAgentVisibility,
+  withProjectRunLocations,
   workspaceHintText,
 } from './new-chat-modal-utils';
 import {
@@ -201,6 +204,11 @@ interface NewChatModalProps {
    * Required: a caller that forgot it would draw every project as a dot.
    */
   projectIconBySlug: ReadonlyMap<string, string>;
+  /**
+   * #3391: where each project's chats run, from the dock's run-locations
+   * read. Absent until it answers; the composer then names the stored folder.
+   */
+  projectRunLocations?: ProjectRunLocations;
 }
 
 /** "Global" sentinel for the context picker */
@@ -225,6 +233,7 @@ export function NewChatModal({
   projectsLoaded = true,
   projectAccentBySlug = NO_PROJECT_ACCENTS,
   projectIconBySlug,
+  projectRunLocations,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   // In the automatic start, "Chat options" (or a start that cannot use
@@ -357,9 +366,13 @@ export function NewChatModal({
     scheduleSelectedAgentVisibility(element);
   }, []);
 
+  const projectsWithRunLocations = useMemo(
+    () => withProjectRunLocations(projects, projectRunLocations),
+    [projects, projectRunLocations],
+  );
   const selectionModel = useNewChatSelectionModel({
     agents,
-    projects,
+    projects: projectsWithRunLocations,
     selectedContext,
     contextSearch,
     agentSearch,

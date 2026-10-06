@@ -42,7 +42,10 @@ import {
   type ChatFocusTarget,
   openChatsStore,
 } from '../../contexts/open-chats-store';
-import { useProjects } from '../../contexts/ProjectsContext';
+import {
+  useProjects,
+  useScopedProjectRunLocationsQuery,
+} from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
@@ -747,6 +750,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionCount,
     onAutoCollapse: handleAutoCollapse,
   });
+  // #3391: where each project's chats run, read only while the start
+  // composer is open, so the dock and the project list never wait on project
+  // folders. The composer names the stored folder until it answers.
+  const projectRunLocations = useScopedProjectRunLocationsQuery({
+    enabled: showNewChatModal,
+  }).data;
 
   // A non-tab recovery is still committed UI state (not a toast). It is used
   // only when Station cannot safely hydrate an existing transcript into a
@@ -2967,6 +2976,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           projectsLoaded: projectsConfirmed,
           projectAccentBySlug,
           projectIconBySlug,
+          projectRunLocations,
           recentChats: {
             items: taskItems,
             pending: taskItemsPending,

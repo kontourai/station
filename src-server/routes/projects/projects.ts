@@ -27,7 +27,7 @@ import {
   describeProjectSlugConflict,
   findProjectSlugConflict,
   type ProjectConfig,
-  type ProjectMetadata,
+  type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
@@ -384,27 +384,6 @@ function memberProjectView(
 }
 
 /**
- * #3370: the operator's list carries the directory each project resolves to,
- * so the start composer names it. No `git` spawn, folder reads async and
- * time-boxed per project (see `describeProjectRunLocations`), and never on a
- * member's view, which carries no paths at all.
- */
-async function withRunLocations(
-  projects: ProjectMetadata[],
-  resolution: ProjectResolutionRouteDeps | undefined,
-): Promise<ProjectMetadata[]> {
-  const resolver = resolution?.resolver;
-  if (!resolver?.describeProjectRunLocations) return projects;
-  const runsAt = await resolver.describeProjectRunLocations(
-    projects.map(({ slug }) => slug),
-  );
-  return projects.map((project) => {
-    const location = runsAt.get(project.slug);
-    return location ? { ...project, runsAt: location } : project;
-  });
-}
-
-/**
  * `GET /api/projects`: the Project catalogue a request may receive — every
  * Project for the operator's own requests, and for an authenticated shared
  * member only the Projects it currently reads, as member views, re-checked
@@ -415,7 +394,7 @@ export function createProjectCatalogueReader(
   projectService: Pick<ProjectService, 'listProjects'>,
   deps: Pick<
     ProjectRouteDeps,
-    'memberProjectAdmissions' | 'projectCatalogueCurrent' | 'resolution'
+    'memberProjectAdmissions' | 'projectCatalogueCurrent'
   >,
 ): (c: Context) => Promise<Response> {
   return async (c) => {
@@ -460,7 +439,7 @@ export function createProjectCatalogueReader(
                   )!;
                   return memberProjectView(project, admission.actions);
                 })
-            : await withRunLocations(projects, deps.resolution),
+            : projects,
       });
       if (!allowed || !currentReadable || !readable || !currentScopes)
         return response;
@@ -712,13 +691,7 @@ export function createProjectRoutes(
     return undefined;
   }
 
-  function normalizeProjectBody<T extends Record<string, unknown>>(
-    input: T,
-  ): T {
-    // #3370: `runsAt` is derived on every list read, never stored. A client
-    // that sends a list entry back must not have it refused (or kept).
-    const { runsAt: _derived, ...rest } = input;
-    const body = rest as T;
+  function normalizeProjectBody<T extends Record<string, unknown>>(body: T): T {
     if (!Object.hasOwn(body, 'agents')) return body;
     return {
       ...body,
@@ -843,6 +816,49 @@ export function createProjectRoutes(
 
   // List all projects
   app.get('/', listProjectCatalogue);
+
+  /**
+   * #3391: where each Project's chats run (`ProjectRunLocations`), for the
+   * start composer. A separate read from the catalogue on purpose: it checks
+   * project folders (async, time-boxed, at most three at once), and neither
+   * the project list nor `/api/boot` may ever wait on a folder. Operator
+   * only: a shared member's view carries no paths, so a member gets an empty
+   * map — the same answer as an operator with no Projects, which says
+   * nothing about the Station's folders.
+   */
+  app.get('/run-locations', async (c) => {
+    try {
+      const admissions = await deps.memberProjectAdmissions?.(c);
+      if (admissions) {
+        c.header('Cache-Control', 'no-store');
+        return c.json({ success: true, data: {} });
+      }
+      const describe = resolution?.resolver.describeProjectRunLocations?.bind(
+        resolution.resolver,
+      );
+      if (!describe)
+        return c.json(
+          { success: false, error: 'Project run locations are unavailable' },
+          501,
+        );
+      const slugs = (await projectService.listProjects()).map(
+        ({ slug }) => slug,
+      );
+      const locations = await describe(slugs);
+      return c.json({
+        success: true,
+        data: Object.fromEntries(locations) as ProjectRunLocations,
+      });
+    } catch (error: unknown) {
+      logger.error('Project run-location read failed', {
+        error: error instanceof Error ? error.message : 'non-Error thrown',
+      });
+      return c.json(
+        { success: false, error: 'Project storage is unavailable' },
+        500,
+      );
+    }
+  });
 
   // Create project
   app.post('/', validate(projectCreateSchema), async (c) => {

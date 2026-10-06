@@ -58,6 +58,11 @@ const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
     },
   }));
 
+const RUN_LOCATIONS = {
+  pulse: { kind: 'execution-root', path: '/work/pulse/app' },
+};
+const runLocationReads: boolean[] = [];
+
 // The shape the icon picker stores: a base64 image data URL.
 const PULSE_ICON = 'data:image/png;base64,iVBORw0KGgo=';
 const projects = [
@@ -146,6 +151,11 @@ vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
     project: projects.find((project) => project.slug === slug),
     isLoading: false,
   }),
+  // The run-locations read, answering only while the dock asks for it.
+  useScopedProjectRunLocationsQuery: (config?: { enabled?: boolean }) => {
+    runLocationReads.push(config?.enabled !== false);
+    return { data: config?.enabled === false ? undefined : RUN_LOCATIONS };
+  },
 }));
 vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -203,6 +213,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   pickerProps.length = 0;
+  runLocationReads.length = 0;
   createChatSession.mockClear();
   sendMessage.mockClear();
   updateChat.mockClear();
@@ -546,6 +557,21 @@ test('the docked New chat button opens a draft in the bound Project with one rea
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(pickerProps.at(-1)!.startSurface).toBe(true);
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('the dock reads run locations only while the start composer is open, and hands them over', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(runLocationReads.length).toBeGreaterThan(0);
+  expect(runLocationReads.every((enabled) => !enabled)).toBe(true);
+
+  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+
+  expect(runLocationReads.at(-1)).toBe(true);
+  expect(pickerProps.at(-1)!.projectRunLocations).toEqual(RUN_LOCATIONS);
 });
 
 test('the dock hands the start composer the sidebar’s project icons', async () => {

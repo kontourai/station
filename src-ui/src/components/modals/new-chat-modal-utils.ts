@@ -1,4 +1,5 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -96,6 +97,24 @@ export function workspaceHintText(hint: NewChatWorkspaceHint): string {
     default:
       return `Runs in ${hint.path}`;
   }
+}
+
+/**
+ * The Project list with each project's `runsAt` from the run-locations read
+ * (#3391). The list never carries it, so until that read answers this is the
+ * list unchanged and every surface falls back to the stored folder. Returns
+ * the same array when there is nothing to merge, so memoized consumers keep
+ * their identity.
+ */
+export function withProjectRunLocations(
+  projects: ProjectMetadata[],
+  locations: ProjectRunLocations | undefined,
+): ProjectMetadata[] {
+  if (!locations) return projects;
+  return projects.map((project) => {
+    const runsAt = locations[project.slug];
+    return runsAt ? { ...project, runsAt } : project;
+  });
 }
 
 /**

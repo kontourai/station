@@ -3029,7 +3029,7 @@ describe('Project Routes', () => {
       ...(role ? { role } : {}),
     });
 
-    test('GET / names where each project runs, including a folderless project bound through its manifest (#3370)', async () => {
+    test('GET /run-locations names where each project runs, including a folderless project bound through its manifest (#3370)', async () => {
       const { app, storage, projectHomeDir } = createResolutionApp(
         remotesOk(['git@github.com:acme/mono.git']),
       );
@@ -3062,12 +3062,14 @@ describe('Project Routes', () => {
       await saveProject(storage, 'plain', folder);
       await saveProject(storage, 'notes');
 
-      const body = await json(await app.request('/'));
-      const runsAt = Object.fromEntries(
-        body.data.map((project: any) => [project.slug, project.runsAt]),
-      );
+      const list = await json(await app.request('/'));
+      const body = await json(await app.request('/run-locations'));
 
-      expect(runsAt).toEqual({
+      // The list itself never carries them (#3391).
+      expect(list.data.filter((project: any) => 'runsAt' in project)).toEqual(
+        [],
+      );
+      expect(body.data).toEqual({
         acme: {
           kind: 'execution-root',
           path: realpathSync(join(checkout, 'packages', 'app')),
@@ -3077,27 +3079,33 @@ describe('Project Routes', () => {
       });
     });
 
-    test('PUT /:slug drops a list entry’s derived runsAt instead of storing or refusing it', async () => {
-      const { app, storage } = createResolutionApp();
-      await saveProject(storage, 'notes');
-      const [entry] = (await json(await app.request('/'))).data;
-      expect(entry.runsAt).toEqual({ kind: 'none' });
+    test('GET / answers without waiting on any project folder (#3391)', async () => {
+      const describeProjectRunLocations = vi.fn(
+        () => new Promise<never>(() => {}),
+      );
+      const { app, storage } = createResolutionApp(remotesOk([]), {
+        resolveProjectResource: async () => {
+          throw new Error('the list must not resolve resources');
+        },
+        describeProjectRunLocations,
+      } as any);
+      await saveProject(storage, 'plain', '/mnt/not-responding');
 
-      const response = await app.request('/notes', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        // The other list-only fields (layoutCount, hasKnowledge…) are refused
-        // as before; this pins only that `runsAt` adds no new refusal.
-        body: JSON.stringify({ name: 'Notes renamed', runsAt: entry.runsAt }),
-      });
+      const response = await Promise.race([
+        app.request('/'),
+        new Promise<'held'>((resolve) =>
+          setTimeout(() => resolve('held'), 2_000),
+        ),
+      ]);
 
-      expect(response.status).toBe(200);
-      const stored = await storage.getProject('notes');
-      expect(stored.name).toBe('Notes renamed');
-      expect(stored).not.toHaveProperty('runsAt');
+      expect(response).not.toBe('held');
+      const body = await json(response as Response);
+      expect(body.data.map((project: any) => project.slug)).toEqual(['plain']);
+      expect(body.data[0]).not.toHaveProperty('runsAt');
+      expect(describeProjectRunLocations).not.toHaveBeenCalled();
     });
 
-    test('GET / never adds run locations to a member’s projection', async () => {
+    test('a member gets no run locations: none on GET /, and an empty map from GET /run-locations', async () => {
       const { storage, projectHomeDir, bindings, manifests } =
         createResolutionApp();
       await saveProject(storage, 'shared', createTempProjectHome());
@@ -3134,9 +3142,12 @@ describe('Project Routes', () => {
       );
 
       const body = await json(await app.request('/'));
+      const locations = await app.request('/run-locations');
 
       expect(body.data).toHaveLength(1);
       expect(body.data[0]).not.toHaveProperty('runsAt');
+      expect(locations.status).toBe(200);
+      expect(await json(locations)).toEqual({ success: true, data: {} });
     });
 
     test('GET /:slug/resolution reports `not-backing` for a project that declares nothing and realizes nothing', async () => {

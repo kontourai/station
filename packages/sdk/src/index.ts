@@ -193,6 +193,7 @@ export {
   closeProjectTerminal,
   getProjectResolution,
   getProjectView,
+  listProjectRunLocations,
   listProjectViews,
 } from './client/projects';
 export {
@@ -969,6 +970,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectSessionBoardQuery,
   useProjectsQuery,
   useProposedChangesQuery,

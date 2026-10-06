@@ -77,6 +77,10 @@ interface ChatDockModalStackProps {
   projectAccentBySlug?: ReadonlyMap<string, string>;
   /** The sidebar's project icons, for the start composer's project chip. */
   projectIconBySlug: ReadonlyMap<string, string>;
+  /** #3391: the start composer's run locations, once the dock has read them. */
+  projectRunLocations?: ComponentProps<
+    typeof NewChatModal
+  >['projectRunLocations'];
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
@@ -142,6 +146,7 @@ export function ChatDockModalStack({
   projectsLoaded,
   projectAccentBySlug,
   projectIconBySlug,
+  projectRunLocations,
   recentChats,
   showChatSettings,
   showSessionPicker,
@@ -196,6 +201,7 @@ export function ChatDockModalStack({
             projectsLoaded,
             projectAccentBySlug,
             projectIconBySlug,
+            projectRunLocations,
             startSurface: true,
             recentChats,
             activeProjectSlug:

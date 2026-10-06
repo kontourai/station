@@ -5176,12 +5176,8 @@ export function configureRuntimeRoutes(
     }),
   );
   // #3276: `GET /api/projects` and `/api/boot`'s `projects` section answer
-  // from one catalogue decision (`createProjectCatalogueReader`). #3370: both
-  // carry each project's `runsAt` from the same resolution stores, since boot
-  // seeds the client's project list.
-  const projectResolutionDeps = buildProjectResolutionRouteDeps(context);
+  // from one catalogue decision (`createProjectCatalogueReader`).
   const projectCatalogueDeps = {
-    resolution: projectResolutionDeps,
     memberProjectAdmissions: async (c) => {
       roomRequestPrincipals.set(
         c.req.raw,
@@ -5274,8 +5270,8 @@ export function configureRuntimeRoutes(
         // answers from a different project store than the runtime was built
         // over, so the settings surface and the runtime would disagree about
         // the same project. The stores below share that pinned source for the
-        // same reason. `projectCatalogueDeps` (spread below) carries it, so
-        // the list's `runsAt` and these routes share one set of stores.
+        // same reason.
+        resolution: buildProjectResolutionRouteDeps(context),
         // #2067/#2090/#2103. The visibility fact for every layout-facing
         // route in this family, from the same projection `GET /api/plugins`
         // applies and the same caller resolver. DISCOVERY: a plugin outside

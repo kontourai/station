@@ -48,12 +48,6 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */
   position?: number;
-  /**
-   * #3370: the directory this project resolves to on this Station (identity
-   * not verified). Present on the operator's own project list; absent from a
-   * member's view and from servers that predate it.
-   */
-  runsAt?: ProjectRunsAt;
 }
 
 /**
@@ -82,6 +76,14 @@ export type ProjectRunsAt =
   | { kind: 'none' }
   | { kind: 'unavailable'; reason: string }
   | { kind: 'unchecked'; reason: string };
+
+/**
+ * `GET /api/projects/run-locations` (#3391): each Project's {@link
+ * ProjectRunsAt} by slug, for the operator only — a shared member gets an
+ * empty map. Separate from the Project list so that list never waits on a
+ * project folder.
+ */
+export type ProjectRunLocations = Record<string, ProjectRunsAt>;
 
 export interface MemberProjectView {
   version: 'station.member-project/v1';
