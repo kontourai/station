@@ -64,12 +64,32 @@ export interface ReceiptProtectedSteerCommand {
   clientInputId: string;
 }
 
+/**
+ * #3386: where the continuation of a conversation that belongs to no project
+ * runs. A conversation a project claims (by folder, or by repository from a
+ * worktree) always continues in its own folder under that project, and
+ * needs no target.
+ *
+ * - `project`: continue it under this project. Station accepts it only when
+ *   the conversation's folder is inside the project's folder or in a genuine
+ *   worktree of the project's repository; it never moves a conversation to
+ *   another folder.
+ * - `own-folder`: continue it as a No project chat confined to its own
+ *   folder. Refused for a folder too broad to confine an agent to (the home
+ *   folder, the filesystem root, and the like).
+ */
+export type AdoptSessionTarget =
+  | { kind: 'project'; projectSlug: string }
+  | { kind: 'own-folder' };
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
       type: 'adoptSession';
       sourceThreadId: string;
       idempotencyKey?: string;
+      /** #3386: where a conversation no project claims continues. */
+      target?: AdoptSessionTarget;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -572,6 +592,22 @@ export interface OrchestrationPeerPendingRequest {
   type?: CanonicalRequestType;
   /** The paired Station's request title, bounded. */
   title?: string;
+  /**
+   * `delegatedInputAnswers`: the request's own `request.opened` event id and
+   * the paired Station's Session it is open on (its `currentSessionId`), so
+   * an answer can be bound to exactly this request. Present only when the
+   * paired Station reported them.
+   */
+  eventId?: string;
+  threadId?: string;
+  /** The question as the paired Station presents it, bounded. */
+  body?: string;
+  /**
+   * The paired Station's own check of THIS Station's credential on the
+   * route that answers the request. Absent when it did not report one (an
+   * older Station).
+   */
+  callerCanRespond?: boolean;
   /** When this Station observed it on the paired Station's status read. */
   observedAt: string;
 }

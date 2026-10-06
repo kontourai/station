@@ -137,6 +137,17 @@ export class ApprovalInboxNotificationProvider
     }
   }
 
+  /**
+   * #3276: whether actioning or dismissing this row would settle an approval
+   * that is still waiting. The one answer every caller asks: an `unavailable`
+   * outcome counts, because a request whose state cannot be read may still
+   * be open. Rows from any other source are never live approvals.
+   */
+  isLiveApproval(notification: Notification): boolean {
+    const { state } = this.observe(notification);
+    return state === 'open' || state === 'unavailable';
+  }
+
   completeRequest(requestKey: string): string | null {
     const notificationId = this.notificationIdByRequestKey.get(requestKey);
     if (!notificationId) {

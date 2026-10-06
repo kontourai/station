@@ -196,14 +196,34 @@
       "reason": "The raw fallback is stored as AttachedProjectRoot.workingDirectory, which resolveAttachedProjectRoot() later passes through canonicalPath() (line 701 below), and canonicalPath expands tilde internally (`resolve(expandTilde(path))`, line 1030). Docblock above this function (lines 113-117) explicitly names this compat path."
     },
     {
-      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: const root = canonicalPath(project.workingDirectory);",
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: const root = canonicalize(project.workingDirectory);",
       "category": 2,
-      "reason": "canonicalPath() expands tilde internally: `const absolute = resolve(expandTilde(path));` (line 1030), documented in canonicalPath’s own station#1462 docblock as the fix for exactly this raw-tilde hazard."
+      "reason": "resolveAttachedSessionProject's repository step. canonicalize() is canonicalPath() by default, which expands tilde internally (`resolve(expandTilde(path))`), or, in the poll, the #3406 path probe's per-poll view, whose canonical() answers a prepared folder's real path computed from lexicalPath() = resolve(expandTilde(path)), and falls back to lexicalPath() itself."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: const root = canonicalize(project.workingDirectory);",
+      "category": 2,
+      "reason": "resolveAttachedProjectRoot's folder step. canonicalize() is canonicalPath() by default, which expands tilde internally (`resolve(expandTilde(path))`), or, in the poll, the #3406 path probe's per-poll view, whose canonical() answers a prepared folder's real path computed from lexicalPath() = resolve(expandTilde(path)), and falls back to lexicalPath() itself."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: projectRoots.map((project) => project.workingDirectory),",
+      "category": 2,
+      "reason": "#3406: handed to AttachedPollPaths.prepare(), which expands each folder with lexicalPath() = resolve(expandTilde(path)) before the helper process realpaths it; the raw value is only the per-poll map key."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: ...projects.map((project) => project.workingDirectory),",
+      "category": 2,
+      "reason": "#3406 prepareSessionFolders: each folder goes through paths.canonical() (expanded via lexicalPath() = resolve(expandTilde(path)) in the probe's per-poll view) before the repository lookup; the raw value never reaches the filesystem."
     },
     {
       "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: if (!project.workingDirectory) continue;",
       "category": 1,
       "reason": "Existence/skip check before the canonicalPath() call on the next line. No filesystem access itself."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: if (!project.workingDirectory) continue;",
+      "category": 1,
+      "reason": "Existence/skip check before the canonicalize() call on the next line (the second of the two matching steps). No filesystem access itself."
     },
     {
       "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: ...(input.workingDirectory === undefined",

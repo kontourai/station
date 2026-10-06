@@ -1,7 +1,10 @@
 import crypto from 'node:crypto';
+import { resolve } from 'node:path';
 import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
 } from '@kontourai/station-contracts/orchestration';
@@ -27,6 +30,11 @@ import {
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrantor } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
+import {
+  adoptedChildExecutionBindingMetadata,
+  type ResolveAdoptedChildExecutionBinding,
+} from './adopted-child-execution-binding.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -34,13 +42,19 @@ import type {
   AdoptionTransition,
   OwnedAdoption,
 } from './adoption-ledger.js';
-import { resolveAttachedProjectRoot } from './attached-session-follow-service.js';
+import {
+  type ContinuationPlace,
+  resolveContinuationPlace,
+} from './attached-session-continuation-place.js';
+import type { AttachedProjectRoot } from './attached-session-follow-service.js';
+import { DISPATCH_CANONICAL_CWD_METADATA_KEY } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
 import {
   type SessionOwnerAttribution,
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from './session-project-identity.js';
 
 // Attached-session adoption (epic archive#4024, archive#4143): the C14 cluster
 // from the seam map — 25 of its 27 methods, its reservation/intent state,
@@ -72,12 +86,36 @@ export class AdoptionContinuationInProgressError extends Error {
   }
 }
 
+/**
+ * #3429: the engine was not ready, found before anything was created, and
+ * the reservation was cleaned up. Its outcome is certain, its reason is the
+ * engine's own readiness report, and the same request can succeed once the
+ * engine is set up.
+ */
+export class AdoptionEngineNotReadyError extends Error {
+  readonly code = 'continuation_engine_not_ready';
+  readonly retryable = true;
+
+  constructor(engine: string, detail: string) {
+    super(
+      `${engine} isn't ready, so no continuation was created (${detail}). Set up ${engine}, then try again.`,
+    );
+    this.name = 'AdoptionEngineNotReadyError';
+  }
+}
+
+/** The readiness check's own failure, before rollback decides what is certain. */
+class EngineNotReady extends Error {}
+
 interface AdoptionContext {
   source: ProviderSession;
   sourceSessionId: string;
   sourceKind: string;
   adapter: ProviderAdapterShape;
-  project: { slug: string; cwd: string; workingDirectory: string };
+  /** #3386: where the child runs and the project it belongs to (none for a No project chat). */
+  place: ContinuationPlace;
+  /** #3386: the caller's choice for a conversation no project claims. */
+  target?: AdoptSessionTarget;
   reservation: AdoptionReservationInput;
   adoption?: OwnedAdoption;
   providerAdoptionStarted: boolean;
@@ -128,7 +166,13 @@ export interface AttachedSessionAdoptionDeps {
   flowRunService?: {
     discardRun(projectRoot: string, flowRunId: string): Promise<void>;
   };
-  listProjects?: () => Array<{ slug: string; workingDirectory?: string }>;
+  listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment the child runs as, so the dock can open
+   * it and `/chat` follow-ups find a verified execution binding. Absent (or
+   * answering undefined), the child is created without one, as before.
+   */
+  resolveExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   requireTenantExecutionContext?: () => boolean;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
@@ -215,6 +259,7 @@ export class AttachedSessionAdoption {
     idempotencyKey?: string,
     ownerAttribution?: SessionOwnerAttribution,
     confinementStamp?: AdoptionConfinement,
+    target?: AdoptSessionTarget,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     if (idempotencyKey) {
       // Coalescing must retain the same authority boundary as durable lookup:
@@ -225,6 +270,8 @@ export class AttachedSessionAdoption {
         userId ?? null,
         requestTenantExecutionContext?.tenantId ?? null,
         idempotencyKey,
+        // #3386: a different choice of where to continue is a different intent.
+        target ?? null,
       ]);
       const inFlight = this.adoptionIntents.get(intentScope);
       if (inFlight) {
@@ -243,6 +290,7 @@ export class AttachedSessionAdoption {
         idempotencyKey,
         ownerAttribution,
         confinementStamp,
+        target,
       );
       this.adoptionIntents.set(intentScope, intent);
       try {
@@ -259,6 +307,7 @@ export class AttachedSessionAdoption {
       undefined,
       ownerAttribution,
       confinementStamp,
+      target,
     );
   }
 
@@ -270,6 +319,7 @@ export class AttachedSessionAdoption {
     idempotencyKey?: string,
     ownerAttribution?: SessionOwnerAttribution,
     confinementStamp?: AdoptionConfinement,
+    target?: AdoptSessionTarget,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     await this.reconciliation;
     // Resolve and authorize the source before treating an existing child as
@@ -286,7 +336,7 @@ export class AttachedSessionAdoption {
       // Do not distinguish an unauthorized source from an absent attachment.
       throw new Error('Attached session not found.');
     }
-    const context = this.resolveAdoptionContext(sourceThreadId);
+    const context = await this.resolveAdoptionContext(sourceThreadId, target);
     const sourceTenantExecutionContext =
       this.deps.tenantContextFor(sourceThreadId) ??
       context.source.tenantExecutionContext;
@@ -402,6 +452,12 @@ export class AttachedSessionAdoption {
           receipt,
         );
       }
+      if (cleanupComplete && error instanceof EngineNotReady)
+        throw new AdoptionEngineNotReadyError(
+          engineDisplayLabel(context.source.provider) ??
+            context.source.provider,
+          error.message,
+        );
       throw new Error(
         cleanupComplete
           ? 'Station could not continue this attached session. No continuation was kept.'
@@ -483,7 +539,10 @@ export class AttachedSessionAdoption {
     return false;
   }
 
-  private resolveAdoptionContext(sourceThreadId: string): AdoptionContext {
+  private async resolveAdoptionContext(
+    sourceThreadId: string,
+    target: AdoptSessionTarget | undefined,
+  ): Promise<AdoptionContext> {
     const eventStore = this.deps.eventStore;
     if (!eventStore) {
       throw new Error(
@@ -492,12 +551,15 @@ export class AttachedSessionAdoption {
     }
     const source = this.findAttachedAdoptionSource(sourceThreadId, eventStore);
     const sourceSessionId = source.attachedSource!.externalSessionId;
-    const project = this.resolveAdoptionProject(source);
+    // The engine's support is settled before the folder is read: an engine
+    // that cannot continue refuses the same way wherever the folder is.
     const adapter = this.requireAdoptionAdapter(source.provider);
+    const place = await this.resolveAdoptionPlace(source, target);
     return this.buildAdoptionContext({
       source,
       sourceSessionId,
-      project,
+      place,
+      target,
       adapter,
     });
   }
@@ -522,30 +584,40 @@ export class AttachedSessionAdoption {
     return source;
   }
 
-  private resolveAdoptionProject(
+  /**
+   * #3386: where the child runs, decided from the folder itself at adoption
+   * time (`attached-session-continuation-place.ts`): a folder inside a
+   * project's folder or in a genuine worktree of its repository continues
+   * there under that project; a folder no project claims continues only as
+   * a No project chat the caller chose, confined to that folder.
+   */
+  private resolveAdoptionPlace(
     source: ProviderSession,
-  ): AdoptionContext['project'] {
-    const attribution = resolveAttachedProjectRoot(
-      source.cwd!,
-      this.deps.listProjects?.() ?? [],
-    );
-    // archive#1462: adoption binds a session to one project, so an ambiguous
-    // workspace refuses by name instead of adopting into an arbitrary winner.
-    if (attribution.state === 'ambiguous') {
+    target: AdoptSessionTarget | undefined,
+  ): Promise<ContinuationPlace> {
+    return resolveContinuationPlace({
+      cwd: source.cwd!,
+      projects: this.deps.listProjects?.() ?? [],
+      ...(target ? { target } : {}),
+      hosted: this.deps.requireTenantExecutionContext?.() === true,
+    });
+  }
+
+  /**
+   * #3386: the folder is checked again just before the engine is started in
+   * it, so a worktree removed, replaced or re-pointed while the reservation
+   * was being written is refused rather than handed to the engine. The
+   * window that remains is the engine's own start.
+   */
+  private async reverifyAdoptionPlace(context: AdoptionContext): Promise<void> {
+    const now = await this.resolveAdoptionPlace(context.source, context.target);
+    if (
+      now.cwd !== context.place.cwd ||
+      now.project?.slug !== context.place.project?.slug
+    )
       throw new Error(
-        `The attached session workspace ${attribution.workingDirectory} is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,
+        "The conversation's folder changed while Station was continuing it.",
       );
-    }
-    if (attribution.state === 'unattributed') {
-      throw new Error(
-        'The attached session workspace is no longer a configured project.',
-      );
-    }
-    return {
-      slug: attribution.slug,
-      cwd: attribution.cwd,
-      workingDirectory: attribution.workingDirectory,
-    };
   }
 
   private requireAdoptionAdapter(provider: EngineId): ProviderAdapterShape {
@@ -563,7 +635,8 @@ export class AttachedSessionAdoption {
   private buildAdoptionContext(input: {
     source: ProviderSession;
     sourceSessionId: string;
-    project: AdoptionContext['project'];
+    place: ContinuationPlace;
+    target: AdoptSessionTarget | undefined;
     adapter: ProviderAdapterShape;
   }): AdoptionContext {
     const now = new Date().toISOString();
@@ -600,7 +673,8 @@ export class AttachedSessionAdoption {
       sourceSessionId: input.sourceSessionId,
       sourceKind: input.source.attachedSource!.kind,
       adapter: input.adapter,
-      project: input.project,
+      place: input.place,
+      ...(input.target ? { target: input.target } : {}),
       reservation: {
         sourceThreadId: input.source.threadId,
         targetThreadId: crypto.randomUUID(),
@@ -613,8 +687,8 @@ export class AttachedSessionAdoption {
           ? { sourceAffinity: snapshotSessionSourceAffinity(affinity) }
           : {}),
         ...(sourceBoundary ? { sourceBoundary } : {}),
-        cwd: input.project.cwd,
-        projectRoot: input.project.workingDirectory,
+        cwd: input.place.cwd,
+        projectRoot: resolve(expandTilde(input.place.workingDirectory)),
         createdAt: now,
         updatedAt: now,
       },
@@ -644,7 +718,12 @@ export class AttachedSessionAdoption {
     context: AdoptionContext,
     userId?: string,
   ): Promise<ProviderSession> {
-    const { adapter, project, reservation, source } = context;
+    const { adapter, place, reservation, source } = context;
+    // #3429: resolved before the engine is touched, so a failed read rolls
+    // back an adoption that never started a child.
+    const executionBinding = await this.deps.resolveExecutionBinding?.(
+      source.provider,
+    );
     // Adoption starts a fresh provider child from a persisted transcript, so
     // it follows the same retained-selector resume contract as recovery.
     // Do not replay `source.model` as a caller override: Station-backed
@@ -656,12 +735,41 @@ export class AttachedSessionAdoption {
       threadId: reservation.targetThreadId,
       sourceSessionId: context.sourceSessionId,
       sourceKind: context.sourceKind,
-      cwd: project.cwd,
+      cwd: place.cwd,
       // archive#1165: these are server-owned facts. The public adoption
       // command has no metadata channel, so neither the plan nor identity
       // can be forged by an adopting client.
       metadata: {
         adoptedFromThreadId: reservation.sourceThreadId,
+        // #3429: the same Agent identity and execution binding a chat
+        // started from the dock records, so the dock opens this child and a
+        // `/chat` follow-up passes `readSessionBinding`. Confinement and cwd
+        // below are adoption's own and are not derived from the Agent.
+        ...adoptedChildExecutionBindingMetadata(
+          executionBinding,
+          reservation.targetThreadId,
+        ),
+        // #3386: the child belongs to the project its folder was verified
+        // against just now (by folder, or by repository from a worktree),
+        // with that project's local id the same way `prepareStart` records
+        // a verified one. A No project chat names none.
+        ...(place.project
+          ? {
+              projectSlug: place.project.slug,
+              // #3429: what a project chat records beside its slug. The
+              // child runs in its own folder, not a worktree Station made,
+              // so its isolation is `shared`.
+              workspaceIsolation: { mode: 'shared' },
+              ...(place.project.id
+                ? { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: place.project.id }
+                : {}),
+            }
+          : {}),
+        // #3386: the folder the child was admitted into, symlink-resolved,
+        // so every later engine start for it (a restart, a recovery) checks
+        // the folder still resolves there and refuses if it was swapped
+        // (`assertDispatchCwdUnmoved`), as for an admitted dispatch.
+        [DISPATCH_CANONICAL_CWD_METADATA_KEY]: place.cwd,
         ...(userId !== undefined ? { userId } : {}),
         ...sessionOwnerAttributionMetadata(context.ownerAttribution),
         // #2493: server-built, so no strip is needed; absent is `workspace`.
@@ -700,8 +808,13 @@ export class AttachedSessionAdoption {
         ? { sourceBoundary: context.reservation.sourceBoundary }
         : {}),
     };
-    await this.deps.assertAdapterReady(adapter);
+    try {
+      await this.deps.assertAdapterReady(adapter);
+    } catch (error) {
+      throw new EngineNotReady(errorMessage(error));
+    }
     this.deps.assertAdapterCurrent(adapter);
+    await this.reverifyAdoptionPlace(context);
     const startCreation = () => {
       if (context.providerAdoptionStarted)
         throw new Error('Provider reported child creation more than once.');
@@ -768,7 +881,7 @@ export class AttachedSessionAdoption {
       ...adopted,
       controlMode: 'station-owned',
       attachedSource: undefined,
-      cwd: context.project.cwd,
+      cwd: context.place.cwd,
       continuationSourceThreadId: context.reservation.sourceThreadId,
       ...(context.reservation.idempotencyKey
         ? { adoptionIdempotencyKey: context.reservation.idempotencyKey }

@@ -1171,6 +1171,8 @@ export interface ProviderSendTurnInput {
 }
 
 export interface ProviderSession {
+  /** Safe route captured from the configuration used to launch this session. */
+  modelRoute?: { connectionId: string; label: string; endpoint: string };
   provider: EngineId;
   threadId: string;
   /**

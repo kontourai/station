@@ -310,7 +310,7 @@ describe('the status ladder, from real server summaries', () => {
       remoteEnvironments: [
         {
           environmentId: 'env-1',
-          environmentName: 'brian-media',
+          environmentName: 'home-media',
           sessions: [APPROVAL_IN_OPEN_TURN],
         },
       ],

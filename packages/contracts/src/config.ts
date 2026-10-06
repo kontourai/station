@@ -130,6 +130,15 @@ export interface AppConfig {
    */
   surfaceTrustFromVeritasEvidence?: boolean;
   /**
+   * #3386: whether Activity follows Claude Code and Codex conversations found
+   * on this machine whose folder belongs to no project (listed under No
+   * project). **Default on** — `false` stops following them; conversations
+   * already read stay in Activity. Conversations inside a project are
+   * followed either way, and a hosted Station never follows these.
+   * Read every poll by `AttachedSessionFollowService`.
+   */
+  attachedSessionsOutsideProjects?: boolean;
+  /**
    * Create the read-only `root:conversations` projection at personal startup
    * when absent. Default off. Disabling does not remove an existing root;
    * hosted mode skips this projection. Other Knowledge routes are independent.

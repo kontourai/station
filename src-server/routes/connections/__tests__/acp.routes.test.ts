@@ -22,6 +22,9 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 
 const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
   await import('../acp.js');
+const { CodexAdapter } = await import(
+  '../../../providers/adapters/codex-adapter.js'
+);
 const homes: string[] = [];
 
 async function createFilesystemRuntimeContext() {
@@ -1084,5 +1087,114 @@ describe('ACP Routes', () => {
     expect(body.error).toBe('The ACP connection could not be reconnected.');
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('sk-test1234');
+  });
+  /**
+   * #3355: an ACP connection that takes a native runtime Adapter's id resolves
+   * to that engine's public connection, and attribution then labels the native
+   * engine's Agents `acp`. The route refuses the id before any durable write.
+   * The Adapter is the real `CodexAdapter`, registered the way bootstrap
+   * registers it (a builtin `providerAdapter` entry).
+   */
+  describe('native engine id collisions (#3355)', () => {
+    function registerNativeCodex() {
+      providerEntries.push({
+        source: 'providerAdapter:station-core',
+        builtin: true,
+        provider: new CodexAdapter(),
+      });
+    }
+
+    test('POST /connections refuses an id a native runtime Adapter owns', async () => {
+      registerNativeCodex();
+      const ctx = createMockRuntimeContext();
+      const app = createACPRoutes(ctx as any);
+
+      const response = await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'codex', command: 'codex-acp' }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = await json(response);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe(
+        "Connection id 'codex' is already used by the 'codex' engine. Choose a different id for the ACP connection.",
+      );
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+      expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+    });
+
+    test("POST /connections refuses a plugin Adapter's public connection id that differs from its engine id", async () => {
+      providerEntries.push({
+        source: 'providerAdapter:plugin-x',
+        provider: {
+          provider: 'xcli',
+          metadata: {
+            displayName: 'X',
+            description: 'runtime',
+            capabilities: ['agent-runtime'],
+            engineId: 'xcli',
+            connectionId: 'xcli-local',
+          },
+        },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = createACPRoutes(ctx as any);
+
+      const response = await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'xcli-local', command: 'x-acp' }),
+      });
+
+      expect(response.status).toBe(400);
+      // Names the engine that owns the id, not the id itself.
+      expect((await json(response)).error).toBe(
+        "Connection id 'xcli-local' is already used by the 'xcli' engine. Choose a different id for the ACP connection.",
+      );
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+    });
+
+    test('POST /connections still accepts an ACP id no native Adapter owns', async () => {
+      registerNativeCodex();
+      const ctx = createMockRuntimeContext();
+      const app = createACPRoutes(ctx as any);
+
+      const response = await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'kiro', command: 'kiro-cli' }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(ctx.configLoader.saveACPConfig).toHaveBeenCalledOnce();
+    });
+
+    test('POST /registry/:id/install refuses a registry entry whose id a native Adapter owns', async () => {
+      registerNativeCodex();
+      providerEntries.push({
+        source: 'acpConnectionRegistry:plugin-bridge',
+        provider: {
+          listAvailable: () => [
+            { id: 'codex', name: 'Codex (ACP)', command: 'codex-acp' },
+          ],
+        },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = createACPRoutes(ctx as any);
+
+      const response = await app.request('/registry/codex/install', {
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(400);
+      expect((await json(response)).error).toContain(
+        "Connection id 'codex' is already used by the 'codex' engine",
+      );
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+      expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+      expect(ctx.beginAgentConfigurationMutation).not.toHaveBeenCalled();
+    });
   });
 });

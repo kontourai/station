@@ -16,7 +16,13 @@
 
     "src-server/tools/station-control-delegation.ts",
 
-    "src-server/services/remote-stations/remote-station-forwarder.ts"
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
   ],
 
   "checks": [
